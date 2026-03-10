@@ -1,0 +1,24 @@
+---
+description: ST4 AutoCAD plugin - always bump DLL version and show output path when building
+globs: ST4_Aks_Ciz_CSharp/**/*
+alwaysApply: true
+---
+
+# ST4 Aks Çiz DLL sürümü ve çıktı yolu
+
+Bu projede **her derleme/kaydetme** yapıldığında:
+
+1. **DLL sürümünü artır**  
+   `ST4_Aks_Ciz_CSharp.csproj` içinde `DllSuffix` değerini bir artır (v5 → v6 → v7 …).
+
+2. **Derlemeyi çalıştır**  
+   `dotnet build -c Release` ile projeyi derle.
+
+3. **DLL’in kaydedildiği yolu her zaman göster**  
+   Derleme sonrası kullanıcıya tam çıktı yolunu yaz:
+   ```
+   C:\Users\BEYKENT\Documents\CURSOR\Osman_donusum\ST4_Aks_Ciz_CSharp\bin\Release\net48\ST4_Aks_Ciz_CSharp_vX.dll
+   ```
+   (vX = güncel sürüm numarası)
+
+Böylece AutoCAD eski DLL’i kullanmaz; kullanıcı her seferinde yeni DLL yolunu görür.

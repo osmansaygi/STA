@@ -1,0 +1,17 @@
+# Build
+bin/
+obj/
+_build_tmp/
+
+# User / IDE
+.vs/
+*.user
+*.suo
+
+# NuGet
+packages/
+*.nupkg
+
+# OS
+Thumbs.db
+.DS_Store
