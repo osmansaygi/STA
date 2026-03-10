@@ -84,6 +84,17 @@ namespace ST4AksCizCSharp
                 // Final pass: scan all beam lines in model space and remove any shorter than 220 mm.
                 RemoveShortBeamLinesFromBlock(tr, db, ed);
 
+                DrawCirclesAtFreeBeamEndpoints(tr, btr);
+
+                // Extend sonrasi kesisen kiris cizgilerini tekrar kesisme noktasinda bol, 22 birimden kisa parcalari sil.
+                var beamRefsAfterExtend = CollectBeamLineRefsFromBlock(tr, btr);
+                BreakIntersectingBeamLinesOnce(tr, btr, beamRefsAfterExtend);
+                RemoveShortBeamLinesFromBlock(tr, db, ed);
+
+                // Kesisimde en az bir kol 1 birim tasiyorsa kisa kenarlari kes (fillet).
+                var beamRefsForFillet = CollectBeamLineRefsFromBlock(tr, btr);
+                FilletIntersectingBeamLinesWhenOneArmSticksOut(tr, beamRefsForFillet);
+
                 LayerService.SetLayerOn(tr, db, "ST4-AKS-CIZGILER", false);
                 LayerService.SetLayerOn(tr, db, "ST4-AKS-KOLONLU", false);
                 LayerService.SetLayerOn(tr, db, "ST4-AKS-KOLONSUZ", false);
@@ -111,6 +122,232 @@ namespace ST4AksCizCSharp
             LayerService.EnsureLayer(tr, db, "ST4-KOLON-NUMARALARI", 2);
             LayerService.EnsureLayer(tr, db, "ST4-KIRISLAR", 2);
             LayerService.EnsureLayer(tr, db, "ST4-PERDELER", 6);
+            LayerService.EnsureLayer(tr, db, "ST4-SERBEST-UCLAR", 1);
+        }
+
+        private static void DrawCirclesAtFreeBeamEndpoints(Transaction tr, BlockTableRecord btr)
+        {
+            const string beamLayer = "ST4-KIRISLAR";
+            const string columnLayer = "ST4-KOLONLAR";
+            const string wallLayer = "ST4-PERDELER";
+            // Uca en yakin eleman (kiriş ucu, kolon veya perde) 3 birimden uzaktaysa uç boşta kabul edilir.
+            const double connectionTol = 3.0;
+            const double circleRadius = 5.0;
+            const double extendMin = 1.0;
+            const double extendMax = 100.0;
+
+            var lines = new List<(ObjectId Id, Point2d Start, Point2d End)>();
+            var columnCircles = new List<(Point2d Center, double Radius)>();
+            var columnPolys = new List<Point2d[]>();
+            var wallPolys = new List<Point2d[]>();
+
+            foreach (ObjectId id in btr)
+            {
+                if (id.IsErased) continue;
+                var ent = tr.GetObject(id, OpenMode.ForRead) as Entity;
+                if (ent == null) continue;
+
+                if (ent.Layer == beamLayer && ent is Line ln)
+                {
+                    var sp = ln.StartPoint;
+                    var ep = ln.EndPoint;
+                    lines.Add((id, new Point2d(sp.X, sp.Y), new Point2d(ep.X, ep.Y)));
+                }
+                else if (ent.Layer == columnLayer)
+                {
+                    if (ent is Circle circ)
+                    {
+                        columnCircles.Add((new Point2d(circ.Center.X, circ.Center.Y), circ.Radius));
+                    }
+                    else if (ent is Polyline colPl)
+                    {
+                        var pts = new Point2d[colPl.NumberOfVertices];
+                        for (int i = 0; i < pts.Length; i++) pts[i] = colPl.GetPoint2dAt(i);
+                        columnPolys.Add(pts);
+                    }
+                }
+                else if (ent.Layer == wallLayer && ent is Polyline wallPl)
+                {
+                    var pts = new Point2d[wallPl.NumberOfVertices];
+                    for (int i = 0; i < pts.Length; i++) pts[i] = wallPl.GetPoint2dAt(i);
+                    wallPolys.Add(pts);
+                }
+            }
+
+            bool IsConnectedToColumnsOrWalls(Point2d pt)
+            {
+                foreach (var (center, radius) in columnCircles)
+                    if (pt.GetDistanceTo(center) <= radius + connectionTol) return true;
+                foreach (var vertices in columnPolys)
+                    if (MinDistancePointToPolyline(pt, vertices, true) <= connectionTol) return true;
+                foreach (var vertices in wallPolys)
+                    if (MinDistancePointToPolyline(pt, vertices, true) <= connectionTol) return true;
+                return false;
+            }
+
+            var freeEnds = new List<(int lineIdx, int end, Point2d pt)>();
+            for (int i = 0; i < lines.Count; i++)
+            {
+                for (int end = 0; end < 2; end++)
+                {
+                    var pt = end == 0 ? lines[i].Start : lines[i].End;
+                    bool connected = false;
+                    for (int j = 0; j < lines.Count; j++)
+                    {
+                        if (i == j) continue;
+                        if (pt.GetDistanceTo(lines[j].Start) <= connectionTol ||
+                            pt.GetDistanceTo(lines[j].End) <= connectionTol)
+                        {
+                            connected = true;
+                            break;
+                        }
+                    }
+                    if (!connected && IsConnectedToColumnsOrWalls(pt))
+                        connected = true;
+                    if (!connected)
+                        freeEnds.Add((i, end, pt));
+                }
+            }
+
+            var drawn = new List<(int lineIdx, int end, Point2d pt)>();
+            foreach (var fe in freeEnds)
+            {
+                if (drawn.Any(d => d.pt.GetDistanceTo(fe.pt) <= connectionTol)) continue;
+                drawn.Add(fe);
+                var circle = new Circle
+                {
+                    Center = new Point3d(fe.pt.X, fe.pt.Y, 0),
+                    Radius = circleRadius,
+                    Layer = "ST4-SERBEST-UCLAR"
+                };
+                btr.AppendEntity(circle);
+                tr.AddNewlyCreatedDBObject(circle, true);
+            }
+
+            ExtendBeamLinesAtMarkedPoints(tr, btr, lines, columnCircles, columnPolys, wallPolys, drawn, connectionTol, extendMin, extendMax);
+        }
+
+        private static void ExtendBeamLinesAtMarkedPoints(
+            Transaction tr,
+            BlockTableRecord btr,
+            List<(ObjectId Id, Point2d Start, Point2d End)> lines,
+            List<(Point2d Center, double Radius)> columnCircles,
+            List<Point2d[]> columnPolys,
+            List<Point2d[]> wallPolys,
+            List<(int lineIdx, int end, Point2d pt)> markedEnds,
+            double connectionTol,
+            double extendMin,
+            double extendMax)
+        {
+            foreach (var (lineIdx, end, freePt) in markedEnds)
+            {
+                var (lineId, start, last) = lines[lineIdx];
+                Point2d otherEnd = end == 0 ? last : start;
+                Vector2d dir = (freePt - otherEnd).GetNormal();
+                if (dir.Length <= 1e-9) continue;
+
+                double? minDist = null;
+
+                for (int j = 0; j < lines.Count; j++)
+                {
+                    if (j == lineIdx) continue;
+                    var (_, a, b) = lines[j];
+                    if (RaySegmentIntersection(freePt, dir, a, b, out double t) && t > 1e-6 && (!minDist.HasValue || t < minDist.Value))
+                        minDist = t;
+                }
+                foreach (var (center, radius) in columnCircles)
+                {
+                    if (RayCircleIntersection(freePt, dir, center, radius, out double t) && t > 1e-6 && (!minDist.HasValue || t < minDist.Value))
+                        minDist = t;
+                }
+                foreach (var vertices in columnPolys)
+                {
+                    for (int i = 0; i < vertices.Length; i++)
+                    {
+                        int j = (i + 1) % vertices.Length;
+                        if (RaySegmentIntersection(freePt, dir, vertices[i], vertices[j], out double t) && t > 1e-6 && (!minDist.HasValue || t < minDist.Value))
+                            minDist = t;
+                    }
+                }
+                foreach (var vertices in wallPolys)
+                {
+                    for (int i = 0; i < vertices.Length; i++)
+                    {
+                        int j = (i + 1) % vertices.Length;
+                        if (RaySegmentIntersection(freePt, dir, vertices[i], vertices[j], out double t) && t > 1e-6 && (!minDist.HasValue || t < minDist.Value))
+                            minDist = t;
+                    }
+                }
+
+                if (!minDist.HasValue || minDist.Value < extendMin) continue;
+                double ext = Math.Min(minDist.Value, extendMax);
+
+                Point2d newEnd = freePt + dir.MultiplyBy(ext);
+                var lineEnt = tr.GetObject(lineId, OpenMode.ForWrite) as Line;
+                if (lineEnt == null) continue;
+                if (end == 0)
+                    lineEnt.StartPoint = new Point3d(newEnd.X, newEnd.Y, 0);
+                else
+                    lineEnt.EndPoint = new Point3d(newEnd.X, newEnd.Y, 0);
+            }
+        }
+
+        private static bool RaySegmentIntersection(Point2d origin, Vector2d dir, Point2d a, Point2d b, out double t)
+        {
+            t = 0;
+            Vector2d v = b - a;
+            double denom = dir.X * v.Y - dir.Y * v.X;
+            if (Math.Abs(denom) < 1e-10) return false;
+            double numT = (a.X - origin.X) * v.Y - (a.Y - origin.Y) * v.X;
+            t = numT / denom;
+            if (t < 0) return false;
+            double numS = (a.X - origin.X) * dir.Y - (a.Y - origin.Y) * dir.X;
+            double s = numS / denom;
+            return s >= -1e-10 && s <= 1.0 + 1e-10;
+        }
+
+        private static bool RayCircleIntersection(Point2d origin, Vector2d dir, Point2d center, double radius, out double t)
+        {
+            t = 0;
+            Vector2d oc = origin - center;
+            double a = dir.DotProduct(dir);
+            double b = 2.0 * oc.DotProduct(dir);
+            double c = oc.DotProduct(oc) - radius * radius;
+            double disc = b * b - 4 * a * c;
+            if (disc < 0) return false;
+            double sqrt = Math.Sqrt(disc);
+            double t0 = (-b - sqrt) / (2.0 * a);
+            double t1 = (-b + sqrt) / (2.0 * a);
+            if (t0 >= 0) { t = t0; return true; }
+            if (t1 >= 0) { t = t1; return true; }
+            return false;
+        }
+
+        private static double MinDistancePointToSegment(Point2d p, Point2d a, Point2d b)
+        {
+            var v = b - a;
+            var w = p - a;
+            double c1 = w.DotProduct(v);
+            if (c1 <= 0) return p.GetDistanceTo(a);
+            double c2 = v.DotProduct(v);
+            if (c2 <= c1) return p.GetDistanceTo(b);
+            double t = c1 / c2;
+            var proj = a + v.MultiplyBy(t);
+            return p.GetDistanceTo(proj);
+        }
+
+        private static double MinDistancePointToPolyline(Point2d p, Point2d[] vertices, bool closed)
+        {
+            if (vertices == null || vertices.Length < 2) return double.MaxValue;
+            double min = double.MaxValue;
+            for (int i = 0; i < vertices.Length; i++)
+            {
+                int j = closed ? (i + 1) % vertices.Length : i + 1;
+                if (j >= vertices.Length) break;
+                double d = MinDistancePointToSegment(p, vertices[i], vertices[j]);
+                if (d < min) min = d;
+            }
+            return min;
         }
 
         private (double Xmin, double Xmax, double Ymin, double Ymax) CalculateBaseExtents()
@@ -554,6 +791,20 @@ namespace ST4AksCizCSharp
             return result;
         }
 
+        private static List<(ObjectId Id, int OwnerKey)> CollectBeamLineRefsFromBlock(Transaction tr, BlockTableRecord btr)
+        {
+            const string beamLayer = "ST4-KIRISLAR";
+            var list = new List<(ObjectId Id, int OwnerKey)>();
+            foreach (ObjectId id in btr)
+            {
+                if (id.IsErased) continue;
+                if (!(tr.GetObject(id, OpenMode.ForRead) is Line ln)) continue;
+                if (ln.Layer != beamLayer) continue;
+                list.Add((id, 0));
+            }
+            return list;
+        }
+
         private static List<(ObjectId Id, int OwnerKey)> BreakIntersectingBeamLinesOnce(
             Transaction tr,
             BlockTableRecord btr,
@@ -664,6 +915,56 @@ namespace ST4AksCizCSharp
                     if (!TryIntersectInfinite2d(l1.StartPoint, l1.EndPoint, l2.StartPoint, l2.EndPoint, out var ip)) continue;
                     if (!IsPointOnSegment2d(ip, l1.StartPoint, l1.EndPoint, eps)) continue;
                     if (!IsPointOnSegment2d(ip, l2.StartPoint, l2.EndPoint, eps)) continue;
+
+                    TrimShortArmIfPenetrating(l1, ip, minPenetration, maxShortArm, shortLongRatio);
+                    TrimShortArmIfPenetrating(l2, ip, minPenetration, maxShortArm, shortLongRatio);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Kesisen kiriş cizgilerinde en az bir kol 1 birim tasiyorsa kisa kenarlari kesisme noktasina ceker (fillet).
+        /// </summary>
+        private static void FilletIntersectingBeamLinesWhenOneArmSticksOut(
+            Transaction tr,
+            List<(ObjectId Id, int OwnerKey)> lineRefs)
+        {
+            const double eps = 1e-6;
+            const double minArmToApply = 1.0;  // en az bir kol bu kadar tasimali
+            const double minPenetration = 0.1;
+            const double maxShortArm = 50.0;
+            const double shortLongRatio = 0.35;
+            const double parallelDot = 0.995;
+
+            var lines = new List<Line>(lineRefs.Count);
+            foreach (var lineRef in lineRefs)
+            {
+                if (lineRef.Id.IsNull || lineRef.Id.IsErased) continue;
+                if (!(tr.GetObject(lineRef.Id, OpenMode.ForWrite, false) is Line ln)) continue;
+                if (ln.Length <= eps) continue;
+                lines.Add(ln);
+            }
+
+            for (int i = 0; i < lines.Count; i++)
+            {
+                for (int j = i + 1; j < lines.Count; j++)
+                {
+                    var l1 = lines[i];
+                    var l2 = lines[j];
+                    var d1 = (l1.EndPoint - l1.StartPoint).GetNormal();
+                    var d2 = (l2.EndPoint - l2.StartPoint).GetNormal();
+                    if (Math.Abs(d1.DotProduct(d2)) >= parallelDot) continue;
+
+                    if (!TryIntersectInfinite2d(l1.StartPoint, l1.EndPoint, l2.StartPoint, l2.EndPoint, out var ip)) continue;
+                    if (!IsPointOnSegment2d(ip, l1.StartPoint, l1.EndPoint, eps)) continue;
+                    if (!IsPointOnSegment2d(ip, l2.StartPoint, l2.EndPoint, eps)) continue;
+
+                    double a1s = ip.DistanceTo(l1.StartPoint);
+                    double a1e = ip.DistanceTo(l1.EndPoint);
+                    double a2s = ip.DistanceTo(l2.StartPoint);
+                    double a2e = ip.DistanceTo(l2.EndPoint);
+                    double maxArm = Math.Max(Math.Max(a1s, a1e), Math.Max(a2s, a2e));
+                    if (maxArm < minArmToApply) continue;
 
                     TrimShortArmIfPenetrating(l1, ip, minPenetration, maxShortArm, shortLongRatio);
                     TrimShortArmIfPenetrating(l2, ip, minPenetration, maxShortArm, shortLongRatio);
