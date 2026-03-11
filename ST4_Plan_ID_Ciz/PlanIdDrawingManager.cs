@@ -11,7 +11,7 @@ using ST4AksCizCSharp;
 namespace ST4PlanIdCiz
 {
     /// <summary>
-    /// Sadece akslar, kolonlar (dikdörtgen + daire + poligon), kirişler ve perdeleri
+    /// Akslar, kolonlar (dikdörtgen + daire + poligon), kirişler, perdeler ve döşemeleri
     /// tüm eleman ID'leriyle çizer; katlar yan yana dizilir.
     /// </summary>
     public sealed class PlanIdDrawingManager
@@ -52,7 +52,7 @@ namespace ST4PlanIdCiz
                 tr.Commit();
 
                 ed.WriteMessage(
-                    "\nST4PLANID: {0} kat, akslar, kolonlar (poligon dahil), kirişler, perdeler ID'leriyle cizildi. (cm)",
+                    "\nST4PLANID: {0} kat, akslar, kolonlar (poligon dahil), kirişler ve perdeler ID'leriyle cizildi. (cm)",
                     _model.Floors.Count);
             }
         }

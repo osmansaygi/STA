@@ -1,17 +1,16 @@
 ---
-description: DLL tarih/saat ile kaydet, yükleme yolunu her seferinde göster
+description: DLL kaydetme ve yükleme yolu (Plan_ID tarihli, Aks sabit)
 alwaysApply: true
 ---
 
-# DLL: Tarih/Saat ile Kaydet, Yükleme Yolunu Her Zaman Göster
+# DLL: Kaydetme ve Yükleme Yolu
 
-- **Tüm AutoCAD DLL projeleri** (ST4_Aks_Ciz_CSharp, ST4_Plan_ID_Ciz ve ileride eklenecekler):
-  1. **Tarih/saat ile kaydet:** Her derlemede DLL farklı ada yazılsın (üzerine yazılmasın). Örnek isim: `ST4_Aks_Ciz_CSharp_YYYYMMDD_HHmmss.dll`, `ST4_Plan_ID_Ciz_YYYYMMDD_HHmmss.dll`. Böylece AutoCAD dosyayı kilitlemiş olsa bile yeni derleme farklı dosyaya yazılır ve çalıştırılabilir.
-  2. **DLL nereden yükleneceği:** Build yapıldığında, DLL'den bahsedildiğinde veya kullanıcı sorduğunda **mutlaka** yükleme adresi yazılsın:
-     - **Klasör:** `ProjeAdi\bin\Debug\net48\` veya `ProjeAdi\bin\Release\net48\`
-     - **Tam yol örneği:** `c:\Users\BEYKENT\Documents\CURSOR\Osman_donusum\ST4_Aks_Ciz_CSharp\bin\Debug\net48\ST4_Aks_Ciz_CSharp_20260311_155507.dll`
-     - **AutoCAD:** NETLOAD → bu klasöre git → en son tarihli `ProjeAdi_*.dll` dosyasını seç.
+- **ST4_Aks_Ciz_CSharp:** Sabit isimle kaydedilir: `ST4_Aks_Ciz_CSharp.dll` (tarih/saat eklenmez). Build çıktısı: `ST4_Aks_Ciz_CSharp\bin\Debug\net48\` veya `bin\Release\net48\`.
+- **ST4_Plan_ID_Ciz:** Her derlemede tarih/saatli isim: `ST4_Plan_ID_Ciz_YYYYMMDD_HHmmss.dll`. Build yapıldığında veya kullanıcı sorduğunda **mutlaka** yükleme adresi yazılsın:
+  - **Klasör:** `ST4_Plan_ID_Ciz\bin\Debug\net48\` (veya Release).
+  - **Tam yol örneği:** `c:\Users\BEYKENT\Documents\CURSOR\Osman_donusum\ST4_Plan_ID_Ciz\bin\Debug\net48\ST4_Plan_ID_Ciz_20260311_192129.dll`
+  - **AutoCAD:** NETLOAD → bu klasöre git → en son tarihli `ST4_Plan_ID_Ciz_*.dll` dosyasını seç. Aynı klasörde `ST4_Aks_Ciz_CSharp.dll` da bulunur (referans için kopyalanır).
 
-- **ST4_Plan_ID_Ciz** ek olarak ST4_Aks_Ciz_CSharp referansını kullandığı için aynı klasörde her iki projenin en son tarihli DLL’i bulunmalı; NETLOAD ile `ST4_Plan_ID_Ciz_*.dll` yüklenir.
+- Bu kurala **her zaman** uyulacak; kullanıcı "nereden yükleyeceğim" dediğinde veya build sonrası cevap verirken sadece **ST4_Plan_ID_Ciz** DLL yolu yazılacak; ST4_Aks_Ciz_CSharp_*.dll dosya adı yazılmayacak.
 
-- Bu kurala **her zaman** uyulacak; kullanıcı "nereden yükleyeceğim" dediğinde veya build sonrası cevap verirken DLL yolu eksiksiz yazılacak.
+- **Her düzeltmede DLL ismi değişsin:** ST4_Plan_ID_Ciz veya ST4_Aks_Ciz_CSharp üzerinde **her kod değişikliğinden sonra** mutlaka `dotnet build` (ST4_Plan_ID_Ciz klasöründe) çalıştırılacak; böylece yeni tarih/saatli DLL üretilir ve kullanıcı her seferinde farklı isimle dosyayı görür. Bu madde özellikle dikkate alınacak.

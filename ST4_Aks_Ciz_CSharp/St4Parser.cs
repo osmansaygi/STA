@@ -20,6 +20,7 @@ namespace ST4AksCizCSharp
             bool inColAxis = false;
             bool inBeams = false;
             bool inColData = false;
+            bool inFloorsData = false;
             bool inPolygonCols = false;
             bool inPolygonSection = false;
             int? headerNX = null;
@@ -29,6 +30,15 @@ namespace ST4AksCizCSharp
             {
                 string line = rawLines[i] ?? string.Empty;
                 string u = line.Trim().ToLowerInvariant();
+
+                if (u.Contains("floors data"))
+                {
+                    inFloorsData = true;
+                    inColAxis = false;
+                    inBeams = false;
+                    inColData = false;
+                    continue;
+                }
 
                 if ((i == 4 || i == 5) && line.Length > 0)
                 {
@@ -197,6 +207,32 @@ namespace ST4AksCizCSharp
                         sectionId >= 100 && cw > 0 && ch > 0)
                     {
                         model.ColumnDimsBySectionId[sectionId] = (cw, ch);
+                    }
+                    continue;
+                }
+
+                if (u.Contains("floors data"))
+                {
+                    inFloorsData = true;
+                    continue;
+                }
+                if (inFloorsData && u.StartsWith("/"))
+                {
+                    inFloorsData = false;
+                    continue;
+                }
+                if (inFloorsData && line.Length > 2)
+                {
+                    var p = St4Text.SplitCsv(line);
+                    if (p.Count >= 12 &&
+                        St4Text.TryParseInt(p[0], out int slabId) &&
+                        St4Text.TryParseInt(p[8], out int a1) &&
+                        St4Text.TryParseInt(p[9], out int a2) &&
+                        St4Text.TryParseInt(p[10], out int a3) &&
+                        St4Text.TryParseInt(p[11], out int a4) &&
+                        slabId > 0)
+                    {
+                        model.Slabs.Add(new SlabInfo { SlabId = slabId, Axis1 = a1, Axis2 = a2, Axis3 = a3, Axis4 = a4 });
                     }
                     continue;
                 }

@@ -56,6 +56,7 @@ namespace ST4AksCizCSharp
                         {
                             wallCount += DrawBeamsAndWalls(tr, btr, floor, offsetX, offsetY, createdBeamLineRefs, createdBeamBodies, allBlockersPerFloor, allCirclesPerFloor);
                         }
+                        DrawSlabs(tr, btr, offsetX, offsetY);
                         DrawLabels(tr, btr, floor, drawBeams, offsetX, offsetY, ext);
                     }
                 }
@@ -87,6 +88,7 @@ namespace ST4AksCizCSharp
                     $"\n{Model.Floors.Count} kat, {Model.AxisX.Count} X ekseni, {Model.AxisY.Count} Y ekseni, {Model.Columns.Count} kolon/kat" +
                     (Model.Beams.Count > 0 ? $", {Model.Beams.Count} kiris" : string.Empty) +
                     (wallCount > 0 ? $", {wallCount} perde" : string.Empty) +
+                    (Model.Slabs.Count > 0 ? $", {Model.Slabs.Count} doseme siniri" : string.Empty) +
                     " cizildi. (cm)");
             }
         }
@@ -101,6 +103,7 @@ namespace ST4AksCizCSharp
             LayerService.EnsureLayer(tr, db, "ST4-KOLON-NUMARALARI", 2);
             LayerService.EnsureLayer(tr, db, "ST4-KIRISLAR", 2);
             LayerService.EnsureLayer(tr, db, "ST4-PERDELER", 6);
+            LayerService.EnsureLayer(tr, db, "DOSEME SINIRI (BEYKENT)", 71);
         }
 
         private (double Xmin, double Xmax, double Ymin, double Ymax) CalculateBaseExtents()
@@ -1270,6 +1273,44 @@ namespace ST4AksCizCSharp
             double c = Math.Cos(a);
             double s = Math.Sin(a);
             return new Vector2d(v.X * c - v.Y * s, v.X * s + v.Y * c);
+        }
+
+        private void DrawSlabs(Transaction tr, BlockTableRecord btr, double offsetX, double offsetY)
+        {
+            const string slabLayer = "DOSEME SINIRI (BEYKENT)";
+            foreach (var slab in Model.Slabs)
+            {
+                var xAxes = new List<int>();
+                var yAxes = new List<int>();
+                foreach (int id in new[] { slab.Axis1, slab.Axis2, slab.Axis3, slab.Axis4 })
+                {
+                    if (id >= 1001 && id <= 1999) xAxes.Add(id);
+                    else if (id >= 2001 && id <= 2999) yAxes.Add(id);
+                }
+                if (xAxes.Count != 2 || yAxes.Count != 2) continue;
+                int x1 = xAxes[0];
+                int x2 = xAxes[1];
+                int y1 = yAxes[0];
+                int y2 = yAxes[1];
+                if (!_axisService.TryIntersect(x1, y1, out Point2d c11) || !_axisService.TryIntersect(x1, y2, out Point2d c12) ||
+                    !_axisService.TryIntersect(x2, y1, out Point2d c21) || !_axisService.TryIntersect(x2, y2, out Point2d c22))
+                    continue;
+                double xMin = Math.Min(Math.Min(c11.X, c12.X), Math.Min(c21.X, c22.X));
+                double xMax = Math.Max(Math.Max(c11.X, c12.X), Math.Max(c21.X, c22.X));
+                double yMin = Math.Min(Math.Min(c11.Y, c12.Y), Math.Min(c21.Y, c22.Y));
+                double yMax = Math.Max(Math.Max(c11.Y, c12.Y), Math.Max(c21.Y, c22.Y));
+                var pts = new[]
+                {
+                    new Point2d(xMin + offsetX, yMin + offsetY),
+                    new Point2d(xMax + offsetX, yMin + offsetY),
+                    new Point2d(xMax + offsetX, yMax + offsetY),
+                    new Point2d(xMin + offsetX, yMax + offsetY)
+                };
+                var pl = ToPolyline(pts, true);
+                pl.Layer = slabLayer;
+                pl.LineWeight = (LineWeight)30;
+                AppendEntity(tr, btr, pl);
+            }
         }
 
         private static Polyline ToPolyline(IReadOnlyList<Point2d> points, bool closed)

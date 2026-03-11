@@ -10,6 +10,8 @@ namespace ST4AksCizCSharp
         public List<FloorInfo> Floors { get; } = new List<FloorInfo>();
         public List<ColumnAxisInfo> Columns { get; } = new List<ColumnAxisInfo>();
         public List<BeamInfo> Beams { get; } = new List<BeamInfo>();
+        /// <summary>Döşemeler (Floors Data): 4 (veya 3) aks ile sınırlı alanlar.</summary>
+        public List<SlabInfo> Slabs { get; } = new List<SlabInfo>();
         public Dictionary<int, (double W, double H)> ColumnDimsBySectionId { get; } = new Dictionary<int, (double W, double H)>();
         public Dictionary<int, List<Point2d>> PolygonSections { get; } = new Dictionary<int, List<Point2d>>();
         public Dictionary<int, int> PolygonColumnSectionByPositionSectionId { get; } = new Dictionary<int, int>();
