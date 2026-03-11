@@ -5,6 +5,8 @@ using System.Linq;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Geometry;
+using NetTopologySuite.Geometries;
+using NetTopologySuite.Operation.Union;
 
 namespace ST4AksCizCSharp
 {
@@ -38,6 +40,20 @@ namespace ST4AksCizCSharp
                 var createdBeamBodies = new List<(int OwnerKey, Point2d[] Poly, double OffsetX, double OffsetY)>();
                 var allBlockersPerFloor = new List<(double Ox, double Oy, List<Point2d[]> Polys)>();
                 var allCirclesPerFloor = new List<(double Ox, double Oy, List<(Point2d Center, double Radius)> Circles)>();
+
+                // Row 0: Temel planı (aks + ilk kat kolonları + sürekli/radye temeller) – tek görünüm
+                var firstFloor = Model.Floors.Count > 0 ? Model.Floors[0] : null;
+                if (firstFloor != null && (Model.ContinuousFoundations.Count > 0 || Model.SlabFoundations.Count > 0))
+                {
+                    double offsetX = 0.0;
+                    double offsetY = floorHeight + rowGap;
+                    DrawAxes(tr, btr, offsetX, offsetY, ext);
+                    DrawColumns(tr, btr, firstFloor, offsetX, offsetY);
+                    DrawWallsForFloor(tr, btr, firstFloor, offsetX, offsetY);
+                    DrawContinuousFoundations(tr, btr, offsetX, offsetY);
+                    DrawSlabFoundations(tr, btr, offsetX, offsetY);
+                    DrawLabels(tr, btr, firstFloor, false, offsetX, offsetY, ext);
+                }
 
                 for (int row = 0; row < 2; row++)
                 {
@@ -89,6 +105,7 @@ namespace ST4AksCizCSharp
                     (Model.Beams.Count > 0 ? $", {Model.Beams.Count} kiris" : string.Empty) +
                     (wallCount > 0 ? $", {wallCount} perde" : string.Empty) +
                     (Model.Slabs.Count > 0 ? $", {Model.Slabs.Count} doseme siniri" : string.Empty) +
+                    (Model.ContinuousFoundations.Count > 0 || Model.SlabFoundations.Count > 0 ? $", temel plani (surekli: {Model.ContinuousFoundations.Count}, radye: {Model.SlabFoundations.Count})" : string.Empty) +
                     " cizildi. (cm)");
             }
         }
@@ -105,6 +122,10 @@ namespace ST4AksCizCSharp
             LayerService.EnsureLayer(tr, db, "ST4-PERDELER", 6);
             LayerService.EnsureLayer(tr, db, "DOSEME SINIRI (BEYKENT)", 71, LineWeight.LineWeight030);
             LayerService.EnsureLayer(tr, db, "MERDIVEN (BEYKENT)", 5, LineWeight.LineWeight030);
+            LayerService.EnsureLayer(tr, db, "ST4-SUREKLI-TEMEL", 4);
+            LayerService.EnsureLayer(tr, db, "ST4-RADYE-TEMEL", 5);
+            LayerService.EnsureLayer(tr, db, "ST4-AMPATMAN", 6);
+            LayerService.EnsureLayer(tr, db, "ST4-TEMEL-HATILI", 7);
         }
 
         private (double Xmin, double Xmax, double Ymin, double Ymax) CalculateBaseExtents()
@@ -1259,6 +1280,33 @@ namespace ST4AksCizCSharp
             lowerEdge = upperEdge - (2.0 * hw);
         }
 
+        /// <summary>Temel hatılı 13. sütun: X/Y aksına göre 0=ortada, ±1=kenar aks üzerinde, &gt;1/&lt;-1=mm mesafe.</summary>
+        private static void ComputeTieBeamEdgeOffsets(int fixedAxisId, int offsetRaw, double hw, out double upperEdge, out double lowerEdge)
+        {
+            bool isX = fixedAxisId >= 1001 && fixedAxisId <= 1999;
+            if (offsetRaw == 0)
+            {
+                upperEdge = hw;
+                lowerEdge = -hw;
+                return;
+            }
+            double offCm = offsetRaw / 10.0;
+            if (isX)
+            {
+                if (offsetRaw == -1) { lowerEdge = 0; upperEdge = 2.0 * hw; return; }
+                if (offsetRaw == 1) { upperEdge = 0; lowerEdge = -2.0 * hw; return; }
+                if (offsetRaw > 1) { lowerEdge = -offCm; upperEdge = lowerEdge + 2.0 * hw; return; }
+                upperEdge = -offCm;
+                lowerEdge = upperEdge - 2.0 * hw;
+                return;
+            }
+            if (offsetRaw == -1) { upperEdge = 0; lowerEdge = -2.0 * hw; return; }
+            if (offsetRaw == 1) { lowerEdge = 0; upperEdge = 2.0 * hw; return; }
+            if (offsetRaw > 1) { upperEdge = offCm; lowerEdge = upperEdge - 2.0 * hw; return; }
+            lowerEdge = offCm;
+            upperEdge = lowerEdge + 2.0 * hw;
+        }
+
         private static void NormalizeBeamDirection(int fixedAxisId, ref Point2d a, ref Point2d b)
         {
             bool isFixedY = fixedAxisId >= 2001 && fixedAxisId <= 2999;
@@ -1327,6 +1375,190 @@ namespace ST4AksCizCSharp
                 var pl = ToPolyline(pts, true);
                 pl.Layer = Model.StairSlabIds.Contains(slab.SlabId) ? stairLayer : slabLayer;
                 pl.LineWeight = LineWeight.LineWeight030;
+                AppendEntity(tr, btr, pl);
+            }
+        }
+
+        /// <summary>Verilen kattaki perdeleri (IsWallFlag==1) çizer; temel planında bodrum perdeleri için kullanılır.</summary>
+        private void DrawWallsForFloor(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY)
+        {
+            const string layer = "ST4-PERDELER";
+            var beams = MergeSameIdBeamsOnFloor(floor.FloorNo);
+            foreach (var beam in beams)
+            {
+                if (beam.IsWallFlag != 1) continue;
+                if (!_axisService.TryIntersect(beam.FixedAxisId, beam.StartAxisId, out Point2d p1) ||
+                    !_axisService.TryIntersect(beam.FixedAxisId, beam.EndAxisId, out Point2d p2))
+                    continue;
+                var a = new Point2d(p1.X + offsetX, p1.Y + offsetY);
+                var b = new Point2d(p2.X + offsetX, p2.Y + offsetY);
+                NormalizeBeamDirection(beam.FixedAxisId, ref a, ref b);
+                Vector2d dir = b - a;
+                if (dir.Length <= 1e-9) continue;
+                Vector2d u = dir.GetNormal();
+                Vector2d perp = new Vector2d(-u.Y, u.X);
+                double hw = beam.WidthCm / 2.0;
+                ComputeBeamEdgeOffsets(beam.OffsetRaw, hw, out double upperEdge, out double lowerEdge);
+                Point2d q1 = a + perp.MultiplyBy(upperEdge);
+                Point2d q2 = b + perp.MultiplyBy(upperEdge);
+                Point2d q3 = b + perp.MultiplyBy(lowerEdge);
+                Point2d q4 = a + perp.MultiplyBy(lowerEdge);
+                var pl = ToPolyline(new[] { q1, q2, q3, q4 }, true);
+                pl.Layer = layer;
+                AppendEntity(tr, btr, pl);
+            }
+        }
+
+        private void DrawContinuousFoundations(Transaction tr, BlockTableRecord btr, double offsetX, double offsetY)
+        {
+            const string layer = "ST4-SUREKLI-TEMEL";
+            foreach (var cf in Model.ContinuousFoundations)
+            {
+                if (!_axisService.TryIntersect(cf.FixedAxisId, cf.StartAxisId, out Point2d p1) ||
+                    !_axisService.TryIntersect(cf.FixedAxisId, cf.EndAxisId, out Point2d p2))
+                    continue;
+                Vector2d along = (p2 - p1).GetNormal();
+                double len = p1.GetDistanceTo(p2);
+                if (len <= 1e-9) continue;
+                Point2d p1Eff = p1 - along.MultiplyBy(cf.StartExtensionCm);
+                Point2d p2Eff = p2 + along.MultiplyBy(cf.EndExtensionCm);
+                // 1 yönü aksı (X: 1001-1999) üzerindeki sürekli temellerde kaçıklık ters; Y ekseninde normal.
+                int offsetForBeam = (cf.FixedAxisId >= 1001 && cf.FixedAxisId <= 1999) ? -cf.OffsetRaw : cf.OffsetRaw;
+                ComputeBeamEdgeOffsets(offsetForBeam, cf.WidthCm / 2.0, out double upperEdge, out double lowerEdge);
+                Vector2d perp = new Vector2d(-along.Y, along.X);
+                Point2d[] rect = new[]
+                {
+                    p1Eff + perp.MultiplyBy(upperEdge),
+                    p2Eff + perp.MultiplyBy(upperEdge),
+                    p2Eff + perp.MultiplyBy(lowerEdge),
+                    p1Eff + perp.MultiplyBy(lowerEdge)
+                };
+                for (int i = 0; i < rect.Length; i++)
+                    rect[i] = new Point2d(rect[i].X + offsetX, rect[i].Y + offsetY);
+                var pl = ToPolyline(rect, true);
+                pl.Layer = layer;
+                AppendEntity(tr, btr, pl);
+
+                if (cf.AmpatmanWidthCm > 0 && Math.Abs(cf.AmpatmanWidthCm - cf.WidthCm) > 1e-6)
+                {
+                    double ampW = cf.AmpatmanWidthCm;
+                    int align = cf.AmpatmanAlign;
+                    if (cf.FixedAxisId >= 1001 && cf.FixedAxisId <= 1999 && align != 0)
+                        align = align == 1 ? 2 : 1;
+                    Point2d[] ampRect;
+                    if (align == 0)
+                    {
+                        double hwAmp = ampW / 2.0;
+                        ampRect = new[]
+                        {
+                            p1Eff + perp.MultiplyBy(hwAmp),
+                            p2Eff + perp.MultiplyBy(hwAmp),
+                            p2Eff - perp.MultiplyBy(hwAmp),
+                            p1Eff - perp.MultiplyBy(hwAmp)
+                        };
+                    }
+                    else if (align == 1)
+                    {
+                        ampRect = new[]
+                        {
+                            p1Eff + perp.MultiplyBy(lowerEdge),
+                            p2Eff + perp.MultiplyBy(lowerEdge),
+                            p2Eff + perp.MultiplyBy(lowerEdge + ampW),
+                            p1Eff + perp.MultiplyBy(lowerEdge + ampW)
+                        };
+                    }
+                    else
+                    {
+                        ampRect = new[]
+                        {
+                            p1Eff + perp.MultiplyBy(upperEdge),
+                            p2Eff + perp.MultiplyBy(upperEdge),
+                            p2Eff + perp.MultiplyBy(upperEdge - ampW),
+                            p1Eff + perp.MultiplyBy(upperEdge - ampW)
+                        };
+                    }
+                    for (int i = 0; i < ampRect.Length; i++)
+                        ampRect[i] = new Point2d(ampRect[i].X + offsetX, ampRect[i].Y + offsetY);
+                    var plAmp = ToPolyline(ampRect, true);
+                    plAmp.Layer = "ST4-AMPATMAN";
+                    AppendEntity(tr, btr, plAmp);
+                }
+
+                if (cf.TieBeamWidthCm > 0)
+                {
+                    ComputeTieBeamEdgeOffsets(cf.FixedAxisId, cf.TieBeamOffsetRaw, cf.TieBeamWidthCm / 2.0, out double hu, out double hl);
+                    Point2d[] hatilRect = new[]
+                    {
+                        p1 + perp.MultiplyBy(hu),
+                        p2 + perp.MultiplyBy(hu),
+                        p2 + perp.MultiplyBy(hl),
+                        p1 + perp.MultiplyBy(hl)
+                    };
+                    for (int i = 0; i < hatilRect.Length; i++)
+                        hatilRect[i] = new Point2d(hatilRect[i].X + offsetX, hatilRect[i].Y + offsetY);
+                    var plHatil = ToPolyline(hatilRect, true);
+                    plHatil.Layer = "ST4-TEMEL-HATILI";
+                    AppendEntity(tr, btr, plHatil);
+                }
+            }
+        }
+
+        private void DrawSlabFoundations(Transaction tr, BlockTableRecord btr, double offsetX, double offsetY)
+        {
+            const string layer = "ST4-RADYE-TEMEL";
+            var factory = new GeometryFactory();
+            var polygons = new List<Geometry>();
+            foreach (var sf in Model.SlabFoundations)
+            {
+                if (!_axisService.TryIntersect(sf.AxisX1, sf.AxisY1, out Point2d p11) ||
+                    !_axisService.TryIntersect(sf.AxisX1, sf.AxisY2, out Point2d p12) ||
+                    !_axisService.TryIntersect(sf.AxisX2, sf.AxisY1, out Point2d p21) ||
+                    !_axisService.TryIntersect(sf.AxisX2, sf.AxisY2, out Point2d p22))
+                    continue;
+                var coords = new[]
+                {
+                    new Coordinate(p11.X, p11.Y),
+                    new Coordinate(p21.X, p21.Y),
+                    new Coordinate(p22.X, p22.Y),
+                    new Coordinate(p12.X, p12.Y),
+                    new Coordinate(p11.X, p11.Y)
+                };
+                var ring = factory.CreateLinearRing(coords);
+                polygons.Add(factory.CreatePolygon(ring));
+            }
+            if (polygons.Count == 0) return;
+            Geometry unionResult = polygons.Count == 1 ? polygons[0] : CascadedPolygonUnion.Union(polygons);
+            if (unionResult == null || unionResult.IsEmpty) return;
+            var toDraw = new List<Coordinate[]>();
+            if (unionResult is Polygon p)
+            {
+                toDraw.Add(p.ExteriorRing.Coordinates);
+            }
+            else if (unionResult is MultiPolygon mp)
+            {
+                for (int i = 0; i < mp.NumGeometries; i++)
+                {
+                    var poly = (Polygon)mp.GetGeometryN(i);
+                    toDraw.Add(poly.ExteriorRing.Coordinates);
+                }
+            }
+            else if (unionResult is GeometryCollection gc)
+            {
+                for (int i = 0; i < gc.NumGeometries; i++)
+                {
+                    var g = gc.GetGeometryN(i);
+                    if (g is Polygon p2)
+                        toDraw.Add(p2.ExteriorRing.Coordinates);
+                }
+            }
+            foreach (var coords in toDraw)
+            {
+                if (coords == null || coords.Length < 3) continue;
+                var pts = new Point2d[coords.Length - 1];
+                for (int i = 0; i < pts.Length; i++)
+                    pts[i] = new Point2d(coords[i].X + offsetX, coords[i].Y + offsetY);
+                var pl = ToPolyline(pts, true);
+                pl.Layer = layer;
                 AppendEntity(tr, btr, pl);
             }
         }

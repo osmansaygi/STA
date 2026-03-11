@@ -24,6 +24,12 @@ namespace ST4AksCizCSharp
             bool inFloorsContinuous = false;
             bool inPolygonCols = false;
             bool inPolygonSection = false;
+            bool inContinuousFoundations = false;
+            bool inSlabFoundations = false;
+            string pendingContinuousName = null;
+            string pendingSlabName = null;
+            bool skipNextContinuousLine = false;
+            bool skipNextSlabLine = false;
             int? headerNX = null;
             int? headerNY = null;
 
@@ -313,6 +319,132 @@ namespace ST4AksCizCSharp
                             }
                             list.Add(new Point2d(vx, vy));
                         }
+                    }
+                    continue;
+                }
+
+                if (u.Contains("continuous foundations"))
+                {
+                    inContinuousFoundations = true;
+                    inSlabFoundations = false;
+                    pendingContinuousName = null;
+                    skipNextContinuousLine = false;
+                    continue;
+                }
+                if (inContinuousFoundations && u.StartsWith("/"))
+                {
+                    inContinuousFoundations = false;
+                    continue;
+                }
+                if (inContinuousFoundations)
+                {
+                    if (skipNextContinuousLine) { skipNextContinuousLine = false; continue; }
+                    var p = St4Text.SplitCsv(line);
+                    if (p.Count >= 10 &&
+                        St4Text.TryParseInt(p[4], out int fixedAxis) &&
+                        St4Text.TryParseInt(p[5], out int startAxis) &&
+                        St4Text.TryParseInt(p[6], out int endAxis) &&
+                        fixedAxis >= 1001 && fixedAxis <= 2999 &&
+                        (startAxis >= 1001 && startAxis <= 2999) &&
+                        (endAxis >= 1001 && endAxis <= 2999))
+                    {
+                        double widthCm = 80.0;
+                        if (p.Count > 2 && St4Text.TryParseDouble(p[2], out double w3) && w3 > 0) widthCm = w3;
+                        double startExtCm = 0.0, endExtCm = 0.0;
+                        if (p.Count > 7) St4Text.TryParseDouble(p[7], out startExtCm);
+                        if (p.Count > 8) St4Text.TryParseDouble(p[8], out endExtCm);
+                        int offsetRaw = 0;
+                        if (p.Count > 9) St4Text.TryParseInt(p[9], out offsetRaw);
+                        int ampatmanAlign = 0;
+                        if (p.Count > 0) St4Text.TryParseInt(p[0], out ampatmanAlign);
+                        double ampatmanWidthCm = 0.0;
+                        if (p.Count > 3) St4Text.TryParseDouble(p[3], out ampatmanWidthCm);
+                        double tieBeamWidthCm = 0.0;
+                        int tieBeamOffsetRaw = 0;
+                        if (p.Count > 11) St4Text.TryParseDouble(p[11], out tieBeamWidthCm);
+                        if (p.Count > 13) St4Text.TryParseInt(p[13], out tieBeamOffsetRaw);
+                        model.ContinuousFoundations.Add(new ContinuousFoundationInfo
+                        {
+                            Name = pendingContinuousName ?? "",
+                            FixedAxisId = fixedAxis,
+                            StartAxisId = startAxis,
+                            EndAxisId = endAxis,
+                            WidthCm = widthCm,
+                            StartExtensionCm = startExtCm,
+                            EndExtensionCm = endExtCm,
+                            OffsetRaw = offsetRaw,
+                            AmpatmanAlign = ampatmanAlign,
+                            AmpatmanWidthCm = ampatmanWidthCm,
+                            TieBeamWidthCm = tieBeamWidthCm,
+                            TieBeamOffsetRaw = tieBeamOffsetRaw
+                        });
+                        pendingContinuousName = null;
+                        skipNextContinuousLine = true;
+                    }
+                    else if (line.Length > 0 && !line.TrimStart().StartsWith("0", StringComparison.Ordinal) && (line.IndexOf(',') < 0 || line.Trim().Length < 10))
+                    {
+                        pendingContinuousName = line.Trim();
+                    }
+                    continue;
+                }
+
+                if (u.Contains("slab foundations"))
+                {
+                    inSlabFoundations = true;
+                    inContinuousFoundations = false;
+                    pendingSlabName = null;
+                    skipNextSlabLine = false;
+                    continue;
+                }
+                if (inSlabFoundations && u.StartsWith("/"))
+                {
+                    inSlabFoundations = false;
+                    continue;
+                }
+                if (inSlabFoundations)
+                {
+                    if (skipNextSlabLine) { skipNextSlabLine = false; continue; }
+                    var p = St4Text.SplitCsv(line);
+                    if (p.Count >= 5 &&
+                        St4Text.TryParseDouble(p[0], out double thickness) &&
+                        thickness > 0 &&
+                        St4Text.TryParseInt(p[1], out int a1) &&
+                        St4Text.TryParseInt(p[2], out int a2) &&
+                        St4Text.TryParseInt(p[3], out int a3) &&
+                        St4Text.TryParseInt(p[4], out int a4))
+                    {
+                        int x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+                        if (a1 >= 1001 && a1 <= 1999 && a2 >= 1001 && a2 <= 1999 && a3 >= 2001 && a3 <= 2999 && a4 >= 2001 && a4 <= 2999)
+                        { x1 = a1; x2 = a2; y1 = a3; y2 = a4; }
+                        else if (a1 >= 2001 && a1 <= 2999 && a2 >= 2001 && a2 <= 2999 && a3 >= 1001 && a3 <= 1999 && a4 >= 1001 && a4 <= 1999)
+                        { y1 = a1; y2 = a2; x1 = a3; x2 = a4; }
+                        else
+                        {
+                            var xList = new List<int>(); var yList = new List<int>();
+                            if (a1 >= 1001 && a1 <= 1999) xList.Add(a1); else if (a1 >= 2001 && a1 <= 2999) yList.Add(a1);
+                            if (a2 >= 1001 && a2 <= 1999) xList.Add(a2); else if (a2 >= 2001 && a2 <= 2999) yList.Add(a2);
+                            if (a3 >= 1001 && a3 <= 1999) xList.Add(a3); else if (a3 >= 2001 && a3 <= 2999) yList.Add(a3);
+                            if (a4 >= 1001 && a4 <= 1999) xList.Add(a4); else if (a4 >= 2001 && a4 <= 2999) yList.Add(a4);
+                            if (xList.Count == 2 && yList.Count == 2) { x1 = xList[0]; x2 = xList[1]; y1 = yList[0]; y2 = yList[1]; }
+                        }
+                        if (x1 != 0 && y1 != 0)
+                        {
+                            model.SlabFoundations.Add(new SlabFoundationInfo
+                            {
+                                Name = pendingSlabName ?? "",
+                                ThicknessCm = thickness,
+                                AxisX1 = x1,
+                                AxisX2 = x2,
+                                AxisY1 = y1,
+                                AxisY2 = y2
+                            });
+                            pendingSlabName = null;
+                            skipNextSlabLine = true;
+                        }
+                    }
+                    else if (line.Length > 0 && line.IndexOf(',') < 0 && line.Trim().Length > 0 && char.IsLetter(line.Trim()[0]))
+                    {
+                        pendingSlabName = line.Trim();
                     }
                     continue;
                 }

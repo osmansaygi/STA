@@ -37,6 +37,10 @@
     <Compile Remove="St4AksCommand.cs" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="NetTopologySuite" Version="2.6.0" />
+  </ItemGroup>
+
   <Target Name="ValidateAutoCADReferences" BeforeTargets="ResolveReferences">
     <Error
       Condition="!Exists('$(AutoCADInstallDir)\acdbmgd.dll') or !Exists('$(AutoCADInstallDir)\acmgd.dll')"
