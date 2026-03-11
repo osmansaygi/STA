@@ -1,0 +1,17 @@
+---
+description: DLL tarih/saat ile kaydet, yükleme yolunu her seferinde göster
+alwaysApply: true
+---
+
+# DLL: Tarih/Saat ile Kaydet, Yükleme Yolunu Her Zaman Göster
+
+- **Tüm AutoCAD DLL projeleri** (ST4_Aks_Ciz_CSharp, ST4_Plan_ID_Ciz ve ileride eklenecekler):
+  1. **Tarih/saat ile kaydet:** Her derlemede DLL farklı ada yazılsın (üzerine yazılmasın). Örnek isim: `ST4_Aks_Ciz_CSharp_YYYYMMDD_HHmmss.dll`, `ST4_Plan_ID_Ciz_YYYYMMDD_HHmmss.dll`. Böylece AutoCAD dosyayı kilitlemiş olsa bile yeni derleme farklı dosyaya yazılır ve çalıştırılabilir.
+  2. **DLL nereden yükleneceği:** Build yapıldığında, DLL'den bahsedildiğinde veya kullanıcı sorduğunda **mutlaka** yükleme adresi yazılsın:
+     - **Klasör:** `ProjeAdi\bin\Debug\net48\` veya `ProjeAdi\bin\Release\net48\`
+     - **Tam yol örneği:** `c:\Users\BEYKENT\Documents\CURSOR\Osman_donusum\ST4_Aks_Ciz_CSharp\bin\Debug\net48\ST4_Aks_Ciz_CSharp_20260311_155507.dll`
+     - **AutoCAD:** NETLOAD → bu klasöre git → en son tarihli `ProjeAdi_*.dll` dosyasını seç.
+
+- **ST4_Plan_ID_Ciz** ek olarak ST4_Aks_Ciz_CSharp referansını kullandığı için aynı klasörde her iki projenin en son tarihli DLL’i bulunmalı; NETLOAD ile `ST4_Plan_ID_Ciz_*.dll` yüklenir.
+
+- Bu kurala **her zaman** uyulacak; kullanıcı "nereden yükleyeceğim" dediğinde veya build sonrası cevap verirken DLL yolu eksiksiz yazılacak.

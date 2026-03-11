@@ -34,8 +34,10 @@ namespace ST4AksCizCSharp
                 double floorHeight = (ext.Ymax - ext.Ymin) + 100.0;
                 double rowGap = 800.0;
                 int wallCount = 0;
-                var createdBeamLineRefs = new List<(ObjectId Id, int OwnerKey)>();
-                var createdBeamBodies = new List<(int OwnerKey, Point2d[] Poly)>();
+                var createdBeamLineRefs = new List<(ObjectId Id, int OwnerKey, double OffsetX, double OffsetY)>();
+                var createdBeamBodies = new List<(int OwnerKey, Point2d[] Poly, double OffsetX, double OffsetY)>();
+                var allBlockersPerFloor = new List<(double Ox, double Oy, List<Point2d[]> Polys)>();
+                var allCirclesPerFloor = new List<(double Ox, double Oy, List<(Point2d Center, double Radius)> Circles)>();
 
                 for (int row = 0; row < 2; row++)
                 {
@@ -52,7 +54,7 @@ namespace ST4AksCizCSharp
                         DrawColumns(tr, btr, floor, offsetX, offsetY);
                         if (drawBeams)
                         {
-                            wallCount += DrawBeamsAndWalls(tr, btr, floor, offsetX, offsetY, createdBeamLineRefs, createdBeamBodies);
+                            wallCount += DrawBeamsAndWalls(tr, btr, floor, offsetX, offsetY, createdBeamLineRefs, createdBeamBodies, allBlockersPerFloor, allCirclesPerFloor);
                         }
                         DrawLabels(tr, btr, floor, drawBeams, offsetX, offsetY, ext);
                     }
@@ -60,6 +62,10 @@ namespace ST4AksCizCSharp
 
                 // Remove beam lines that run inside another beam body.
                 createdBeamLineRefs = CleanupBeamLinesInsideBeamBodies(tr, btr, createdBeamLineRefs, createdBeamBodies);
+
+                // Extend beam lines that have one free end (no column/wall/beam within 5mm) – SNAP’ten ÖNCE:
+                // Orijinal uç noktalarına göre karar verilir; snap sonrası uç başka çizgiye taşınırsa 0 mm sayılıp yanlış “dolu” çıkmasın.
+                ExtendFreeBeamEnds(tr, btr, createdBeamLineRefs, createdBeamBodies, allBlockersPerFloor, allCirclesPerFloor);
 
                 // Zero-radius fillet style cleanup: snap near beam endpoints to true intersections.
                 SnapBeamLineEndpointsToIntersections(tr, createdBeamLineRefs);
@@ -161,8 +167,10 @@ namespace ST4AksCizCSharp
             FloorInfo floor,
             double offsetX,
             double offsetY,
-            List<(ObjectId Id, int OwnerKey)> createdBeamLineRefs,
-            List<(int OwnerKey, Point2d[] Poly)> createdBeamBodies)
+            List<(ObjectId Id, int OwnerKey, double OffsetX, double OffsetY)> createdBeamLineRefs,
+            List<(int OwnerKey, Point2d[] Poly, double OffsetX, double OffsetY)> createdBeamBodies,
+            List<(double Ox, double Oy, List<Point2d[]> Polys)> allBlockersPerFloor,
+            List<(double Ox, double Oy, List<(Point2d Center, double Radius)> Circles)> allCirclesPerFloor)
         {
             int wallCount = 0;
             var beams = MergeSameIdBeamsOnFloor(floor.FloorNo);
@@ -193,7 +201,7 @@ namespace ST4AksCizCSharp
 
             foreach (var pr in beamProfiles)
             {
-                createdBeamBodies.Add((pr.OwnerKey, new[] { pr.Q1, pr.Q2, pr.Q3, pr.Q4 }));
+                createdBeamBodies.Add((pr.OwnerKey, new[] { pr.Q1, pr.Q2, pr.Q3, pr.Q4 }, offsetX, offsetY));
             }
 
             var columnAndWallBlockers = BuildBlockerPolygonsForFloor(floor.FloorNo, offsetX, offsetY);
@@ -221,9 +229,12 @@ namespace ST4AksCizCSharp
 
                 var t12 = PreTrimBeamEdgeEnds(pr.Q1, pr.Q2, outwardBlockers, inwardBeamBlockers);
                 var t43 = PreTrimBeamEdgeEnds(pr.Q4, pr.Q3, outwardBlockers, inwardBeamBlockers);
-                if (t12.HasValue) DrawTrimmedLine(tr, btr, t12.Value.A, t12.Value.B, "ST4-KIRISLAR", outwardBlockers, inwardBeamBlockers, pr.OwnerKey, createdBeamLineRefs);
-                if (t43.HasValue) DrawTrimmedLine(tr, btr, t43.Value.A, t43.Value.B, "ST4-KIRISLAR", outwardBlockers, inwardBeamBlockers, pr.OwnerKey, createdBeamLineRefs);
+                if (t12.HasValue) DrawTrimmedLine(tr, btr, t12.Value.A, t12.Value.B, "ST4-KIRISLAR", outwardBlockers, inwardBeamBlockers, pr.OwnerKey, offsetX, offsetY, createdBeamLineRefs);
+                if (t43.HasValue) DrawTrimmedLine(tr, btr, t43.Value.A, t43.Value.B, "ST4-KIRISLAR", outwardBlockers, inwardBeamBlockers, pr.OwnerKey, offsetX, offsetY, createdBeamLineRefs);
             }
+
+            allBlockersPerFloor.Add((offsetX, offsetY, new List<Point2d[]>(columnAndWallBlockers)));
+            allCirclesPerFloor.Add((offsetX, offsetY, BuildCirclesForFloor(floor.FloorNo, offsetX, offsetY)));
 
             foreach (var pr in beamProfiles)
             {
@@ -247,11 +258,20 @@ namespace ST4AksCizCSharp
             foreach (var col in Model.Columns)
             {
                 if (!_axisService.TryIntersect(col.AxisXId, col.AxisYId, out Point2d axisNode)) continue;
-                int sectionId = floorNo * 100 + col.ColumnNo;
-                if (col.ColumnType <= 2 && !Model.ColumnDimsBySectionId.ContainsKey(sectionId)) continue;
-                if (col.ColumnType == 3 && !Model.PolygonColumnSectionByPositionSectionId.ContainsKey(sectionId)) continue;
+                int sectionId = ResolveColumnSectionId(floorNo, col.ColumnNo);
+                int polygonSectionId = ResolvePolygonPositionSectionId(floorNo, col.ColumnNo);
+                if (col.ColumnType == 3)
+                {
+                    if (polygonSectionId <= 0 || !Model.PolygonColumnSectionByPositionSectionId.ContainsKey(polygonSectionId)) continue;
+                }
+                else
+                {
+                    if (sectionId <= 0 || !Model.ColumnDimsBySectionId.ContainsKey(sectionId)) continue;
+                }
 
-                var dim = Model.ColumnDimsBySectionId.ContainsKey(sectionId) ? Model.ColumnDimsBySectionId[sectionId] : (W: 40.0, H: 40.0);
+                var dim = sectionId > 0 && Model.ColumnDimsBySectionId.ContainsKey(sectionId)
+                    ? Model.ColumnDimsBySectionId[sectionId]
+                    : (W: 40.0, H: 40.0);
                 double hw = dim.W / 2.0;
                 double hh = dim.H / 2.0;
                 var offsetLocal = ComputeColumnOffset(col.OffsetXRaw, col.OffsetYRaw, hw, hh);
@@ -262,7 +282,7 @@ namespace ST4AksCizCSharp
                 {
                     blockers.Add(ApproximateCircle(center, Math.Max(hw, hh), 24));
                 }
-                else if (col.ColumnType == 3 && TryGetPolygonColumn(sectionId, center, col.AngleDeg, out var poly))
+                else if (col.ColumnType == 3 && TryGetPolygonColumn(polygonSectionId, center, col.AngleDeg, out var poly))
                 {
                     blockers.Add(poly);
                 }
@@ -272,6 +292,28 @@ namespace ST4AksCizCSharp
                 }
             }
             return blockers;
+        }
+
+        /// <summary>Kolon/perde çizimindeki daireler (ColumnType=2) – boş uç kontrolü için.</summary>
+        private List<(Point2d Center, double Radius)> BuildCirclesForFloor(int floorNo, double offsetX, double offsetY)
+        {
+            var circles = new List<(Point2d Center, double Radius)>();
+            foreach (var col in Model.Columns)
+            {
+                if (!_axisService.TryIntersect(col.AxisXId, col.AxisYId, out Point2d axisNode)) continue;
+                int sectionId = ResolveColumnSectionId(floorNo, col.ColumnNo);
+                if (col.ColumnType != 2 || sectionId <= 0 || !Model.ColumnDimsBySectionId.ContainsKey(sectionId)) continue;
+
+                var dim = Model.ColumnDimsBySectionId[sectionId];
+                double hw = dim.W / 2.0;
+                double hh = dim.H / 2.0;
+                var offsetLocal = ComputeColumnOffset(col.OffsetXRaw, col.OffsetYRaw, hw, hh);
+                var offsetGlobal = Rotate(offsetLocal, col.AngleDeg);
+                var center = new Point2d(axisNode.X + offsetGlobal.X + offsetX, axisNode.Y + offsetGlobal.Y + offsetY);
+                double radius = Math.Max(hw, hh);
+                circles.Add((center, radius));
+            }
+            return circles;
         }
 
         private static Point2d[] ApproximateCircle(Point2d c, double r, int segments)
@@ -294,7 +336,9 @@ namespace ST4AksCizCSharp
             List<Point2d[]> blockersOutward,
             List<Point2d[]> blockersInward,
             int ownerKey,
-            List<(ObjectId Id, int OwnerKey)> createdBeamLineRefs)
+            double offsetX,
+            double offsetY,
+            List<(ObjectId Id, int OwnerKey, double OffsetX, double OffsetY)> createdBeamLineRefs)
         {
             double len = a.GetDistanceTo(b);
             if (len <= 1e-9) return;
@@ -339,11 +383,11 @@ namespace ST4AksCizCSharp
                 var e2 = p2 + dir.MultiplyBy(endExtend);
                 var ln = new Line(new Point3d(e1.X, e1.Y, 0), new Point3d(e2.X, e2.Y, 0)) { Layer = layer };
                 AppendEntity(tr, btr, ln);
-                createdBeamLineRefs.Add((ln.ObjectId, ownerKey));
+                createdBeamLineRefs.Add((ln.ObjectId, ownerKey, offsetX, offsetY));
             }
         }
 
-        private static void SnapBeamLineEndpointsToIntersections(Transaction tr, List<(ObjectId Id, int OwnerKey)> lineRefs)
+        private static void SnapBeamLineEndpointsToIntersections(Transaction tr, List<(ObjectId Id, int OwnerKey, double OffsetX, double OffsetY)> lineRefs)
         {
             const double endpointSnapTol = 1.5;   // cm
             const double endpointExtendTol = 2.0; // cm
@@ -382,15 +426,197 @@ namespace ST4AksCizCSharp
             }
         }
 
-        private static List<(ObjectId Id, int OwnerKey)> CleanupBeamLinesInsideBeamBodies(
+        /// <summary>
+        /// Boş kiriş uç tanımı ve kurallar:
+        /// 1) Bir kiriş çizgisinin iki uç noktasından herhangi biri ele alınır.
+        /// 2) O noktanın etrafında 5mm (0,5 cm) uzaklığında şunlardan hiçbiri yoksa o uç BOŞ kabul edilir:
+        ///    - Başka kirişe/kolona/perdeye ait çizgi, poligon kenarı, daire veya yay.
+        /// 3) Referans, DATA üzerinden değil FİNAL ÇİZİM üzerindeki entity'lerden alınır; uç koordinatları da çizimdeki Line koordinatlarıdır.
+        /// 4) Boş uçlar en yakın referansa kadar (en fazla 200 cm) extend edilir.
+        /// </summary>
+        private static void ExtendFreeBeamEnds(
             Transaction tr,
             BlockTableRecord btr,
-            List<(ObjectId Id, int OwnerKey)> lineRefs,
-            List<(int OwnerKey, Point2d[] Poly)> beamBodies)
+            List<(ObjectId Id, int OwnerKey, double OffsetX, double OffsetY)> lineRefs,
+            List<(int OwnerKey, Point2d[] Poly, double OffsetX, double OffsetY)> beamBodies,
+            List<(double Ox, double Oy, List<Point2d[]> Polys)> allBlockersPerFloor,
+            List<(double Ox, double Oy, List<(Point2d Center, double Radius)> Circles)> allCirclesPerFloor)
+        {
+            const double freeTolCm = 0.5;   // 5 mm – uç nokta etrafında bu mesafede referans yoksa boş
+            const double maxExtendCm = 200.0; // do not extend if nearest ref is beyond 200 cm
+            const double searchRadiusCm = maxExtendCm + 50.0; // referans toplarken bu yarıçap
+
+            int lineIndex = 0;
+            foreach (var lineRef in lineRefs)
+            {
+                var id = lineRef.Id;
+                if (id.IsNull || id.IsErased) { lineIndex++; continue; }
+                if (!(tr.GetObject(id, OpenMode.ForWrite, false) is Line ln)) { lineIndex++; continue; }
+                var a = new Point2d(ln.StartPoint.X, ln.StartPoint.Y);
+                var b = new Point2d(ln.EndPoint.X, ln.EndPoint.Y);
+                double len = a.GetDistanceTo(b);
+                if (len <= 1e-9) { lineIndex++; continue; }
+
+                // Referansı DATA yerine FİNAL ÇİZİMden al: nokta a ve b civarında (searchRadiusCm) kalan tüm kolon/perde/kiriş çizgileri
+                GetReferenceFromDrawing(tr, btr, a, b, searchRadiusCm, id, out var allRef, out var refCircles);
+
+                bool startFree = IsEndpointFree(a, allRef, refCircles, freeTolCm);
+                bool endFree = IsEndpointFree(b, allRef, refCircles, freeTolCm);
+
+                if (startFree)
+                {
+                    Vector2d dirOut = (a - b).GetNormal();
+                    if (TryFindNearestIntersection(a, dirOut, maxExtendCm, allRef, out double distStart))
+                    {
+                        Point2d newStart = a + dirOut.MultiplyBy(distStart);
+                        ln.StartPoint = new Point3d(newStart.X, newStart.Y, ln.StartPoint.Z);
+                    }
+                }
+
+                if (endFree)
+                {
+                    Vector2d dirOut = (b - a).GetNormal();
+                    if (TryFindNearestIntersection(b, dirOut, maxExtendCm, allRef, out double distEnd))
+                    {
+                        Point2d newEnd = b + dirOut.MultiplyBy(distEnd);
+                        ln.EndPoint = new Point3d(newEnd.X, newEnd.Y, ln.EndPoint.Z);
+                    }
+                }
+
+                lineIndex++;
+            }
+        }
+
+        /// <summary>Çizimdeki (btr) ST4-KOLONLAR, ST4-PERDELER, ST4-KIRISLAR entity'lerinden, verilen noktaların searchRadiusCm yakınındaki segment ve daireleri toplar. excludeLineId hariç; aynı kirişin diğer kenarı (her iki ucu da currentA/B'ye 5mm içinde) hariç.</summary>
+        private static void GetReferenceFromDrawing(
+            Transaction tr,
+            BlockTableRecord btr,
+            Point2d currentA,
+            Point2d currentB,
+            double searchRadiusCm,
+            ObjectId excludeLineId,
+            out List<(Point2d A, Point2d B)> segments,
+            out List<(Point2d Center, double Radius)> circles)
+        {
+            segments = new List<(Point2d A, Point2d B)>();
+            circles = new List<(Point2d Center, double Radius)>();
+            const double sameBeamTol = 0.5; // 5mm – aynı kirişin diğer kenarı sayılmaz
+
+            foreach (ObjectId eid in btr)
+            {
+                if (eid.IsNull || eid.IsErased) continue;
+                if (!(tr.GetObject(eid, OpenMode.ForRead, false) is Entity ent)) continue;
+                string layer = ent.Layer;
+                if (layer != "ST4-KOLONLAR" && layer != "ST4-PERDELER" && layer != "ST4-KIRISLAR") continue;
+
+                if (ent is Line line)
+                {
+                    var p1 = new Point2d(line.StartPoint.X, line.StartPoint.Y);
+                    var p2 = new Point2d(line.EndPoint.X, line.EndPoint.Y);
+                    if (p1.GetDistanceTo(p2) <= 1e-9) continue;
+                    double d1 = p1.GetDistanceTo(currentA);
+                    double d2 = p1.GetDistanceTo(currentB);
+                    double d3 = p2.GetDistanceTo(currentA);
+                    double d4 = p2.GetDistanceTo(currentB);
+                    double minDist = Math.Min(Math.Min(d1, d2), Math.Min(d3, d4));
+                    if (minDist > searchRadiusCm) continue;
+                    if (layer == "ST4-KIRISLAR")
+                    {
+                        if (eid == excludeLineId) continue;
+                        // Aynı kirişin diğer kenarı: her iki uç da currentA/currentB'ye 5mm içinde
+                        if (Math.Min(d1, d3) <= sameBeamTol && Math.Min(d2, d4) <= sameBeamTol)
+                            continue;
+                    }
+                    segments.Add((p1, p2));
+                    continue;
+                }
+
+                if (ent is Circle circle)
+                {
+                    var c = new Point2d(circle.Center.X, circle.Center.Y);
+                    double r = circle.Radius;
+                    double distToA = Math.Abs(currentA.GetDistanceTo(c) - r);
+                    double distToB = Math.Abs(currentB.GetDistanceTo(c) - r);
+                    if (distToA <= searchRadiusCm || distToB <= searchRadiusCm)
+                        circles.Add((c, r));
+                    continue;
+                }
+
+                if (ent is Polyline pl)
+                {
+                    int n = pl.NumberOfVertices;
+                    if (n < 2) continue;
+                    for (int i = 0; i < n; i++)
+                    {
+                        Point2d p1 = pl.GetPoint2dAt(i);
+                        Point2d p2 = pl.GetPoint2dAt((i + 1) % n);
+                        if (p1.GetDistanceTo(p2) <= 1e-9) continue;
+                        double d1 = p1.GetDistanceTo(currentA);
+                        double d2 = p1.GetDistanceTo(currentB);
+                        double d3 = p2.GetDistanceTo(currentA);
+                        double d4 = p2.GetDistanceTo(currentB);
+                        double minDist = Math.Min(Math.Min(d1, d2), Math.Min(d3, d4));
+                        if (minDist <= searchRadiusCm)
+                            segments.Add((p1, p2));
+                    }
+                }
+            }
+        }
+
+        /// <summary>Uç boş mu: 5mm içinde kiriş/kolon/perde çizimine ait çizgi, poligon kenarı veya daire yoksa true.</summary>
+        private static bool IsEndpointFree(Point2d p, List<(Point2d A, Point2d B)> refSegments,
+            List<(Point2d Center, double Radius)> refCircles, double tolCm)
+        {
+            foreach (var seg in refSegments)
+            {
+                if (PointSegmentDistance(p, seg.A, seg.B) <= tolCm)
+                    return false;
+            }
+            foreach (var c in refCircles)
+            {
+                if (PointToCircleDistance(p, c.Center, c.Radius) <= tolCm)
+                    return false;
+            }
+            return true;
+        }
+
+        /// <summary>Noktanın daire sınırına uzaklığı (cm).</summary>
+        private static double PointToCircleDistance(Point2d p, Point2d center, double radius)
+        {
+            double d = p.GetDistanceTo(center);
+            return Math.Abs(d - radius);
+        }
+
+        /// <summary>Ray from P in direction D (unit). Find smallest distance in [0, maxDist] to any segment. Excludes hits at P (t &gt; small).</summary>
+        private static bool TryFindNearestIntersection(Point2d p, Vector2d d, double maxDist, List<(Point2d A, Point2d B)> segments, out double distance)
+        {
+            distance = double.MaxValue;
+            const double skipTol = 1e-4; // skip param very near 0 (self)
+            Point2d rayEnd = p + d.MultiplyBy(maxDist);
+            foreach (var seg in segments)
+            {
+                if (!TrySegmentSegmentT(p, rayEnd, seg.A, seg.B, out double t)) continue;
+                if (t <= skipTol) continue;
+                double dist = t * maxDist;
+                if (dist < distance) distance = dist;
+            }
+            if (distance == double.MaxValue)
+            {
+                distance = 0.0;
+                return false;
+            }
+            return true;
+        }
+
+        private static List<(ObjectId Id, int OwnerKey, double OffsetX, double OffsetY)> CleanupBeamLinesInsideBeamBodies(
+            Transaction tr,
+            BlockTableRecord btr,
+            List<(ObjectId Id, int OwnerKey, double OffsetX, double OffsetY)> lineRefs,
+            List<(int OwnerKey, Point2d[] Poly, double OffsetX, double OffsetY)> beamBodies)
         {
             const double minKeep = 2.0;
             const double insideTol = -0.1; // 1 mm inward check (cm units)
-            var result = new List<(ObjectId Id, int OwnerKey)>();
+            var result = new List<(ObjectId Id, int OwnerKey, double OffsetX, double OffsetY)>();
 
             foreach (var lineRef in lineRefs)
             {
@@ -430,22 +656,22 @@ namespace ST4AksCizCSharp
                         Layer = "ST4-KIRISLAR"
                     };
                     AppendEntity(tr, btr, newLine);
-                    result.Add((newLine.ObjectId, lineRef.OwnerKey));
+                    result.Add((newLine.ObjectId, lineRef.OwnerKey, lineRef.OffsetX, lineRef.OffsetY));
                 }
             }
 
             return result;
         }
 
-        private static List<(ObjectId Id, int OwnerKey)> CleanupBeamEndpointStubsInsideBodies(
+        private static List<(ObjectId Id, int OwnerKey, double OffsetX, double OffsetY)> CleanupBeamEndpointStubsInsideBodies(
             Transaction tr,
-            List<(ObjectId Id, int OwnerKey)> lineRefs,
-            List<(int OwnerKey, Point2d[] Poly)> beamBodies)
+            List<(ObjectId Id, int OwnerKey, double OffsetX, double OffsetY)> lineRefs,
+            List<(int OwnerKey, Point2d[] Poly, double OffsetX, double OffsetY)> beamBodies)
         {
             const double stubMax = 40.0; // cm, max stub length to trim at ends
             const double edgeTol = 0.5;  // cm, consider intervals touching 0 / len within this
 
-            var result = new List<(ObjectId Id, int OwnerKey)>();
+            var result = new List<(ObjectId Id, int OwnerKey, double OffsetX, double OffsetY)>();
 
             foreach (var lineRef in lineRefs)
             {
@@ -757,16 +983,44 @@ namespace ST4AksCizCSharp
             return keep;
         }
 
+        /// <summary>Bazı ST4 dosyalarında kolon kesit ID'si floorNo*100+colNo (101,102), bazılarında 1000+colNo (1001,1002). Her iki şemayı dene.</summary>
+        private int ResolveColumnSectionId(int floorNo, int colNo)
+        {
+            int sid = floorNo * 100 + colNo;
+            if (Model.ColumnDimsBySectionId.ContainsKey(sid)) return sid;
+            sid = 1000 + colNo;
+            return Model.ColumnDimsBySectionId.ContainsKey(sid) ? sid : 0;
+        }
+
+        private int ResolvePolygonPositionSectionId(int floorNo, int colNo)
+        {
+            int sid = floorNo * 100 + colNo;
+            if (Model.PolygonColumnSectionByPositionSectionId.ContainsKey(sid)) return sid;
+            sid = 1000 + colNo;
+            if (Model.PolygonColumnSectionByPositionSectionId.ContainsKey(sid)) return sid;
+            sid = floorNo * 1000 + colNo;
+            return Model.PolygonColumnSectionByPositionSectionId.ContainsKey(sid) ? sid : 0;
+        }
+
         private void DrawColumns(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY)
         {
             foreach (var col in Model.Columns)
             {
                 if (!_axisService.TryIntersect(col.AxisXId, col.AxisYId, out Point2d axisNode)) continue;
-                int sectionId = floor.FloorNo * 100 + col.ColumnNo;
-                if (col.ColumnType <= 2 && !Model.ColumnDimsBySectionId.ContainsKey(sectionId)) continue;
-                if (col.ColumnType == 3 && !Model.PolygonColumnSectionByPositionSectionId.ContainsKey(sectionId)) continue;
+                int sectionId = ResolveColumnSectionId(floor.FloorNo, col.ColumnNo);
+                int polygonSectionId = ResolvePolygonPositionSectionId(floor.FloorNo, col.ColumnNo);
+                if (col.ColumnType == 3)
+                {
+                    if (polygonSectionId <= 0 || !Model.PolygonColumnSectionByPositionSectionId.ContainsKey(polygonSectionId)) continue;
+                }
+                else
+                {
+                    if (sectionId <= 0 || !Model.ColumnDimsBySectionId.ContainsKey(sectionId)) continue;
+                }
 
-                var dim = Model.ColumnDimsBySectionId.ContainsKey(sectionId) ? Model.ColumnDimsBySectionId[sectionId] : (W: 40.0, H: 40.0);
+                var dim = sectionId > 0 && Model.ColumnDimsBySectionId.ContainsKey(sectionId)
+                    ? Model.ColumnDimsBySectionId[sectionId]
+                    : (W: 40.0, H: 40.0);
                 double hw = dim.W / 2.0;
                 double hh = dim.H / 2.0;
 
@@ -778,7 +1032,7 @@ namespace ST4AksCizCSharp
                 {
                     AppendEntity(tr, btr, new Circle(new Point3d(center.X, center.Y, 0), Vector3d.ZAxis, Math.Max(hw, hh)) { Layer = "ST4-KOLONLAR" });
                 }
-                else if (col.ColumnType == 3 && TryGetPolygonColumn(sectionId, center, col.AngleDeg, out var polyPoints))
+                else if (col.ColumnType == 3 && TryGetPolygonColumn(polygonSectionId, center, col.AngleDeg, out var polyPoints))
                 {
                     var pl = ToPolyline(polyPoints, true);
                     pl.Layer = "ST4-KOLONLAR";

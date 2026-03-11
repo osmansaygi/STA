@@ -2,8 +2,8 @@
   <PropertyGroup>
     <TargetFramework>net48</TargetFramework>
     <OutputType>Library</OutputType>
-    <RootNamespace>ST4AksCizCSharp</RootNamespace>
-    <BaseAssemblyName>ST4_Aks_Ciz_CSharp</BaseAssemblyName>
+    <RootNamespace>ST4PlanIdCiz</RootNamespace>
+    <BaseAssemblyName>ST4_Plan_ID_Ciz</BaseAssemblyName>
     <DllSuffix Condition="'$(DllSuffix)' == ''">$([System.DateTime]::Now.ToString("yyyyMMdd_HHmmss"))</DllSuffix>
     <AssemblyName>$(BaseAssemblyName)_$(DllSuffix)</AssemblyName>
     <LangVersion>latest</LangVersion>
@@ -20,6 +20,10 @@
     <AutoCADInstallDir Condition="'$(AutoCADInstallDir)' == '' and Exists('C:\Program Files\Autodesk\AutoCAD 2023\acdbmgd.dll')">C:\Program Files\Autodesk\AutoCAD 2023</AutoCADInstallDir>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\ST4_Aks_Ciz_CSharp\ST4_Aks_Ciz_CSharp.csproj" />
+  </ItemGroup>
+
   <ItemGroup Condition="Exists('$(AutoCADInstallDir)\acdbmgd.dll') and Exists('$(AutoCADInstallDir)\acmgd.dll')">
     <Reference Include="acdbmgd">
       <HintPath>$(AutoCADInstallDir)\acdbmgd.dll</HintPath>
@@ -35,17 +39,24 @@
     </Reference>
   </ItemGroup>
 
-  <ItemGroup>
-    <Compile Remove="St4AksCommand.cs" />
-  </ItemGroup>
-
   <Target Name="ValidateAutoCADReferences" BeforeTargets="ResolveReferences">
     <Error
       Condition="!Exists('$(AutoCADInstallDir)\acdbmgd.dll') or !Exists('$(AutoCADInstallDir)\acmgd.dll')"
       Text="AutoCAD .NET referanslari bulunamadi. MSBuild'e /p:AutoCADInstallDir='C:\Program Files\Autodesk\AutoCAD 20XX' verin." />
   </Target>
 
+  <Target Name="CopyRefDll" AfterTargets="Build">
+    <ItemGroup>
+      <_AksDll Include="$(ProjectDir)..\ST4_Aks_Ciz_CSharp\bin\$(Configuration)\net48\ST4_Aks_Ciz_CSharp_*.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_AksDll)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+  </Target>
   <Target Name="ShowDllPath" AfterTargets="Build">
-    <Message Importance="high" Text="DLL kaydedildi: $([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\$(OutputPath)$(AssemblyName).dll'))" />
+    <Message Importance="high" Text="========================================" />
+    <Message Importance="high" Text="ST4_Plan_ID_Ciz DLL YUKLEME ADRESI:" />
+    <Message Importance="high" Text="  Klasor: $(MSBuildProjectDirectory)\$(OutputPath)" />
+    <Message Importance="high" Text="  Tam yol: $(MSBuildProjectDirectory)\$(OutputPath)$(AssemblyName).dll" />
+    <Message Importance="high" Text="  AutoCAD: NETLOAD → yukaridaki klasore gidin → en son tarihli ST4_Plan_ID_Ciz_*.dll ve ST4_Aks_Ciz_CSharp_*.dll dosyalarini ayni klasorde tutun, NETLOAD ile ST4_Plan_ID_Ciz_*.dll yukleyin." />
+    <Message Importance="high" Text="========================================" />
   </Target>
 </Project>
