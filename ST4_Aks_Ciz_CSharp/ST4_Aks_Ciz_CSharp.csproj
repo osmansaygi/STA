@@ -4,7 +4,7 @@
     <OutputType>Library</OutputType>
     <RootNamespace>ST4AksCizCSharp</RootNamespace>
     <BaseAssemblyName>ST4_Aks_Ciz_CSharp</BaseAssemblyName>
-    <DllSuffix Condition="'$(DllSuffix)' == ''">$([System.DateTime]::Now.ToString("yyyyMMdd_HHmmss"))</DllSuffix>
+    <DllSuffix Condition="'$(DllSuffix)' == ''">v2</DllSuffix>
     <AssemblyName>$(BaseAssemblyName)_$(DllSuffix)</AssemblyName>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
@@ -43,11 +43,5 @@
     <Error
       Condition="!Exists('$(AutoCADInstallDir)\acdbmgd.dll') or !Exists('$(AutoCADInstallDir)\acmgd.dll')"
       Text="AutoCAD .NET referanslari bulunamadi. MSBuild'e /p:AutoCADInstallDir='C:\Program Files\Autodesk\AutoCAD 20XX' verin." />
-  </Target>
-
-  <Target Name="ShowDllLoadPath" AfterTargets="Build">
-    <Message Importance="high" Text="--- NETLOAD yukleme adresi ---" />
-    <Message Importance="high" Text="$(TargetPath)" />
-    <Message Importance="high" Text="--- AutoCAD: NETLOAD ile bu dosyayi secin ---" />
   </Target>
 </Project>
