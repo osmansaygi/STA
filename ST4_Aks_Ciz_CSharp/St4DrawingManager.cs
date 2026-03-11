@@ -56,7 +56,7 @@ namespace ST4AksCizCSharp
                         {
                             wallCount += DrawBeamsAndWalls(tr, btr, floor, offsetX, offsetY, createdBeamLineRefs, createdBeamBodies, allBlockersPerFloor, allCirclesPerFloor);
                         }
-                        DrawSlabs(tr, btr, offsetX, offsetY);
+                        DrawSlabs(tr, btr, floor, offsetX, offsetY);
                         DrawLabels(tr, btr, floor, drawBeams, offsetX, offsetY, ext);
                     }
                 }
@@ -103,7 +103,8 @@ namespace ST4AksCizCSharp
             LayerService.EnsureLayer(tr, db, "ST4-KOLON-NUMARALARI", 2);
             LayerService.EnsureLayer(tr, db, "ST4-KIRISLAR", 2);
             LayerService.EnsureLayer(tr, db, "ST4-PERDELER", 6);
-            LayerService.EnsureLayer(tr, db, "DOSEME SINIRI (BEYKENT)", 71);
+            LayerService.EnsureLayer(tr, db, "DOSEME SINIRI (BEYKENT)", 71, LineWeight.LineWeight030);
+            LayerService.EnsureLayer(tr, db, "MERDIVEN (BEYKENT)", 5, LineWeight.LineWeight030);
         }
 
         private (double Xmin, double Xmax, double Ymin, double Ymax) CalculateBaseExtents()
@@ -277,7 +278,9 @@ namespace ST4AksCizCSharp
                     : (W: 40.0, H: 40.0);
                 double hw = dim.W / 2.0;
                 double hh = dim.H / 2.0;
-                var offsetLocal = ComputeColumnOffset(col.OffsetXRaw, col.OffsetYRaw, hw, hh);
+                var offsetLocal = col.ColumnType == 2
+                    ? ComputeColumnOffsetCircle(col.OffsetXRaw, col.OffsetYRaw)
+                    : ComputeColumnOffset(col.OffsetXRaw, col.OffsetYRaw, hw, hh);
                 var offsetGlobal = Rotate(offsetLocal, col.AngleDeg);
                 var center = new Point2d(axisNode.X + offsetGlobal.X + offsetX, axisNode.Y + offsetGlobal.Y + offsetY);
 
@@ -310,7 +313,9 @@ namespace ST4AksCizCSharp
                 var dim = Model.ColumnDimsBySectionId[sectionId];
                 double hw = dim.W / 2.0;
                 double hh = dim.H / 2.0;
-                var offsetLocal = ComputeColumnOffset(col.OffsetXRaw, col.OffsetYRaw, hw, hh);
+                var offsetLocal = col.ColumnType == 2
+                    ? ComputeColumnOffsetCircle(col.OffsetXRaw, col.OffsetYRaw)
+                    : ComputeColumnOffset(col.OffsetXRaw, col.OffsetYRaw, hw, hh);
                 var offsetGlobal = Rotate(offsetLocal, col.AngleDeg);
                 var center = new Point2d(axisNode.X + offsetGlobal.X + offsetX, axisNode.Y + offsetGlobal.Y + offsetY);
                 double radius = Math.Max(hw, hh);
@@ -986,11 +991,15 @@ namespace ST4AksCizCSharp
             return keep;
         }
 
-        /// <summary>Bazı ST4 dosyalarında kolon kesit ID'si floorNo*100+colNo (101,102), bazılarında 1000+colNo (1001,1002). Her iki şemayı dene.</summary>
+        /// <summary>Kolon kesit: 101, 1401 (floor*100+colNo), 1001/2001/8001 (floor*1000+colNo), 1000+colNo. 2xx-9xx, 14xx veya 2xxx-9xxx varsa 1000+colNo yok.</summary>
         private int ResolveColumnSectionId(int floorNo, int colNo)
         {
             int sid = floorNo * 100 + colNo;
             if (Model.ColumnDimsBySectionId.ContainsKey(sid)) return sid;
+            sid = floorNo * 1000 + colNo;
+            if (Model.ColumnDimsBySectionId.ContainsKey(sid)) return sid;
+            bool hasFloorSpecific = Model.ColumnDimsBySectionId.Keys.Any(id => (id >= 200 && id < 1000) || (id >= 1400 && id < 1500) || (id >= 2000 && id < 10000));
+            if (hasFloorSpecific) return 0;
             sid = 1000 + colNo;
             return Model.ColumnDimsBySectionId.ContainsKey(sid) ? sid : 0;
         }
@@ -999,9 +1008,11 @@ namespace ST4AksCizCSharp
         {
             int sid = floorNo * 100 + colNo;
             if (Model.PolygonColumnSectionByPositionSectionId.ContainsKey(sid)) return sid;
-            sid = 1000 + colNo;
-            if (Model.PolygonColumnSectionByPositionSectionId.ContainsKey(sid)) return sid;
             sid = floorNo * 1000 + colNo;
+            if (Model.PolygonColumnSectionByPositionSectionId.ContainsKey(sid)) return sid;
+            bool hasFloorSpecific = Model.PolygonColumnSectionByPositionSectionId.Keys.Any(id => (id >= 200 && id < 1000) || (id >= 1400 && id < 1500) || (id >= 2000 && id < 10000));
+            if (hasFloorSpecific) return 0;
+            sid = 1000 + colNo;
             return Model.PolygonColumnSectionByPositionSectionId.ContainsKey(sid) ? sid : 0;
         }
 
@@ -1027,7 +1038,9 @@ namespace ST4AksCizCSharp
                 double hw = dim.W / 2.0;
                 double hh = dim.H / 2.0;
 
-                var offsetLocal = ComputeColumnOffset(col.OffsetXRaw, col.OffsetYRaw, hw, hh);
+                var offsetLocal = col.ColumnType == 2
+                    ? ComputeColumnOffsetCircle(col.OffsetXRaw, col.OffsetYRaw)
+                    : ComputeColumnOffset(col.OffsetXRaw, col.OffsetYRaw, hw, hh);
                 var offsetGlobal = Rotate(offsetLocal, col.AngleDeg);
                 var center = new Point2d(axisNode.X + offsetGlobal.X + offsetX, axisNode.Y + offsetGlobal.Y + offsetY);
 
@@ -1168,6 +1181,12 @@ namespace ST4AksCizCSharp
             return new Vector2d(locX, locY);
         }
 
+        /// <summary>Daire kolon (ColumnType=2): kaçıklık eksenden merkeze doğrudan mesafe (mm → cm). Y yönü ST4 ile ters.</summary>
+        private static Vector2d ComputeColumnOffsetCircle(int off1, int off2)
+        {
+            return new Vector2d(off1 / 10.0, -off2 / 10.0);
+        }
+
         private static double ComputeColumnAxisOffsetX(int off, double halfSize)
         {
             if (off == -1) return halfSize;   // axis on left edge
@@ -1275,42 +1294,55 @@ namespace ST4AksCizCSharp
             return new Vector2d(v.X * c - v.Y * s, v.X * s + v.Y * c);
         }
 
-        private void DrawSlabs(Transaction tr, BlockTableRecord btr, double offsetX, double offsetY)
+        /// <summary>
+        /// Döşemeleri çizer. Sadece bu kata ait döşemeler.
+        /// Köşeler ST4 sırasına göre: 1.(axis1,axis3), 2.(axis1,axis4), 3.(axis2,axis3), 4.(axis2,axis4).
+        /// Bu sayede 105 gibi (1029,2013,2009,2010) döşemeler doğru çizilir.
+        /// </summary>
+        private void DrawSlabs(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY)
         {
             const string slabLayer = "DOSEME SINIRI (BEYKENT)";
+            const string stairLayer = "MERDIVEN (BEYKENT)";
+            int floorNo = floor.FloorNo;
             foreach (var slab in Model.Slabs)
             {
-                var xAxes = new List<int>();
-                var yAxes = new List<int>();
-                foreach (int id in new[] { slab.Axis1, slab.Axis2, slab.Axis3, slab.Axis4 })
+                if (GetSlabFloorNo(slab.SlabId) != floorNo) continue;
+                int a1 = slab.Axis1, a2 = slab.Axis2, a3 = slab.Axis3, a4 = slab.Axis4;
+                Point2d[] pts = null;
+                if (a1 != 0 && a2 != 0 && a3 != 0 && a4 != 0 &&
+                    _axisService.TryIntersect(a1, a3, out Point2d p11) &&
+                    _axisService.TryIntersect(a1, a4, out Point2d p12) &&
+                    _axisService.TryIntersect(a2, a3, out Point2d p21) &&
+                    _axisService.TryIntersect(a2, a4, out Point2d p22))
                 {
-                    if (id >= 1001 && id <= 1999) xAxes.Add(id);
-                    else if (id >= 2001 && id <= 2999) yAxes.Add(id);
+                    pts = new[]
+                    {
+                        new Point2d(p11.X + offsetX, p11.Y + offsetY),
+                        new Point2d(p12.X + offsetX, p12.Y + offsetY),
+                        new Point2d(p22.X + offsetX, p22.Y + offsetY),
+                        new Point2d(p21.X + offsetX, p21.Y + offsetY)
+                    };
                 }
-                if (xAxes.Count != 2 || yAxes.Count != 2) continue;
-                int x1 = xAxes[0];
-                int x2 = xAxes[1];
-                int y1 = yAxes[0];
-                int y2 = yAxes[1];
-                if (!_axisService.TryIntersect(x1, y1, out Point2d c11) || !_axisService.TryIntersect(x1, y2, out Point2d c12) ||
-                    !_axisService.TryIntersect(x2, y1, out Point2d c21) || !_axisService.TryIntersect(x2, y2, out Point2d c22))
-                    continue;
-                double xMin = Math.Min(Math.Min(c11.X, c12.X), Math.Min(c21.X, c22.X));
-                double xMax = Math.Max(Math.Max(c11.X, c12.X), Math.Max(c21.X, c22.X));
-                double yMin = Math.Min(Math.Min(c11.Y, c12.Y), Math.Min(c21.Y, c22.Y));
-                double yMax = Math.Max(Math.Max(c11.Y, c12.Y), Math.Max(c21.Y, c22.Y));
-                var pts = new[]
-                {
-                    new Point2d(xMin + offsetX, yMin + offsetY),
-                    new Point2d(xMax + offsetX, yMin + offsetY),
-                    new Point2d(xMax + offsetX, yMax + offsetY),
-                    new Point2d(xMin + offsetX, yMax + offsetY)
-                };
+                if (pts == null || pts.Length < 3) continue;
                 var pl = ToPolyline(pts, true);
-                pl.Layer = slabLayer;
-                pl.LineWeight = (LineWeight)30;
+                pl.Layer = Model.StairSlabIds.Contains(slab.SlabId) ? stairLayer : slabLayer;
+                pl.LineWeight = LineWeight.LineWeight030;
                 AppendEntity(tr, btr, pl);
             }
+        }
+
+        /// <summary>Dosya 5. satır 3. sütun (SlabFloorKeyStep 100/1000) varsa slabId/step, yoksa slabId/1000 veya slabId/100.</summary>
+        private int GetSlabFloorNo(int slabId)
+        {
+            if (Model.SlabFloorKeyStep > 0) return slabId / Model.SlabFloorKeyStep;
+            return slabId >= 1000 ? (slabId / 1000) : (slabId / 100);
+        }
+
+        /// <summary>Dosya 5. satır 4. sütun (BeamFloorKeyStep 100/1000) varsa beamId/step; yoksa beamId/1000 veya beamId/100. GI_A_01: 100 → 1001=10. kat.</summary>
+        private int GetBeamFloorNo(int beamId)
+        {
+            if (Model.BeamFloorKeyStep > 0) return beamId / Model.BeamFloorKeyStep;
+            return beamId >= 1000 ? (beamId / 1000) : (beamId / 100);
         }
 
         private static Polyline ToPolyline(IReadOnlyList<Point2d> points, bool closed)
@@ -1337,7 +1369,7 @@ namespace ST4AksCizCSharp
 
             foreach (var beam in Model.Beams)
             {
-                int beamFloor = beam.BeamId >= 1000 ? beam.BeamId / 1000 : beam.BeamId / 100;
+                int beamFloor = GetBeamFloorNo(beam.BeamId);
                 if (beamFloor != floorNo) continue;
                 if (!_axisService.TryIntersect(beam.FixedAxisId, beam.StartAxisId, out Point2d p1) ||
                     !_axisService.TryIntersect(beam.FixedAxisId, beam.EndAxisId, out Point2d p2))

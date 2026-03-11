@@ -46,13 +46,14 @@ namespace ST4PlanIdCiz
                     DrawAxes(tr, btr, offsetX, offsetY, ext);
                     DrawColumns(tr, btr, floor, offsetX, offsetY);
                     DrawBeamsAndWalls(tr, btr, floor, offsetX, offsetY);
+                    DrawSlabs(tr, btr, floor, offsetX, offsetY);
                     DrawFloorTitle(tr, btr, floor, offsetX, offsetY, ext);
                 }
 
                 tr.Commit();
 
                 ed.WriteMessage(
-                    "\nST4PLANID: {0} kat, akslar, kolonlar (poligon dahil), kirişler ve perdeler ID'leriyle cizildi. (cm)",
+                    "\nST4PLANID: {0} kat, akslar, kolonlar (poligon dahil), kirişler, perdeler ve döşemeler ID'leriyle cizildi. (cm)",
                     _model.Floors.Count);
             }
         }
@@ -61,6 +62,8 @@ namespace ST4PlanIdCiz
         private const string LayerKiris = "KIRIS (BEYKENT)";
         private const string LayerKolon = "KOLON (BEYKENT)";
         private const string LayerPerde = "PERDE (BEYKENT)";
+        private const string LayerDoseme = "DOSEME SINIRI (BEYKENT)";
+        private const string LayerMerdiven = "MERDIVEN (BEYKENT)";
         private const string LayerYazi = "YAZI (BEYKENT)";
         private const string LayerBaslik = "YAZI (BEYKENT)";
 
@@ -71,6 +74,8 @@ namespace ST4PlanIdCiz
             EnsurePlanLayer(tr, db, LayerKiris, 2, LineWeight.LineWeight030, useDashed: false);
             EnsurePlanLayer(tr, db, LayerKolon, 3, LineWeight.LineWeight040, useDashed: false);
             EnsurePlanLayer(tr, db, LayerPerde, 6, LineWeight.LineWeight040, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerDoseme, 71, LineWeight.LineWeight030, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerMerdiven, 5, LineWeight.LineWeight030, useDashed: false);
             EnsurePlanLayer(tr, db, LayerYazi, 4, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, LayerBaslik, 4, LineWeight.LineWeight020, useDashed: false);
         }
@@ -198,23 +203,29 @@ namespace ST4PlanIdCiz
             return used;
         }
 
-        /// <summary>Bazı ST4 dosyalarında kolon kesit ID'si floorNo*100+colNo (101,102), bazılarında 1000+colNo (1001,1002). Her iki şemayı dene.</summary>
+        /// <summary>Kolon kesit: floorNo*100+colNo, floorNo*1000+colNo (TZN 1001,2001,8001), 1000+colNo. 2xx-9xx, 14xx, 2xxx-9xxx varsa 1000+colNo yok.</summary>
         private int ResolveColumnSectionId(int floorNo, int colNo)
         {
             int sid = floorNo * 100 + colNo;
             if (_model.ColumnDimsBySectionId.ContainsKey(sid)) return sid;
+            sid = floorNo * 1000 + colNo;
+            if (_model.ColumnDimsBySectionId.ContainsKey(sid)) return sid;
+            bool hasFloorSpecific = _model.ColumnDimsBySectionId.Keys.Any(id => (id >= 200 && id < 1000) || (id >= 1400 && id < 1500) || (id >= 2000 && id < 10000));
+            if (hasFloorSpecific) return 0;
             sid = 1000 + colNo;
             return _model.ColumnDimsBySectionId.ContainsKey(sid) ? sid : 0;
         }
 
-        /// <summary>Poligon kolon position section ID için aynı çift şema.</summary>
+        /// <summary>Poligon: floorNo*100+colNo, floorNo*1000+colNo. 2xx-9xx, 14xx, 2xxx-9xxx varsa 1000+colNo yok.</summary>
         private int ResolvePolygonPositionSectionId(int floorNo, int colNo)
         {
             int sid = floorNo * 100 + colNo;
             if (_model.PolygonColumnSectionByPositionSectionId.ContainsKey(sid)) return sid;
-            sid = 1000 + colNo;
-            if (_model.PolygonColumnSectionByPositionSectionId.ContainsKey(sid)) return sid;
             sid = floorNo * 1000 + colNo;
+            if (_model.PolygonColumnSectionByPositionSectionId.ContainsKey(sid)) return sid;
+            bool hasFloorSpecific = _model.PolygonColumnSectionByPositionSectionId.Keys.Any(id => (id >= 200 && id < 1000) || (id >= 1400 && id < 1500) || (id >= 2000 && id < 10000));
+            if (hasFloorSpecific) return 0;
+            sid = 1000 + colNo;
             return _model.PolygonColumnSectionByPositionSectionId.ContainsKey(sid) ? sid : 0;
         }
 
@@ -239,7 +250,9 @@ namespace ST4PlanIdCiz
                     : (W: 40.0, H: 40.0);
                 double hw = dim.W / 2.0;
                 double hh = dim.H / 2.0;
-                var offsetLocal = ComputeColumnOffset(col.OffsetXRaw, col.OffsetYRaw, hw, hh);
+                var offsetLocal = col.ColumnType == 2
+                    ? ComputeColumnOffsetCircle(col.OffsetXRaw, col.OffsetYRaw)
+                    : ComputeColumnOffset(col.OffsetXRaw, col.OffsetYRaw, hw, hh);
                 var offsetGlobal = Rotate(offsetLocal, col.AngleDeg);
                 var center = new Point2d(axisNode.X + offsetGlobal.X + offsetX, axisNode.Y + offsetGlobal.Y + offsetY);
 
@@ -303,6 +316,56 @@ namespace ST4PlanIdCiz
                 }
                 AppendEntity(tr, btr, MakeCenteredText(LayerYazi, 6, beam.BeamId.ToString(CultureInfo.InvariantCulture), center));
             }
+        }
+
+        /// <summary>
+        /// Bu kata ait döşemeleri çizer. Köşeler sırayla: (axis1,axis3), (axis1,axis4), (axis2,axis4), (axis2,axis3).
+        /// </summary>
+        private void DrawSlabs(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY)
+        {
+            int floorNo = floor.FloorNo;
+            foreach (var slab in _model.Slabs)
+            {
+                if (GetSlabFloorNo(slab.SlabId) != floorNo) continue;
+                int a1 = slab.Axis1, a2 = slab.Axis2, a3 = slab.Axis3, a4 = slab.Axis4;
+                Point2d[] pts = null;
+                if (a1 != 0 && a2 != 0 && a3 != 0 && a4 != 0 &&
+                    _axisService.TryIntersect(a1, a3, out Point2d p11) &&
+                    _axisService.TryIntersect(a1, a4, out Point2d p12) &&
+                    _axisService.TryIntersect(a2, a3, out Point2d p21) &&
+                    _axisService.TryIntersect(a2, a4, out Point2d p22))
+                {
+                    pts = new[]
+                    {
+                        new Point2d(p11.X + offsetX, p11.Y + offsetY),
+                        new Point2d(p12.X + offsetX, p12.Y + offsetY),
+                        new Point2d(p22.X + offsetX, p22.Y + offsetY),
+                        new Point2d(p21.X + offsetX, p21.Y + offsetY)
+                    };
+                }
+                if (pts == null || pts.Length < 3) continue;
+                var pl = ToPolyline(pts, true);
+                pl.Layer = _model.StairSlabIds.Contains(slab.SlabId) ? LayerMerdiven : LayerDoseme;
+                AppendEntity(tr, btr, pl);
+                double cx = 0, cy = 0;
+                for (int i = 0; i < pts.Length; i++) { cx += pts[i].X; cy += pts[i].Y; }
+                var center = new Point3d(cx / pts.Length, cy / pts.Length, 0);
+                AppendEntity(tr, btr, MakeCenteredText(LayerYazi, 5, slab.SlabId.ToString(CultureInfo.InvariantCulture), center));
+            }
+        }
+
+        /// <summary>Dosya 5. satır 3. sütun (SlabFloorKeyStep 100/1000) varsa slabId/step, yoksa slabId/1000 veya slabId/100.</summary>
+        private int GetSlabFloorNo(int slabId)
+        {
+            if (_model.SlabFloorKeyStep > 0) return slabId / _model.SlabFloorKeyStep;
+            return slabId >= 1000 ? (slabId / 1000) : (slabId / 100);
+        }
+
+        /// <summary>5. satır 4. sütun (BeamFloorKeyStep) varsa beamId/step; yoksa beamId/1000 veya beamId/100.</summary>
+        private int GetBeamFloorNo(int beamId)
+        {
+            if (_model.BeamFloorKeyStep > 0) return beamId / _model.BeamFloorKeyStep;
+            return beamId >= 1000 ? (beamId / 1000) : (beamId / 100);
         }
 
         private void DrawFloorTitle(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY,
@@ -375,6 +438,12 @@ namespace ST4PlanIdCiz
             return new Vector2d(locX, locY);
         }
 
+        /// <summary>Daire kolon (ColumnType=2): kaçıklık eksenden merkeze doğrudan mesafe (mm → cm). Y yönü ST4 ile ters.</summary>
+        private static Vector2d ComputeColumnOffsetCircle(int off1, int off2)
+        {
+            return new Vector2d(off1 / 10.0, -off2 / 10.0);
+        }
+
         private static double ComputeColumnAxisOffsetX(int off, double halfSize)
         {
             if (off == -1) return halfSize;
@@ -439,7 +508,7 @@ namespace ST4PlanIdCiz
 
             foreach (var beam in _model.Beams)
             {
-                int beamFloor = beam.BeamId >= 1000 ? beam.BeamId / 1000 : beam.BeamId / 100;
+                int beamFloor = GetBeamFloorNo(beam.BeamId);
                 if (beamFloor != floorNo) continue;
                 if (!_axisService.TryIntersect(beam.FixedAxisId, beam.StartAxisId, out Point2d p1) ||
                     !_axisService.TryIntersect(beam.FixedAxisId, beam.EndAxisId, out Point2d p2))

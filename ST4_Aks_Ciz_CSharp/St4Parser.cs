@@ -21,6 +21,7 @@ namespace ST4AksCizCSharp
             bool inBeams = false;
             bool inColData = false;
             bool inFloorsData = false;
+            bool inFloorsContinuous = false;
             bool inPolygonCols = false;
             bool inPolygonSection = false;
             int? headerNX = null;
@@ -43,8 +44,13 @@ namespace ST4AksCizCSharp
                 if ((i == 4 || i == 5) && line.Length > 0)
                 {
                     var p = St4Text.SplitCsv(line);
-                    if (p.Count >= 3 && (p[2] == "100" || p[2] == "1000"))
+                    if (p.Count >= 3 && St4Text.TryParseInt(p[2], out int keyStep) && (keyStep == 100 || keyStep == 1000))
                     {
+                        model.SlabFloorKeyStep = keyStep;
+                        if (p.Count >= 5 && St4Text.TryParseInt(p[3], out int beamStep) && (beamStep == 100 || beamStep == 1000))
+                            model.BeamFloorKeyStep = beamStep;
+                        if (p.Count >= 5 && St4Text.TryParseInt(p[4], out int colStep) && (colStep == 100 || colStep == 1000))
+                            model.ColumnFloorKeyStep = colStep;
                         if (St4Text.TryParseInt(p[0], out int nx) && St4Text.TryParseInt(p[1], out int ny))
                         {
                             headerNX = nx;
@@ -200,13 +206,17 @@ namespace ST4AksCizCSharp
                 if (inColData && line.Length > 2)
                 {
                     var p = St4Text.SplitCsv(line);
-                    if (p.Count >= 3 &&
+                    if (p.Count >= 2 &&
                         St4Text.TryParseInt(p[0], out int sectionId) &&
                         St4Text.TryParseDouble(p[1], out double cw) &&
-                        St4Text.TryParseDouble(p[2], out double ch) &&
-                        sectionId >= 100 && cw > 0 && ch > 0)
+                        sectionId >= 100 && cw > 0)
                     {
-                        model.ColumnDimsBySectionId[sectionId] = (cw, ch);
+                        double ch = 0;
+                        if (p.Count >= 3) St4Text.TryParseDouble(p[2], out ch);
+                        if (ch > 0)
+                            model.ColumnDimsBySectionId[sectionId] = (cw, ch);
+                        else
+                            model.ColumnDimsBySectionId[sectionId] = (cw, cw);
                     }
                     continue;
                 }
@@ -221,6 +231,20 @@ namespace ST4AksCizCSharp
                     inFloorsData = false;
                     continue;
                 }
+                if (u.Contains("floors continuous"))
+                {
+                    inFloorsContinuous = true;
+                    continue;
+                }
+                if (inFloorsContinuous && u.StartsWith("/"))
+                {
+                    inFloorsContinuous = false;
+                    continue;
+                }
+                if (inFloorsContinuous && line.Length > 0)
+                {
+                    continue;
+                }
                 if (inFloorsData && line.Length > 2)
                 {
                     var p = St4Text.SplitCsv(line);
@@ -233,6 +257,8 @@ namespace ST4AksCizCSharp
                         slabId > 0)
                     {
                         model.Slabs.Add(new SlabInfo { SlabId = slabId, Axis1 = a1, Axis2 = a2, Axis3 = a3, Axis4 = a4 });
+                        if (p.Count >= 25 && p[24] == "1")
+                            model.StairSlabIds.Add(slabId);
                     }
                     continue;
                 }
