@@ -9,5 +9,8 @@ namespace ST4AksCizCSharp
         public int OffsetXRaw { get; set; }
         public int OffsetYRaw { get; set; }
         public double AngleDeg { get; set; }
+        public int ColumnId { get; set; }
+        public double OffsetXMm { get; set; }
+        public double OffsetYMm { get; set; }
     }
 }

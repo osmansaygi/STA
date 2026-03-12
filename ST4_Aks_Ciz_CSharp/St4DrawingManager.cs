@@ -43,7 +43,7 @@ namespace ST4AksCizCSharp
 
                 // Row 0: Temel planı (aks + ilk kat kolonları + sürekli/radye temeller) – tek görünüm
                 var firstFloor = Model.Floors.Count > 0 ? Model.Floors[0] : null;
-                if (firstFloor != null && (Model.ContinuousFoundations.Count > 0 || Model.SlabFoundations.Count > 0))
+                if (firstFloor != null && (Model.ContinuousFoundations.Count > 0 || Model.SlabFoundations.Count > 0 || Model.TieBeams.Count > 0))
                 {
                     double offsetX = 0.0;
                     double offsetY = floorHeight + rowGap;
@@ -52,6 +52,7 @@ namespace ST4AksCizCSharp
                     DrawWallsForFloor(tr, btr, firstFloor, offsetX, offsetY);
                     DrawContinuousFoundations(tr, btr, offsetX, offsetY);
                     DrawSlabFoundations(tr, btr, offsetX, offsetY);
+                    DrawTieBeams(tr, btr, offsetX, offsetY);
                     DrawLabels(tr, btr, firstFloor, false, offsetX, offsetY, ext);
                 }
 
@@ -105,7 +106,7 @@ namespace ST4AksCizCSharp
                     (Model.Beams.Count > 0 ? $", {Model.Beams.Count} kiris" : string.Empty) +
                     (wallCount > 0 ? $", {wallCount} perde" : string.Empty) +
                     (Model.Slabs.Count > 0 ? $", {Model.Slabs.Count} doseme siniri" : string.Empty) +
-                    (Model.ContinuousFoundations.Count > 0 || Model.SlabFoundations.Count > 0 ? $", temel plani (surekli: {Model.ContinuousFoundations.Count}, radye: {Model.SlabFoundations.Count})" : string.Empty) +
+                    (Model.ContinuousFoundations.Count > 0 || Model.SlabFoundations.Count > 0 || Model.TieBeams.Count > 0 ? $", temel plani (surekli: {Model.ContinuousFoundations.Count}, radye: {Model.SlabFoundations.Count}, bag kirisi: {Model.TieBeams.Count})" : string.Empty) +
                     " cizildi. (cm)");
             }
         }
@@ -122,10 +123,9 @@ namespace ST4AksCizCSharp
             LayerService.EnsureLayer(tr, db, "ST4-PERDELER", 6);
             LayerService.EnsureLayer(tr, db, "DOSEME SINIRI (BEYKENT)", 71, LineWeight.LineWeight030);
             LayerService.EnsureLayer(tr, db, "MERDIVEN (BEYKENT)", 5, LineWeight.LineWeight030);
-            LayerService.EnsureLayer(tr, db, "ST4-SUREKLI-TEMEL", 4);
-            LayerService.EnsureLayer(tr, db, "ST4-RADYE-TEMEL", 5);
-            LayerService.EnsureLayer(tr, db, "ST4-AMPATMAN", 6);
-            LayerService.EnsureLayer(tr, db, "ST4-TEMEL-HATILI", 7);
+            LayerService.EnsureLayer(tr, db, "TEMEL (BEYKENT)", 2, LineWeight.LineWeight040);
+            LayerService.EnsureLayer(tr, db, "TEMEL AMPATMAN (BEYKENT)", 2, LineWeight.LineWeight040);
+            LayerService.EnsureLayer(tr, db, "TEMEL HATILI (BEYKENT)", 6, LineWeight.LineWeight030);
         }
 
         private (double Xmin, double Xmax, double Ymin, double Ymax) CalculateBaseExtents()
@@ -1409,9 +1409,37 @@ namespace ST4AksCizCSharp
             }
         }
 
+        private void DrawTieBeams(Transaction tr, BlockTableRecord btr, double offsetX, double offsetY)
+        {
+            const string layer = "TEMEL HATILI (BEYKENT)";
+            foreach (var tb in Model.TieBeams)
+            {
+                if (!_axisService.TryIntersect(tb.FixedAxisId, tb.StartAxisId, out Point2d p1) ||
+                    !_axisService.TryIntersect(tb.FixedAxisId, tb.EndAxisId, out Point2d p2))
+                    continue;
+                Vector2d along = (p2 - p1).GetNormal();
+                if (p1.GetDistanceTo(p2) <= 1e-9) continue;
+                int offsetForBeam = (tb.FixedAxisId >= 1001 && tb.FixedAxisId <= 1999) ? -tb.OffsetRaw : tb.OffsetRaw;
+                ComputeBeamEdgeOffsets(offsetForBeam, tb.WidthCm / 2.0, out double upperEdge, out double lowerEdge);
+                Vector2d perp = new Vector2d(-along.Y, along.X);
+                Point2d[] rect = new[]
+                {
+                    p1 + perp.MultiplyBy(upperEdge),
+                    p2 + perp.MultiplyBy(upperEdge),
+                    p2 + perp.MultiplyBy(lowerEdge),
+                    p1 + perp.MultiplyBy(lowerEdge)
+                };
+                for (int i = 0; i < rect.Length; i++)
+                    rect[i] = new Point2d(rect[i].X + offsetX, rect[i].Y + offsetY);
+                var pl = ToPolyline(rect, true);
+                pl.Layer = layer;
+                AppendEntity(tr, btr, pl);
+            }
+        }
+
         private void DrawContinuousFoundations(Transaction tr, BlockTableRecord btr, double offsetX, double offsetY)
         {
-            const string layer = "ST4-SUREKLI-TEMEL";
+            const string layer = "TEMEL (BEYKENT)";
             foreach (var cf in Model.ContinuousFoundations)
             {
                 if (!_axisService.TryIntersect(cf.FixedAxisId, cf.StartAxisId, out Point2d p1) ||
@@ -1480,7 +1508,7 @@ namespace ST4AksCizCSharp
                     for (int i = 0; i < ampRect.Length; i++)
                         ampRect[i] = new Point2d(ampRect[i].X + offsetX, ampRect[i].Y + offsetY);
                     var plAmp = ToPolyline(ampRect, true);
-                    plAmp.Layer = "ST4-AMPATMAN";
+                    plAmp.Layer = "TEMEL AMPATMAN (BEYKENT)";
                     AppendEntity(tr, btr, plAmp);
                 }
 
@@ -1497,7 +1525,7 @@ namespace ST4AksCizCSharp
                     for (int i = 0; i < hatilRect.Length; i++)
                         hatilRect[i] = new Point2d(hatilRect[i].X + offsetX, hatilRect[i].Y + offsetY);
                     var plHatil = ToPolyline(hatilRect, true);
-                    plHatil.Layer = "ST4-TEMEL-HATILI";
+                    plHatil.Layer = "TEMEL HATILI (BEYKENT)";
                     AppendEntity(tr, btr, plHatil);
                 }
             }
@@ -1505,7 +1533,7 @@ namespace ST4AksCizCSharp
 
         private void DrawSlabFoundations(Transaction tr, BlockTableRecord btr, double offsetX, double offsetY)
         {
-            const string layer = "ST4-RADYE-TEMEL";
+            const string layer = "TEMEL (BEYKENT)";
             var factory = new GeometryFactory();
             var polygons = new List<Geometry>();
             foreach (var sf in Model.SlabFoundations)

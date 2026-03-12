@@ -39,7 +39,7 @@ namespace ST4PlanIdCiz
                 double floorWidth = (ext.Xmax - ext.Xmin) + 80.0;
                 double floorGap = 1000.0;
 
-                bool hasFoundations = _model.ContinuousFoundations.Count > 0 || _model.SlabFoundations.Count > 0;
+                bool hasFoundations = _model.ContinuousFoundations.Count > 0 || _model.SlabFoundations.Count > 0 || _model.TieBeams.Count > 0;
                 int planStartIndex = hasFoundations ? 1 : 0;
 
                 if (hasFoundations && _model.Floors.Count > 0)
@@ -52,6 +52,7 @@ namespace ST4PlanIdCiz
                     DrawWallsForFloor(tr, btr, firstFloor, offsetX, offsetY);
                     DrawContinuousFoundations(tr, btr, offsetX, offsetY);
                     DrawSlabFoundations(tr, btr, offsetX, offsetY);
+                    DrawTieBeams(tr, btr, offsetX, offsetY);
                     DrawFloorTitle(tr, btr, firstFloor, offsetX, offsetY, ext, isFoundationPlan: true);
                 }
 
@@ -73,7 +74,7 @@ namespace ST4PlanIdCiz
                 ed.WriteMessage(
                     "\nST4PLANID: {0} kat, akslar, kolonlar (poligon dahil), kirişler, perdeler ve döşemeler{1} ID'leriyle cizildi. (cm)",
                     _model.Floors.Count,
-                    hasFoundations ? string.Format(", temel plani (surekli: {0}, radye: {1})", _model.ContinuousFoundations.Count, _model.SlabFoundations.Count) : "");
+                    hasFoundations ? string.Format(", temel plani (surekli: {0}, radye: {1}, bag kirisi: {2})", _model.ContinuousFoundations.Count, _model.SlabFoundations.Count, _model.TieBeams.Count) : "");
             }
         }
 
@@ -97,10 +98,9 @@ namespace ST4PlanIdCiz
             EnsurePlanLayer(tr, db, LayerMerdiven, 5, LineWeight.LineWeight030, useDashed: false);
             EnsurePlanLayer(tr, db, LayerYazi, 4, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, LayerBaslik, 4, LineWeight.LineWeight020, useDashed: false);
-            EnsurePlanLayer(tr, db, "ST4-SUREKLI-TEMEL", 4, LineWeight.LineWeight030, useDashed: false);
-            EnsurePlanLayer(tr, db, "ST4-RADYE-TEMEL", 5, LineWeight.LineWeight030, useDashed: false);
-            EnsurePlanLayer(tr, db, "ST4-AMPATMAN", 6, LineWeight.LineWeight030, useDashed: false);
-            EnsurePlanLayer(tr, db, "ST4-TEMEL-HATILI", 7, LineWeight.LineWeight030, useDashed: false);
+            EnsurePlanLayer(tr, db, "TEMEL (BEYKENT)", 2, LineWeight.LineWeight040, useDashed: false);
+            EnsurePlanLayer(tr, db, "TEMEL AMPATMAN (BEYKENT)", 2, LineWeight.LineWeight040, useDashed: false);
+            EnsurePlanLayer(tr, db, "TEMEL HATILI (BEYKENT)", 6, LineWeight.LineWeight030, useDashed: false);
         }
 
         private static void EnsureDashedLinetype(Transaction tr, Database db)
@@ -408,7 +408,7 @@ namespace ST4PlanIdCiz
 
         private void DrawContinuousFoundations(Transaction tr, BlockTableRecord btr, double offsetX, double offsetY)
         {
-            const string layer = "ST4-SUREKLI-TEMEL";
+            const string layer = "TEMEL (BEYKENT)";
             foreach (var cf in _model.ContinuousFoundations)
             {
                 if (!_axisService.TryIntersect(cf.FixedAxisId, cf.StartAxisId, out Point2d p1) ||
@@ -435,6 +435,13 @@ namespace ST4PlanIdCiz
                 var pl = ToPolyline(rect, true);
                 pl.Layer = layer;
                 AppendEntity(tr, btr, pl);
+
+                if (!string.IsNullOrEmpty(cf.Name))
+                {
+                    double cx = (rect[0].X + rect[1].X + rect[2].X + rect[3].X) / 4.0;
+                    double cy = (rect[0].Y + rect[1].Y + rect[2].Y + rect[3].Y) / 4.0;
+                    AppendEntity(tr, btr, MakeCenteredText(LayerYazi, 5, cf.Name.Trim(), new Point3d(cx, cy, 0)));
+                }
 
                 if (cf.AmpatmanWidthCm > 0 && Math.Abs(cf.AmpatmanWidthCm - cf.WidthCm) > 1e-6)
                 {
@@ -477,7 +484,7 @@ namespace ST4PlanIdCiz
                     for (int i = 0; i < ampRect.Length; i++)
                         ampRect[i] = new Point2d(ampRect[i].X + offsetX, ampRect[i].Y + offsetY);
                     var plAmp = ToPolyline(ampRect, true);
-                    plAmp.Layer = "ST4-AMPATMAN";
+                    plAmp.Layer = "TEMEL AMPATMAN (BEYKENT)";
                     AppendEntity(tr, btr, plAmp);
                 }
 
@@ -494,15 +501,43 @@ namespace ST4PlanIdCiz
                     for (int i = 0; i < hatilRect.Length; i++)
                         hatilRect[i] = new Point2d(hatilRect[i].X + offsetX, hatilRect[i].Y + offsetY);
                     var plHatil = ToPolyline(hatilRect, true);
-                    plHatil.Layer = "ST4-TEMEL-HATILI";
+                    plHatil.Layer = "TEMEL HATILI (BEYKENT)";
                     AppendEntity(tr, btr, plHatil);
                 }
             }
         }
 
+        private void DrawTieBeams(Transaction tr, BlockTableRecord btr, double offsetX, double offsetY)
+        {
+            const string layer = "TEMEL HATILI (BEYKENT)";
+            foreach (var tb in _model.TieBeams)
+            {
+                if (!_axisService.TryIntersect(tb.FixedAxisId, tb.StartAxisId, out Point2d p1) ||
+                    !_axisService.TryIntersect(tb.FixedAxisId, tb.EndAxisId, out Point2d p2))
+                    continue;
+                Vector2d along = (p2 - p1).GetNormal();
+                if (p1.GetDistanceTo(p2) <= 1e-9) continue;
+                int offsetForBeam = (tb.FixedAxisId >= 1001 && tb.FixedAxisId <= 1999) ? -tb.OffsetRaw : tb.OffsetRaw;
+                ComputeBeamEdgeOffsets(offsetForBeam, tb.WidthCm / 2.0, out double upperEdge, out double lowerEdge);
+                Vector2d perp = new Vector2d(-along.Y, along.X);
+                Point2d[] rect = new[]
+                {
+                    p1 + perp.MultiplyBy(upperEdge),
+                    p2 + perp.MultiplyBy(upperEdge),
+                    p2 + perp.MultiplyBy(lowerEdge),
+                    p1 + perp.MultiplyBy(lowerEdge)
+                };
+                for (int i = 0; i < rect.Length; i++)
+                    rect[i] = new Point2d(rect[i].X + offsetX, rect[i].Y + offsetY);
+                var pl = ToPolyline(rect, true);
+                pl.Layer = layer;
+                AppendEntity(tr, btr, pl);
+            }
+        }
+
         private void DrawSlabFoundations(Transaction tr, BlockTableRecord btr, double offsetX, double offsetY)
         {
-            const string layer = "ST4-RADYE-TEMEL";
+            const string layer = "TEMEL (BEYKENT)";
             var factory = new GeometryFactory();
             var polygons = new List<Geometry>();
             foreach (var sf in _model.SlabFoundations)
@@ -512,6 +547,10 @@ namespace ST4PlanIdCiz
                     !_axisService.TryIntersect(sf.AxisX2, sf.AxisY1, out Point2d p21) ||
                     !_axisService.TryIntersect(sf.AxisX2, sf.AxisY2, out Point2d p22))
                     continue;
+                double cx = (p11.X + p12.X + p21.X + p22.X) / 4.0 + offsetX;
+                double cy = (p11.Y + p12.Y + p21.Y + p22.Y) / 4.0 + offsetY;
+                if (!string.IsNullOrEmpty(sf.Name))
+                    AppendEntity(tr, btr, MakeCenteredText(LayerYazi, 5, sf.Name.Trim(), new Point3d(cx, cy, 0)));
                 var coords = new[]
                 {
                     new Coordinate(p11.X, p11.Y),

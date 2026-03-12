@@ -26,8 +26,13 @@ namespace ST4AksCizCSharp
             bool inPolygonSection = false;
             bool inContinuousFoundations = false;
             bool inSlabFoundations = false;
+            bool inTieBeams = false;
+            bool inSingleFootings = false;
             string pendingContinuousName = null;
             string pendingSlabName = null;
+            string pendingTieBeamName = null;
+            string pendingSingleFootingName = null;
+            bool skipNextSingleFootingLine = false;
             bool skipNextContinuousLine = false;
             bool skipNextSlabLine = false;
             int? headerNX = null;
@@ -129,23 +134,24 @@ namespace ST4AksCizCSharp
                         ayId >= 2001 && ayId <= 2999)
                     {
                         int colType = 1;
-                        int off1 = -1;
-                        int off2 = -1;
+                        double offX = 0.0, offY = 0.0;
                         double ang = 0;
                         if (p.Count >= 1 && St4Text.TryParseInt(p[0], out int ct)) colType = ct;
-                        if (p.Count >= 4 && St4Text.TryParseInt(p[3], out int o1)) off1 = o1;
-                        if (p.Count >= 5 && St4Text.TryParseInt(p[4], out int o2)) off2 = o2;
+                        if (p.Count >= 4) St4Text.TryParseDouble(p[3], out offX);
+                        if (p.Count >= 5) St4Text.TryParseDouble(p[4], out offY);
                         if (p.Count >= 7 && St4Text.TryParseDouble(p[6], out double a)) ang = a;
                         colType = Math.Max(1, Math.Min(3, colType));
 
+                        int colNo = model.Columns.Count + 1;
                         model.Columns.Add(new ColumnAxisInfo
                         {
-                            ColumnNo = model.Columns.Count + 1,
+                            ColumnNo = colNo,
+                            ColumnId = 0,
                             ColumnType = colType,
                             AxisXId = axId,
                             AxisYId = ayId,
-                            OffsetXRaw = off1,
-                            OffsetYRaw = off2,
+                            OffsetXMm = offX,
+                            OffsetYMm = offY,
                             AngleDeg = ang
                         });
                     }
@@ -217,6 +223,7 @@ namespace ST4AksCizCSharp
                         St4Text.TryParseDouble(p[1], out double cw) &&
                         sectionId >= 100 && cw > 0)
                     {
+                        model.ColumnIdsFromColumnsData.Add(sectionId);
                         double ch = 0;
                         if (p.Count >= 3) St4Text.TryParseDouble(p[2], out ch);
                         if (ch > 0)
@@ -265,6 +272,26 @@ namespace ST4AksCizCSharp
                         model.Slabs.Add(new SlabInfo { SlabId = slabId, Axis1 = a1, Axis2 = a2, Axis3 = a3, Axis4 = a4 });
                         if (p.Count >= 25 && p[24] == "1")
                             model.StairSlabIds.Add(slabId);
+                        // Kolon konumu (100–999): tekil temel merkezi için; ilk X ve ilk Y aksı + offset
+                        if (slabId >= 100 && slabId <= 999)
+                        {
+                            int axisX = (a1 >= 1001 && a1 <= 1999) ? a1 : (a2 >= 1001 && a2 <= 1999 ? a2 : 0);
+                            int axisY = (a3 >= 2001 && a3 <= 2999) ? a3 : (a4 >= 2001 && a4 <= 2999 ? a4 : 0);
+                            if (axisX != 0 && axisY != 0)
+                            {
+                                double offX = 0.0, offY = 0.0;
+                                if (p.Count > 5) St4Text.TryParseDouble(p[5], out offX);
+                                if (p.Count > 6) St4Text.TryParseDouble(p[6], out offY);
+                                model.ColumnPositionBySectionId[slabId] = new ColumnPositionFromFloors
+                                {
+                                    AxisXId = axisX,
+                                    AxisYId = axisY,
+                                    OffsetXMm = offX,
+                                    OffsetYMm = offY,
+                                    AngleDeg = 0.0
+                                };
+                            }
+                        }
                     }
                     continue;
                 }
@@ -392,6 +419,7 @@ namespace ST4AksCizCSharp
                 {
                     inSlabFoundations = true;
                     inContinuousFoundations = false;
+                    inTieBeams = false;
                     pendingSlabName = null;
                     skipNextSlabLine = false;
                     continue;
@@ -399,6 +427,103 @@ namespace ST4AksCizCSharp
                 if (inSlabFoundations && u.StartsWith("/"))
                 {
                     inSlabFoundations = false;
+                    continue;
+                }
+                if (u.Contains("single footings"))
+                {
+                    inSingleFootings = true;
+                    inSlabFoundations = false;
+                    inTieBeams = false;
+                    pendingSingleFootingName = null;
+                    skipNextSingleFootingLine = false;
+                    continue;
+                }
+                if (inSingleFootings && u.StartsWith("/"))
+                {
+                    inSingleFootings = false;
+                    continue;
+                }
+                if (inSingleFootings)
+                {
+                    if (skipNextSingleFootingLine) { skipNextSingleFootingLine = false; continue; }
+                    var p = St4Text.SplitCsv(line);
+                    if (p.Count >= 8 &&
+                        St4Text.TryParseInt(p[0], out int colRef) &&
+                        colRef > 0 &&
+                        St4Text.TryParseDouble(p[1], out double sizeX) &&
+                        St4Text.TryParseDouble(p[2], out double sizeY) &&
+                        sizeX > 0 && sizeY > 0)
+                    {
+                        int alignX = 0, alignY = 0;
+                        double heightCm = 0.0, bottomLevelM = 0.0, angleDeg = 0.0;
+                        if (p.Count > 3) St4Text.TryParseInt(p[3], out alignX);
+                        if (p.Count > 4) St4Text.TryParseInt(p[4], out alignY);
+                        if (p.Count > 5) St4Text.TryParseDouble(p[5], out heightCm);
+                        if (p.Count > 6) St4Text.TryParseDouble(p[6], out bottomLevelM);
+                        if (p.Count > 7) St4Text.TryParseDouble(p[7], out angleDeg);
+                        model.SingleFootings.Add(new SingleFootingInfo
+                        {
+                            Name = pendingSingleFootingName ?? "",
+                            ColumnRef = colRef,
+                            SizeXCm = sizeX,
+                            SizeYCm = sizeY,
+                            AlignX = alignX,
+                            AlignY = alignY,
+                            HeightCm = heightCm,
+                            BottomLevelM = bottomLevelM,
+                            AngleDeg = angleDeg
+                        });
+                        pendingSingleFootingName = null;
+                        skipNextSingleFootingLine = true;
+                    }
+                    else if (line.Length > 0 && line.Trim().Length > 0 && (line.IndexOf(',') < 0 || line.Trim().Length < 8))
+                    {
+                        pendingSingleFootingName = line.Trim();
+                    }
+                    continue;
+                }
+                if (u.Contains("tie beams"))
+                {
+                    inTieBeams = true;
+                    inSlabFoundations = false;
+                    pendingTieBeamName = null;
+                    continue;
+                }
+                if (inTieBeams && u.StartsWith("/"))
+                {
+                    inTieBeams = false;
+                    continue;
+                }
+                if (inTieBeams)
+                {
+                    var p = St4Text.SplitCsv(line);
+                    if (p.Count >= 6 &&
+                        St4Text.TryParseInt(p[2], out int fixedAxis) &&
+                        St4Text.TryParseInt(p[3], out int startAxis) &&
+                        St4Text.TryParseInt(p[4], out int endAxis) &&
+                        fixedAxis >= 1001 && fixedAxis <= 2999 &&
+                        (startAxis >= 1001 && startAxis <= 2999) &&
+                        (endAxis >= 1001 && endAxis <= 2999))
+                    {
+                        double widthCm = 30.0;
+                        if (p.Count > 0 && St4Text.TryParseDouble(p[0], out double w0) && w0 > 0) widthCm = w0;
+                        int offsetRaw = 0;
+                        if (p.Count > 5) St4Text.TryParseInt(p[5], out offsetRaw);
+                        model.TieBeams.Add(new TieBeamInfo
+                        {
+                            Name = pendingTieBeamName ?? "",
+                            FixedAxisId = fixedAxis,
+                            StartAxisId = startAxis,
+                            EndAxisId = endAxis,
+                            WidthCm = widthCm,
+                            OffsetRaw = offsetRaw
+                        });
+                        pendingTieBeamName = null;
+                    }
+                    else if (line.Length > 0 && line.Trim().Length > 0 && (line.IndexOf(',') < 0 || line.Trim().Length < 8))
+                    {
+                        pendingTieBeamName = line.Trim();
+                    }
                     continue;
                 }
                 if (inSlabFoundations)
@@ -456,6 +581,19 @@ namespace ST4AksCizCSharp
             {
                 nxFinal = headerNX.Value;
                 nyFinal = headerNY.Value;
+                int maxX = 1000, maxY = 2000;
+                foreach (var pos in model.ColumnPositionBySectionId.Values)
+                {
+                    maxX = Math.Max(maxX, pos.AxisXId);
+                    maxY = Math.Max(maxY, pos.AxisYId);
+                }
+                int needX = Math.Max(0, maxX - 1000);
+                int needY = Math.Max(0, maxY - 2000);
+                if ((needX > nxFinal || needY > nyFinal) && allValues.Count >= needX + needY)
+                {
+                    nxFinal = needX;
+                    nyFinal = needY;
+                }
             }
             else
             {
@@ -466,11 +604,16 @@ namespace ST4AksCizCSharp
                     maxX = Math.Max(maxX, col.AxisXId);
                     maxY = Math.Max(maxY, col.AxisYId);
                 }
+                foreach (var pos in model.ColumnPositionBySectionId.Values)
+                {
+                    maxX = Math.Max(maxX, pos.AxisXId);
+                    maxY = Math.Max(maxY, pos.AxisYId);
+                }
                 nxFinal = Math.Max(0, maxX - 1000);
                 nyFinal = Math.Max(0, maxY - 2000);
             }
 
-            if (nxFinal > 0 && nyFinal > 0 && allValues.Count >= nxFinal)
+            if (nxFinal > 0 && nyFinal > 0 && allValues.Count >= nxFinal + nyFinal)
             {
                 for (int i = 0; i < allValues.Count; i++)
                 {
@@ -517,6 +660,14 @@ namespace ST4AksCizCSharp
             if (model.Floors.Count == 0)
             {
                 model.Floors.Add(new FloorInfo(1, "KAT 1", "1", 0.0));
+            }
+
+            for (int i = 0; i < model.Columns.Count && i < model.ColumnIdsFromColumnsData.Count; i++)
+                model.Columns[i].ColumnId = model.ColumnIdsFromColumnsData[i];
+            for (int i = model.ColumnIdsFromColumnsData.Count; i < model.Columns.Count; i++)
+            {
+                if (model.Columns[i].ColumnId == 0)
+                    model.Columns[i].ColumnId = 100 + (i + 1);
             }
 
             return model;

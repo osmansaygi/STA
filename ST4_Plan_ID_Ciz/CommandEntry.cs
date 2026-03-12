@@ -24,18 +24,6 @@ namespace ST4PlanIdCiz
         [CommandMethod("ST4PLANID")]
         public void Run()
         {
-            RunCore(usePlanId: true);
-        }
-
-        /// <summary>ST4AKS: Aks/kolon/kiris/perde/doseme (ID’siz). Tek DLL yuklendiginde cift komut cikmasin diye burada kayitli.</summary>
-        [CommandMethod("ST4AKS")]
-        public void RunSt4Aks()
-        {
-            RunCore(usePlanId: false);
-        }
-
-        private static void RunCore(bool usePlanId)
-        {
             var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
 
@@ -54,21 +42,13 @@ namespace ST4PlanIdCiz
             {
                 var parser = new St4Parser();
                 var model = parser.Parse(fileRes.StringResult);
-                if (usePlanId)
-                {
-                    var manager = new PlanIdDrawingManager(model);
-                    manager.Draw(db, ed);
-                }
-                else
-                {
-                    var manager = new St4DrawingManager(model);
-                    manager.Draw(db, ed);
-                }
+                var manager = new PlanIdDrawingManager(model);
+                manager.Draw(db, ed);
                 doc.SendStringToExecute("_.ZOOM _E ", true, false, false);
             }
             catch (System.Exception ex)
             {
-                ed.WriteMessage("\n{0} hata: {1}", usePlanId ? "ST4PLANID" : "ST4AKS", ex.Message);
+                ed.WriteMessage("\nST4PLANID hata: {0}", ex.Message);
             }
         }
     }

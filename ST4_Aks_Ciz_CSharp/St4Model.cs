@@ -25,11 +25,28 @@ namespace ST4AksCizCSharp
         public Dictionary<int, (double W, double H)> ColumnDimsBySectionId { get; } = new Dictionary<int, (double W, double H)>();
         public Dictionary<int, List<Point2d>> PolygonSections { get; } = new Dictionary<int, List<Point2d>>();
         public Dictionary<int, int> PolygonColumnSectionByPositionSectionId { get; } = new Dictionary<int, int>();
+        public List<int> ColumnIdsFromColumnsData { get; } = new List<int>();
+        public Dictionary<int, ColumnPositionFromFloors> ColumnPositionBySectionId { get; } = new Dictionary<int, ColumnPositionFromFloors>();
+        public List<SingleFootingInfo> SingleFootings { get; } = new List<SingleFootingInfo>();
 
         /// <summary>Sürekli temeller (Continuous foundations): sabit eksen üzerinde iki eksen arası şerit.</summary>
         public List<ContinuousFoundationInfo> ContinuousFoundations { get; } = new List<ContinuousFoundationInfo>();
         /// <summary>Radye temeller (Slab foundations): dört eksenle sınırlı dörtgen plak.</summary>
         public List<SlabFoundationInfo> SlabFoundations { get; } = new List<SlabFoundationInfo>();
+        /// <summary>Bağ kirişleri (Tie beams): temel planında kiriş mantığında çizilir; 1. satır: genişlik, 3–5 sabit/başlangıç/bitiş aks, 6. sütun kaçıklık (mm).</summary>
+        public List<TieBeamInfo> TieBeams { get; } = new List<TieBeamInfo>();
+    }
+
+    /// <summary>Bağ kirişi: /Tie beams/ bölümü; sabit aks üzerinde iki aks arası şerit, kaçıklık 6. sütun (mm).</summary>
+    public sealed class TieBeamInfo
+    {
+        public string Name { get; set; }
+        public int FixedAxisId { get; set; }
+        public int StartAxisId { get; set; }
+        public int EndAxisId { get; set; }
+        public double WidthCm { get; set; }
+        /// <summary>6. sütun: kaçıklık (mm), kiriş kurallarıyla aynı.</summary>
+        public int OffsetRaw { get; set; }
     }
 
     public sealed class ContinuousFoundationInfo
@@ -67,5 +84,27 @@ namespace ST4AksCizCSharp
         /// <summary>İki Y ekseni (2001..2999).</summary>
         public int AxisY1 { get; set; }
         public int AxisY2 { get; set; }
+    }
+
+    public sealed class ColumnPositionFromFloors
+    {
+        public int AxisXId { get; set; }
+        public int AxisYId { get; set; }
+        public double OffsetXMm { get; set; }
+        public double OffsetYMm { get; set; }
+        public double AngleDeg { get; set; }
+    }
+
+    public sealed class SingleFootingInfo
+    {
+        public string Name { get; set; }
+        public int ColumnRef { get; set; }
+        public double SizeXCm { get; set; }
+        public double SizeYCm { get; set; }
+        public int AlignX { get; set; }
+        public int AlignY { get; set; }
+        public double HeightCm { get; set; }
+        public double BottomLevelM { get; set; }
+        public double AngleDeg { get; set; }
     }
 }
