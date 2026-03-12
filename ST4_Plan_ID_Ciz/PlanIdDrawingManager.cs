@@ -1088,9 +1088,12 @@ namespace ST4PlanIdCiz
             var factory = new GeometryFactory();
             Geometry cfUnion = BuildContinuousFoundationsUnion(offsetX, offsetY);
             Geometry slabUnion = BuildSlabFoundationsUnion(offsetX, offsetY);
+            var hatiliPolygons = new List<Geometry>();
 
+            int tbIndex = 0;
             foreach (var tb in _model.TieBeams)
             {
+                tbIndex++;
                 if (!_axisService.TryIntersect(tb.FixedAxisId, tb.StartAxisId, out Point2d p1) ||
                     !_axisService.TryIntersect(tb.FixedAxisId, tb.EndAxisId, out Point2d p2))
                     continue;
@@ -1109,6 +1112,11 @@ namespace ST4PlanIdCiz
                 for (int i = 0; i < rect.Length; i++)
                     rect[i] = new Point2d(rect[i].X + offsetX, rect[i].Y + offsetY);
 
+                double cx = (rect[0].X + rect[1].X + rect[2].X + rect[3].X) / 4.0;
+                double cy = (rect[0].Y + rect[1].Y + rect[2].Y + rect[3].Y) / 4.0;
+                string label = !string.IsNullOrWhiteSpace(tb.Name) ? tb.Name.Trim() : ("TB" + tbIndex);
+                AppendEntity(tr, btr, MakeCenteredText(LayerYazi, 5, label, new Point3d(cx, cy, 0)));
+
                 var coords = new Coordinate[5];
                 for (int i = 0; i < 4; i++)
                     coords[i] = new Coordinate(rect[i].X, rect[i].Y);
@@ -1120,18 +1128,27 @@ namespace ST4PlanIdCiz
                 bool insideSlab = slabUnion != null && !slabUnion.IsEmpty && slabUnion.Contains(tbPoly);
                 string layer = (insideContinuous || insideSlab) ? layerHatili : layerTemel;
 
-                // TEMEL (BEYKENT) katmanındaki bağ kirişleri birleşik çizimde zaten var; sadece TEMEL HATILI olanları ayrı çiz.
-                if (layer == layerTemel) continue;
+                // TEMEL (BEYKENT) katmanındaki bağ kirişleri birleşik çizimde zaten var; TEMEL HATILI olanları topla, sonra tek Union ile çiz.
+                if (layer == layerHatili)
+                    hatiliPolygons.Add(tbPoly);
+            }
 
-                Geometry toDraw = tbPoly;
-                if (kolonPerdeUnion != null && !kolonPerdeUnion.IsEmpty)
+            // Bitişik TEMEL HATILI bağ kirişlerini Union ile birleştirip tek geometri olarak çiz (BK18-BK47 gibi).
+            if (hatiliPolygons.Count > 0)
+            {
+                Geometry unionHatili = hatiliPolygons.Count == 1 ? hatiliPolygons[0] : CascadedPolygonUnion.Union(hatiliPolygons);
+                if (unionHatili != null && !unionHatili.IsEmpty)
                 {
-                    var diff = tbPoly.Difference(kolonPerdeUnion);
-                    if (diff == null || diff.IsEmpty) continue;
-                    toDraw = diff;
+                    Geometry toDraw = unionHatili;
+                    if (kolonPerdeUnion != null && !kolonPerdeUnion.IsEmpty)
+                    {
+                        var diff = unionHatili.Difference(kolonPerdeUnion);
+                        if (diff != null && !diff.IsEmpty)
+                            toDraw = diff;
+                    }
+                    if (toDraw != null && !toDraw.IsEmpty)
+                        DrawGeometryRingsAsPolylines(tr, btr, toDraw, layerHatili);
                 }
-
-                DrawGeometryRingsAsPolylines(tr, btr, toDraw, layer);
             }
         }
 
