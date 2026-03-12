@@ -396,8 +396,22 @@ namespace ST4AksCizCSharp
                         double widthCm = 80.0;
                         if (p.Count > 2 && St4Text.TryParseDouble(p[2], out double w3) && w3 > 0) widthCm = w3;
                         double startExtCm = 0.0, endExtCm = 0.0;
-                        if (p.Count > 7) St4Text.TryParseDouble(p[7], out startExtCm);
-                        if (p.Count > 8) St4Text.TryParseDouble(p[8], out endExtCm);
+                        if (p.Count > 7)
+                        {
+                            var s8 = p[7].Trim();
+                            if (string.Equals(s8, "1", StringComparison.Ordinal) || string.Equals(s8, "1.0", StringComparison.Ordinal))
+                                startExtCm = 0.0;
+                            else
+                                St4Text.TryParseDouble(s8, out startExtCm);
+                        }
+                        if (p.Count > 8)
+                        {
+                            var s9 = p[8].Trim();
+                            if (string.Equals(s9, "1", StringComparison.Ordinal) || string.Equals(s9, "1.0", StringComparison.Ordinal))
+                                endExtCm = 0.0;
+                            else
+                                St4Text.TryParseDouble(s9, out endExtCm);
+                        }
                         int offsetRaw = 0;
                         if (p.Count > 9) St4Text.TryParseInt(p[9], out offsetRaw);
                         int ampatmanAlign = 0;

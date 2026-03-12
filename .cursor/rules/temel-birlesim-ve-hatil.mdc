@@ -1,0 +1,29 @@
+---
+description: Temel ve temel hatılı birleşim/çıkarma ve ince segment temizleme kuralları
+alwaysApply: true
+---
+
+# Temel Birleşim ve Hatıl Kuralları
+
+- **Birleşimler için NTS Union kullan**  
+  - Sürekli temeller, radye temeller, tekil temeller ve temel hatılları, mümkün olduğunda önce NetTopologySuite `Union` ile tek geometriye birleştirilsin.  
+  - Çizim her zaman bu birleşik geometri üzerinden yapılsın; aynı eleman ikinci kez raw polyline olarak çizilmesin.
+
+- **Kolon/perde ile kesişen hatılları Difference ile kes**  
+  - Kolon ve perdelerin alanını `BuildKolonPerdeUnion` benzeri bir union ile üret.  
+  - Temel hatıllarını çizerken bu union’dan `Difference` al; kolon/perde içinde kalan parçaları çizme.
+
+- **Saç teli (çok ince) alanları her zaman temizle**  
+  - Union/Difference sonrası çizilecek tüm poligon halkaları `DrawGeometryRingsAsPolylines` fonksiyonundan geçir.  
+  - Bu fonksiyon içinde şu kurallar ZORUNLUDUR:
+    - Neredeyse paralel (±1°) iki kenar arasındaki dik mesafe \< **2 mm** ise, bu iki kenarı birleştiren köşe noktaları listeden silinsin (AB–CD ve ring baş/son sarması dahil).  
+    - Tüm halkalarda **4 mm’den kısa** segmentler filtrelensin; bu eşik keyfi değiştirilmesin.
+
+- **Boşluk bırakma, buffer kullanma**  
+  - Kolon/perde veya diğer elemanları keserken `Buffer` ile şişirip/çekerek arada gözle fark edilir boşluk oluşturma.  
+  - İnce artık parçaları temizlemek için sadece yukarıdaki paralel–gap ve kısa-segment filtrelerini kullan.
+
+- **Yeni geometri işlemlerinde aynı filtreden geç**  
+  - Gelecekte eklenecek her yeni NTS `Union` veya `Difference` sonucu polyline çizimi, mümkünse doğrudan `DrawGeometryRingsAsPolylines` veya bire bir aynı mantığı kullanan bir yardımcı fonksiyon üzerinden yapılmalı.  
+  - Farklı bir yol izlenirse, ince saç teli alanların ve \<4 mm segmentlerin temizlendiğinden mutlaka emin ol.
+

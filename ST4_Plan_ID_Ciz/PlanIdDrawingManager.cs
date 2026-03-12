@@ -50,10 +50,13 @@ namespace ST4PlanIdCiz
                     DrawAxes(tr, btr, offsetX, offsetY, ext);
                     DrawColumns(tr, btr, firstFloor, offsetX, offsetY);
                     DrawWallsForFloor(tr, btr, firstFloor, offsetX, offsetY);
-                    DrawContinuousFoundations(tr, btr, offsetX, offsetY);
-                    DrawSlabFoundations(tr, btr, offsetX, offsetY);
-                    DrawTieBeams(tr, btr, offsetX, offsetY);
-                    DrawSingleFootings(tr, btr, firstFloor, offsetX, offsetY);
+                    Geometry temelUnion = BuildTemelUnion(offsetX, offsetY, firstFloor);
+                    Geometry kolonPerdeUnion = BuildKolonPerdeUnion(firstFloor, offsetX, offsetY);
+                    DrawTemelMerged(tr, btr, offsetX, offsetY, firstFloor, temelUnion);
+                    DrawContinuousFoundations(tr, btr, offsetX, offsetY, firstFloor, drawTemelOutline: false, temelUnion, kolonPerdeUnion);
+                    DrawSlabFoundations(tr, btr, offsetX, offsetY, drawTemelOutline: false);
+                    DrawTieBeams(tr, btr, firstFloor, offsetX, offsetY, kolonPerdeUnion);
+                    DrawSingleFootings(tr, btr, firstFloor, offsetX, offsetY, drawTemelOutline: false);
                     DrawFloorTitle(tr, btr, firstFloor, offsetX, offsetY, ext, isFoundationPlan: true);
                 }
 
@@ -100,7 +103,7 @@ namespace ST4PlanIdCiz
             EnsurePlanLayer(tr, db, LayerYazi, 4, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, LayerBaslik, 4, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, "TEMEL (BEYKENT)", 2, LineWeight.LineWeight040, useDashed: false);
-            EnsurePlanLayer(tr, db, "TEMEL AMPATMAN (BEYKENT)", 2, LineWeight.LineWeight040, useDashed: false);
+            EnsurePlanLayer(tr, db, "TEMEL AMPATMAN (BEYKENT)", 21, LineWeight.LineWeight040, useDashed: false);
             EnsurePlanLayer(tr, db, "TEMEL HATILI (BEYKENT)", 6, LineWeight.LineWeight030, useDashed: false);
         }
 
@@ -331,6 +334,103 @@ namespace ST4PlanIdCiz
             }
         }
 
+        /// <summary>Verilen kattaki kolon ve perdelerin birleşik alanını (NTS Geometry) döndürür.</summary>
+        private Geometry BuildKolonPerdeUnion(FloorInfo floor, double offsetX, double offsetY)
+        {
+            var factory = new GeometryFactory();
+            var geoms = new List<Geometry>();
+
+            // Kolonlar
+            foreach (var col in _model.Columns)
+            {
+                if (!_axisService.TryIntersect(col.AxisXId, col.AxisYId, out Point2d axisNode)) continue;
+                int sectionId = ResolveColumnSectionId(floor.FloorNo, col.ColumnNo);
+                int polygonSectionId = ResolvePolygonPositionSectionId(floor.FloorNo, col.ColumnNo);
+                if (col.ColumnType == 3)
+                {
+                    if (polygonSectionId <= 0 || !_model.PolygonColumnSectionByPositionSectionId.ContainsKey(polygonSectionId)) continue;
+                }
+                else
+                {
+                    if (sectionId <= 0 || !_model.ColumnDimsBySectionId.ContainsKey(sectionId)) continue;
+                }
+
+                var dim = sectionId > 0 && _model.ColumnDimsBySectionId.ContainsKey(sectionId)
+                    ? _model.ColumnDimsBySectionId[sectionId]
+                    : (W: 40.0, H: 40.0);
+                double hw = dim.W / 2.0;
+                double hh = dim.H / 2.0;
+                var offsetLocal = col.ColumnType == 2
+                    ? ComputeColumnOffsetCircle(col.OffsetXRaw, col.OffsetYRaw)
+                    : ComputeColumnOffset(col.OffsetXRaw, col.OffsetYRaw, hw, hh);
+                var offsetGlobal = Rotate(offsetLocal, col.AngleDeg);
+                var center = new Point2d(axisNode.X + offsetGlobal.X + offsetX, axisNode.Y + offsetGlobal.Y + offsetY);
+
+                Coordinate[] coords;
+                if (col.ColumnType == 2)
+                {
+                    // Daire kolonu: bağ kirişi kesmek için kare yaklaşık.
+                    var rect = BuildRect(center, hw, hh, col.AngleDeg);
+                    coords = new Coordinate[5];
+                    for (int i = 0; i < 4; i++) coords[i] = new Coordinate(rect[i].X, rect[i].Y);
+                    coords[4] = coords[0];
+                }
+                else if (col.ColumnType == 3 && TryGetPolygonColumn(polygonSectionId, center, col.AngleDeg, out var polyPoints))
+                {
+                    coords = new Coordinate[polyPoints.Length + 1];
+                    for (int i = 0; i < polyPoints.Length; i++)
+                        coords[i] = new Coordinate(polyPoints[i].X, polyPoints[i].Y);
+                    coords[polyPoints.Length] = coords[0];
+                }
+                else
+                {
+                    var rect = BuildRect(center, hw, hh, col.AngleDeg);
+                    coords = new Coordinate[5];
+                    for (int i = 0; i < 4; i++) coords[i] = new Coordinate(rect[i].X, rect[i].Y);
+                    coords[4] = coords[0];
+                }
+                geoms.Add(factory.CreatePolygon(factory.CreateLinearRing(coords)));
+            }
+
+            // Perdeler (duvarlar)
+            var beamsWall = MergeSameIdBeamsOnFloor(floor.FloorNo);
+            foreach (var beam in beamsWall)
+            {
+                if (beam.IsWallFlag != 1) continue;
+                if (!_axisService.TryIntersect(beam.FixedAxisId, beam.StartAxisId, out Point2d p1) ||
+                    !_axisService.TryIntersect(beam.FixedAxisId, beam.EndAxisId, out Point2d p2))
+                    continue;
+                var a = new Point2d(p1.X + offsetX, p1.Y + offsetY);
+                var b = new Point2d(p2.X + offsetX, p2.Y + offsetY);
+                NormalizeBeamDirection(beam.FixedAxisId, ref a, ref b);
+                Vector2d dir = b - a;
+                if (dir.Length <= 1e-9) continue;
+                Vector2d u = dir.GetNormal();
+                Vector2d perp = new Vector2d(-u.Y, u.X);
+                double hw = beam.WidthCm / 2.0;
+                ComputeBeamEdgeOffsets(beam.OffsetRaw, hw, out double upperEdge, out double lowerEdge);
+                Point2d q1 = a + perp.MultiplyBy(upperEdge);
+                Point2d q2 = b + perp.MultiplyBy(upperEdge);
+                Point2d q3 = b + perp.MultiplyBy(lowerEdge);
+                Point2d q4 = a + perp.MultiplyBy(lowerEdge);
+
+                var coordsWall = new[]
+                {
+                    new Coordinate(q1.X, q1.Y),
+                    new Coordinate(q2.X, q2.Y),
+                    new Coordinate(q3.X, q3.Y),
+                    new Coordinate(q4.X, q4.Y),
+                    new Coordinate(q1.X, q1.Y)
+                };
+                geoms.Add(factory.CreatePolygon(factory.CreateLinearRing(coordsWall)));
+            }
+
+            if (geoms.Count == 0) return null;
+            return geoms.Count == 1
+                ? geoms[0]
+                : NetTopologySuite.Operation.Union.CascadedPolygonUnion.Union(geoms);
+        }
+
         private void DrawBeamsAndWalls(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY)
         {
             var beams = MergeSameIdBeamsOnFloor(floor.FloorNo);
@@ -469,9 +569,305 @@ namespace ST4PlanIdCiz
             return polygons.Count == 1 ? polygons[0] : NetTopologySuite.Operation.Union.CascadedPolygonUnion.Union(polygons);
         }
 
-        private void DrawContinuousFoundations(Transaction tr, BlockTableRecord btr, double offsetX, double offsetY)
+        /// <summary>Sürekli + radye + tekil temeller ve temel hatıllarının birleşimi (iç boşluklar korunur).</summary>
+        private Geometry BuildTemelUnion(double offsetX, double offsetY, FloorInfo floorForSingleFootings)
+        {
+            var factory = new GeometryFactory();
+            Geometry result = null;
+
+            Geometry cf = BuildContinuousFoundationsUnion(offsetX, offsetY);
+            if (cf != null && !cf.IsEmpty) result = cf;
+
+            Geometry slab = BuildSlabFoundationsUnion(offsetX, offsetY);
+            if (slab != null && !slab.IsEmpty) result = result == null ? slab : result.Union(slab);
+
+            foreach (var sf in _model.SingleFootings)
+            {
+                if (!TryGetSingleFootingRect(sf, floorForSingleFootings, offsetX, offsetY, out Point2d[] rect)) continue;
+                var coords = new Coordinate[5];
+                for (int i = 0; i < 4; i++) coords[i] = new Coordinate(rect[i].X, rect[i].Y);
+                coords[4] = coords[0];
+                var poly = factory.CreatePolygon(factory.CreateLinearRing(coords));
+                result = result == null ? poly : result.Union(poly);
+            }
+
+            // Bağ kirişleri (temel hatılları) de birleşime dahil edilir.
+            foreach (var cfInfo in _model.ContinuousFoundations)
+            {
+                if (cfInfo.TieBeamWidthCm <= 0) continue;
+                if (!_axisService.TryIntersect(cfInfo.FixedAxisId, cfInfo.StartAxisId, out Point2d p1) ||
+                    !_axisService.TryIntersect(cfInfo.FixedAxisId, cfInfo.EndAxisId, out Point2d p2))
+                    continue;
+                Vector2d along = (p2 - p1).GetNormal();
+                double len = p1.GetDistanceTo(p2);
+                if (len <= 1e-9) continue;
+                Vector2d perp = new Vector2d(-along.Y, along.X);
+                ComputeTieBeamEdgeOffsets(cfInfo.FixedAxisId, cfInfo.TieBeamOffsetRaw, cfInfo.TieBeamWidthCm / 2.0, out double hu, out double hl);
+                Point2d[] hatilRect = new[]
+                {
+                    p1 + perp.MultiplyBy(hu),
+                    p2 + perp.MultiplyBy(hu),
+                    p2 + perp.MultiplyBy(hl),
+                    p1 + perp.MultiplyBy(hl)
+                };
+                var hatilCoords = new Coordinate[5];
+                for (int i = 0; i < 4; i++)
+                    hatilCoords[i] = new Coordinate(hatilRect[i].X + offsetX, hatilRect[i].Y + offsetY);
+                hatilCoords[4] = hatilCoords[0];
+                var hatilPoly = factory.CreatePolygon(factory.CreateLinearRing(hatilCoords));
+                result = result == null ? hatilPoly : result.Union(hatilPoly);
+            }
+
+            // Bağımsız bağ kirişleri (TieBeams) — TEMEL (BEYKENT) katmanındakiler birleşime dahil.
+            foreach (var tb in _model.TieBeams)
+            {
+                if (!_axisService.TryIntersect(tb.FixedAxisId, tb.StartAxisId, out Point2d p1) ||
+                    !_axisService.TryIntersect(tb.FixedAxisId, tb.EndAxisId, out Point2d p2))
+                    continue;
+                Vector2d along = (p2 - p1).GetNormal();
+                if (p1.GetDistanceTo(p2) <= 1e-9) continue;
+                int offsetForBeam = (tb.FixedAxisId >= 1001 && tb.FixedAxisId <= 1999) ? -tb.OffsetRaw : tb.OffsetRaw;
+                ComputeBeamEdgeOffsets(offsetForBeam, tb.WidthCm / 2.0, out double upperEdge, out double lowerEdge);
+                Vector2d perp = new Vector2d(-along.Y, along.X);
+                Point2d[] rect = new[]
+                {
+                    p1 + perp.MultiplyBy(upperEdge),
+                    p2 + perp.MultiplyBy(upperEdge),
+                    p2 + perp.MultiplyBy(lowerEdge),
+                    p1 + perp.MultiplyBy(lowerEdge)
+                };
+                var coords = new Coordinate[5];
+                for (int i = 0; i < 4; i++)
+                    coords[i] = new Coordinate(rect[i].X + offsetX, rect[i].Y + offsetY);
+                coords[4] = coords[0];
+                var tbPoly = factory.CreatePolygon(factory.CreateLinearRing(coords));
+                result = result == null ? tbPoly : result.Union(tbPoly);
+            }
+
+            return result;
+        }
+
+        private bool TryGetSingleFootingRect(SingleFootingInfo sf, FloorInfo floor, double offsetX, double offsetY, out Point2d[] rect)
+        {
+            rect = null;
+            const double defaultHalfCm = 20.0;
+            int positionIndex = sf.ColumnRef - 100;
+            if (positionIndex < 1 || positionIndex > _model.ColumnAxisPositions.Count) return false;
+            var pos = _model.ColumnAxisPositions[positionIndex - 1];
+            if (!_axisService.TryIntersect(pos.AxisXId, pos.AxisYId, out Point2d axisNode)) return false;
+            int colNo = positionIndex;
+            int sectionId = ResolveColumnSectionId(floor.FloorNo, colNo);
+            double hw = defaultHalfCm, hh = defaultHalfCm;
+            if (sectionId > 0 && _model.ColumnDimsBySectionId.TryGetValue(sectionId, out var dim)) { hw = dim.W / 2.0; hh = dim.H / 2.0; }
+            var offsetLocal = ComputeColumnOffset(pos.OffsetXRaw, pos.OffsetYRaw, hw, hh);
+            var offsetGlobal = Rotate(offsetLocal, pos.AngleDeg);
+            var columnCenter = new Point2d(axisNode.X + offsetGlobal.X, axisNode.Y + offsetGlobal.Y);
+            double halfX = sf.SizeXCm / 2.0, halfY = sf.SizeYCm / 2.0;
+            double cx = (sf.AlignX == 1) ? 1.0 : (sf.AlignX == 2) ? -1.0 : 0.0;
+            double cy = (sf.AlignY == 1) ? -1.0 : (sf.AlignY == 2) ? 1.0 : 0.0;
+            Point2d footingCenter;
+            bool angledFooting = Math.Abs(sf.AngleDeg) > 0.01 || Math.Abs(pos.AngleDeg) > 0.01;
+            if (angledFooting)
+            {
+                double angleRad = sf.AngleDeg * Math.PI / 180.0;
+                Vector2d uFootX = new Vector2d(Math.Cos(angleRad), Math.Sin(angleRad));
+                Vector2d uFootY = new Vector2d(-Math.Sin(angleRad), Math.Cos(angleRad));
+                double[] corners_x = { -hw, hw, hw, -hw }, corners_y = { -hh, -hh, hh, hh };
+                double minUx = double.MaxValue, maxUx = double.MinValue, minUy = double.MaxValue, maxUy = double.MinValue;
+                for (int i = 0; i < 4; i++)
+                {
+                    Vector2d v = Rotate(new Vector2d(corners_x[i], corners_y[i]), pos.AngleDeg);
+                    double px = columnCenter.X + v.X, py = columnCenter.Y + v.Y;
+                    double dux = px * uFootX.X + py * uFootX.Y, duy = px * uFootY.X + py * uFootY.Y;
+                    if (dux < minUx) minUx = dux; if (dux > maxUx) maxUx = dux;
+                    if (duy < minUy) minUy = duy; if (duy > maxUy) maxUy = duy;
+                }
+                double k1 = (sf.AlignX == 1) ? (maxUx - halfX) : (sf.AlignX == 2) ? (minUx + halfX) : (columnCenter.X * uFootX.X + columnCenter.Y * uFootX.Y);
+                double k2 = (sf.AlignY == 1) ? (minUy + halfY) : (sf.AlignY == 2) ? (maxUy - halfY) : (columnCenter.X * uFootY.X + columnCenter.Y * uFootY.Y);
+                footingCenter = new Point2d(k1 * uFootX.X + k2 * uFootY.X + offsetX, k1 * uFootX.Y + k2 * uFootY.Y + offsetY);
+            }
+            else
+            {
+                Vector2d columnVec = new Vector2d(cx * hw, cy * hh);
+                Vector2d footingVec = new Vector2d(cx * halfX, cy * halfY);
+                Vector2d alignGlobal = Rotate(columnVec, pos.AngleDeg) - Rotate(footingVec, sf.AngleDeg);
+                footingCenter = new Point2d(columnCenter.X + alignGlobal.X + offsetX, columnCenter.Y + alignGlobal.Y + offsetY);
+            }
+            rect = BuildRect(footingCenter, halfX, halfY, sf.AngleDeg);
+            return true;
+        }
+
+        private void DrawTemelMerged(Transaction tr, BlockTableRecord btr, double offsetX, double offsetY, FloorInfo floor, Geometry temelUnion = null)
         {
             const string layer = "TEMEL (BEYKENT)";
+            Geometry unionResult = temelUnion ?? BuildTemelUnion(offsetX, offsetY, floor);
+            if (unionResult == null || unionResult.IsEmpty) return;
+            DrawGeometryRingsAsPolylines(tr, btr, unionResult, layer);
+        }
+
+        /// <summary>NTS Geometry (Polygon/MultiPolygon) dış ve iç halkalarını verilen katmanda polyline olarak çizer; 4 mm'den kısa segmentleri atlar.</summary>
+        private static void DrawGeometryRingsAsPolylines(Transaction tr, BlockTableRecord btr, Geometry geom, string layer)
+        {
+            if (geom == null || geom.IsEmpty) return;
+            const double minSegmentLen = 0.4; // 4 mm = 0.4 cm (çizim birimi cm)
+            const double parallelGapTol = 0.2; // 2 mm: neredeyse paralel iki kenar arasındaki mesafe
+            var ringsToDraw = new List<Coordinate[]>();
+            if (geom is Polygon poly)
+            {
+                ringsToDraw.Add(poly.ExteriorRing.Coordinates);
+                for (int h = 0; h < poly.NumInteriorRings; h++)
+                    ringsToDraw.Add(poly.InteriorRings[h].Coordinates);
+            }
+            else if (geom is MultiPolygon mp)
+            {
+                for (int i = 0; i < mp.NumGeometries; i++)
+                {
+                    var p = (Polygon)mp.GetGeometryN(i);
+                    ringsToDraw.Add(p.ExteriorRing.Coordinates);
+                    for (int h = 0; h < p.NumInteriorRings; h++)
+                        ringsToDraw.Add(p.InteriorRings[h].Coordinates);
+                }
+            }
+            else if (geom is GeometryCollection gc)
+            {
+                for (int i = 0; i < gc.NumGeometries; i++)
+                {
+                    if (gc.GetGeometryN(i) is Polygon p2)
+                    {
+                        ringsToDraw.Add(p2.ExteriorRing.Coordinates);
+                        for (int h = 0; h < p2.NumInteriorRings; h++)
+                            ringsToDraw.Add(p2.InteriorRings[h].Coordinates);
+                    }
+                }
+            }
+            foreach (var coords in ringsToDraw)
+            {
+                if (coords == null || coords.Length < 3) continue;
+                int n = coords.Length;
+                if (n > 1 && coords[0].Equals2D(coords[n - 1])) n--;
+
+                var pts = new List<Point2d>(n);
+                for (int i = 0; i < n; i++)
+                    pts.Add(new Point2d(coords[i].X, coords[i].Y));
+
+                // 1) Neredeyse paralel iki segmentin arasındaki çok ince kapalı alanı oluşturan
+                // köşe noktalarını temizle: A-B-C-D dizisinde AB ve CD neredeyse paralel
+                // ve aralarındaki mesafe 2 mm'den küçükse B ve C noktalarını sil.
+                bool removed;
+                int guard = 0;
+                do
+                {
+                    removed = false;
+                    if (pts.Count < 4) break;
+
+                    // 1a) Doğrusal tarama (liste sonunu sarmadan).
+                    for (int i = 1; i < pts.Count - 2; i++)
+                    {
+                        var a = pts[i - 1];
+                        var b = pts[i];
+                        var c = pts[i + 1];
+                        var d = pts[i + 2];
+
+                        Vector2d v1 = b - a;
+                        Vector2d v2 = d - c;
+                        double len1 = v1.Length;
+                        double len2 = v2.Length;
+                        if (len1 < 1e-6 || len2 < 1e-6) continue;
+
+                        double dot = (v1.X * v2.X + v1.Y * v2.Y) / (len1 * len2);
+                        if (dot > 1.0) dot = 1.0;
+                        if (dot < -1.0) dot = -1.0;
+                        double angle = Math.Acos(dot); // radyan
+                        // Neredeyse paralel: açı ~0 veya ~pi (1° tolerans)
+                        double tolRad = 1.0 * Math.PI / 180.0;
+                        if (angle > tolRad && Math.Abs(Math.PI - angle) > tolRad)
+                            continue;
+
+                        // AB doğrusu ile BC orta noktasının arasındaki dik mesafe: iki paralel kenar aralığı için iyi bir yaklaşım.
+                        var midBC = new Point2d((b.X + c.X) * 0.5, (b.Y + c.Y) * 0.5);
+                        double num = Math.Abs((midBC.X - a.X) * (b.Y - a.Y) - (midBC.Y - a.Y) * (b.X - a.X));
+                        double gap = num / len1;
+                        if (gap < parallelGapTol)
+                        {
+                            pts.RemoveAt(i + 1); // C
+                            pts.RemoveAt(i);     // B
+                            removed = true;
+                            break;
+                        }
+                    }
+
+                    // 1b) Eğer hâlâ silme olmadıysa, ring sonu-başı arasında saran ABCD dörtlülerini kontrol et.
+                    if (!removed && pts.Count >= 4)
+                    {
+                        int m = pts.Count;
+                        for (int i = 0; i < m; i++)
+                        {
+                            int ia = (i - 1 + m) % m;
+                            int ib = i;
+                            int ic = (i + 1) % m;
+                            int id = (i + 2) % m;
+
+                            var a = pts[ia];
+                            var b = pts[ib];
+                            var c = pts[ic];
+                            var d = pts[id];
+
+                            Vector2d v1 = b - a;
+                            Vector2d v2 = d - c;
+                            double len1 = v1.Length;
+                            double len2 = v2.Length;
+                            if (len1 < 1e-6 || len2 < 1e-6) continue;
+
+                            double dot = (v1.X * v2.X + v1.Y * v2.Y) / (len1 * len2);
+                            if (dot > 1.0) dot = 1.0;
+                            if (dot < -1.0) dot = -1.0;
+                            double angle = Math.Acos(dot);
+                            double tolRad = 1.0 * Math.PI / 180.0;
+                            if (angle > tolRad && Math.Abs(Math.PI - angle) > tolRad)
+                                continue;
+
+                            var midBC = new Point2d((b.X + c.X) * 0.5, (b.Y + c.Y) * 0.5);
+                            double num = Math.Abs((midBC.X - a.X) * (b.Y - a.Y) - (midBC.Y - a.Y) * (b.X - a.X));
+                            double gap = num / len1;
+                            if (gap < parallelGapTol)
+                            {
+                                // Dikkat: dairesel listede indeksleri küçükten büyüğe sil.
+                                int first = Math.Min(ib, ic);
+                                int second = Math.Max(ib, ic);
+                                pts.RemoveAt(second);
+                                pts.RemoveAt(first);
+                                removed = true;
+                                break;
+                            }
+                        }
+                    }
+                } while (removed && ++guard < 10);
+
+                // 2) Çok kısa segmentleri filtrele.
+                var filtered = new List<Point2d>(pts.Count);
+                for (int i = 0; i < pts.Count; i++)
+                {
+                    var p = pts[i];
+                    if (filtered.Count == 0 ||
+                        filtered[filtered.Count - 1].GetDistanceTo(p) >= minSegmentLen)
+                    {
+                        filtered.Add(p);
+                    }
+                }
+                if (filtered.Count < 2) continue;
+
+                var pl = ToPolyline(filtered.ToArray(), true);
+                pl.Layer = layer;
+                AppendEntity(tr, btr, pl);
+            }
+        }
+
+        private void DrawContinuousFoundations(Transaction tr, BlockTableRecord btr, double offsetX, double offsetY, FloorInfo floor, bool drawTemelOutline = true, Geometry temelUnion = null, Geometry kolonPerdeUnion = null)
+        {
+            const string layer = "TEMEL (BEYKENT)";
+            const string layerAmpatman = "TEMEL AMPATMAN (BEYKENT)";
+            var factory = new GeometryFactory();
+            var ampatmanPolygons = new List<Geometry>();
             foreach (var cf in _model.ContinuousFoundations)
             {
                 if (!_axisService.TryIntersect(cf.FixedAxisId, cf.StartAxisId, out Point2d p1) ||
@@ -495,9 +891,12 @@ namespace ST4PlanIdCiz
                 };
                 for (int i = 0; i < rect.Length; i++)
                     rect[i] = new Point2d(rect[i].X + offsetX, rect[i].Y + offsetY);
-                var pl = ToPolyline(rect, true);
-                pl.Layer = layer;
-                AppendEntity(tr, btr, pl);
+                if (drawTemelOutline)
+                {
+                    var pl = ToPolyline(rect, true);
+                    pl.Layer = layer;
+                    AppendEntity(tr, btr, pl);
+                }
 
                 if (!string.IsNullOrEmpty(cf.Name))
                 {
@@ -546,9 +945,11 @@ namespace ST4PlanIdCiz
                     }
                     for (int i = 0; i < ampRect.Length; i++)
                         ampRect[i] = new Point2d(ampRect[i].X + offsetX, ampRect[i].Y + offsetY);
-                    var plAmp = ToPolyline(ampRect, true);
-                    plAmp.Layer = "TEMEL AMPATMAN (BEYKENT)";
-                    AppendEntity(tr, btr, plAmp);
+                    var ampCoords = new Coordinate[5];
+                    for (int i = 0; i < 4; i++) ampCoords[i] = new Coordinate(ampRect[i].X, ampRect[i].Y);
+                    ampCoords[4] = ampCoords[0];
+                    var ampPoly = factory.CreatePolygon(factory.CreateLinearRing(ampCoords));
+                    ampatmanPolygons.Add(ampPoly);
                 }
 
                 if (cf.TieBeamWidthCm > 0)
@@ -563,15 +964,42 @@ namespace ST4PlanIdCiz
                     };
                     for (int i = 0; i < hatilRect.Length; i++)
                         hatilRect[i] = new Point2d(hatilRect[i].X + offsetX, hatilRect[i].Y + offsetY);
-                    var plHatil = ToPolyline(hatilRect, true);
-                    plHatil.Layer = "TEMEL HATILI (BEYKENT)";
-                    AppendEntity(tr, btr, plHatil);
+                    var hatilCoords = new Coordinate[5];
+                    for (int i = 0; i < 4; i++)
+                        hatilCoords[i] = new Coordinate(hatilRect[i].X, hatilRect[i].Y);
+                    hatilCoords[4] = hatilCoords[0];
+                    var hatilPoly = factory.CreatePolygon(factory.CreateLinearRing(hatilCoords));
+
+                    Geometry toDrawHatil = hatilPoly;
+                    if (kolonPerdeUnion != null && !kolonPerdeUnion.IsEmpty)
+                    {
+                        var diffH = hatilPoly.Difference(kolonPerdeUnion);
+                        if (diffH == null || diffH.IsEmpty) continue;
+                        toDrawHatil = diffH;
+                    }
+                    DrawGeometryRingsAsPolylines(tr, btr, toDrawHatil, "TEMEL HATILI (BEYKENT)");
+                }
+            }
+
+            // Tüm ampatmanları birleştir, birleşik temel içinde kalan kısımları çıkar, tek çizim olarak çiz.
+            if (ampatmanPolygons.Count > 0)
+            {
+                Geometry ampatmanUnion = ampatmanPolygons.Count == 1
+                    ? ampatmanPolygons[0]
+                    : NetTopologySuite.Operation.Union.CascadedPolygonUnion.Union(ampatmanPolygons);
+                if (ampatmanUnion != null && !ampatmanUnion.IsEmpty)
+                {
+                    Geometry toDraw = (temelUnion != null && !temelUnion.IsEmpty)
+                        ? ampatmanUnion.Difference(temelUnion)
+                        : ampatmanUnion;
+                    if (toDraw != null && !toDraw.IsEmpty)
+                        DrawGeometryRingsAsPolylines(tr, btr, toDraw, layerAmpatman);
                 }
             }
         }
 
         /// <summary>Tekil temelleri kolon listesiyle ilişkilendirmeden çizer: konum Column axis data satır indeksi (ColumnRef-100), boyutlar Single footings'ten. Kolon boyutu aynı pozisyondaki kolon kesitinden (ResolveColumnSectionId) alınır; yoksa 20 cm.</summary>
-        private void DrawSingleFootings(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY)
+        private void DrawSingleFootings(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY, bool drawTemelOutline = true)
         {
             const string layer = "TEMEL (BEYKENT)";
             const double defaultHalfCm = 20.0;
@@ -642,15 +1070,18 @@ namespace ST4PlanIdCiz
                 }
 
                 var rect = BuildRect(footingCenter, halfX, halfY, sf.AngleDeg);
-                var pl = ToPolyline(rect, true);
-                pl.Layer = layer;
-                AppendEntity(tr, btr, pl);
+                if (drawTemelOutline)
+                {
+                    var pl = ToPolyline(rect, true);
+                    pl.Layer = layer;
+                    AppendEntity(tr, btr, pl);
+                }
                 if (!string.IsNullOrEmpty(sf.Name))
                     AppendEntity(tr, btr, MakeCenteredText(LayerYazi, 5, sf.Name.Trim(), new Point3d(footingCenter.X, footingCenter.Y, 0)));
             }
         }
 
-        private void DrawTieBeams(Transaction tr, BlockTableRecord btr, double offsetX, double offsetY)
+        private void DrawTieBeams(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY, Geometry kolonPerdeUnion = null)
         {
             const string layerTemel = "TEMEL (BEYKENT)";
             const string layerHatili = "TEMEL HATILI (BEYKENT)";
@@ -689,13 +1120,22 @@ namespace ST4PlanIdCiz
                 bool insideSlab = slabUnion != null && !slabUnion.IsEmpty && slabUnion.Contains(tbPoly);
                 string layer = (insideContinuous || insideSlab) ? layerHatili : layerTemel;
 
-                var pl = ToPolyline(rect, true);
-                pl.Layer = layer;
-                AppendEntity(tr, btr, pl);
+                // TEMEL (BEYKENT) katmanındaki bağ kirişleri birleşik çizimde zaten var; sadece TEMEL HATILI olanları ayrı çiz.
+                if (layer == layerTemel) continue;
+
+                Geometry toDraw = tbPoly;
+                if (kolonPerdeUnion != null && !kolonPerdeUnion.IsEmpty)
+                {
+                    var diff = tbPoly.Difference(kolonPerdeUnion);
+                    if (diff == null || diff.IsEmpty) continue;
+                    toDraw = diff;
+                }
+
+                DrawGeometryRingsAsPolylines(tr, btr, toDraw, layer);
             }
         }
 
-        private void DrawSlabFoundations(Transaction tr, BlockTableRecord btr, double offsetX, double offsetY)
+        private void DrawSlabFoundations(Transaction tr, BlockTableRecord btr, double offsetX, double offsetY, bool drawTemelOutline = true)
         {
             const string layer = "TEMEL (BEYKENT)";
             var factory = new GeometryFactory();
@@ -723,6 +1163,7 @@ namespace ST4PlanIdCiz
                 polygons.Add(factory.CreatePolygon(ring));
             }
             if (polygons.Count == 0) return;
+            if (!drawTemelOutline) return;
             Geometry unionResult = polygons.Count == 1 ? polygons[0] : CascadedPolygonUnion.Union(polygons);
             if (unionResult == null || unionResult.IsEmpty) return;
             var toDraw = new List<Coordinate[]>();
