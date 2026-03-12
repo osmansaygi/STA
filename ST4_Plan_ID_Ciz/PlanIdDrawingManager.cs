@@ -39,7 +39,7 @@ namespace ST4PlanIdCiz
                 double floorWidth = (ext.Xmax - ext.Xmin) + 80.0;
                 double floorGap = 1000.0;
 
-                bool hasFoundations = _model.ContinuousFoundations.Count > 0 || _model.SlabFoundations.Count > 0 || _model.TieBeams.Count > 0;
+                bool hasFoundations = _model.ContinuousFoundations.Count > 0 || _model.SlabFoundations.Count > 0 || _model.TieBeams.Count > 0 || _model.SingleFootings.Count > 0;
                 int planStartIndex = hasFoundations ? 1 : 0;
 
                 if (hasFoundations && _model.Floors.Count > 0)
@@ -53,6 +53,7 @@ namespace ST4PlanIdCiz
                     DrawContinuousFoundations(tr, btr, offsetX, offsetY);
                     DrawSlabFoundations(tr, btr, offsetX, offsetY);
                     DrawTieBeams(tr, btr, offsetX, offsetY);
+                    DrawSingleFootings(tr, btr, firstFloor, offsetX, offsetY);
                     DrawFloorTitle(tr, btr, firstFloor, offsetX, offsetY, ext, isFoundationPlan: true);
                 }
 
@@ -74,7 +75,7 @@ namespace ST4PlanIdCiz
                 ed.WriteMessage(
                     "\nST4PLANID: {0} kat, akslar, kolonlar (poligon dahil), kirişler, perdeler ve döşemeler{1} ID'leriyle cizildi. (cm)",
                     _model.Floors.Count,
-                    hasFoundations ? string.Format(", temel plani (surekli: {0}, radye: {1}, bag kirisi: {2})", _model.ContinuousFoundations.Count, _model.SlabFoundations.Count, _model.TieBeams.Count) : "");
+                    hasFoundations ? string.Format(", temel plani (surekli: {0}, radye: {1}, bag kirisi: {2}, tekil: {3})", _model.ContinuousFoundations.Count, _model.SlabFoundations.Count, _model.TieBeams.Count, _model.SingleFootings.Count) : "");
             }
         }
 
@@ -406,6 +407,68 @@ namespace ST4PlanIdCiz
             }
         }
 
+        /// <summary>Sürekli temellerin tüm dikdörtgenlerinin birleşimi (offset uygulanmış); bağ kirişi içinde mi kontrolü için.</summary>
+        private Geometry BuildContinuousFoundationsUnion(double offsetX, double offsetY)
+        {
+            var factory = new GeometryFactory();
+            var polygons = new List<Geometry>();
+            foreach (var cf in _model.ContinuousFoundations)
+            {
+                if (!_axisService.TryIntersect(cf.FixedAxisId, cf.StartAxisId, out Point2d p1) ||
+                    !_axisService.TryIntersect(cf.FixedAxisId, cf.EndAxisId, out Point2d p2))
+                    continue;
+                Vector2d along = (p2 - p1).GetNormal();
+                if (p1.GetDistanceTo(p2) <= 1e-9) continue;
+                Point2d p1Eff = p1 - along.MultiplyBy(cf.StartExtensionCm);
+                Point2d p2Eff = p2 + along.MultiplyBy(cf.EndExtensionCm);
+                int offsetForBeam = (cf.FixedAxisId >= 1001 && cf.FixedAxisId <= 1999) ? -cf.OffsetRaw : cf.OffsetRaw;
+                ComputeBeamEdgeOffsets(offsetForBeam, cf.WidthCm / 2.0, out double upperEdge, out double lowerEdge);
+                Vector2d perp = new Vector2d(-along.Y, along.X);
+                Point2d[] r = new[]
+                {
+                    p1Eff + perp.MultiplyBy(upperEdge),
+                    p2Eff + perp.MultiplyBy(upperEdge),
+                    p2Eff + perp.MultiplyBy(lowerEdge),
+                    p1Eff + perp.MultiplyBy(lowerEdge)
+                };
+                var coords = new Coordinate[5];
+                for (int i = 0; i < 4; i++)
+                    coords[i] = new Coordinate(r[i].X + offsetX, r[i].Y + offsetY);
+                coords[4] = coords[0];
+                var ring = factory.CreateLinearRing(coords);
+                polygons.Add(factory.CreatePolygon(ring));
+            }
+            if (polygons.Count == 0) return null;
+            return polygons.Count == 1 ? polygons[0] : NetTopologySuite.Operation.Union.CascadedPolygonUnion.Union(polygons);
+        }
+
+        /// <summary>Radye temellerin (slab foundations) birleşik alanı (offset uygulanmış); bağ kirişi içinde mi kontrolü için.</summary>
+        private Geometry BuildSlabFoundationsUnion(double offsetX, double offsetY)
+        {
+            var factory = new GeometryFactory();
+            var polygons = new List<Geometry>();
+            foreach (var sf in _model.SlabFoundations)
+            {
+                if (!_axisService.TryIntersect(sf.AxisX1, sf.AxisY1, out Point2d p11) ||
+                    !_axisService.TryIntersect(sf.AxisX1, sf.AxisY2, out Point2d p12) ||
+                    !_axisService.TryIntersect(sf.AxisX2, sf.AxisY1, out Point2d p21) ||
+                    !_axisService.TryIntersect(sf.AxisX2, sf.AxisY2, out Point2d p22))
+                    continue;
+                var coords = new[]
+                {
+                    new Coordinate(p11.X + offsetX, p11.Y + offsetY),
+                    new Coordinate(p21.X + offsetX, p21.Y + offsetY),
+                    new Coordinate(p22.X + offsetX, p22.Y + offsetY),
+                    new Coordinate(p12.X + offsetX, p12.Y + offsetY),
+                    new Coordinate(p11.X + offsetX, p11.Y + offsetY)
+                };
+                var ring = factory.CreateLinearRing(coords);
+                polygons.Add(factory.CreatePolygon(ring));
+            }
+            if (polygons.Count == 0) return null;
+            return polygons.Count == 1 ? polygons[0] : NetTopologySuite.Operation.Union.CascadedPolygonUnion.Union(polygons);
+        }
+
         private void DrawContinuousFoundations(Transaction tr, BlockTableRecord btr, double offsetX, double offsetY)
         {
             const string layer = "TEMEL (BEYKENT)";
@@ -507,9 +570,94 @@ namespace ST4PlanIdCiz
             }
         }
 
+        /// <summary>Tekil temelleri kolon listesiyle ilişkilendirmeden çizer: konum Column axis data satır indeksi (ColumnRef-100), boyutlar Single footings'ten. Kolon boyutu aynı pozisyondaki kolon kesitinden (ResolveColumnSectionId) alınır; yoksa 20 cm.</summary>
+        private void DrawSingleFootings(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY)
+        {
+            const string layer = "TEMEL (BEYKENT)";
+            const double defaultHalfCm = 20.0;
+            foreach (var sf in _model.SingleFootings)
+            {
+                int positionIndex = sf.ColumnRef - 100;
+                if (positionIndex < 1 || positionIndex > _model.ColumnAxisPositions.Count) continue;
+                var pos = _model.ColumnAxisPositions[positionIndex - 1];
+                if (!_axisService.TryIntersect(pos.AxisXId, pos.AxisYId, out Point2d axisNode)) continue;
+
+                int colNo = positionIndex;
+                int sectionId = ResolveColumnSectionId(floor.FloorNo, colNo);
+                double hw = defaultHalfCm, hh = defaultHalfCm;
+                if (sectionId > 0 && _model.ColumnDimsBySectionId.TryGetValue(sectionId, out var dim))
+                {
+                    hw = dim.W / 2.0;
+                    hh = dim.H / 2.0;
+                }
+                var offsetLocal = ComputeColumnOffset(pos.OffsetXRaw, pos.OffsetYRaw, hw, hh);
+                var offsetGlobal = Rotate(offsetLocal, pos.AngleDeg);
+                var columnCenter = new Point2d(axisNode.X + offsetGlobal.X, axisNode.Y + offsetGlobal.Y);
+
+                double halfX = sf.SizeXCm / 2.0;
+                double halfY = sf.SizeYCm / 2.0;
+                // Açısız: mevcut köşe hizalaması (değiştirme). Açılı: tek köşe çakıştırma — AlignX 1=sol, 2=sağ; AlignY 1=alt, 2=üst; seçilen köşe aynı anda hem X hem Y doğru olur.
+                double cx = 0.0, cy = 0.0;
+                if (sf.AlignX == 1) cx = 1.0;
+                else if (sf.AlignX == 2) cx = -1.0;
+                if (sf.AlignY == 1) cy = -1.0;
+                else if (sf.AlignY == 2) cy = 1.0;
+
+                Point2d footingCenter;
+                bool angledFooting = Math.Abs(sf.AngleDeg) > 0.01 || Math.Abs(pos.AngleDeg) > 0.01;
+                if (angledFooting)
+                {
+                    // Açılı: temel kenarları kolonun en uç noktalarından geçer (dört köşe temel içinde). X yönü kaçıklığı açılıda ters: 1=sağ kenar, 2=sol kenar.
+                    double angleRad = sf.AngleDeg * Math.PI / 180.0;
+                    Vector2d uFootX = new Vector2d(Math.Cos(angleRad), Math.Sin(angleRad));
+                    Vector2d uFootY = new Vector2d(-Math.Sin(angleRad), Math.Cos(angleRad));
+
+                    // Kolonun dört köşesini dünya koordinatında hesapla; temel yerel X/Y'de min/max bul.
+                    double[] corners_x = { -hw, hw, hw, -hw };
+                    double[] corners_y = { -hh, -hh, hh, hh };
+                    double minUx = double.MaxValue, maxUx = double.MinValue, minUy = double.MaxValue, maxUy = double.MinValue;
+                    for (int i = 0; i < 4; i++)
+                    {
+                        Vector2d v = Rotate(new Vector2d(corners_x[i], corners_y[i]), pos.AngleDeg);
+                        double px = columnCenter.X + v.X, py = columnCenter.Y + v.Y;
+                        double dux = px * uFootX.X + py * uFootX.Y;
+                        double duy = px * uFootY.X + py * uFootY.Y;
+                        if (dux < minUx) minUx = dux;
+                        if (dux > maxUx) maxUx = dux;
+                        if (duy < minUy) minUy = duy;
+                        if (duy > maxUy) maxUy = duy;
+                    }
+                    // Açılıda X kaçıklığı ters: AlignX=1 → sağ kenar (max), AlignX=2 → sol kenar (min).
+                    double k1 = (sf.AlignX == 1) ? (maxUx - halfX) : (sf.AlignX == 2) ? (minUx + halfX) : (columnCenter.X * uFootX.X + columnCenter.Y * uFootX.Y);
+                    double k2 = (sf.AlignY == 1) ? (minUy + halfY) : (sf.AlignY == 2) ? (maxUy - halfY) : (columnCenter.X * uFootY.X + columnCenter.Y * uFootY.Y);
+
+                    footingCenter = new Point2d(k1 * uFootX.X + k2 * uFootY.X + offsetX, k1 * uFootX.Y + k2 * uFootY.Y + offsetY);
+                }
+                else
+                {
+                    Vector2d columnVec = new Vector2d(cx * hw, cy * hh);
+                    Vector2d footingVec = new Vector2d(cx * halfX, cy * halfY);
+                    Vector2d alignGlobal = Rotate(columnVec, pos.AngleDeg) - Rotate(footingVec, sf.AngleDeg);
+                    footingCenter = new Point2d(columnCenter.X + alignGlobal.X + offsetX, columnCenter.Y + alignGlobal.Y + offsetY);
+                }
+
+                var rect = BuildRect(footingCenter, halfX, halfY, sf.AngleDeg);
+                var pl = ToPolyline(rect, true);
+                pl.Layer = layer;
+                AppendEntity(tr, btr, pl);
+                if (!string.IsNullOrEmpty(sf.Name))
+                    AppendEntity(tr, btr, MakeCenteredText(LayerYazi, 5, sf.Name.Trim(), new Point3d(footingCenter.X, footingCenter.Y, 0)));
+            }
+        }
+
         private void DrawTieBeams(Transaction tr, BlockTableRecord btr, double offsetX, double offsetY)
         {
-            const string layer = "TEMEL HATILI (BEYKENT)";
+            const string layerTemel = "TEMEL (BEYKENT)";
+            const string layerHatili = "TEMEL HATILI (BEYKENT)";
+            var factory = new GeometryFactory();
+            Geometry cfUnion = BuildContinuousFoundationsUnion(offsetX, offsetY);
+            Geometry slabUnion = BuildSlabFoundationsUnion(offsetX, offsetY);
+
             foreach (var tb in _model.TieBeams)
             {
                 if (!_axisService.TryIntersect(tb.FixedAxisId, tb.StartAxisId, out Point2d p1) ||
@@ -529,6 +677,18 @@ namespace ST4PlanIdCiz
                 };
                 for (int i = 0; i < rect.Length; i++)
                     rect[i] = new Point2d(rect[i].X + offsetX, rect[i].Y + offsetY);
+
+                var coords = new Coordinate[5];
+                for (int i = 0; i < 4; i++)
+                    coords[i] = new Coordinate(rect[i].X, rect[i].Y);
+                coords[4] = coords[0];
+                var tbPoly = factory.CreatePolygon(factory.CreateLinearRing(coords));
+
+                // Tamamen sürekli temel veya radye alanı içinde → TEMEL HATILI; ne sürekli ne radye içinde → TEMEL (BEYKENT).
+                bool insideContinuous = cfUnion != null && !cfUnion.IsEmpty && cfUnion.Contains(tbPoly);
+                bool insideSlab = slabUnion != null && !slabUnion.IsEmpty && slabUnion.Contains(tbPoly);
+                string layer = (insideContinuous || insideSlab) ? layerHatili : layerTemel;
+
                 var pl = ToPolyline(rect, true);
                 pl.Layer = layer;
                 AppendEntity(tr, btr, pl);
@@ -750,6 +910,19 @@ namespace ST4PlanIdCiz
         {
             double a = angleDeg * Math.PI / 180.0;
             return new Vector2d(v.X * Math.Cos(a) - v.Y * Math.Sin(a), v.X * Math.Sin(a) + v.Y * Math.Cos(a));
+        }
+
+        /// <summary>Merkezi (0,0) olan, yarı genişlik hx, yarı yükseklik hy ve angleDeg açılı dikdörtgenin dünya koordinatında min/max X ve Y değerlerini verir.</summary>
+        private static void GetRotatedRectBounds(double hx, double hy, double angleDeg, out double minX, out double maxX, out double minY, out double maxY)
+        {
+            var c1 = Rotate(new Vector2d(hx, hy), angleDeg);
+            var c2 = Rotate(new Vector2d(hx, -hy), angleDeg);
+            var c3 = Rotate(new Vector2d(-hx, hy), angleDeg);
+            var c4 = Rotate(new Vector2d(-hx, -hy), angleDeg);
+            minX = Math.Min(Math.Min(c1.X, c2.X), Math.Min(c3.X, c4.X));
+            maxX = Math.Max(Math.Max(c1.X, c2.X), Math.Max(c3.X, c4.X));
+            minY = Math.Min(Math.Min(c1.Y, c2.Y), Math.Min(c3.Y, c4.Y));
+            maxY = Math.Max(Math.Max(c1.Y, c2.Y), Math.Max(c3.Y, c4.Y));
         }
 
         private static Polyline ToPolyline(IReadOnlyList<Point2d> points, bool closed)

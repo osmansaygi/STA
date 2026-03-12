@@ -35,6 +35,19 @@ namespace ST4AksCizCSharp
         public List<SlabFoundationInfo> SlabFoundations { get; } = new List<SlabFoundationInfo>();
         /// <summary>Bağ kirişleri (Tie beams): temel planında kiriş mantığında çizilir; 1. satır: genişlik, 3–5 sabit/başlangıç/bitiş aks, 6. sütun kaçıklık (mm).</summary>
         public List<TieBeamInfo> TieBeams { get; } = new List<TieBeamInfo>();
+
+        /// <summary>Column axis data satır sırasıyla konumlar (tekil temel eşleştirmesi için; kolon listesinden bağımsız). Index 0 = 1. satır = ColumnRef 101.</summary>
+        public List<ColumnAxisPositionEntry> ColumnAxisPositions { get; } = new List<ColumnAxisPositionEntry>();
+    }
+
+    /// <summary>Column axis data tek satırı: aks kesişimi + kaçıklık (tekil temel merkezi için).</summary>
+    public sealed class ColumnAxisPositionEntry
+    {
+        public int AxisXId { get; set; }
+        public int AxisYId { get; set; }
+        public int OffsetXRaw { get; set; }
+        public int OffsetYRaw { get; set; }
+        public double AngleDeg { get; set; }
     }
 
     /// <summary>Bağ kirişi: /Tie beams/ bölümü; sabit aks üzerinde iki aks arası şerit, kaçıklık 6. sütun (mm).</summary>

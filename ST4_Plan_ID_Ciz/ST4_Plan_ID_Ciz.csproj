@@ -4,14 +4,16 @@
     <OutputType>Library</OutputType>
     <RootNamespace>ST4PlanIdCiz</RootNamespace>
     <BaseAssemblyName>ST4_Plan_ID_Ciz</BaseAssemblyName>
-    <DllSuffix>$([System.DateTime]::Now.ToString("yyyyMMdd_HHmmss"))</DllSuffix>
-    <AssemblyName>$(BaseAssemblyName)_$(DllSuffix)</AssemblyName>
+    <AssemblyName>$(BaseAssemblyName)_$([System.DateTime]::Now.ToString("yyyyMMdd_HHmmss"))</AssemblyName>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <Platforms>AnyCPU</Platforms>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <Deterministic>false</Deterministic>
   </PropertyGroup>
+  <Target Name="EchoDllName" AfterTargets="Build">
+    <Message Importance="high" Text="DLL kaydedildi: $(OutputPath)$(AssemblyName).dll" />
+  </Target>
   <PropertyGroup>
     <AutoCADInstallDir Condition="'$(AutoCADInstallDir)' == '' and Exists('C:\Program Files\Autodesk\AutoCAD 2026\acdbmgd.dll')">C:\Program Files\Autodesk\AutoCAD 2026</AutoCADInstallDir>
     <AutoCADInstallDir Condition="'$(AutoCADInstallDir)' == '' and Exists('C:\Program Files\Autodesk\AutoCAD 2025\acdbmgd.dll')">C:\Program Files\Autodesk\AutoCAD 2025</AutoCADInstallDir>
@@ -55,9 +57,8 @@
     <Message Importance="high" Text="========================================" />
     <Message Importance="high" Text="ST4_Plan_ID_Ciz DLL YUKLEME ADRESI:" />
     <Message Importance="high" Text="  Klasor: $(MSBuildProjectDirectory)\$(OutputPath)" />
-    <Message Importance="high" Text="  Tam yol: $(MSBuildProjectDirectory)\$(OutputPath)$(AssemblyName).dll" />
-    <Message Importance="high" Text="  AutoCAD: NETLOAD → yukaridaki klasore gidin → en son tarihli ST4_Plan_ID_Ciz_*.dll dosyasini yukleyin." />
-    <Message Importance="high" Text="  Her derlemede farkli isim: bu proje klasorunde 'dotnet build' calistirin (veya IDE'de Rebuild)." />
+    <Message Importance="high" Text="  Dosya: $(AssemblyName).dll (her derlemede farkli tarih/saat)" />
+    <Message Importance="high" Text="  AutoCAD: NETLOAD → yukaridaki klasore gidin → $(AssemblyName).dll dosyasini yukleyin." />
     <Message Importance="high" Text="========================================" />
   </Target>
 </Project>

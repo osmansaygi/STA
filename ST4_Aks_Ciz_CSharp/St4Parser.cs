@@ -141,6 +141,8 @@ namespace ST4AksCizCSharp
                         if (p.Count >= 5) St4Text.TryParseDouble(p[4], out offY);
                         if (p.Count >= 7 && St4Text.TryParseDouble(p[6], out double a)) ang = a;
                         colType = Math.Max(1, Math.Min(3, colType));
+                        int offXRaw = (int)Math.Round(offX);
+                        int offYRaw = (int)Math.Round(offY);
 
                         int colNo = model.Columns.Count + 1;
                         model.Columns.Add(new ColumnAxisInfo
@@ -150,8 +152,18 @@ namespace ST4AksCizCSharp
                             ColumnType = colType,
                             AxisXId = axId,
                             AxisYId = ayId,
+                            OffsetXRaw = offXRaw,
+                            OffsetYRaw = offYRaw,
                             OffsetXMm = offX,
                             OffsetYMm = offY,
+                            AngleDeg = ang
+                        });
+                        model.ColumnAxisPositions.Add(new ColumnAxisPositionEntry
+                        {
+                            AxisXId = axId,
+                            AxisYId = ayId,
+                            OffsetXRaw = offXRaw,
+                            OffsetYRaw = offYRaw,
                             AngleDeg = ang
                         });
                     }
@@ -361,6 +373,12 @@ namespace ST4AksCizCSharp
                 if (inContinuousFoundations && u.StartsWith("/"))
                 {
                     inContinuousFoundations = false;
+                    if (u.Contains("single footings"))
+                    {
+                        inSingleFootings = true;
+                        pendingSingleFootingName = null;
+                        skipNextSingleFootingLine = false;
+                    }
                     continue;
                 }
                 if (inContinuousFoundations)
@@ -427,6 +445,12 @@ namespace ST4AksCizCSharp
                 if (inSlabFoundations && u.StartsWith("/"))
                 {
                     inSlabFoundations = false;
+                    if (u.Contains("single footings"))
+                    {
+                        inSingleFootings = true;
+                        pendingSingleFootingName = null;
+                        skipNextSingleFootingLine = false;
+                    }
                     continue;
                 }
                 if (u.Contains("single footings"))
@@ -441,13 +465,19 @@ namespace ST4AksCizCSharp
                 if (inSingleFootings && u.StartsWith("/"))
                 {
                     inSingleFootings = false;
+                    if (u.Contains("tie beams"))
+                    {
+                        inTieBeams = true;
+                        pendingTieBeamName = null;
+                    }
                     continue;
                 }
                 if (inSingleFootings)
                 {
                     if (skipNextSingleFootingLine) { skipNextSingleFootingLine = false; continue; }
                     var p = St4Text.SplitCsv(line);
-                    if (p.Count >= 8 &&
+                    // Veri satırı: colRef, sizeX_cm, sizeY_cm, alignX, alignY, heightCm, bottomLevelM, angleDeg (boyutlar cm; 1. sütun X, 2. sütun Y)
+                    if (p.Count >= 3 &&
                         St4Text.TryParseInt(p[0], out int colRef) &&
                         colRef > 0 &&
                         St4Text.TryParseDouble(p[1], out double sizeX) &&
@@ -476,7 +506,7 @@ namespace ST4AksCizCSharp
                         pendingSingleFootingName = null;
                         skipNextSingleFootingLine = true;
                     }
-                    else if (line.Length > 0 && line.Trim().Length > 0 && (line.IndexOf(',') < 0 || line.Trim().Length < 8))
+                    else if (line.Length > 0 && line.Trim().Length > 0 && (line.IndexOf(',') < 0 || p.Count < 3 || !St4Text.TryParseInt(p[0], out _)))
                     {
                         pendingSingleFootingName = line.Trim();
                     }
