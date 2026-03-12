@@ -22,10 +22,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\ST4_Aks_Ciz_CSharp\ST4_Aks_Ciz_CSharp.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
     <PackageReference Include="NetTopologySuite" Version="2.6.0" />
   </ItemGroup>
 
@@ -50,9 +46,6 @@
       Text="AutoCAD .NET referanslari bulunamadi. MSBuild'e /p:AutoCADInstallDir='C:\Program Files\Autodesk\AutoCAD 20XX' verin." />
   </Target>
 
-  <Target Name="CopyRefDll" AfterTargets="Build">
-    <Copy SourceFiles="$(ProjectDir)..\ST4_Aks_Ciz_CSharp\bin\$(Configuration)\net48\ST4_Aks_Ciz_CSharp.dll" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
-  </Target>
   <Target Name="ShowDllPath" AfterTargets="Build">
     <Message Importance="high" Text="========================================" />
     <Message Importance="high" Text="ST4_Plan_ID_Ciz DLL YUKLEME ADRESI:" />

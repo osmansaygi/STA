@@ -104,10 +104,8 @@ namespace ST4AksCizCSharp
                         St4Text.TryParseDouble(axisParts[0], out double slope) &&
                         St4Text.TryParseDouble(axisParts[1], out double val))
                     {
-                        if (Math.Abs(val) < 100.0)
-                        {
-                            val *= 100.0;
-                        }
+                        // ST4 Axis data ikinci sutun her zaman metre cinsinden; cizim cm kullaniyor (ValueCm)
+                        val *= 100.0;
                         allValues.Add(val);
                         allSlopes.Add(slope);
                     }
@@ -284,7 +282,6 @@ namespace ST4AksCizCSharp
                         model.Slabs.Add(new SlabInfo { SlabId = slabId, Axis1 = a1, Axis2 = a2, Axis3 = a3, Axis4 = a4 });
                         if (p.Count >= 25 && p[24] == "1")
                             model.StairSlabIds.Add(slabId);
-                        // Kolon konumu (100–999): tekil temel merkezi için; ilk X ve ilk Y aksı + offset
                         if (slabId >= 100 && slabId <= 999)
                         {
                             int axisX = (a1 >= 1001 && a1 <= 1999) ? a1 : (a2 >= 1001 && a2 <= 1999 ? a2 : 0);
@@ -490,7 +487,6 @@ namespace ST4AksCizCSharp
                 {
                     if (skipNextSingleFootingLine) { skipNextSingleFootingLine = false; continue; }
                     var p = St4Text.SplitCsv(line);
-                    // Veri satırı: colRef, sizeX_cm, sizeY_cm, alignX, alignY, heightCm, bottomLevelM, angleDeg (boyutlar cm; 1. sütun X, 2. sütun Y)
                     if (p.Count >= 3 &&
                         St4Text.TryParseInt(p[0], out int colRef) &&
                         colRef > 0 &&
