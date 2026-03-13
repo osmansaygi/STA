@@ -17,7 +17,8 @@ alwaysApply: true
   - Union/Difference sonrası çizilecek tüm poligon halkaları `DrawGeometryRingsAsPolylines` fonksiyonundan geçir.  
   - Bu fonksiyon içinde şu kurallar ZORUNLUDUR:
     - Neredeyse paralel (±1°) iki kenar arasındaki dik mesafe \< **2 mm** ise, bu iki kenarı birleştiren köşe noktaları listeden silinsin (AB–CD ve ring baş/son sarması dahil).  
-    - Tüm halkalarda **4 mm’den kısa** segmentler filtrelensin; bu eşik keyfi değiştirilmesin.
+    - **Vertex açı kuralı (saç kılı için etkili):** Nihai çizimde bir vertex'e bağlı iki segment neredeyse paralel (**\<1°** açı) ise o vertex gereksiz sayılır ve **kaldırılsın** (A–B–C → A–C). Bu kural perde–kolon ve diğer saç kılı durumlarında kullanılır.  
+    - Tüm halkalarda **4 mm'den kısa** segmentler filtrelensin; bu eşik keyfi değiştirilmesin.
 
 - **Boşluk bırakma, buffer kullanma**  
   - Kolon/perde veya diğer elemanları keserken `Buffer` ile şişirip/çekerek arada gözle fark edilir boşluk oluşturma.  

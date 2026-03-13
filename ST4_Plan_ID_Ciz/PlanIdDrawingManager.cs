@@ -8,6 +8,7 @@ using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Geometry;
 using NetTopologySuite.Geometries;
 using NetTopologySuite.Operation.Union;
+using NetTopologySuite.Precision;
 using ST4AksCizCSharp;
 
 namespace ST4PlanIdCiz
@@ -86,6 +87,7 @@ namespace ST4PlanIdCiz
         private const string LayerKiris = "KIRIS (BEYKENT)";
         private const string LayerKolon = "KOLON (BEYKENT)";
         private const string LayerPerde = "PERDE (BEYKENT)";
+        private const string LayerTarama = "TARAMA (BEYKENT)";
         private const string LayerDoseme = "DOSEME SINIRI (BEYKENT)";
         private const string LayerMerdiven = "MERDIVEN (BEYKENT)";
         private const string LayerYazi = "YAZI (BEYKENT)";
@@ -98,6 +100,7 @@ namespace ST4PlanIdCiz
             EnsurePlanLayer(tr, db, LayerKiris, 2, LineWeight.LineWeight030, useDashed: false);
             EnsurePlanLayer(tr, db, LayerKolon, 3, LineWeight.LineWeight040, useDashed: false);
             EnsurePlanLayer(tr, db, LayerPerde, 6, LineWeight.LineWeight040, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerTarama, 8, LineWeight.LineWeight015, useDashed: false);
             EnsurePlanLayer(tr, db, LayerDoseme, 71, LineWeight.LineWeight030, useDashed: false);
             EnsurePlanLayer(tr, db, LayerMerdiven, 5, LineWeight.LineWeight030, useDashed: false);
             EnsurePlanLayer(tr, db, LayerYazi, 4, LineWeight.LineWeight020, useDashed: false);
@@ -283,31 +286,38 @@ namespace ST4PlanIdCiz
                 var offsetGlobal = Rotate(offsetLocal, col.AngleDeg);
                 var center = new Point2d(axisNode.X + offsetGlobal.X + offsetX, axisNode.Y + offsetGlobal.Y + offsetY);
 
+                double colAngleRad = col.AngleDeg * (Math.PI / 180.0);
                 if (col.ColumnType == 2)
                 {
-                    AppendEntity(tr, btr, new Circle(new Point3d(center.X, center.Y, 0), Vector3d.ZAxis, Math.Max(hw, hh)) { Layer = LayerKolon });
+                    var circle = new Circle(new Point3d(center.X, center.Y, 0), Vector3d.ZAxis, Math.Max(hw, hh)) { Layer = LayerKolon };
+                    ObjectId circleId = AppendEntityReturnId(tr, btr, circle);
+                    AppendHatchAnsi33(tr, btr, circleId, colAngleRad);
                 }
                 else if (col.ColumnType == 3 && TryGetPolygonColumn(polygonSectionId, center, col.AngleDeg, out var polyPoints))
                 {
                     var pl = ToPolyline(polyPoints, true);
                     pl.Layer = LayerKolon;
-                    AppendEntity(tr, btr, pl);
+                    ObjectId plId = AppendEntityReturnId(tr, btr, pl);
+                    AppendHatchAnsi33(tr, btr, plId, colAngleRad);
                 }
                 else
                 {
                     var rect = BuildRect(center, hw, hh, col.AngleDeg);
                     var pl = ToPolyline(rect, true);
                     pl.Layer = LayerKolon;
-                    AppendEntity(tr, btr, pl);
+                    ObjectId plId = AppendEntityReturnId(tr, btr, pl);
+                    AppendHatchAnsi33(tr, btr, plId, colAngleRad);
                 }
 
                 AppendEntity(tr, btr, MakeCenteredText(LayerYazi, 6, col.ColumnNo.ToString(CultureInfo.InvariantCulture), new Point3d(center.X, center.Y, 0)));
             }
         }
 
-        /// <summary>Verilen kattaki perdeleri (IsWallFlag==1) çizer; temel planında bodrum perdeleri için kullanılır.</summary>
+        /// <summary>Verilen kattaki perdeleri (IsWallFlag==1) çizer; kolon alanları çıkarılır, saç teli temizliği uygulanır. Temel planında bodrum perdeleri için kullanılır.</summary>
         private void DrawWallsForFloor(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY)
         {
+            var factory = new GeometryFactory();
+            var wallList = new List<(Geometry poly, int fixedAxisId)>();
             var beams = MergeSameIdBeamsOnFloor(floor.FloorNo);
             foreach (var beam in beams)
             {
@@ -328,9 +338,62 @@ namespace ST4PlanIdCiz
                 Point2d q2 = b + perp.MultiplyBy(upperEdge);
                 Point2d q3 = b + perp.MultiplyBy(lowerEdge);
                 Point2d q4 = a + perp.MultiplyBy(lowerEdge);
-                var poly = ToPolyline(new[] { q1, q2, q3, q4 }, true);
-                poly.Layer = LayerPerde;
-                AppendEntity(tr, btr, poly);
+                double cx = (q1.X + q2.X + q3.X + q4.X) / 4.0;
+                double cy = (q1.Y + q2.Y + q3.Y + q4.Y) / 4.0;
+                AppendEntity(tr, btr, MakeCenteredText(LayerYazi, 5, beam.BeamId.ToString(CultureInfo.InvariantCulture), new Point3d(cx, cy, 0)));
+                var coordsWall = new[]
+                {
+                    new Coordinate(q1.X, q1.Y),
+                    new Coordinate(q2.X, q2.Y),
+                    new Coordinate(q3.X, q3.Y),
+                    new Coordinate(q4.X, q4.Y),
+                    new Coordinate(q1.X, q1.Y)
+                };
+                wallList.Add((factory.CreatePolygon(factory.CreateLinearRing(coordsWall)), beam.FixedAxisId));
+            }
+            if (wallList.Count == 0) return;
+            Geometry kolonUnion = BuildKolonUnion(floor, offsetX, offsetY);
+            foreach (var (wallPoly, fixedAxisId) in wallList)
+            {
+                if (wallPoly == null || wallPoly.IsEmpty) continue;
+                Geometry toDraw = wallPoly;
+                if (kolonUnion != null && !kolonUnion.IsEmpty)
+                {
+                    var diff = wallPoly.Difference(kolonUnion);
+                    if (diff != null && !diff.IsEmpty)
+                    {
+                        toDraw = ReducePrecisionSafe(diff, 100);
+                        if (toDraw == null || toDraw.IsEmpty) toDraw = diff;
+                    }
+                }
+                if (toDraw != null && !toDraw.IsEmpty)
+                    DrawGeometryRingsAsPolylines(tr, btr, toDraw, LayerPerde, addHatch: true, hatchAngleRad: GetAxisAngleRad(fixedAxisId));
+            }
+        }
+
+        /// <summary>Verilen aks ID'sine ait eksenin eğimine göre yön açısını (radyan) döndürür. Perde tarama açısı için kullanılır. Y aksına bağlı perdelerde tarama eğimi ters alınır.</summary>
+        private double GetAxisAngleRad(int axisId)
+        {
+            var axis = _model.AxisX.Concat(_model.AxisY).FirstOrDefault(a => a.Id == axisId);
+            if (axis == null) return 0.0;
+            // X ekseni: x - Slope*y = const → yön (Slope, 1). Y ekseni: Slope*x + y = const → yön (-1, Slope); Y için tarama eğimi ters.
+            if (axis.Kind == AxisKind.X)
+                return Math.Atan2(1.0, axis.Slope);
+            return Math.Atan2(axis.Slope, -1.0) + Math.PI;
+        }
+
+        /// <summary>Geometriyi verilen ölçeğe (örn. 100 = 0.01 cm) indirger; ince sliver'lar birleşir. Hata olursa null döner.</summary>
+        private static Geometry ReducePrecisionSafe(Geometry geom, double scale)
+        {
+            if (geom == null || geom.IsEmpty) return geom;
+            try
+            {
+                var pm = new PrecisionModel(scale);
+                return GeometryPrecisionReducer.Reduce(geom, pm);
+            }
+            catch
+            {
+                return null;
             }
         }
 
@@ -431,8 +494,76 @@ namespace ST4PlanIdCiz
                 : NetTopologySuite.Operation.Union.CascadedPolygonUnion.Union(geoms);
         }
 
+        /// <summary>Verilen kattaki sadece kolonların birleşik alanını (NTS Geometry) döndürür. Perdeleri kolondan çıkartmak için kullanılır.</summary>
+        private Geometry BuildKolonUnion(FloorInfo floor, double offsetX, double offsetY)
+        {
+            var factory = new GeometryFactory();
+            var geoms = new List<Geometry>();
+
+            foreach (var col in _model.Columns)
+            {
+                if (!_axisService.TryIntersect(col.AxisXId, col.AxisYId, out Point2d axisNode)) continue;
+                int sectionId = ResolveColumnSectionId(floor.FloorNo, col.ColumnNo);
+                int polygonSectionId = ResolvePolygonPositionSectionId(floor.FloorNo, col.ColumnNo);
+                // Perde kesimi için: formülle kesit bulunamazsa Columns Data sırasındaki ColumnId dene (örn. 37. kolon → 138)
+                if (col.ColumnType != 3 && (sectionId <= 0 || !_model.ColumnDimsBySectionId.ContainsKey(sectionId)) &&
+                    col.ColumnId > 0 && _model.ColumnDimsBySectionId.ContainsKey(col.ColumnId))
+                    sectionId = col.ColumnId;
+                if (col.ColumnType == 3)
+                {
+                    if (polygonSectionId <= 0 || !_model.PolygonColumnSectionByPositionSectionId.ContainsKey(polygonSectionId)) continue;
+                }
+                else
+                {
+                    if (sectionId <= 0 || !_model.ColumnDimsBySectionId.ContainsKey(sectionId)) continue;
+                }
+
+                var dim = sectionId > 0 && _model.ColumnDimsBySectionId.ContainsKey(sectionId)
+                    ? _model.ColumnDimsBySectionId[sectionId]
+                    : (W: 40.0, H: 40.0);
+                double hw = dim.W / 2.0;
+                double hh = dim.H / 2.0;
+                var offsetLocal = col.ColumnType == 2
+                    ? ComputeColumnOffsetCircle(col.OffsetXRaw, col.OffsetYRaw)
+                    : ComputeColumnOffset(col.OffsetXRaw, col.OffsetYRaw, hw, hh);
+                var offsetGlobal = Rotate(offsetLocal, col.AngleDeg);
+                var center = new Point2d(axisNode.X + offsetGlobal.X + offsetX, axisNode.Y + offsetGlobal.Y + offsetY);
+
+                Coordinate[] coords;
+                if (col.ColumnType == 2)
+                {
+                    var rect = BuildRect(center, hw, hh, col.AngleDeg);
+                    coords = new Coordinate[5];
+                    for (int i = 0; i < 4; i++) coords[i] = new Coordinate(rect[i].X, rect[i].Y);
+                    coords[4] = coords[0];
+                }
+                else if (col.ColumnType == 3 && TryGetPolygonColumn(polygonSectionId, center, col.AngleDeg, out var polyPoints))
+                {
+                    coords = new Coordinate[polyPoints.Length + 1];
+                    for (int i = 0; i < polyPoints.Length; i++)
+                        coords[i] = new Coordinate(polyPoints[i].X, polyPoints[i].Y);
+                    coords[polyPoints.Length] = coords[0];
+                }
+                else
+                {
+                    var rect = BuildRect(center, hw, hh, col.AngleDeg);
+                    coords = new Coordinate[5];
+                    for (int i = 0; i < 4; i++) coords[i] = new Coordinate(rect[i].X, rect[i].Y);
+                    coords[4] = coords[0];
+                }
+                geoms.Add(factory.CreatePolygon(factory.CreateLinearRing(coords)));
+            }
+
+            if (geoms.Count == 0) return null;
+            return geoms.Count == 1
+                ? geoms[0]
+                : NetTopologySuite.Operation.Union.CascadedPolygonUnion.Union(geoms);
+        }
+
         private void DrawBeamsAndWalls(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY)
         {
+            var factory = new GeometryFactory();
+            var wallList = new List<(Geometry poly, int fixedAxisId)>();
             var beams = MergeSameIdBeamsOnFloor(floor.FloorNo);
             foreach (var beam in beams)
             {
@@ -455,19 +586,45 @@ namespace ST4PlanIdCiz
                 Point2d q4 = a + perp.MultiplyBy(lowerEdge);
                 var center = new Point3d((q1.X + q2.X + q3.X + q4.X) / 4.0, (q1.Y + q2.Y + q3.Y + q4.Y) / 4.0, 0);
 
-                string layer = beam.IsWallFlag == 1 ? LayerPerde : LayerKiris;
                 if (beam.IsWallFlag == 1)
                 {
-                    var poly = ToPolyline(new[] { q1, q2, q3, q4 }, true);
-                    poly.Layer = layer;
-                    AppendEntity(tr, btr, poly);
+                    var coordsWall = new[]
+                    {
+                        new Coordinate(q1.X, q1.Y),
+                        new Coordinate(q2.X, q2.Y),
+                        new Coordinate(q3.X, q3.Y),
+                        new Coordinate(q4.X, q4.Y),
+                        new Coordinate(q1.X, q1.Y)
+                    };
+                    wallList.Add((factory.CreatePolygon(factory.CreateLinearRing(coordsWall)), beam.FixedAxisId));
+                    AppendEntity(tr, btr, MakeCenteredText(LayerYazi, 6, beam.BeamId.ToString(CultureInfo.InvariantCulture), center));
                 }
                 else
                 {
-                    AppendEntity(tr, btr, new Line(new Point3d(q1.X, q1.Y, 0), new Point3d(q2.X, q2.Y, 0)) { Layer = layer });
-                    AppendEntity(tr, btr, new Line(new Point3d(q4.X, q4.Y, 0), new Point3d(q3.X, q3.Y, 0)) { Layer = layer });
+                    AppendEntity(tr, btr, new Line(new Point3d(q1.X, q1.Y, 0), new Point3d(q2.X, q2.Y, 0)) { Layer = LayerKiris });
+                    AppendEntity(tr, btr, new Line(new Point3d(q4.X, q4.Y, 0), new Point3d(q3.X, q3.Y, 0)) { Layer = LayerKiris });
+                    AppendEntity(tr, btr, MakeCenteredText(LayerYazi, 6, beam.BeamId.ToString(CultureInfo.InvariantCulture), center));
                 }
-                AppendEntity(tr, btr, MakeCenteredText(LayerYazi, 6, beam.BeamId.ToString(CultureInfo.InvariantCulture), center));
+            }
+            if (wallList.Count > 0)
+            {
+                Geometry kolonUnion = BuildKolonUnion(floor, offsetX, offsetY);
+                foreach (var (wallPoly, fixedAxisId) in wallList)
+                {
+                    if (wallPoly == null || wallPoly.IsEmpty) continue;
+                    Geometry toDraw = wallPoly;
+                    if (kolonUnion != null && !kolonUnion.IsEmpty)
+                    {
+                        var diff = wallPoly.Difference(kolonUnion);
+                        if (diff != null && !diff.IsEmpty)
+                        {
+                            toDraw = ReducePrecisionSafe(diff, 100);
+                            if (toDraw == null || toDraw.IsEmpty) toDraw = diff;
+                        }
+                    }
+                    if (toDraw != null && !toDraw.IsEmpty)
+                        DrawGeometryRingsAsPolylines(tr, btr, toDraw, LayerPerde, addHatch: true, hatchAngleRad: GetAxisAngleRad(fixedAxisId));
+                }
             }
         }
 
@@ -705,8 +862,38 @@ namespace ST4PlanIdCiz
             DrawGeometryRingsAsPolylines(tr, btr, unionResult, layer);
         }
 
-        /// <summary>NTS Geometry (Polygon/MultiPolygon) dış ve iç halkalarını verilen katmanda polyline olarak çizer; 4 mm'den kısa segmentleri atlar.</summary>
-        private static void DrawGeometryRingsAsPolylines(Transaction tr, BlockTableRecord btr, Geometry geom, string layer)
+        /// <summary>Kapalı bir halkanın (Coordinate dizisi) alanını cm² cinsinden döndürür (signed area, mutlak değer için Math.Abs kullan).</summary>
+        private static double RingAreaCm2(Coordinate[] coords)
+        {
+            if (coords == null || coords.Length < 3) return 0.0;
+            int n = coords.Length;
+            if (n > 1 && coords[0].Equals2D(coords[n - 1])) n--;
+            if (n < 3) return 0.0;
+            double area = 0.0;
+            for (int i = 0; i < n; i++)
+            {
+                int j = (i + 1) % n;
+                area += coords[i].X * coords[j].Y - coords[j].X * coords[i].Y;
+            }
+            return Math.Abs(area) * 0.5;
+        }
+
+        /// <summary>P noktasının AB doğru parçasına dik uzaklığını (cm) döndürür.</summary>
+        private static double PointToSegmentDistance(Point2d p, Point2d a, Point2d b)
+        {
+            Vector2d ab = b - a;
+            double len = ab.Length;
+            if (len <= 1e-9) return p.GetDistanceTo(a);
+            Vector2d ap = p - a;
+            double t = (ap.X * ab.X + ap.Y * ab.Y) / (len * len);
+            if (t <= 0.0) return p.GetDistanceTo(a);
+            if (t >= 1.0) return p.GetDistanceTo(b);
+            Point2d proj = new Point2d(a.X + t * ab.X, a.Y + t * ab.Y);
+            return p.GetDistanceTo(proj);
+        }
+
+        /// <summary>NTS Geometry (Polygon/MultiPolygon) dış ve iç halkalarını verilen katmanda polyline olarak çizer; 4 mm'den kısa segmentleri atlar. addHatch true ise her halka için ANSI33 tarama eklenir. hatchAngleRad verilirse tarama açısı olarak kullanılır (perde: aks eğimi).</summary>
+        private static void DrawGeometryRingsAsPolylines(Transaction tr, BlockTableRecord btr, Geometry geom, string layer, bool addHatch = false, double? hatchAngleRad = null)
         {
             if (geom == null || geom.IsEmpty) return;
             const double minSegmentLen = 0.4; // 4 mm = 0.4 cm (çizim birimi cm)
@@ -749,6 +936,19 @@ namespace ST4PlanIdCiz
                 var pts = new List<Point2d>(n);
                 for (int i = 0; i < n; i++)
                     pts.Add(new Point2d(coords[i].X, coords[i].Y));
+
+                // 0) Üçgen (ABC) halkalarında: iki kenar neredeyse paralel (1°) ve arası < 2 mm ise saç kılı sayılır, çizilmez.
+                if (pts.Count == 3)
+                {
+                    var a = pts[0];
+                    var b = pts[1];
+                    var c = pts[2];
+                    double distBtoAC = PointToSegmentDistance(b, a, c);
+                    double distCtoBA = PointToSegmentDistance(c, b, a);
+                    double distAtoCB = PointToSegmentDistance(a, c, b);
+                    if (distBtoAC < parallelGapTol || distCtoBA < parallelGapTol || distAtoCB < parallelGapTol)
+                        continue;
+                }
 
                 // 1) Neredeyse paralel iki segmentin arasındaki çok ince kapalı alanı oluşturan
                 // köşe noktalarını temizle: A-B-C-D dizisinde AB ve CD neredeyse paralel
@@ -843,6 +1043,38 @@ namespace ST4PlanIdCiz
                     }
                 } while (removed && ++guard < 10);
 
+                // 1c) Nihai kural: Bir vertex'e bağlı iki segment neredeyse paralel (<1°) ise bu vertex gereksizdir (neredeyse doğrusal), kaldır.
+                const double vertexAngleTolRad = 1.0 * Math.PI / 180.0; // 1°
+                int guardAngle = 0;
+                while (guardAngle++ < 20 && pts.Count >= 4)
+                {
+                    bool removedAngle = false;
+                    int m = pts.Count;
+                    for (int i = 0; i < m; i++)
+                    {
+                        var a = pts[(i - 1 + m) % m];
+                        var b = pts[i];
+                        var c = pts[(i + 1) % m];
+                        Vector2d v1 = b - a;
+                        Vector2d v2 = c - b;
+                        double len1 = v1.Length;
+                        double len2 = v2.Length;
+                        if (len1 < 1e-6 || len2 < 1e-6) continue;
+                        double dot = (v1.X * v2.X + v1.Y * v2.Y) / (len1 * len2);
+                        if (dot > 1.0) dot = 1.0;
+                        if (dot < -1.0) dot = -1.0;
+                        double angle = Math.Acos(dot);
+                        // Açı ~0 (aynı yön) veya ~pi (zıt yön) => neredeyse doğrusal, B'yi kaldır
+                        if (angle < vertexAngleTolRad || angle > Math.PI - vertexAngleTolRad)
+                        {
+                            pts.RemoveAt(i);
+                            removedAngle = true;
+                            break;
+                        }
+                    }
+                    if (!removedAngle) break;
+                }
+
                 // 2) Çok kısa segmentleri filtrele.
                 var filtered = new List<Point2d>(pts.Count);
                 for (int i = 0; i < pts.Count; i++)
@@ -854,11 +1086,18 @@ namespace ST4PlanIdCiz
                         filtered.Add(p);
                     }
                 }
-                if (filtered.Count < 2) continue;
+                if (filtered.Count < 3) continue; // Kapalı halka için en az 3 nokta; 2'ye inen saç kılı çizilmez
 
                 var pl = ToPolyline(filtered.ToArray(), true);
                 pl.Layer = layer;
-                AppendEntity(tr, btr, pl);
+                if (addHatch)
+                {
+                    ObjectId plId = AppendEntityReturnId(tr, btr, pl);
+                    double angleRad = hatchAngleRad ?? Math.Atan2(filtered[1].Y - filtered[0].Y, filtered[1].X - filtered[0].X);
+                    AppendHatchAnsi33(tr, btr, plId, angleRad);
+                }
+                else
+                    AppendEntity(tr, btr, pl);
             }
         }
 
@@ -1396,6 +1635,29 @@ namespace ST4PlanIdCiz
         {
             btr.AppendEntity(e);
             tr.AddNewlyCreatedDBObject(e, true);
+        }
+
+        /// <summary>Entity ekler ve ObjectId döndürür (tarama boundary için).</summary>
+        private static ObjectId AppendEntityReturnId(Transaction tr, BlockTableRecord btr, Entity e)
+        {
+            btr.AppendEntity(e);
+            tr.AddNewlyCreatedDBObject(e, true);
+            return e.ObjectId;
+        }
+
+        /// <summary>Kolon ve perde taraması: ANSI33, katman TARAMA (BEYKENT). patternAngleRad: taranan elemanın açısı (radyan).</summary>
+        private static void AppendHatchAnsi33(Transaction tr, BlockTableRecord btr, ObjectId boundaryId, double patternAngleRad = 0)
+        {
+            var hatch = new Hatch();
+            btr.AppendEntity(hatch);
+            tr.AddNewlyCreatedDBObject(hatch, true);
+            hatch.SetHatchPattern(HatchPatternType.PreDefined, "ANSI33");
+            hatch.PatternAngle = patternAngleRad;
+            hatch.Layer = LayerTarama;
+            hatch.Associative = true;
+            var ids = new ObjectIdCollection { boundaryId };
+            hatch.AppendLoop(HatchLoopTypes.Outermost, ids);
+            hatch.EvaluateHatch(true);
         }
 
         private List<BeamInfo> MergeSameIdBeamsOnFloor(int floorNo)
