@@ -54,9 +54,10 @@ namespace ST4PlanIdCiz
                     Geometry temelUnion = BuildTemelUnion(offsetX, offsetY, firstFloor);
                     Geometry kolonPerdeUnion = BuildKolonPerdeUnion(firstFloor, offsetX, offsetY);
                     DrawTemelMerged(tr, btr, offsetX, offsetY, firstFloor, temelUnion);
-                    DrawContinuousFoundations(tr, btr, offsetX, offsetY, firstFloor, drawTemelOutline: false, temelUnion, kolonPerdeUnion);
+                    var temelHatiliRaws = new List<Geometry>();
+                    DrawContinuousFoundations(tr, btr, offsetX, offsetY, firstFloor, drawTemelOutline: false, temelUnion, kolonPerdeUnion, temelHatiliRaws);
                     DrawSlabFoundations(tr, btr, offsetX, offsetY, drawTemelOutline: false);
-                    DrawTieBeams(tr, btr, firstFloor, offsetX, offsetY, kolonPerdeUnion);
+                    DrawTieBeams(tr, btr, firstFloor, offsetX, offsetY, kolonPerdeUnion, temelHatiliRaws);
                     DrawSingleFootings(tr, btr, firstFloor, offsetX, offsetY, drawTemelOutline: false);
                     DrawFloorTitle(tr, btr, firstFloor, offsetX, offsetY, ext, isFoundationPlan: true);
                 }
@@ -107,7 +108,7 @@ namespace ST4PlanIdCiz
             EnsurePlanLayer(tr, db, LayerBaslik, 4, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, "TEMEL (BEYKENT)", 2, LineWeight.LineWeight040, useDashed: false);
             EnsurePlanLayer(tr, db, "TEMEL AMPATMAN (BEYKENT)", 21, LineWeight.LineWeight040, useDashed: false);
-            EnsurePlanLayer(tr, db, "TEMEL HATILI (BEYKENT)", 6, LineWeight.LineWeight030, useDashed: false);
+            EnsurePlanLayer(tr, db, "TEMEL HATILI (BEYKENT)", 230, LineWeight.LineWeight030, useDashed: false);
         }
 
         private static void EnsureDashedLinetype(Transaction tr, Database db)
@@ -367,7 +368,7 @@ namespace ST4PlanIdCiz
                     }
                 }
                 if (toDraw != null && !toDraw.IsEmpty)
-                    DrawGeometryRingsAsPolylines(tr, btr, toDraw, LayerPerde, addHatch: true, hatchAngleRad: GetAxisAngleRad(fixedAxisId));
+                    DrawGeometryRingsAsPolylines(tr, btr, toDraw, LayerPerde, addHatch: true, hatchAngleRad: GetAxisAngleRad(fixedAxisId), applySmallTriangleTrim: false);
             }
         }
 
@@ -426,6 +427,52 @@ namespace ST4PlanIdCiz
                 return true;
             }
             catch { return false; }
+        }
+
+        /// <summary>Kolon kenarı boyunca oluşan saç kılı: (1) Bir segment kolon sınırıyla tam üst üste, (2) Diğer segment ona paralel ve arası &lt; 1mm, (3) İki segmentin ortak vertexi yok. Bu üç koşul sağlanıyorsa true.</summary>
+        private static bool IsColumnEdgeHairline(Polygon pg, Geometry kolonPerdeBoundary)
+        {
+            if (pg == null || pg.IsEmpty || kolonPerdeBoundary == null || kolonPerdeBoundary.IsEmpty) return false;
+            var ring = pg.ExteriorRing;
+            if (ring == null || ring.NumPoints < 4) return false;
+            var coords = ring.Coordinates;
+            int n = coords.Length - 1; // kapalı halka: son = ilk, segment sayısı n
+            const double onColumnEpsilonCm = 0.15;  // segment kolon üzerinde kabul (daire kolon / precision sonrası için 1.5mm)
+            const double parallelEpsilon = 1e-6;   // paralellik
+            const double maxGapCm = 0.1;            // 1 mm
+
+            for (int i = 0; i < n; i++)
+            {
+                var a = coords[i];
+                var b = coords[i + 1];
+                double sx = b.X - a.X, sy = b.Y - a.Y;
+                double lenS = Math.Sqrt(sx * sx + sy * sy);
+                if (lenS < 1e-6) continue;
+
+                Geometry segGeom = pg.Factory.CreateLineString(new[] { a, b });
+                if (segGeom.Distance(kolonPerdeBoundary) > onColumnEpsilonCm) continue; // kural 1: bu segment kolon üzerinde değil
+
+                for (int j = 0; j < n; j++)
+                {
+                    if (j == i) continue;
+                    int prev = (i + n - 1) % n, next = (i + 1) % n;
+                    if (j == prev || j == next) continue; // kural 3: ortak vertex yok
+                    var c = coords[j];
+                    var d = coords[j + 1];
+                    double tx = d.X - c.X, ty = d.Y - c.Y;
+                    double lenT = Math.Sqrt(tx * tx + ty * ty);
+                    if (lenT < 1e-6) continue;
+
+                    double cross = sx * ty - sy * tx;
+                    if (Math.Abs(cross) > parallelEpsilon * (lenS * lenT + 1)) continue; // kural 2: paralel değil
+
+                    double dist = Math.Abs((c.X - a.X) * sy - (c.Y - a.Y) * sx) / lenS;
+                    if (dist >= maxGapCm) continue; // kural 2: arası 1mm'den az olmalı
+
+                    return true; // üç kural da sağlandı → kolon kenarı saç kılı
+                }
+            }
+            return false;
         }
 
         /// <summary>Alanı minAreaCm2'den küçük poligonları çıkarır; kiriş artığı (üçgen vb.) temizliği için. Koordinat birimi cm, alan cm².</summary>
@@ -517,11 +564,9 @@ namespace ST4PlanIdCiz
                 Coordinate[] coords;
                 if (col.ColumnType == 2)
                 {
-                    // Daire kolonu: bağ kirişi kesmek için kare yaklaşık.
-                    var rect = BuildRect(center, hw, hh, col.AngleDeg);
-                    coords = new Coordinate[5];
-                    for (int i = 0; i < 4; i++) coords[i] = new Coordinate(rect[i].X, rect[i].Y);
-                    coords[4] = coords[0];
+                    // Daire kolonu: kiriş/perde kesiminde net daire çıkması için çokgen daire halkası (64 segment).
+                    double radius = Math.Max(hw, hh);
+                    coords = BuildCircleRing(center, radius, col.AngleDeg, 64);
                 }
                 else if (col.ColumnType == 3 && TryGetPolygonColumn(polygonSectionId, center, col.AngleDeg, out var polyPoints))
                 {
@@ -617,10 +662,8 @@ namespace ST4PlanIdCiz
                 Coordinate[] coords;
                 if (col.ColumnType == 2)
                 {
-                    var rect = BuildRect(center, hw, hh, col.AngleDeg);
-                    coords = new Coordinate[5];
-                    for (int i = 0; i < 4; i++) coords[i] = new Coordinate(rect[i].X, rect[i].Y);
-                    coords[4] = coords[0];
+                    double radius = Math.Max(hw, hh);
+                    coords = BuildCircleRing(center, radius, col.AngleDeg, 64);
                 }
                 else if (col.ColumnType == 3 && TryGetPolygonColumn(polygonSectionId, center, col.AngleDeg, out var polyPoints))
                 {
@@ -650,6 +693,11 @@ namespace ST4PlanIdCiz
             var factory = new GeometryFactory();
             var wallList = new List<(Geometry poly, int fixedAxisId)>();
             var beamList = new List<Geometry>();
+            Geometry kolonPerdeUnion = BuildKolonPerdeUnion(floor, offsetX, offsetY);
+            Geometry kolonPerdeBoundary = (kolonPerdeUnion != null && !kolonPerdeUnion.IsEmpty) ? kolonPerdeUnion.Boundary : null;
+            const double beamEndExtensionCm = 22.0;   // Kolona tek noktada değen kiriş ucu 22 cm uzatılır
+            const double touchEpsilonCm = 0.2;        // Uç kolon sınırında kabul
+
             var beams = MergeSameIdBeamsOnFloor(floor.FloorNo);
             foreach (var beam in beams)
             {
@@ -662,6 +710,24 @@ namespace ST4PlanIdCiz
                 Vector2d dir = b - a;
                 if (dir.Length <= 1e-9) continue;
                 Vector2d u = dir.GetNormal();
+                if (kolonPerdeBoundary != null && !kolonPerdeBoundary.IsEmpty)
+                {
+                    var ptA = factory.CreatePoint(new Coordinate(a.X, a.Y));
+                    var ptB = factory.CreatePoint(new Coordinate(b.X, b.Y));
+                    var mid = factory.CreatePoint(new Coordinate((a.X + b.X) * 0.5, (a.Y + b.Y) * 0.5));
+                    double distA = ptA.Distance(kolonPerdeBoundary);
+                    double distB = ptB.Distance(kolonPerdeBoundary);
+                    bool aOnCol = distA <= touchEpsilonCm;
+                    bool bOnCol = distB <= touchEpsilonCm;
+                    bool midInside = kolonPerdeUnion.Contains(mid);
+                    // Referans nokta = kirişin kolona değdiği nokta (a veya b). Uzatma sadece bu noktadan 22 cm gidilen nokta kolon kesiti içinde kalıyorsa yapılır; dışına çıkıyorsa yapılmaz.
+                    var extA = factory.CreatePoint(new Coordinate(a.X - beamEndExtensionCm * u.X, a.Y - beamEndExtensionCm * u.Y));
+                    var extB = factory.CreatePoint(new Coordinate(b.X + beamEndExtensionCm * u.X, b.Y + beamEndExtensionCm * u.Y));
+                    bool extendAtA = aOnCol && !midInside && kolonPerdeUnion.Contains(extA);
+                    bool extendAtB = bOnCol && !midInside && kolonPerdeUnion.Contains(extB);
+                    if (extendAtA) a = a - u.MultiplyBy(beamEndExtensionCm);
+                    if (extendAtB) b = b + u.MultiplyBy(beamEndExtensionCm);
+                }
                 Vector2d perp = new Vector2d(-u.Y, u.X);
                 double hw = beam.WidthCm / 2.0;
                 ComputeBeamEdgeOffsets(beam.OffsetRaw, hw, out double upperEdge, out double lowerEdge);
@@ -699,7 +765,6 @@ namespace ST4PlanIdCiz
                 }
             }
             // Kesim: tüm kirişlerden kolon/perde çıkar; parçalara saç kılı eksiltmesi uygula (daralan boyutlar), sonra tek listede topla.
-            Geometry kolonPerdeUnion = BuildKolonPerdeUnion(floor, offsetX, offsetY);
             var beamPieces = new List<Geometry>();
             foreach (var beamPoly in beamList)
             {
@@ -716,14 +781,27 @@ namespace ST4PlanIdCiz
                 }
                 if (toDraw != null && !toDraw.IsEmpty)
                 {
-                    foreach (var poly in CleanGeometryToPolygons(toDraw, factory))
+                    foreach (var poly in CleanGeometryToPolygons(toDraw, factory, applySmallTriangleTrim: false))
+                    {
                         if (poly is Polygon pg && pg.Area >= 1000.0)
-                            beamPieces.Add(poly);
+                        {
+                            if (!IsColumnEdgeHairline(pg, kolonPerdeBoundary))
+                                beamPieces.Add(pg);
+                            else
+                            {
+                                // Saç kılı büyük kirişe bitişik: kolonu 1mm şişirip tekrar keserek kırp
+                                var trimmed = pg.Difference(kolonPerdeUnion.Buffer(0.1));
+                                if (trimmed != null && !trimmed.IsEmpty)
+                                    foreach (var t in CleanGeometryToPolygons(trimmed, factory, applySmallTriangleTrim: false))
+                                        if (t is Polygon tp && tp.Area > 100.0)
+                                            beamPieces.Add(tp);
+                            }
+                        }
+                    }
                 }
             }
             // Kesim sonrası daralan (saç kılı eksiltmeli) parçalar üzerinden: birbirine değmeyen veya sadece 1 noktada (2mm) değenler hariç, temas edenleri birleştir.
             const double touchToleranceCm = 0.2; // 2 mm
-            Geometry kolonPerdeBoundary = (kolonPerdeUnion != null && !kolonPerdeUnion.IsEmpty) ? kolonPerdeUnion.Boundary : null;
             if (beamPieces.Count > 0)
             {
                 int n = beamPieces.Count;
@@ -750,7 +828,7 @@ namespace ST4PlanIdCiz
                     {
                         part = FilterSmallPolygons(part, minBeamAreaCm2);
                         if (part != null && !part.IsEmpty)
-                            DrawGeometryRingsAsPolylines(tr, btr, part, LayerKiris, addHatch: false, exteriorRingsOnly: false);
+                            DrawGeometryRingsAsPolylines(tr, btr, part, LayerKiris, addHatch: false, exteriorRingsOnly: false, applySmallTriangleTrim: false);
                     }
                 }
             }
@@ -771,7 +849,7 @@ namespace ST4PlanIdCiz
                         }
                     }
                     if (toDraw != null && !toDraw.IsEmpty)
-                        DrawGeometryRingsAsPolylines(tr, btr, toDraw, LayerPerde, addHatch: true, hatchAngleRad: GetAxisAngleRad(fixedAxisId));
+                        DrawGeometryRingsAsPolylines(tr, btr, toDraw, LayerPerde, addHatch: true, hatchAngleRad: GetAxisAngleRad(fixedAxisId), applySmallTriangleTrim: false);
                 }
             }
 
@@ -1038,7 +1116,7 @@ namespace ST4PlanIdCiz
             const string layer = "TEMEL (BEYKENT)";
             Geometry unionResult = temelUnion ?? BuildTemelUnion(offsetX, offsetY, floor);
             if (unionResult == null || unionResult.IsEmpty) return;
-            DrawGeometryRingsAsPolylines(tr, btr, unionResult, layer);
+            DrawGeometryRingsAsPolylines(tr, btr, unionResult, layer, applySmallTriangleTrim: true);
         }
 
         /// <summary>Kapalı bir halkanın (Coordinate dizisi) alanını cm² cinsinden döndürür (signed area, mutlak değer için Math.Abs kullan).</summary>
@@ -1057,6 +1135,43 @@ namespace ST4PlanIdCiz
             return Math.Abs(area) * 0.5;
         }
 
+        /// <summary>Üç noktanın oluşturduğu üçgenin alanını cm² cinsinden döndürür (mutlak değer).</summary>
+        private static double TriangleAreaCm2(Point2d a, Point2d b, Point2d c)
+        {
+            double signed = 0.5 * ((b.X - a.X) * (c.Y - a.Y) - (c.X - a.X) * (b.Y - a.Y));
+            return Math.Abs(signed);
+        }
+
+        /// <summary>X-A segmenti ile C-Y segmenti birbirine paralel mü (≈1° tolerans)? Paralel ise true. Kısa/dejenere segmentte güvenli tarafta kal: false dön (kırpma yapma).</summary>
+        private static bool SegmentsParallel(Point2d x, Point2d a, Point2d c, Point2d y)
+        {
+            Vector2d v1 = a - x, v2 = y - c;
+            double len1 = v1.Length, len2 = v2.Length;
+            const double minSegmentLenCm = 0.4; // 4 mm: daha kısa segment anlamlı paralellik vermez, kırpma yapma
+            if (len1 < minSegmentLenCm || len2 < minSegmentLenCm) return false;
+            double dot = (v1.X * v2.X + v1.Y * v2.Y) / (len1 * len2);
+            if (dot > 1.0) dot = 1.0; if (dot < -1.0) dot = -1.0;
+            double angleRad = Math.Acos(dot);
+            const double tolRad = 1.0 * Math.PI / 180.0;
+            return angleRad <= tolRad || Math.Abs(Math.PI - angleRad) <= tolRad;
+        }
+
+        /// <summary>P noktasının L1-L2 doğrusuna (sonsuz doğru) dik uzaklığını (cm) döndürür.</summary>
+        private static double PointToLineDistance(Point2d p, Point2d l1, Point2d l2)
+        {
+            Vector2d v = l2 - l1;
+            double len = v.Length;
+            if (len < 1e-9) return p.GetDistanceTo(l1);
+            double cross = Math.Abs((l2.X - l1.X) * (p.Y - l1.Y) - (l2.Y - l1.Y) * (p.X - l1.X));
+            return cross / len;
+        }
+
+        /// <summary>X-A doğrultusu ile C-Y ışınlandığında üst üste: C ve Y, X-A doğrusu üzerinde (tol cm içinde) mi?</summary>
+        private static bool SegmentCYOnLineXA(Point2d x, Point2d a, Point2d c, Point2d y, double tolCm = 0.2)
+        {
+            return PointToLineDistance(c, x, a) <= tolCm && PointToLineDistance(y, x, a) <= tolCm;
+        }
+
         /// <summary>P noktasının AB doğru parçasına dik uzaklığını (cm) döndürür.</summary>
         private static double PointToSegmentDistance(Point2d p, Point2d a, Point2d b)
         {
@@ -1071,8 +1186,8 @@ namespace ST4PlanIdCiz
             return p.GetDistanceTo(proj);
         }
 
-        /// <summary>Saç kılı eksiltmelerini uygular; çizimdekiyle aynı kurallar (paralel-gap 2mm, vertex açı 1°, 4mm segment). Halka temizlendikten sonra en az 3 nokta kalırsa döner, yoksa null.</summary>
-        private static List<Point2d> ApplyRingCleanup(Coordinate[] coords)
+        /// <summary>Saç kılı eksiltmelerini uygular; çizimdekiyle aynı kurallar (paralel-gap 2mm, vertex açı 1°, 4mm segment). applySmallTriangleTrim false ise küçük üçgen kırpma (1d) uygulanmaz (kirişler için).</summary>
+        private static List<Point2d> ApplyRingCleanup(Coordinate[] coords, bool applySmallTriangleTrim = true)
         {
             const double minSegmentLen = 0.4;
             const double parallelGapTol = 0.2;
@@ -1147,6 +1262,36 @@ namespace ST4PlanIdCiz
                 }
                 if (!removedAngle) break;
             }
+            // 1d) Düz hattaki ufak üçgen artığı: segment1 (X-A) ile segment4 (C-Y) aynı doğrultudaysa ve A-B-C alanı <500 cm² ise üçgeni oluşturan vertex1(A), vertex2(B), vertex3(C) üçünü sil; X-Y doğrudan birleşir.
+            if (applySmallTriangleTrim)
+            {
+                const double minTriangleAreaCm2 = 1.0;
+                const double maxTriangleAreaCm2 = 1000.0;
+                int guardTri = 0;
+                while (guardTri++ < 50 && pts.Count >= 6)
+                {
+                    bool removedTri = false;
+                    int m = pts.Count;
+                    for (int i = 0; i < m; i++)
+                    {
+                        int ia = (i - 1 + m) % m, ib = i, ic = (i + 1) % m;
+                        var a = pts[ia]; var b = pts[ib]; var c = pts[ic];
+                        var x = pts[(i - 2 + m) % m];
+                        var y = pts[(i + 2) % m];
+                        double area = TriangleAreaCm2(a, b, c);
+                        if (area >= minTriangleAreaCm2 && area < maxTriangleAreaCm2 && SegmentsParallel(x, a, c, y) && SegmentCYOnLineXA(x, a, c, y))
+                        {
+                            // Üç vertex'i indeks sırasına göre büyükten küçüğe sil (kaydırma bozulmasın)
+                            int r1 = Math.Max(Math.Max(ia, ib), ic);
+                            int r3 = Math.Min(Math.Min(ia, ib), ic);
+                            int r2 = ia + ib + ic - r1 - r3;
+                            pts.RemoveAt(r1); pts.RemoveAt(r2); pts.RemoveAt(r3);
+                            removedTri = true; break;
+                        }
+                    }
+                    if (!removedTri) break;
+                }
+            }
             var filtered = new List<Point2d>(pts.Count);
             for (int i = 0; i < pts.Count; i++)
             {
@@ -1157,8 +1302,8 @@ namespace ST4PlanIdCiz
             return filtered;
         }
 
-        /// <summary>Geometriye saç kılı temizliği uygulayıp daralan (kesim sonrası) poligonları döndürür; birleştirme bu sonuç üzerinden yapılır.</summary>
-        private static List<Geometry> CleanGeometryToPolygons(Geometry geom, GeometryFactory factory)
+        /// <summary>Geometriye saç kılı temizliği uygulayıp daralan (kesim sonrası) poligonları döndürür; birleştirme bu sonuç üzerinden yapılır. applySmallTriangleTrim false ise küçük üçgen kırpma (1d) uygulanmaz (kirişler için).</summary>
+        private static List<Geometry> CleanGeometryToPolygons(Geometry geom, GeometryFactory factory, bool applySmallTriangleTrim = true)
         {
             var result = new List<Geometry>();
             if (geom == null || geom.IsEmpty) return result;
@@ -1188,7 +1333,7 @@ namespace ST4PlanIdCiz
             }
             foreach (var coords in rings)
             {
-                var cleaned = ApplyRingCleanup(coords);
+                var cleaned = ApplyRingCleanup(coords, applySmallTriangleTrim);
                 if (cleaned == null || cleaned.Count < 3) continue;
                 var ringCoords = new Coordinate[cleaned.Count + 1];
                 for (int i = 0; i < cleaned.Count; i++) ringCoords[i] = new Coordinate(cleaned[i].X, cleaned[i].Y);
@@ -1199,7 +1344,7 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>NTS Geometry (Polygon/MultiPolygon) dış ve iç halkalarını verilen katmanda polyline olarak çizer; 4 mm'den kısa segmentleri atlar. addHatch true ise her halka için ANSI33 tarama eklenir. hatchAngleRad verilirse tarama açısı olarak kullanılır (perde: aks eğimi). exteriorRingsOnly true ise sadece dış halkalar çizilir (iç halkalar/delik sınırları çizilmez; kolona yapışık çizgi olmaz).</summary>
-        private static void DrawGeometryRingsAsPolylines(Transaction tr, BlockTableRecord btr, Geometry geom, string layer, bool addHatch = false, double? hatchAngleRad = null, bool exteriorRingsOnly = false)
+        private static void DrawGeometryRingsAsPolylines(Transaction tr, BlockTableRecord btr, Geometry geom, string layer, bool addHatch = false, double? hatchAngleRad = null, bool exteriorRingsOnly = false, bool applySmallTriangleTrim = false)
         {
             if (geom == null || geom.IsEmpty) return;
             const double minSegmentLen = 0.4; // 4 mm = 0.4 cm (çizim birimi cm)
@@ -1384,6 +1529,36 @@ namespace ST4PlanIdCiz
                     if (!removedAngle) break;
                 }
 
+                // 1d) Düz hattaki ufak üçgen artığı: segment1 (X-A) ile segment4 (C-Y) aynı doğrultudaysa ve A-B-C alanı <500 cm² ise vertex1(A), vertex2(B), vertex3(C) üçünü sil; X-Y doğrudan birleşir.
+                if (applySmallTriangleTrim)
+                {
+                    const double minTriangleAreaCm2 = 1.0;
+                    const double maxTriangleAreaCm2 = 1000.0;
+                    int guardTri = 0;
+                    while (guardTri++ < 50 && pts.Count >= 6)
+                    {
+                        bool removedTri = false;
+                        int m = pts.Count;
+                        for (int i = 0; i < m; i++)
+                        {
+                            int ia = (i - 1 + m) % m, ib = i, ic = (i + 1) % m;
+                            var a = pts[ia]; var b = pts[ib]; var c = pts[ic];
+                            var x = pts[(i - 2 + m) % m];
+                            var y = pts[(i + 2) % m];
+                            double area = TriangleAreaCm2(a, b, c);
+                            if (area >= minTriangleAreaCm2 && area < maxTriangleAreaCm2 && SegmentsParallel(x, a, c, y) && SegmentCYOnLineXA(x, a, c, y))
+                            {
+                                int r1 = Math.Max(Math.Max(ia, ib), ic);
+                                int r3 = Math.Min(Math.Min(ia, ib), ic);
+                                int r2 = ia + ib + ic - r1 - r3;
+                                pts.RemoveAt(r1); pts.RemoveAt(r2); pts.RemoveAt(r3);
+                                removedTri = true; break;
+                            }
+                        }
+                        if (!removedTri) break;
+                    }
+                }
+
                 // 2) Çok kısa segmentleri filtrele.
                 var filtered = new List<Point2d>(pts.Count);
                 for (int i = 0; i < pts.Count; i++)
@@ -1397,7 +1572,9 @@ namespace ST4PlanIdCiz
                 }
                 if (filtered.Count < 3) continue; // Kapalı halka için en az 3 nokta; 2'ye inen saç kılı çizilmez
 
-                var pl = ToPolyline(filtered.ToArray(), true);
+                // Kiriş, perde ve temel hatılında yuvarlak kolon kesimini yay yap (LS daire uydurması + bulge)
+                bool useCircleArcs = (layer == LayerKiris || layer == LayerPerde || layer == "TEMEL HATILI (BEYKENT)");
+                var pl = useCircleArcs ? ToPolylineCircleArcsOnly(filtered, true) : ToPolyline(filtered.ToArray(), true);
                 pl.Layer = layer;
                 if (addHatch)
                 {
@@ -1410,7 +1587,8 @@ namespace ST4PlanIdCiz
             }
         }
 
-        private void DrawContinuousFoundations(Transaction tr, BlockTableRecord btr, double offsetX, double offsetY, FloorInfo floor, bool drawTemelOutline = true, Geometry temelUnion = null, Geometry kolonPerdeUnion = null)
+        /// <param name="temelHatiliRaws">Dolu verilirse sürekli temel hatılı poligonları (diff öncesi) bu listeye eklenir ve hatıl burada çizilmez; DrawTieBeams'ta kiriş birleştirme mantığıyla birleştirilip çizilir.</param>
+        private void DrawContinuousFoundations(Transaction tr, BlockTableRecord btr, double offsetX, double offsetY, FloorInfo floor, bool drawTemelOutline = true, Geometry temelUnion = null, Geometry kolonPerdeUnion = null, List<Geometry> temelHatiliRaws = null)
         {
             const string layer = "TEMEL (BEYKENT)";
             const string layerAmpatman = "TEMEL AMPATMAN (BEYKENT)";
@@ -1518,14 +1696,21 @@ namespace ST4PlanIdCiz
                     hatilCoords[4] = hatilCoords[0];
                     var hatilPoly = factory.CreatePolygon(factory.CreateLinearRing(hatilCoords));
 
-                    Geometry toDrawHatil = hatilPoly;
-                    if (kolonPerdeUnion != null && !kolonPerdeUnion.IsEmpty)
+                    if (temelHatiliRaws != null)
                     {
-                        var diffH = hatilPoly.Difference(kolonPerdeUnion);
-                        if (diffH == null || diffH.IsEmpty) continue;
-                        toDrawHatil = diffH;
+                        temelHatiliRaws.Add(hatilPoly);
                     }
-                    DrawGeometryRingsAsPolylines(tr, btr, toDrawHatil, "TEMEL HATILI (BEYKENT)");
+                    else
+                    {
+                        Geometry toDrawHatil = hatilPoly;
+                        if (kolonPerdeUnion != null && !kolonPerdeUnion.IsEmpty)
+                        {
+                            var diffH = hatilPoly.Difference(kolonPerdeUnion);
+                            if (diffH == null || diffH.IsEmpty) continue;
+                            toDrawHatil = diffH;
+                        }
+                        DrawGeometryRingsAsPolylines(tr, btr, toDrawHatil, "TEMEL HATILI (BEYKENT)", applySmallTriangleTrim: false);
+                    }
                 }
             }
 
@@ -1541,7 +1726,7 @@ namespace ST4PlanIdCiz
                         ? ampatmanUnion.Difference(temelUnion)
                         : ampatmanUnion;
                     if (toDraw != null && !toDraw.IsEmpty)
-                        DrawGeometryRingsAsPolylines(tr, btr, toDraw, layerAmpatman);
+                        DrawGeometryRingsAsPolylines(tr, btr, toDraw, layerAmpatman, applySmallTriangleTrim: false);
                 }
             }
         }
@@ -1629,7 +1814,7 @@ namespace ST4PlanIdCiz
             }
         }
 
-        private void DrawTieBeams(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY, Geometry kolonPerdeUnion = null)
+        private void DrawTieBeams(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY, Geometry kolonPerdeUnion = null, List<Geometry> temelHatiliRaws = null)
         {
             const string layerTemel = "TEMEL (BEYKENT)";
             const string layerHatili = "TEMEL HATILI (BEYKENT)";
@@ -1676,26 +1861,68 @@ namespace ST4PlanIdCiz
                 bool insideSlab = slabUnion != null && !slabUnion.IsEmpty && slabUnion.Contains(tbPoly);
                 string layer = (insideContinuous || insideSlab) ? layerHatili : layerTemel;
 
-                // TEMEL (BEYKENT) katmanındaki bağ kirişleri birleşik çizimde zaten var; TEMEL HATILI olanları topla, sonra tek Union ile çiz.
                 if (layer == layerHatili)
                     hatiliPolygons.Add(tbPoly);
             }
 
-            // Bitişik TEMEL HATILI bağ kirişlerini Union ile birleştirip tek geometri olarak çiz (BK18-BK47 gibi).
-            if (hatiliPolygons.Count > 0)
+            // Tüm TEMEL HATILI kaynaklarını topla (sürekli temel hatılları + bu katmandaki bağ kirişleri), kiriş birleştirme mantığıyla: diff → clean → temas edenleri birleştir → filtrele → çiz (aks gruplaması yok).
+            var allHatilRaws = new List<Geometry>();
+            if (temelHatiliRaws != null) allHatilRaws.AddRange(temelHatiliRaws);
+            allHatilRaws.AddRange(hatiliPolygons);
+            if (allHatilRaws.Count > 0)
             {
-                Geometry unionHatili = hatiliPolygons.Count == 1 ? hatiliPolygons[0] : CascadedPolygonUnion.Union(hatiliPolygons);
-                if (unionHatili != null && !unionHatili.IsEmpty)
+                var hatilPieces = new List<Geometry>();
+                foreach (var geom in allHatilRaws)
                 {
-                    Geometry toDraw = unionHatili;
+                    if (geom == null || geom.IsEmpty) continue;
+                    Geometry toDraw = geom;
                     if (kolonPerdeUnion != null && !kolonPerdeUnion.IsEmpty)
                     {
-                        var diff = unionHatili.Difference(kolonPerdeUnion);
+                        var diff = geom.Difference(kolonPerdeUnion);
                         if (diff != null && !diff.IsEmpty)
-                            toDraw = diff;
+                        {
+                            toDraw = ReducePrecisionSafe(diff, 100);
+                            if (toDraw == null || toDraw.IsEmpty) toDraw = diff;
+                        }
                     }
                     if (toDraw != null && !toDraw.IsEmpty)
-                        DrawGeometryRingsAsPolylines(tr, btr, toDraw, layerHatili);
+                    {
+                        foreach (var poly in CleanGeometryToPolygons(toDraw, factory, applySmallTriangleTrim: false))
+                            if (poly is Polygon pg && pg.Area >= 1000.0)
+                                hatilPieces.Add(poly);
+                    }
+                }
+                const double touchToleranceCm = 0.2;
+                Geometry kolonPerdeBoundary = (kolonPerdeUnion != null && !kolonPerdeUnion.IsEmpty) ? kolonPerdeUnion.Boundary : null;
+                if (hatilPieces.Count > 0)
+                {
+                    int n = hatilPieces.Count;
+                    var parent = new int[n];
+                    for (int i = 0; i < n; i++) parent[i] = i;
+                    int Find(int x) { while (parent[x] != x) x = parent[x] = parent[parent[x]]; return x; }
+                    void Union(int x, int y) { parent[Find(x)] = Find(y); }
+                    for (int i = 0; i < n; i++)
+                        for (int j = i + 1; j < n; j++)
+                            if (ProperlyTouches(hatilPieces[i], hatilPieces[j], touchToleranceCm, kolonPerdeBoundary))
+                                Union(i, j);
+                    var componentGroups = new Dictionary<int, List<Geometry>>();
+                    for (int i = 0; i < n; i++)
+                    {
+                        int root = Find(i);
+                        if (!componentGroups.ContainsKey(root)) componentGroups[root] = new List<Geometry>();
+                        componentGroups[root].Add(hatilPieces[i]);
+                    }
+                    const double minHatilAreaCm2 = 1000.0;
+                    foreach (var list in componentGroups.Values)
+                    {
+                        Geometry part = list.Count == 1 ? list[0] : CascadedPolygonUnion.Union(list);
+                        if (part != null && !part.IsEmpty)
+                        {
+                            part = FilterSmallPolygons(part, minHatilAreaCm2);
+                            if (part != null && !part.IsEmpty)
+                                DrawGeometryRingsAsPolylines(tr, btr, part, layerHatili, addHatch: false, exteriorRingsOnly: false, applySmallTriangleTrim: false);
+                        }
+                    }
                 }
             }
         }
@@ -1822,6 +2049,22 @@ namespace ST4PlanIdCiz
             return pts;
         }
 
+        /// <summary>Daire kolon için NTS kesim geometrisi: merkez ve yarıçap ile çokgen daire halkası (net kesim için yeterli segment).</summary>
+        private static Coordinate[] BuildCircleRing(Point2d center, double radiusCm, double angleDeg, int numSegments = 64)
+        {
+            if (numSegments < 8) numSegments = 8;
+            var coords = new Coordinate[numSegments + 1];
+            for (int i = 0; i < numSegments; i++)
+            {
+                double angleRad = (i * 2.0 * Math.PI / numSegments) + (angleDeg * Math.PI / 180.0);
+                double x = center.X + radiusCm * Math.Cos(angleRad);
+                double y = center.Y + radiusCm * Math.Sin(angleRad);
+                coords[i] = new Coordinate(x, y);
+            }
+            coords[numSegments] = coords[0];
+            return coords;
+        }
+
         private bool TryGetPolygonColumn(int sectionId, Point2d center, double angleDeg, out Point2d[] points)
         {
             points = Array.Empty<Point2d>();
@@ -1936,6 +2179,127 @@ namespace ST4PlanIdCiz
             var pl = new Polyline();
             for (int i = 0; i < points.Count; i++)
                 pl.AddVertexAt(i, points[i], 0, 0, 0);
+            pl.Closed = closed;
+            return pl;
+        }
+
+        /// <summary>Üç noktadan geçen dairenin merkez ve yarıçapı (collinear ise false).</summary>
+        private static bool TryCircumcircle(Point2d a, Point2d b, Point2d c, out Point2d center, out double radius)
+        {
+            center = default;
+            radius = 0;
+            double d = 2.0 * (a.X * (b.Y - c.Y) + b.X * (c.Y - a.Y) + c.X * (a.Y - b.Y));
+            if (Math.Abs(d) < 1e-12) return false;
+            double cx = ((a.X * a.X + a.Y * a.Y) * (b.Y - c.Y) + (b.X * b.X + b.Y * b.Y) * (c.Y - a.Y) + (c.X * c.X + c.Y * c.Y) * (a.Y - b.Y)) / d;
+            double cy = ((a.X * a.X + a.Y * a.Y) * (c.X - b.X) + (b.X * b.X + b.Y * b.Y) * (a.X - c.X) + (c.X * c.X + c.Y * c.Y) * (b.X - a.X)) / d;
+            center = new Point2d(cx, cy);
+            radius = Math.Sqrt((a.X - cx) * (a.X - cx) + (a.Y - cy) * (a.Y - cy));
+            return radius >= 1e-9;
+        }
+
+        private static double PointToCircleDistance(Point2d p, Point2d center, double radius)
+        {
+            return Math.Abs(Math.Sqrt((p.X - center.X) * (p.X - center.X) + (p.Y - center.Y) * (p.Y - center.Y)) - radius);
+        }
+
+        /// <summary>Kása cebirsel daire uydurması: z = x²+y² = 2cx·x + 2cy·y + (R²−cx²−cy²). LS çözümü merkezi kolon dairesi ile uyumlu yapar (iki kiriş birleşince de).</summary>
+        private static bool TryFitCircleLS(IReadOnlyList<Point2d> pts, out Point2d center, out double radius)
+        {
+            center = default;
+            radius = 0;
+            if (pts == null || pts.Count < 3) return false;
+            int n = pts.Count;
+            double sx = 0, sy = 0, sz = 0, sxx = 0, syy = 0, sxy = 0, sxz = 0, syz = 0;
+            for (int k = 0; k < n; k++)
+            {
+                double x = pts[k].X, y = pts[k].Y, z = x * x + y * y;
+                sx += x; sy += y; sz += z;
+                sxx += x * x; syy += y * y; sxy += x * y;
+                sxz += x * z; syz += y * z;
+            }
+            double det = sxx * (syy * n - sy * sy) - sxy * (sxy * n - sy * sx) + sx * (sxy * sy - syy * sx);
+            if (Math.Abs(det) < 1e-15) return false;
+            double u = (sxz * (syy * n - sy * sy) - sxy * (syz * n - sy * sz) + sx * (syz * sy - syy * sz)) / det;
+            double v = (sxx * (syz * n - sy * sz) - sxz * (sxy * n - sy * sx) + sx * (sxy * sz - syz * sx)) / det;
+            double w = (sxx * (syy * sz - syz * sy) - sxy * (sxy * sz - syz * sx) + sxz * (sxy * sy - syy * sx)) / det;
+            double cx = u / 2.0, cy = v / 2.0;
+            double R2 = w + cx * cx + cy * cy;
+            if (R2 < 1e-12) return false;
+            radius = Math.Sqrt(R2);
+            center = new Point2d(cx, cy);
+            return radius >= 1e-9;
+        }
+
+        /// <summary>Sadece daire kolon kesimini yay yapar. Merkez ve yarıçap LS daire uydurması ile (tüm run noktaları); iki kiriş birleşince de kolon dairesiyle uyumlu.</summary>
+        private static Polyline ToPolylineCircleArcsOnly(IReadOnlyList<Point2d> points, bool closed)
+        {
+            if (points == null || points.Count < 2) return ToPolyline(points ?? new List<Point2d>(), closed);
+            int n = points.Count;
+            const double arcTol = 0.15;   // daire uydurma toleransı (cm)
+            const int minCircleRun = 8;
+            const int maxRun = 64;
+
+            var vertices = new List<(Point2d pt, double bulge)>();
+
+            for (int i = 0; i < n; )
+            {
+                int bestLen = 0;
+                double bestBulge = 0;
+                int maxLen = Math.Min(maxRun, n - 1 - i);
+                if (maxLen < minCircleRun) { vertices.Add((points[i], 0)); i++; continue; }
+
+                for (int len = minCircleRun; len <= maxLen; len++)
+                {
+                    int j = i + len;
+                    var runPts = new List<Point2d>();
+                    for (int k = 0; k <= len; k++) runPts.Add(points[i + k]);
+                    if (!TryFitCircleLS(runPts, out Point2d center, out double radius))
+                        continue;
+                    bool ok = true;
+                    for (int k = 0; k <= len && ok; k++)
+                        if (PointToCircleDistance(points[i + k], center, radius) > arcTol) ok = false;
+                    if (!ok) continue;
+
+                    double a0 = Math.Atan2(points[i].Y - center.Y, points[i].X - center.X);
+                    double a1 = Math.Atan2(points[j].Y - center.Y, points[j].X - center.X);
+                    int mid = i + (len / 2);
+                    double aMid = Math.Atan2(points[mid].Y - center.Y, points[mid].X - center.X);
+                    double sweep = a1 - a0;
+                    if (sweep > Math.PI) sweep -= 2.0 * Math.PI;
+                    if (sweep < -Math.PI) sweep += 2.0 * Math.PI;
+                    double sweepAlt = (sweep >= 0) ? sweep - 2.0 * Math.PI : sweep + 2.0 * Math.PI;
+                    bool useAlt = false;
+                    if (Math.Abs(sweep) > 1e-6)
+                    {
+                        double aMidNorm = aMid - a0;
+                        while (aMidNorm > Math.PI) aMidNorm -= 2.0 * Math.PI;
+                        while (aMidNorm < -Math.PI) aMidNorm += 2.0 * Math.PI;
+                        if (sweep > 0 && aMidNorm < 0) useAlt = true;
+                        if (sweep < 0 && aMidNorm > 0) useAlt = true;
+                    }
+                    if (useAlt) sweep = sweepAlt;
+                    if (Math.Abs(sweep) > Math.PI - 0.01) continue;
+                    double bulge = Math.Tan(sweep / 4.0);
+                    if (double.IsNaN(bulge) || double.IsInfinity(bulge) || Math.Abs(bulge) > 5.0) continue;
+                    if (len > bestLen) { bestLen = len; bestBulge = bulge; }
+                }
+
+                if (bestLen >= minCircleRun)
+                {
+                    vertices.Add((points[i], bestBulge));
+                    i += bestLen;
+                }
+                else
+                {
+                    vertices.Add((points[i], 0));
+                    i++;
+                }
+            }
+
+            if (vertices.Count == 0) return ToPolyline(points, closed);
+            var pl = new Polyline();
+            for (int v = 0; v < vertices.Count; v++)
+                pl.AddVertexAt(v, vertices[v].pt, vertices[v].bulge, 0, 0);
             pl.Closed = closed;
             return pl;
         }

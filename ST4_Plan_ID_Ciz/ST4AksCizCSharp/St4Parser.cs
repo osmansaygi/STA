@@ -104,7 +104,9 @@ namespace ST4AksCizCSharp
                         St4Text.TryParseDouble(axisParts[0], out double slope) &&
                         St4Text.TryParseDouble(axisParts[1], out double val))
                     {
-                        // ST4 Axis data ikinci sutun her zaman metre cinsinden; cizim cm kullaniyor (ValueCm)
+                        // Açılı akslarda yuvarlama yapma; düz akslarda 0.1mm (4 ondalık)
+                        if (Math.Abs(slope) <= 1e-9)
+                            val = Math.Round(val, 4);
                         val *= 100.0;
                         allValues.Add(val);
                         allSlopes.Add(slope);
