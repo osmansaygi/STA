@@ -2,6 +2,9 @@ using System;
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Runtime;
+using NetTopologySuite;
+using NetTopologySuite.Geometries;
+using NetTopologySuite.Geometries.Implementation;
 using ST4AksCizCSharp;
 
 [assembly: ExtensionApplication(typeof(ST4PlanIdCiz.PluginLifecycle))]
@@ -40,6 +43,14 @@ namespace ST4PlanIdCiz
 
             try
             {
+                // non-noded intersection hatalarını önlemek için (sb_emn.st4 vb.) overlay işlemlerinde NextGen kullan
+                NtsGeometryServices.Instance = new NtsGeometryServices(
+                    CoordinateArraySequenceFactory.Instance,
+                    new PrecisionModel(),
+                    0,
+                    GeometryOverlay.NG,
+                    new CoordinateEqualityComparer());
+
                 var parser = new St4Parser();
                 var model = parser.Parse(fileRes.StringResult);
                 var manager = new PlanIdDrawingManager(model);

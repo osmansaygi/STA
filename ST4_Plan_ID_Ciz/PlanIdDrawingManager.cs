@@ -48,7 +48,9 @@ namespace ST4PlanIdCiz
                     double offsetX = 0.0;
                     double offsetY = 0.0;
                     var firstFloor = _model.Floors[0];
-                    DrawAxes(tr, btr, offsetX, offsetY, ext);
+                    Geometry firstFloorUnion = BuildFloorElementUnion(firstFloor);
+                    var firstFloorAxisExt = GetKatSiniriEnvelope(firstFloorUnion);
+                    DrawAxes(tr, btr, offsetX, offsetY, firstFloorAxisExt);
                     DrawColumns(tr, btr, firstFloor, offsetX, offsetY);
                     DrawWallsForFloor(tr, btr, firstFloor, offsetX, offsetY);
                     Geometry temelUnion = BuildTemelUnion(offsetX, offsetY, firstFloor);
@@ -59,7 +61,7 @@ namespace ST4PlanIdCiz
                     DrawSlabFoundations(tr, btr, offsetX, offsetY, drawTemelOutline: false);
                     DrawTieBeams(tr, btr, firstFloor, offsetX, offsetY, kolonPerdeUnion, temelHatiliRaws);
                     DrawSingleFootings(tr, btr, firstFloor, offsetX, offsetY, drawTemelOutline: false);
-                    DrawFloorTitle(tr, btr, firstFloor, offsetX, offsetY, ext, isFoundationPlan: true);
+                    DrawFloorTitle(tr, btr, firstFloor, offsetX, offsetY, firstFloorAxisExt, isFoundationPlan: true);
                 }
 
                 for (int floorIdx = 0; floorIdx < _model.Floors.Count; floorIdx++)
@@ -68,11 +70,15 @@ namespace ST4PlanIdCiz
                     double offsetX = (floorIdx + planStartIndex) * (floorWidth + floorGap);
                     double offsetY = 0.0;
 
-                    DrawAxes(tr, btr, offsetX, offsetY, ext);
+                    Geometry elemUnion = BuildFloorElementUnion(floor);
+                    var floorAxisExt = GetKatSiniriEnvelope(elemUnion);
+                    DrawAxes(tr, btr, offsetX, offsetY, floorAxisExt);
                     DrawColumns(tr, btr, floor, offsetX, offsetY);
                     DrawBeamsAndWalls(tr, btr, floor, offsetX, offsetY);
                     DrawSlabs(tr, btr, floor, offsetX, offsetY);
-                    DrawFloorTitle(tr, btr, floor, offsetX, offsetY, ext, isFoundationPlan: false);
+                    DrawFloorBoundary(tr, btr, elemUnion, offsetX, offsetY);
+                    DrawSlabVoids(tr, btr, elemUnion, offsetX, offsetY);
+                    DrawFloorTitle(tr, btr, floor, offsetX, offsetY, floorAxisExt, isFoundationPlan: false);
                 }
 
                 tr.Commit();
@@ -85,6 +91,8 @@ namespace ST4PlanIdCiz
         }
 
         private const string LayerAks = "AKS CIZGISI (BEYKENT)";
+        private const string LayerAksBalonu = "AKS BALONU (BEYKENT)";
+        private const string LayerAksYazisi = "AKS YAZISI (BEYKENT)";
         private const string LayerKiris = "KIRIS (BEYKENT)";
         private const string LayerKolon = "KOLON (BEYKENT)";
         private const string LayerPerde = "PERDE (BEYKENT)";
@@ -93,11 +101,21 @@ namespace ST4PlanIdCiz
         private const string LayerMerdiven = "MERDIVEN (BEYKENT)";
         private const string LayerYazi = "YAZI (BEYKENT)";
         private const string LayerBaslik = "YAZI (BEYKENT)";
+        private const string LayerKatSiniri = "KAT SINIRI (BEYKENT)";
+        private const string LayerKalipBosluk = "KALIP BOSLUK (BEYKENT)";
+        private const string LayerOlcu = "OLCU (BEYKENT)";
+        private const string LayerAksOlcu = "AKS OLCU (BEYKENT)";
+        private const string LayerKirisYazisi = "KIRIS ISMI (BEYKENT)";
+        private const string AksOlcuDimStyleName = "AKS_OLCU";
+        private const string AksOlcuTextStyleName = "AKS_OLCU";
+        private const string ElemanEtiketTextStyleName = "ETIKET";
 
         private static void EnsureLayers(Transaction tr, Database db)
         {
             EnsureDashedLinetype(tr, db);
             EnsurePlanLayer(tr, db, LayerAks, 252, LineWeight.LineWeight020, useDashed: true);
+            EnsurePlanLayer(tr, db, LayerAksBalonu, 7, LineWeight.LineWeight030, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerAksYazisi, 3, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, LayerKiris, 2, LineWeight.LineWeight030, useDashed: false);
             EnsurePlanLayer(tr, db, LayerKolon, 3, LineWeight.LineWeight040, useDashed: false);
             EnsurePlanLayer(tr, db, LayerPerde, 6, LineWeight.LineWeight040, useDashed: false);
@@ -109,6 +127,11 @@ namespace ST4PlanIdCiz
             EnsurePlanLayer(tr, db, "TEMEL (BEYKENT)", 2, LineWeight.LineWeight040, useDashed: false);
             EnsurePlanLayer(tr, db, "TEMEL AMPATMAN (BEYKENT)", 21, LineWeight.LineWeight040, useDashed: false);
             EnsurePlanLayer(tr, db, "TEMEL HATILI (BEYKENT)", 230, LineWeight.LineWeight030, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerKatSiniri, 41, LineWeight.LineWeight025, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerKalipBosluk, 30, LineWeight.LineWeight025, useDashed: true);
+            EnsurePlanLayer(tr, db, LayerOlcu, 4, LineWeight.LineWeight018, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerAksOlcu, 6, LineWeight.LineWeight018, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerKirisYazisi, 40, LineWeight.LineWeight020, useDashed: false);
         }
 
         private static void EnsureDashedLinetype(Transaction tr, Database db)
@@ -148,6 +171,8 @@ namespace ST4PlanIdCiz
                 lt.Add(rec);
                 tr.AddNewlyCreatedDBObject(rec, true);
             }
+            else
+                rec.Color = Color.FromColorIndex(ColorMethod.ByAci, (short)colorIndex);
             if (useDashed)
             {
                 var ltt = (LinetypeTable)tr.GetObject(db.LinetypeTableId, OpenMode.ForRead);
@@ -186,39 +211,604 @@ namespace ST4PlanIdCiz
             return (xmin - margin, xmax + margin, ymin - margin, ymax + margin);
         }
 
+        /// <summary>Kalıp planına çizilen kat sınırı (eleman birleşimi) zarfını model koordinatlarında döndürür. Aks sınırları bu zarfın 220 cm dışına çıkacak şekilde DrawAxes içinde kullanılır. Boşsa CalculateBaseExtents fallback.</summary>
+        private (double Xmin, double Xmax, double Ymin, double Ymax) GetKatSiniriEnvelope(Geometry elementUnion)
+        {
+            if (elementUnion == null || elementUnion.IsEmpty) return CalculateBaseExtents();
+            var env = elementUnion.EnvelopeInternal;
+            return (env.MinX, env.MaxX, env.MinY, env.MaxY);
+        }
+
+        /// <summary>Union'da non-noded intersection önlemek için koordinatları 1 cm ızgaraya yuvarlar.</summary>
+        private static Coordinate C1(double x, double y) => new Coordinate(Math.Round(x, 0), Math.Round(y, 0));
+
+        /// <summary>Katta çizilen elemanların (kolon, kiriş, perde, döşeme) birleşimi; model koordinatları (offset 0). Resimdeki gibi yapıyı takip eden dış sınır için kullanılır. Koordinatlar 1 cm yuvarlanarak non-noded intersection önlenir.</summary>
+        private Geometry BuildFloorElementUnion(FloorInfo floor)
+        {
+            var factory = new GeometryFactory();
+            var geoms = new List<Geometry>();
+            int floorNo = floor.FloorNo;
+
+            foreach (var col in _model.Columns)
+            {
+                if (!_axisService.TryIntersect(col.AxisXId, col.AxisYId, out Point2d axisNode)) continue;
+                int sectionId = ResolveColumnSectionId(floorNo, col.ColumnNo);
+                int polygonSectionId = ResolvePolygonPositionSectionId(floorNo, col.ColumnNo);
+                if (col.ColumnType == 3 && (polygonSectionId <= 0 || !_model.PolygonColumnSectionByPositionSectionId.ContainsKey(polygonSectionId))) continue;
+                if (col.ColumnType != 3 && (sectionId <= 0 || !_model.ColumnDimsBySectionId.ContainsKey(sectionId))) continue;
+                var dim = sectionId > 0 && _model.ColumnDimsBySectionId.ContainsKey(sectionId) ? _model.ColumnDimsBySectionId[sectionId] : (W: 40.0, H: 40.0);
+                double hw = dim.W / 2.0, hh = dim.H / 2.0;
+                var offsetLocal = col.ColumnType == 2 ? ComputeColumnOffsetCircle(col.OffsetXRaw, col.OffsetYRaw) : ComputeColumnOffset(col.OffsetXRaw, col.OffsetYRaw, hw, hh);
+                var offsetGlobal = Rotate(offsetLocal, col.AngleDeg);
+                var center = new Point2d(axisNode.X + offsetGlobal.X, axisNode.Y + offsetGlobal.Y);
+                Coordinate[] coords;
+                if (col.ColumnType == 2)
+                {
+                    var raw = BuildCircleRing(center, Math.Max(hw, hh), col.AngleDeg, 64);
+                    coords = new Coordinate[raw.Length];
+                    for (int i = 0; i < raw.Length; i++) coords[i] = C1(raw[i].X, raw[i].Y);
+                }
+                else if (col.ColumnType == 3 && TryGetPolygonColumn(polygonSectionId, center, col.AngleDeg, out var polyPoints))
+                {
+                    coords = new Coordinate[polyPoints.Length + 1];
+                    for (int i = 0; i < polyPoints.Length; i++) coords[i] = C1(polyPoints[i].X, polyPoints[i].Y);
+                    coords[polyPoints.Length] = coords[0];
+                }
+                else
+                {
+                    var rect = BuildRect(center, hw, hh, col.AngleDeg);
+                    coords = new Coordinate[5];
+                    for (int i = 0; i < 4; i++) coords[i] = C1(rect[i].X, rect[i].Y);
+                    coords[4] = coords[0];
+                }
+                geoms.Add(factory.CreatePolygon(factory.CreateLinearRing(coords)));
+            }
+
+            var beams = MergeSameIdBeamsOnFloor(floorNo);
+            foreach (var beam in beams)
+            {
+                if (!_axisService.TryIntersect(beam.FixedAxisId, beam.StartAxisId, out Point2d p1) ||
+                    !_axisService.TryIntersect(beam.FixedAxisId, beam.EndAxisId, out Point2d p2)) continue;
+                var a = new Point2d(p1.X, p1.Y);
+                var b = new Point2d(p2.X, p2.Y);
+                NormalizeBeamDirection(beam.FixedAxisId, ref a, ref b);
+                Vector2d dir = b - a;
+                if (dir.Length <= 1e-9) continue;
+                Vector2d perp = new Vector2d(-dir.Y, dir.X).GetNormal();
+                double hw = beam.WidthCm / 2.0;
+                ComputeBeamEdgeOffsets(beam.OffsetRaw, hw, out double upperEdge, out double lowerEdge);
+                var coords = new[]
+                {
+                    C1(a.X + perp.X * upperEdge, a.Y + perp.Y * upperEdge),
+                    C1(b.X + perp.X * upperEdge, b.Y + perp.Y * upperEdge),
+                    C1(b.X + perp.X * lowerEdge, b.Y + perp.Y * lowerEdge),
+                    C1(a.X + perp.X * lowerEdge, a.Y + perp.Y * lowerEdge),
+                    C1(a.X + perp.X * upperEdge, a.Y + perp.Y * upperEdge)
+                };
+                geoms.Add(factory.CreatePolygon(factory.CreateLinearRing(coords)));
+            }
+
+            foreach (var slab in _model.Slabs)
+            {
+                if (GetSlabFloorNo(slab.SlabId) != floorNo) continue;
+                int a1 = slab.Axis1, a2 = slab.Axis2, a3 = slab.Axis3, a4 = slab.Axis4;
+                if (a1 == 0 || a2 == 0 || a3 == 0 || a4 == 0) continue;
+                if (!_axisService.TryIntersect(a1, a3, out Point2d p11) || !_axisService.TryIntersect(a1, a4, out Point2d p12) ||
+                    !_axisService.TryIntersect(a2, a3, out Point2d p21) || !_axisService.TryIntersect(a2, a4, out Point2d p22)) continue;
+                var coords = new[]
+                {
+                    C1(p11.X, p11.Y), C1(p12.X, p12.Y),
+                    C1(p22.X, p22.Y), C1(p21.X, p21.Y),
+                    C1(p11.X, p11.Y)
+                };
+                geoms.Add(factory.CreatePolygon(factory.CreateLinearRing(coords)));
+            }
+
+            if (geoms.Count == 0) return null;
+            try
+            {
+                return geoms.Count == 1 ? geoms[0] : NetTopologySuite.Operation.Union.CascadedPolygonUnion.Union(geoms);
+            }
+            catch (Exception)
+            {
+                var reduced = new List<Geometry>();
+                foreach (var g in geoms)
+                {
+                    var r = ReducePrecisionSafe(g, 1);
+                    if (r != null && !r.IsEmpty) reduced.Add(r);
+                }
+                if (reduced.Count == 0) return null;
+                return reduced.Count == 1 ? reduced[0] : NetTopologySuite.Operation.Union.CascadedPolygonUnion.Union(reduced);
+            }
+        }
+
+        /// <summary>Kalıp planında: kat sınırı içinde kalan ve hiçbir eleman (kolon, kiriş, perde, döşeme) tanımlanmayan boşlukları çizer (element union iç halkaları / delikler).</summary>
+        private void DrawSlabVoids(Transaction tr, BlockTableRecord btr, Geometry elementUnion, double offsetX, double offsetY)
+        {
+            if (elementUnion == null || elementUnion.IsEmpty) return;
+            var interiorRings = new List<Coordinate[]>();
+            if (elementUnion is Polygon poly)
+            {
+                for (int h = 0; h < poly.NumInteriorRings; h++)
+                {
+                    var ring = poly.GetInteriorRingN(h);
+                    if (ring != null && ring.NumPoints >= 3)
+                        interiorRings.Add(ring.Coordinates);
+                }
+            }
+            else if (elementUnion is MultiPolygon mp)
+            {
+                for (int i = 0; i < mp.NumGeometries; i++)
+                {
+                    var p = (Polygon)mp.GetGeometryN(i);
+                    if (p == null) continue;
+                    for (int h = 0; h < p.NumInteriorRings; h++)
+                    {
+                        var ring = p.GetInteriorRingN(h);
+                        if (ring != null && ring.NumPoints >= 3)
+                            interiorRings.Add(ring.Coordinates);
+                    }
+                }
+            }
+            foreach (var coords in interiorRings)
+            {
+                var cleaned = ApplyRingCleanup(coords, applySmallTriangleTrim: false);
+                if (cleaned != null && cleaned.Count >= 3)
+                {
+                    var pts = new List<Point2d>(cleaned.Count);
+                    for (int i = 0; i < cleaned.Count; i++)
+                        pts.Add(new Point2d(cleaned[i].X + offsetX, cleaned[i].Y + offsetY));
+                    pts = RemoveDuplicateVertices(pts);
+                    pts = RemoveCollinearVertices(pts, 0.1);
+                    pts = RemoveShortSegmentVertices(pts, 1.0);
+                    if (pts.Count >= 3)
+                    {
+                        var pl = ToPolyline(pts, true);
+                        pl.Layer = LayerKalipBosluk;
+                        AppendEntity(tr, btr, pl);
+                    }
+                }
+            }
+        }
+
+        /// <summary>Kat sınırı poligonu çizer: eleman birleşiminin tüm dış halkaları (birden fazla kapalı alan varsa hepsi). Union yoksa bbox dikdörtgeni.</summary>
+        private void DrawFloorBoundary(Transaction tr, BlockTableRecord btr, Geometry elementUnion, double offsetX, double offsetY)
+        {
+            var exteriorRings = new List<Coordinate[]>();
+            if (elementUnion != null && !elementUnion.IsEmpty)
+            {
+                if (elementUnion is Polygon poly && poly.ExteriorRing != null && poly.ExteriorRing.NumPoints >= 3)
+                    exteriorRings.Add(poly.ExteriorRing.Coordinates);
+                else if (elementUnion is MultiPolygon mp)
+                {
+                    for (int i = 0; i < mp.NumGeometries; i++)
+                    {
+                        var p = (Polygon)mp.GetGeometryN(i);
+                        if (p != null && p.ExteriorRing != null && p.ExteriorRing.NumPoints >= 3)
+                            exteriorRings.Add(p.ExteriorRing.Coordinates);
+                    }
+                }
+            }
+            if (exteriorRings.Count > 0)
+            {
+                foreach (var coords in exteriorRings)
+                {
+                    var cleaned = ApplyRingCleanup(coords, applySmallTriangleTrim: false);
+                    if (cleaned != null && cleaned.Count >= 3)
+                    {
+                        var pts = new List<Point2d>(cleaned.Count);
+                        for (int i = 0; i < cleaned.Count; i++)
+                            pts.Add(new Point2d(cleaned[i].X + offsetX, cleaned[i].Y + offsetY));
+                        pts = RemoveDuplicateVertices(pts);
+                        pts = RemoveCollinearVertices(pts, 0.1);
+                        pts = RemoveShortSegmentVertices(pts, 1.0);
+                        if (pts.Count >= 3)
+                        {
+                            var pl = ToPolyline(pts, true);
+                            pl.Layer = LayerKatSiniri;
+                            AppendEntity(tr, btr, pl);
+                        }
+                    }
+                }
+                return;
+            }
+            var ext = CalculateBaseExtents();
+            var fallback = new Point2d[]
+            {
+                new Point2d(ext.Xmin + offsetX, ext.Ymin + offsetY),
+                new Point2d(ext.Xmax + offsetX, ext.Ymin + offsetY),
+                new Point2d(ext.Xmax + offsetX, ext.Ymax + offsetY),
+                new Point2d(ext.Xmin + offsetX, ext.Ymax + offsetY)
+            };
+            var pl2 = ToPolyline(fallback, true);
+            pl2.Layer = LayerKatSiniri;
+            AppendEntity(tr, btr, pl2);
+        }
+
+        /// <summary>Kapalı poligon vertex listesinden üst üste binen (aynı konumdaki) vertexleri siler; aynı yerde birden fazla varsa sadece biri kalır.</summary>
+        private static List<Point2d> RemoveDuplicateVertices(List<Point2d> pts)
+        {
+            if (pts == null || pts.Count < 4) return pts;
+            const double eps = 1e-9;
+            var outList = new List<Point2d>(pts.Count);
+            int n = pts.Count;
+            for (int i = 0; i < n; i++)
+            {
+                var curr = pts[i];
+                var prev = pts[(i + n - 1) % n];
+                double dx = curr.X - prev.X, dy = curr.Y - prev.Y;
+                if (dx * dx + dy * dy > eps * eps)
+                    outList.Add(curr);
+            }
+            // Kapalı halkada son vertex ilk ile aynıysa sonuncuyu sil (üst üste binenlerden sadece biri kalsın)
+            if (outList.Count >= 3)
+            {
+                var first = outList[0];
+                var last = outList[outList.Count - 1];
+                double d = (last.X - first.X) * (last.X - first.X) + (last.Y - first.Y) * (last.Y - first.Y);
+                if (d <= eps * eps)
+                    outList.RemoveAt(outList.Count - 1);
+            }
+            return outList.Count >= 3 ? outList : pts;
+        }
+
+        /// <summary>Kapalı poligon vertex listesinden açı değişimi &lt; minAngleDeg derece olan vertexleri siler; en az 3 nokta kalır.</summary>
+        private static List<Point2d> RemoveCollinearVertices(List<Point2d> pts, double minAngleDeg = 0.1)
+        {
+            if (pts == null || pts.Count < 4) return pts;
+            double minSin = Math.Sin(minAngleDeg * Math.PI / 180.0);
+            var outList = new List<Point2d>(pts.Count);
+            int n = pts.Count;
+            for (int i = 0; i < n; i++)
+            {
+                var prev = pts[(i + n - 1) % n];
+                var curr = pts[i];
+                var next = pts[(i + 1) % n];
+                double vx = curr.X - prev.X, vy = curr.Y - prev.Y;
+                double wx = next.X - curr.X, wy = next.Y - curr.Y;
+                double cross = vx * wy - vy * wx;
+                double lenPrev = Math.Sqrt(vx * vx + vy * vy);
+                double lenNext = Math.Sqrt(wx * wx + wy * wy);
+                if (lenPrev < 1e-12 || lenNext < 1e-12)
+                    outList.Add(curr);
+                else if (Math.Abs(cross) >= lenPrev * lenNext * minSin)
+                    outList.Add(curr);
+            }
+            return outList.Count >= 3 ? outList : pts;
+        }
+
+        /// <summary>Kapalı poligon vertex listesinden 1mm'den kısa segment oluşturan vertexleri siler (minLenMm: mm cinsinden min segment uzunluğu).</summary>
+        private static List<Point2d> RemoveShortSegmentVertices(List<Point2d> pts, double minLenMm)
+        {
+            if (pts == null || pts.Count < 4 || minLenMm <= 0) return pts;
+            const double mmToDrawing = 1.0;
+            double minLen = minLenMm * mmToDrawing;
+            var list = new List<Point2d>(pts);
+            bool changed = true;
+            while (changed && list.Count >= 4)
+            {
+                changed = false;
+                int n = list.Count;
+                var nextList = new List<Point2d>(n);
+                for (int i = 0; i < n; i++)
+                {
+                    var prev = list[(i + n - 1) % n];
+                    var curr = list[i];
+                    var next = list[(i + 1) % n];
+                    double dPrev = Math.Sqrt((curr.X - prev.X) * (curr.X - prev.X) + (curr.Y - prev.Y) * (curr.Y - prev.Y));
+                    double dNext = Math.Sqrt((next.X - curr.X) * (next.X - curr.X) + (next.Y - curr.Y) * (next.Y - curr.Y));
+                    if (dPrev < minLen || dNext < minLen)
+                        changed = true;
+                    else
+                        nextList.Add(curr);
+                }
+                if (nextList.Count >= 3)
+                    list = nextList;
+                else
+                    break;
+            }
+            return list.Count >= 3 ? list : pts;
+        }
+
+        /// <summary>Kat sınırı: bbox (dikdörtgen) — temel planı gibi ext ile çizilen yerler için.</summary>
+        private void DrawFloorBoundaryFromExt(Transaction tr, BlockTableRecord btr, (double Xmin, double Xmax, double Ymin, double Ymax) ext, double offsetX, double offsetY)
+        {
+            var pts = new Point2d[]
+            {
+                new Point2d(ext.Xmin + offsetX, ext.Ymin + offsetY),
+                new Point2d(ext.Xmax + offsetX, ext.Ymin + offsetY),
+                new Point2d(ext.Xmax + offsetX, ext.Ymax + offsetY),
+                new Point2d(ext.Xmin + offsetX, ext.Ymax + offsetY)
+            };
+            var pl = ToPolyline(pts, true);
+            pl.Layer = LayerKatSiniri;
+            AppendEntity(tr, btr, pl);
+        }
+
+        /// <summary>Kat sınırı (çizim sınırı) dışına aksların taşabileceği minimum mesafe (cm) — en az bu kadar uzatılır.</summary>
+        private const double MinAxisExtensionBeyondBoundaryCm = 220.0;
+        /// <summary>Kat sınırı (çizim sınırı) dışına aksların taşabileceği maksimum mesafe (cm).</summary>
+        private const double MaxAxisExtensionBeyondBoundaryCm = 240.0;
+
         private void DrawAxes(Transaction tr, BlockTableRecord btr, double offsetX, double offsetY,
             (double Xmin, double Xmax, double Ymin, double Ymax) ext)
         {
             var xKolonAks = BuildColumnAxisIds(c => c.AxisXId, _model.AxisX.Select(a => a.Id));
             var yKolonAks = BuildColumnAxisIds(c => c.AxisYId, _model.AxisY.Select(a => a.Id));
 
-            foreach (var ax in _model.AxisX)
+            const double axisBalonRadiusCm = 25.0;   // çap 50 cm
+            const double axisLabelHeightCm = 25.0;
+
+            const double dimOffsetFromBalonCm = 55.0;  // ölçü çizgisi aks balonundan 55 cm (içeri doğru)
+            const double dimRowGapCm = 20.0;           // iki aks ölçü sırası arasında 20 cm
+            const double dimTextHeightCm = 12.0;
+
+            double xLo = ext.Xmin + offsetX - MaxAxisExtensionBeyondBoundaryCm;
+            double xHi = ext.Xmax + offsetX + MaxAxisExtensionBeyondBoundaryCm;
+            double yLo = ext.Ymin + offsetY - MaxAxisExtensionBeyondBoundaryCm;
+            double yHi = ext.Ymax + offsetY + MaxAxisExtensionBeyondBoundaryCm;
+
+            var xAxisTopPositions = new List<Point3d>();
+            var xAxisBottomPositions = new List<Point3d>();
+            var yAxisLeftPositions = new List<Point3d>();
+            var yAxisRightPositions = new List<Point3d>();
+
+            for (int i = 0; i < _model.AxisX.Count; i++)
             {
+                var ax = _model.AxisX[i];
                 if (!xKolonAks.Contains(ax.Id)) continue;
-                var p1 = Math.Abs(ax.Slope) <= 1e-9
-                    ? new Point3d(ax.ValueCm + offsetX, ext.Ymin + offsetY, 0)
-                    : new Point3d(offsetX + ax.ValueCm + ax.Slope * ext.Ymin, ext.Ymin + offsetY, 0);
-                var p2 = Math.Abs(ax.Slope) <= 1e-9
-                    ? new Point3d(ax.ValueCm + offsetX, ext.Ymax + offsetY, 0)
-                    : new Point3d(offsetX + ax.ValueCm + ax.Slope * ext.Ymax, ext.Ymax + offsetY, 0);
-                AppendEntity(tr, btr, new Line(p1, p2) { Layer = LayerAks });
-                var labelPt = new Point3d(ax.ValueCm + offsetX, ext.Ymax + 15 + offsetY, 0);
-                AppendEntity(tr, btr, MakeCenteredText(LayerYazi, 6, ax.Id.ToString(CultureInfo.InvariantCulture), labelPt));
+                if (Math.Abs(ax.Slope) > 1e-9) continue; // sadece eğimi olmayan akslar için ölçü
+                double yBot = ext.Ymin + offsetY - MinAxisExtensionBeyondBoundaryCm;
+                double yTop = ext.Ymax + offsetY + MinAxisExtensionBeyondBoundaryCm;
+                double xBot = offsetX + ax.ValueCm + ax.Slope * (ext.Ymin - MinAxisExtensionBeyondBoundaryCm);
+                double xTop = offsetX + ax.ValueCm + ax.Slope * (ext.Ymax + MinAxisExtensionBeyondBoundaryCm);
+                var p1 = new Point3d(xBot, yBot, 0);
+                var p2 = new Point3d(xTop, yTop, 0);
+                if (!ClipSegmentToRectangle(p1, p2, xLo, xHi, yLo, yHi, out Point3d q1, out Point3d q2)) continue;
+                AppendEntity(tr, btr, new Line(q1, q2) { Layer = LayerAks });
+                string xLabel = (i + 1).ToString(CultureInfo.InvariantCulture);
+                Point3d centerTop = AxisBalonCenterAtEnd(q2, q1, axisBalonRadiusCm);
+                Point3d centerBot = AxisBalonCenterAtEnd(q1, q2, axisBalonRadiusCm);
+                xAxisTopPositions.Add(centerTop);
+                xAxisBottomPositions.Add(centerBot);
+                var circleTop = new Circle(centerTop, Vector3d.ZAxis, axisBalonRadiusCm) { Layer = LayerAksBalonu };
+                AppendEntity(tr, btr, circleTop);
+                AppendEntity(tr, btr, MakeCenteredText(LayerAksYazisi, axisLabelHeightCm, xLabel, centerTop));
+                var circleBot = new Circle(centerBot, Vector3d.ZAxis, axisBalonRadiusCm) { Layer = LayerAksBalonu };
+                AppendEntity(tr, btr, circleBot);
+                AppendEntity(tr, btr, MakeCenteredText(LayerAksYazisi, axisLabelHeightCm, xLabel, centerBot));
             }
 
-            foreach (var ay in _model.AxisY)
+            for (int j = 0; j < _model.AxisY.Count; j++)
             {
+                var ay = _model.AxisY[j];
                 if (!yKolonAks.Contains(ay.Id)) continue;
-                var p1 = Math.Abs(ay.Slope) <= 1e-9
-                    ? new Point3d(ext.Xmin + offsetX, -ay.ValueCm + offsetY, 0)
-                    : new Point3d(ext.Xmin + offsetX, -(ay.ValueCm + ay.Slope * ext.Xmin) + offsetY, 0);
-                var p2 = Math.Abs(ay.Slope) <= 1e-9
-                    ? new Point3d(ext.Xmax + offsetX, -ay.ValueCm + offsetY, 0)
-                    : new Point3d(ext.Xmax + offsetX, -(ay.ValueCm + ay.Slope * ext.Xmax) + offsetY, 0);
-                AppendEntity(tr, btr, new Line(p1, p2) { Layer = LayerAks });
-                var labelPt = new Point3d(ext.Xmax + 15 + offsetX, -ay.ValueCm + offsetY, 0);
-                AppendEntity(tr, btr, MakeCenteredText(LayerYazi, 6, ay.Id.ToString(CultureInfo.InvariantCulture), labelPt));
+                if (Math.Abs(ay.Slope) > 1e-9) continue; // sadece eğimi olmayan akslar için ölçü
+                double xLeft = ext.Xmin + offsetX - MinAxisExtensionBeyondBoundaryCm;
+                double xRight = ext.Xmax + offsetX + MinAxisExtensionBeyondBoundaryCm;
+                double yLeft = -(ay.ValueCm + ay.Slope * (ext.Xmin - MinAxisExtensionBeyondBoundaryCm)) + offsetY;
+                double yRight = -(ay.ValueCm + ay.Slope * (ext.Xmax + MinAxisExtensionBeyondBoundaryCm)) + offsetY;
+                var p1 = new Point3d(xLeft, yLeft, 0);
+                var p2 = new Point3d(xRight, yRight, 0);
+                if (!ClipSegmentToRectangle(p1, p2, xLo, xHi, yLo, yHi, out Point3d q1, out Point3d q2)) continue;
+                AppendEntity(tr, btr, new Line(q1, q2) { Layer = LayerAks });
+                string yLabel = j < 26 ? ((char)('A' + j)).ToString() : "A" + (j - 25).ToString(CultureInfo.InvariantCulture);
+                Point3d centerRight = AxisBalonCenterAtEnd(q2, q1, axisBalonRadiusCm);
+                Point3d centerLeft = AxisBalonCenterAtEnd(q1, q2, axisBalonRadiusCm);
+                yAxisLeftPositions.Add(centerLeft);
+                yAxisRightPositions.Add(centerRight);
+                var circleRight = new Circle(centerRight, Vector3d.ZAxis, axisBalonRadiusCm) { Layer = LayerAksBalonu };
+                AppendEntity(tr, btr, circleRight);
+                AppendEntity(tr, btr, MakeCenteredText(LayerAksYazisi, axisLabelHeightCm, yLabel, centerRight));
+                var circleLeft = new Circle(centerLeft, Vector3d.ZAxis, axisBalonRadiusCm) { Layer = LayerAksBalonu };
+                AppendEntity(tr, btr, circleLeft);
+                AppendEntity(tr, btr, MakeCenteredText(LayerAksYazisi, axisLabelHeightCm, yLabel, centerLeft));
             }
+
+            Database db = btr.Database;
+            ObjectId aksOlcuDimStyleId = GetOrCreateAksOlcuDimStyle(tr, db, dimTextHeightCm);
+            if (xAxisTopPositions.Count >= 2)
+                DrawAxisDimensionsXFourSides(tr, btr, xAxisTopPositions, xAxisBottomPositions, dimOffsetFromBalonCm, dimRowGapCm, aksOlcuDimStyleId);
+            if (yAxisLeftPositions.Count >= 2)
+                DrawAxisDimensionsYFourSides(tr, btr, yAxisLeftPositions, yAxisRightPositions, dimOffsetFromBalonCm, dimRowGapCm, aksOlcuDimStyleId);
+        }
+
+        /// <summary>X aksları için 4 tarafta (üst + alt) çift sıra ölçü; balondan içeri doğru 55 cm ve 75 cm.</summary>
+        private void DrawAxisDimensionsXFourSides(Transaction tr, BlockTableRecord btr, List<Point3d> topPositions, List<Point3d> bottomPositions, double offsetFromBalonCm, double rowGapCm, ObjectId dimStyleId)
+        {
+            var sortedTop = topPositions.OrderBy(p => p.X).ToList();
+            var sortedBot = bottomPositions.OrderBy(p => p.X).ToList();
+            if (sortedTop.Count < 2 || sortedBot.Count < 2) return;
+
+            double xFirst = sortedTop[0].X, xLast = sortedTop[sortedTop.Count - 1].X;
+
+            // Üst taraf: balondan içeri (aşağı) = refY - offset
+            double refYTop = sortedTop.Max(p => p.Y);
+            double yTotalTop = refYTop - offsetFromBalonCm;
+            double yIndTop = refYTop - offsetFromBalonCm - rowGapCm;
+
+            AppendEntity(tr, btr, new AlignedDimension(new Point3d(xFirst, yTotalTop, 0), new Point3d(xLast, yTotalTop, 0), new Point3d((xFirst + xLast) * 0.5, yTotalTop, 0), "", dimStyleId) { Layer = LayerAksOlcu });
+            for (int i = 0; i < sortedTop.Count - 1; i++)
+            {
+                double x1 = sortedTop[i].X, x2 = sortedTop[i + 1].X;
+                AppendEntity(tr, btr, new AlignedDimension(new Point3d(x1, yIndTop, 0), new Point3d(x2, yIndTop, 0), new Point3d((x1 + x2) * 0.5, yIndTop, 0), "", dimStyleId) { Layer = LayerAksOlcu });
+            }
+
+            // Alt taraf: balondan içeri (yukarı) = refYBottom + offset
+            double refYBot = sortedBot.Min(p => p.Y);
+            double yTotalBot = refYBot + offsetFromBalonCm;
+            double yIndBot = refYBot + offsetFromBalonCm + rowGapCm;
+
+            AppendEntity(tr, btr, new AlignedDimension(new Point3d(xFirst, yTotalBot, 0), new Point3d(xLast, yTotalBot, 0), new Point3d((xFirst + xLast) * 0.5, yTotalBot, 0), "", dimStyleId) { Layer = LayerAksOlcu });
+            for (int i = 0; i < sortedBot.Count - 1; i++)
+            {
+                double x1 = sortedBot[i].X, x2 = sortedBot[i + 1].X;
+                AppendEntity(tr, btr, new AlignedDimension(new Point3d(x1, yIndBot, 0), new Point3d(x2, yIndBot, 0), new Point3d((x1 + x2) * 0.5, yIndBot, 0), "", dimStyleId) { Layer = LayerAksOlcu });
+            }
+        }
+
+        /// <summary>Y aksları için 4 tarafta (sol + sağ) çift sıra ölçü; balondan içeri doğru 55 cm ve 75 cm.</summary>
+        private void DrawAxisDimensionsYFourSides(Transaction tr, BlockTableRecord btr, List<Point3d> leftPositions, List<Point3d> rightPositions, double offsetFromBalonCm, double rowGapCm, ObjectId dimStyleId)
+        {
+            var sortedLeft = leftPositions.OrderBy(p => p.Y).ToList();
+            var sortedRight = rightPositions.OrderBy(p => p.Y).ToList();
+            if (sortedLeft.Count < 2 || sortedRight.Count < 2) return;
+
+            double yFirst = sortedLeft[0].Y, yLast = sortedLeft[sortedLeft.Count - 1].Y;
+
+            // Sol taraf: balondan içeri (sağa) = refXLeft + offset
+            double refXLeft = sortedLeft.Min(p => p.X);
+            double xTotalLeft = refXLeft + offsetFromBalonCm;
+            double xIndLeft = refXLeft + offsetFromBalonCm + rowGapCm;
+
+            AppendEntity(tr, btr, new AlignedDimension(new Point3d(xTotalLeft, yFirst, 0), new Point3d(xTotalLeft, yLast, 0), new Point3d(xTotalLeft, (yFirst + yLast) * 0.5, 0), "", dimStyleId) { Layer = LayerAksOlcu });
+            for (int i = 0; i < sortedLeft.Count - 1; i++)
+            {
+                double y1 = sortedLeft[i].Y, y2 = sortedLeft[i + 1].Y;
+                AppendEntity(tr, btr, new AlignedDimension(new Point3d(xIndLeft, y1, 0), new Point3d(xIndLeft, y2, 0), new Point3d(xIndLeft, (y1 + y2) * 0.5, 0), "", dimStyleId) { Layer = LayerAksOlcu });
+            }
+
+            // Sağ taraf: balondan içeri (sola) = refXRight - offset
+            double refXRight = sortedRight.Max(p => p.X);
+            double xTotalRight = refXRight - offsetFromBalonCm;
+            double xIndRight = refXRight - offsetFromBalonCm - rowGapCm;
+
+            AppendEntity(tr, btr, new AlignedDimension(new Point3d(xTotalRight, yFirst, 0), new Point3d(xTotalRight, yLast, 0), new Point3d(xTotalRight, (yFirst + yLast) * 0.5, 0), "", dimStyleId) { Layer = LayerAksOlcu });
+            for (int i = 0; i < sortedRight.Count - 1; i++)
+            {
+                double y1 = sortedRight[i].Y, y2 = sortedRight[i + 1].Y;
+                AppendEntity(tr, btr, new AlignedDimension(new Point3d(xIndRight, y1, 0), new Point3d(xIndRight, y2, 0), new Point3d(xIndRight, (y1 + y2) * 0.5, 0), "", dimStyleId) { Layer = LayerAksOlcu });
+            }
+        }
+
+        /// <summary>Aks ölçüleri için özel dim style "AKS_OLCU": resimlerdeki ayarlar (metin beyaz 12 cm, oklar Oblique 5, birim Decimal 0.0, Fit/Text/Units/Tolerances).</summary>
+        private static ObjectId GetOrCreateAksOlcuDimStyle(Transaction tr, Database db, double dimTextHeightCm)
+        {
+            var dst = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
+            if (dst.Has(AksOlcuDimStyleName)) return dst[AksOlcuDimStyleName];
+
+            ObjectId textStyleId = GetOrCreateAksOlcuTextStyle(tr, db);
+
+            var newRec = new DimStyleTableRecord();
+            newRec.Name = AksOlcuDimStyleName;
+            try { if (!textStyleId.IsNull) newRec.Dimtxsty = textStyleId; } catch { }
+
+            try { newRec.Dimtxt = dimTextHeightCm; } catch { }
+            try { newRec.Dimclrt = Color.FromColorIndex(ColorMethod.ByAci, 7); } catch { }
+            try { newRec.Dimgap = 2.0; } catch { }
+            try { newRec.Dimtad = 1; } catch { }
+            try { newRec.Dimtih = false; } catch { }
+            try { newRec.Dimtoh = false; } catch { }
+
+            try { newRec.Dimasz = 5.0; } catch { }
+
+            try { newRec.Dimdec = 0; } catch { }
+            try { newRec.Dimrnd = 0.5; } catch { }
+            try { newRec.Dimlfac = 1.0; } catch { }
+            try { newRec.Dimzin = 12; } catch { }
+            try { newRec.Dimaunit = 0; } catch { }
+            try { newRec.Dimadec = 0; } catch { }
+
+            try { newRec.Dimtofl = true; } catch { }
+            try { newRec.Dimscale = 1.0; } catch { }
+
+
+            dst.UpgradeOpen();
+            ObjectId id = dst.Add(newRec);
+            tr.AddNewlyCreatedDBObject(newRec, true);
+            dst.DowngradeOpen();
+            return id;
+        }
+
+        /// <summary>Ölçü yazıları için text style: Bahnschrift Light Condensed, yükseklik 0 (ölçü stili belirler), genişlik 1, eğik 0.</summary>
+        private static ObjectId GetOrCreateAksOlcuTextStyle(Transaction tr, Database db)
+        {
+            var txtTable = (TextStyleTable)tr.GetObject(db.TextStyleTableId, OpenMode.ForRead);
+            if (txtTable.Has(AksOlcuTextStyleName)) return txtTable[AksOlcuTextStyleName];
+
+            var rec = new TextStyleTableRecord();
+            rec.Name = AksOlcuTextStyleName;
+            try
+            {
+                rec.Font = new Autodesk.AutoCAD.GraphicsInterface.FontDescriptor("Bahnschrift Light Condensed", false, false, 0, 0);
+            }
+            catch
+            {
+                try { rec.Font = new Autodesk.AutoCAD.GraphicsInterface.FontDescriptor("Bahnschrift", false, false, 0, 0); } catch { }
+            }
+            try { rec.TextSize = 0.0; } catch { }
+            try { rec.XScale = 1.0; } catch { }
+            try { rec.ObliquingAngle = 0.0; } catch { }
+
+            txtTable.UpgradeOpen();
+            ObjectId id = txtTable.Add(rec);
+            tr.AddNewlyCreatedDBObject(rec, true);
+            txtTable.DowngradeOpen();
+            return id;
+        }
+
+        /// <summary>Ölçü ve aks hariç diğer eleman etiketleri (kiriş, perde, döşeme vb.) için text style: Bahnschrift Light Condensed.</summary>
+        private static ObjectId GetOrCreateElemanEtiketTextStyle(Transaction tr, Database db)
+        {
+            var txtTable = (TextStyleTable)tr.GetObject(db.TextStyleTableId, OpenMode.ForRead);
+            if (txtTable.Has(ElemanEtiketTextStyleName)) return txtTable[ElemanEtiketTextStyleName];
+
+            var rec = new TextStyleTableRecord();
+            rec.Name = ElemanEtiketTextStyleName;
+            try
+            {
+                rec.Font = new Autodesk.AutoCAD.GraphicsInterface.FontDescriptor("Bahnschrift Light Condensed", false, false, 0, 0);
+            }
+            catch
+            {
+                try { rec.Font = new Autodesk.AutoCAD.GraphicsInterface.FontDescriptor("Bahnschrift", false, false, 0, 0); } catch { }
+            }
+            try { rec.TextSize = 0.0; } catch { }
+            try { rec.XScale = 1.0; } catch { }
+            try { rec.ObliquingAngle = 0.0; } catch { }
+
+            txtTable.UpgradeOpen();
+            ObjectId id = txtTable.Add(rec);
+            tr.AddNewlyCreatedDBObject(rec, true);
+            txtTable.DowngradeOpen();
+            return id;
+        }
+
+        /// <summary>Doğru parçasını dikdörtgene kırpar. Kırpılmış uçları q1, q2 olarak döndürür. Parça dikdörtgenle kesişmiyorsa false.</summary>
+        private static bool ClipSegmentToRectangle(Point3d p1, Point3d p2, double xLo, double xHi, double yLo, double yHi,
+            out Point3d q1, out Point3d q2)
+        {
+            double dx = p2.X - p1.X, dy = p2.Y - p1.Y;
+            double tMin = 0.0, tMax = 1.0;
+            const double tol = 1e-9;
+
+            if (Math.Abs(dx) < tol) { if (p1.X < xLo || p1.X > xHi) { q1 = default; q2 = default; return false; } }
+            else
+            {
+                double txLo = (xLo - p1.X) / dx, txHi = (xHi - p1.X) / dx;
+                if (dx > 0) { tMax = Math.Min(tMax, txHi); tMin = Math.Max(tMin, txLo); }
+                else { tMax = Math.Min(tMax, txLo); tMin = Math.Max(tMin, txHi); }
+            }
+            if (Math.Abs(dy) < tol) { if (p1.Y < yLo || p1.Y > yHi) { q1 = default; q2 = default; return false; } }
+            else
+            {
+                double tyLo = (yLo - p1.Y) / dy, tyHi = (yHi - p1.Y) / dy;
+                if (dy > 0) { tMax = Math.Min(tMax, tyHi); tMin = Math.Max(tMin, tyLo); }
+                else { tMax = Math.Min(tMax, tyLo); tMin = Math.Max(tMin, tyHi); }
+            }
+            if (tMin > tMax) { q1 = default; q2 = default; return false; }
+            q1 = new Point3d(p1.X + tMin * dx, p1.Y + tMin * dy, 0);
+            q2 = new Point3d(p1.X + tMax * dx, p1.Y + tMax * dy, 0);
+            return true;
+        }
+
+        /// <summary>Aks çizgisi ucunda balon merkezini döndürür: çizgi dairenin kenarında biter, daire çizgi yönünde dışarıda.</summary>
+        private static Point3d AxisBalonCenterAtEnd(Point3d lineEnd, Point3d otherEnd, double radiusCm)
+        {
+            Vector3d v = lineEnd - otherEnd;
+            double len = v.Length;
+            if (len < 1e-6) return lineEnd;
+            return lineEnd + v * (radiusCm / len);
         }
 
         /// <summary>Kolon tanımlarında kullanılan aks ID'lerini döndürür (sadece kolon aksları çizilsin diye).</summary>
@@ -688,6 +1278,45 @@ namespace ST4PlanIdCiz
                 : NetTopologySuite.Operation.Union.CascadedPolygonUnion.Union(geoms);
         }
 
+        /// <summary>Kolon + perde + kiriş (IsWallFlag!=1) birleşimi; merdiveni bunlardan çıkararak çizmek için.</summary>
+        private Geometry BuildKolonPerdeKirisUnion(FloorInfo floor, double offsetX, double offsetY)
+        {
+            Geometry kolonPerde = BuildKolonPerdeUnion(floor, offsetX, offsetY);
+            var factory = new GeometryFactory();
+            var geoms = new List<Geometry>();
+            if (kolonPerde != null && !kolonPerde.IsEmpty)
+                AddPolygonsToList(kolonPerde, geoms);
+
+            var beams = MergeSameIdBeamsOnFloor(floor.FloorNo);
+            foreach (var beam in beams)
+            {
+                if (beam.IsWallFlag == 1) continue;
+                if (!_axisService.TryIntersect(beam.FixedAxisId, beam.StartAxisId, out Point2d p1) ||
+                    !_axisService.TryIntersect(beam.FixedAxisId, beam.EndAxisId, out Point2d p2))
+                    continue;
+                var a = new Point2d(p1.X + offsetX, p1.Y + offsetY);
+                var b = new Point2d(p2.X + offsetX, p2.Y + offsetY);
+                NormalizeBeamDirection(beam.FixedAxisId, ref a, ref b);
+                Vector2d dir = b - a;
+                if (dir.Length <= 1e-9) continue;
+                Vector2d u = dir.GetNormal();
+                Vector2d perp = new Vector2d(-u.Y, u.X);
+                double hw = beam.WidthCm / 2.0;
+                ComputeBeamEdgeOffsets(beam.OffsetRaw, hw, out double upperEdge, out double lowerEdge);
+                var coords = new[]
+                {
+                    new Coordinate(a.X + perp.X * upperEdge, a.Y + perp.Y * upperEdge),
+                    new Coordinate(b.X + perp.X * upperEdge, b.Y + perp.Y * upperEdge),
+                    new Coordinate(b.X + perp.X * lowerEdge, b.Y + perp.Y * lowerEdge),
+                    new Coordinate(a.X + perp.X * lowerEdge, a.Y + perp.Y * lowerEdge),
+                    new Coordinate(a.X + perp.X * upperEdge, a.Y + perp.Y * upperEdge)
+                };
+                geoms.Add(factory.CreatePolygon(factory.CreateLinearRing(coords)));
+            }
+            if (geoms.Count == 0) return kolonPerde;
+            return geoms.Count == 1 ? geoms[0] : NetTopologySuite.Operation.Union.CascadedPolygonUnion.Union(geoms);
+        }
+
         private void DrawBeamsAndWalls(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY)
         {
             var factory = new GeometryFactory();
@@ -749,7 +1378,6 @@ namespace ST4PlanIdCiz
                         new Coordinate(q1.X, q1.Y)
                     };
                     wallList.Add((factory.CreatePolygon(factory.CreateLinearRing(coordsWall)), beam.FixedAxisId));
-                    AppendEntity(tr, btr, MakeCenteredText(LayerYazi, 6, beam.BeamId.ToString(CultureInfo.InvariantCulture), center));
                 }
                 else
                 {
@@ -853,7 +1481,33 @@ namespace ST4PlanIdCiz
                 }
             }
 
-            // Kiriş ID yazıları: birleşme olsa bile, her BeamId için yalnızca tek yazı yaz.
+            // Perde ID yazıları: birleştirilmiş liste kullanılmaz; modeldeki her perde kaydı (Start–End aks çifti) için ayrı ID yazılır (40–41 ve 41–42 ayrı görünsün).
+            foreach (var beam in _model.Beams)
+            {
+                if (GetBeamFloorNo(beam.BeamId) != floor.FloorNo) continue;
+                if (beam.IsWallFlag != 1) continue;
+                if (!_axisService.TryIntersect(beam.FixedAxisId, beam.StartAxisId, out Point2d p1) ||
+                    !_axisService.TryIntersect(beam.FixedAxisId, beam.EndAxisId, out Point2d p2))
+                    continue;
+                var a = new Point2d(p1.X + offsetX, p1.Y + offsetY);
+                var b = new Point2d(p2.X + offsetX, p2.Y + offsetY);
+                NormalizeBeamDirection(beam.FixedAxisId, ref a, ref b);
+                Vector2d dir = b - a;
+                if (dir.Length <= 1e-9) continue;
+                Vector2d u = dir.GetNormal();
+                Vector2d perp = new Vector2d(-u.Y, u.X);
+                double hw = beam.WidthCm / 2.0;
+                ComputeBeamEdgeOffsets(beam.OffsetRaw, hw, out double upperEdge, out double lowerEdge);
+                Point2d q1 = a + perp.MultiplyBy(upperEdge);
+                Point2d q2 = b + perp.MultiplyBy(upperEdge);
+                Point2d q3 = b + perp.MultiplyBy(lowerEdge);
+                Point2d q4 = a + perp.MultiplyBy(lowerEdge);
+                var center = new Point3d((q1.X + q2.X + q3.X + q4.X) / 4.0, (q1.Y + q2.Y + q3.Y + q4.Y) / 4.0, 0);
+                AppendEntity(tr, btr, MakeCenteredText(LayerYazi, 6, beam.BeamId.ToString(CultureInfo.InvariantCulture), center));
+            }
+
+            // Kiriş etiketleri: resimdeki gibi "KZ-XX (en/boy)", sarı yazı + üst/alt sarı çizgiler, Bahnschrift Light Condensed.
+            Database db = btr.Database;
             var writtenBeamIds = new HashSet<int>();
             foreach (var beam in _model.Beams)
             {
@@ -879,18 +1533,30 @@ namespace ST4PlanIdCiz
                 Point2d q2 = b + perp.MultiplyBy(upperEdge);
                 Point2d q3 = b + perp.MultiplyBy(lowerEdge);
                 Point2d q4 = a + perp.MultiplyBy(lowerEdge);
-                var center = new Point3d((q1.X + q2.X + q3.X + q4.X) / 4.0, (q1.Y + q2.Y + q3.Y + q4.Y) / 4.0, 0);
+                // Etiket: kirişin içinde, alt kenardan 3 cm üstte. X: kirişin sağında, Y: kirişin solunda.
+                double t = GetBeamLabelAlongParameter(beam.FixedAxisId, dir);
+                Point2d bottomAtT = new Point2d((1 - t) * q4.X + t * q3.X, (1 - t) * q4.Y + t * q3.Y);
+                Point2d labelCenter2d = bottomAtT + perp.MultiplyBy(3.0);
+                var center = new Point3d(labelCenter2d.X, labelCenter2d.Y, 0);
 
-                AppendEntity(tr, btr, MakeCenteredText(LayerYazi, 6, beam.BeamId.ToString(CultureInfo.InvariantCulture), center));
+                var floorInfo = _model.Floors.FirstOrDefault(f => f.FloorNo == beamFloor);
+                string katEtiketi = floorInfo?.ShortName ?? beamFloor.ToString(CultureInfo.InvariantCulture);
+                int beamNumero = GetBeamNumero(beam.BeamId);
+                string labelText = string.Format(CultureInfo.InvariantCulture, "K{0}{1} ({2}/{3})",
+                    katEtiketi, beamNumero, (int)Math.Round(beam.WidthCm), (int)Math.Round(beam.HeightCm));
+                double beamAngleRad = Math.Atan2(dir.Y, dir.X);
+                DrawBeamLabel(tr, btr, db, center, labelText, 12.0, beamAngleRad);
             }
         }
 
         /// <summary>
-        /// Bu kata ait döşemeleri çizer. Köşeler sırayla: (axis1,axis3), (axis1,axis4), (axis2,axis4), (axis2,axis3).
+        /// Bu kata ait döşemeler: merdiven döşemeleri kolon/kiriş/perde alanlarından çıkarılarak sınır çizilir + ID; normal döşemelerde sadece ID.
+        /// Köşeler sırayla: (axis1,axis3), (axis1,axis4), (axis2,axis4), (axis2,axis3).
         /// </summary>
         private void DrawSlabs(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY)
         {
             int floorNo = floor.FloorNo;
+            Geometry kolonPerdeKirisUnion = null;
             foreach (var slab in _model.Slabs)
             {
                 if (GetSlabFloorNo(slab.SlabId) != floorNo) continue;
@@ -911,9 +1577,33 @@ namespace ST4PlanIdCiz
                     };
                 }
                 if (pts == null || pts.Length < 3) continue;
-                var pl = ToPolyline(pts, true);
-                pl.Layer = _model.StairSlabIds.Contains(slab.SlabId) ? LayerMerdiven : LayerDoseme;
-                AppendEntity(tr, btr, pl);
+                bool isStair = _model.StairSlabIds.Contains(slab.SlabId);
+                if (isStair)
+                {
+                    var factory = new GeometryFactory();
+                    var coords = new Coordinate[pts.Length + 1];
+                    for (int i = 0; i < pts.Length; i++)
+                        coords[i] = new Coordinate(pts[i].X, pts[i].Y);
+                    coords[pts.Length] = coords[0];
+                    var stairPoly = factory.CreatePolygon(factory.CreateLinearRing(coords));
+                    if (stairPoly != null && !stairPoly.IsEmpty)
+                    {
+                        if (kolonPerdeKirisUnion == null)
+                            kolonPerdeKirisUnion = BuildKolonPerdeKirisUnion(floor, offsetX, offsetY);
+                        Geometry toDraw = stairPoly;
+                        if (kolonPerdeKirisUnion != null && !kolonPerdeKirisUnion.IsEmpty)
+                        {
+                            try
+                            {
+                                var diff = stairPoly.Difference(kolonPerdeKirisUnion);
+                                if (diff != null && !diff.IsEmpty) toDraw = diff;
+                            }
+                            catch { }
+                        }
+                        if (toDraw != null && !toDraw.IsEmpty)
+                            DrawGeometryRingsAsPolylines(tr, btr, toDraw, LayerMerdiven, addHatch: false, applySmallTriangleTrim: false);
+                    }
+                }
                 double cx = 0, cy = 0;
                 for (int i = 0; i < pts.Length; i++) { cx += pts[i].X; cy += pts[i].Y; }
                 var center = new Point3d(cx / pts.Length, cy / pts.Length, 0);
@@ -2006,6 +2696,13 @@ namespace ST4PlanIdCiz
             return beamId >= 1000 ? (beamId / 1000) : (beamId / 100);
         }
 
+        /// <summary>Kiriş numarasını kat bilgisi olmadan döndürür: BeamFloorKeyStep varsa beamId % step, yoksa % 1000 veya % 100.</summary>
+        private int GetBeamNumero(int beamId)
+        {
+            if (_model.BeamFloorKeyStep > 0) return beamId % _model.BeamFloorKeyStep;
+            return beamId >= 1000 ? (beamId % 1000) : (beamId % 100);
+        }
+
         private void DrawFloorTitle(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY,
             (double Xmin, double Xmax, double Ymin, double Ymax) ext, bool isFoundationPlan = false)
         {
@@ -2014,6 +2711,25 @@ namespace ST4PlanIdCiz
                 ? "TEMEL PLANI (aks + 1. kat kolon + surekli/radye temel)"
                 : string.Format(CultureInfo.InvariantCulture, "{0} ({1}m)", floor.Name, floor.ElevationM.ToString("0", CultureInfo.InvariantCulture));
             AppendEntity(tr, btr, MakeCenteredText(LayerBaslik, 12, title, titlePos));
+        }
+
+        /// <summary>Kiriş etiketi: "K" + kat etiketi + numara + " (en/boy)", Bottom Left justify, kiriş açısına göre döndürülmüş, ETIKET style, 12 cm.</summary>
+        private void DrawBeamLabel(Transaction tr, BlockTableRecord btr, Database db, Point3d insertionBottomLeft, string labelText, double textHeightCm, double rotationRad)
+        {
+            ObjectId textStyleId = GetOrCreateElemanEtiketTextStyle(tr, db);
+            var txt = new DBText
+            {
+                Layer = LayerKirisYazisi,
+                TextStyleId = textStyleId,
+                Height = textHeightCm,
+                TextString = labelText ?? string.Empty,
+                Position = insertionBottomLeft,
+                HorizontalMode = TextHorizontalMode.TextLeft,
+                VerticalMode = TextVerticalMode.TextBottom,
+                AlignmentPoint = insertionBottomLeft,
+                Rotation = rotationRad
+            };
+            AppendEntity(tr, btr, txt);
         }
 
         private static DBText MakeCenteredText(string layer, double height, string value, Point3d p)
@@ -2153,6 +2869,16 @@ namespace ST4PlanIdCiz
             bool isFixedX = fixedAxisId >= 1001 && fixedAxisId <= 1999;
             if (isFixedY && a.X > b.X) { (a, b) = (b, a); }
             else if (isFixedX && a.Y > b.Y) { (a, b) = (b, a); }
+        }
+
+        /// <summary>X aksında sağa yapışık (t=0.75), Y aksında sola yapışık (t=0.25).</summary>
+        private static double GetBeamLabelAlongParameter(int fixedAxisId, Vector2d dir)
+        {
+            bool isFixedY = fixedAxisId >= 2001 && fixedAxisId <= 2999;
+            bool isFixedX = fixedAxisId >= 1001 && fixedAxisId <= 1999;
+            if (isFixedX) return dir.X >= 0 ? 0.75 : 0.25; // X kirişi: sağa
+            if (isFixedY) return dir.Y >= 0 ? 0.25 : 0.75; // Y kirişi: sola
+            return 0.5;
         }
 
         private static Vector2d Rotate(Vector2d v, double angleDeg)
@@ -2378,6 +3104,27 @@ namespace ST4PlanIdCiz
                 if (segs.Count == 0) continue;
                 var b0 = segs[0].Beam;
 
+                if (b0.IsWallFlag == 1)
+                {
+                    // Perdelerde birleştirme yapılmaz; her segment ayrı kalır (100 cm kuralı sadece kirişler için).
+                    foreach (var s in segs)
+                    {
+                        merged.Add(new BeamInfo
+                        {
+                            BeamId = s.Beam.BeamId,
+                            FixedAxisId = s.Beam.FixedAxisId,
+                            StartAxisId = s.StartAxis,
+                            EndAxisId = s.EndAxis,
+                            WidthCm = b0.WidthCm,
+                            HeightCm = b0.HeightCm,
+                            OffsetRaw = b0.OffsetRaw,
+                            IsWallFlag = 1
+                        });
+                    }
+                    continue;
+                }
+
+                // Kirişlerde: aralarında 1 m'den fazla boşluk olmayanları birleştir.
                 int idx = 0;
                 while (idx < segs.Count)
                 {
@@ -2386,7 +3133,6 @@ namespace ST4PlanIdCiz
                     double currentEndPos = currentEnd.S2;
                     idx++;
 
-                    // Aynı aks üzerindeki ve aralarında 1 m'den fazla boşluk olmayan kirişleri küme halinde birleştir.
                     while (idx < segs.Count)
                     {
                         var next = segs[idx];
