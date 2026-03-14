@@ -1458,10 +1458,14 @@ namespace ST4PlanIdCiz
             }
 
             // Kirişler: aynı BeamId'ye sahip segmentler tek birleşik geometri olarak çizilir (ID başına bir çizim).
+            // Etiket konumu için çizilen geometri ve ilk segment yönü kaydedilir.
+            var beamLabelInfos = new List<(int beamId, Geometry drawnGeometry, BeamInfo firstBeam, Point2d firstA, Point2d firstB)>();
             var beamsById = beamsForDrawing.GroupBy(b => b.BeamId).ToList();
             foreach (var group in beamsById)
             {
                 var polygons = new List<Geometry>();
+                Point2d? firstAlignedA = null;
+                Point2d? firstAlignedB = null;
                 foreach (var beam in group)
                 {
                     if (!_axisService.TryIntersect(beam.FixedAxisId, beam.StartAxisId, out Point2d p1)) continue;
@@ -1532,6 +1536,7 @@ namespace ST4PlanIdCiz
                         new Coordinate(q4.X, q4.Y),
                         new Coordinate(q1.X, q1.Y)
                     };
+                    if (!firstAlignedA.HasValue) { firstAlignedA = a; firstAlignedB = b; }
                     polygons.Add(factory.CreatePolygon(factory.CreateLinearRing(coordsBeam)));
                 }
                 if (polygons.Count == 0) continue;
@@ -1539,7 +1544,11 @@ namespace ST4PlanIdCiz
                     ? polygons[0]
                     : NetTopologySuite.Operation.Union.CascadedPolygonUnion.Union(polygons);
                 if (toDraw != null && !toDraw.IsEmpty)
+                {
                     DrawGeometryRingsAsPolylines(tr, btr, toDraw, LayerKiris, addHatch: false, exteriorRingsOnly: false, applySmallTriangleTrim: false);
+                    if (firstAlignedA.HasValue && firstAlignedB.HasValue)
+                        beamLabelInfos.Add((group.Key, toDraw, group.First(), firstAlignedA.Value, firstAlignedB.Value));
+                }
             }
             if (wallList.Count > 0)
             {
@@ -1587,46 +1596,86 @@ namespace ST4PlanIdCiz
                 AppendEntity(tr, btr, MakeCenteredText(LayerYazi, 6, beam.BeamId.ToString(CultureInfo.InvariantCulture), center));
             }
 
-            // Kiriş etiketleri: resimdeki gibi "KZ-XX (en/boy)", sarı yazı + üst/alt sarı çizgiler, Bahnschrift Light Condensed.
+            // Kiriş etiketleri: çizime aktarılan kiriş geometrisinin (rectangle) köşelerine göre yerleşim. X: üst sağ köşe, Y: sol alt köşe.
             Database db = btr.Database;
-            var writtenBeamIds = new HashSet<int>();
-            foreach (var beam in _model.Beams)
+            const double labelHeightCm = 12.0;
+            foreach (var (beamId, drawnGeometry, firstBeam, firstA, firstB) in beamLabelInfos)
             {
-                int beamFloor = GetBeamFloorNo(beam.BeamId);
-                if (beamFloor != floor.FloorNo) continue;
-                if (beam.IsWallFlag == 1) continue; // Perdelerin yazıları yukarıda eklendi.
-                if (!writtenBeamIds.Add(beam.BeamId)) continue; // Aynı ID için ikinci kez yazma.
-                if (!_axisService.TryIntersect(beam.FixedAxisId, beam.StartAxisId, out Point2d p1) ||
-                    !_axisService.TryIntersect(beam.FixedAxisId, beam.EndAxisId, out Point2d p2))
-                    continue;
-
-                var a = new Point2d(p1.X + offsetX, p1.Y + offsetY);
-                var b = new Point2d(p2.X + offsetX, p2.Y + offsetY);
-                NormalizeBeamDirection(beam.FixedAxisId, ref a, ref b);
-                Vector2d dir = b - a;
+                Vector2d dir = firstB - firstA;
                 if (dir.Length <= 1e-9) continue;
                 Vector2d u = dir.GetNormal();
                 Vector2d perp = new Vector2d(-u.Y, u.X);
-                double hw = beam.WidthCm / 2.0;
-                ComputeBeamEdgeOffsets(beam.OffsetRaw, hw, out double upperEdge, out double lowerEdge);
 
-                Point2d q1 = a + perp.MultiplyBy(upperEdge);
-                Point2d q2 = b + perp.MultiplyBy(upperEdge);
-                Point2d q3 = b + perp.MultiplyBy(lowerEdge);
-                Point2d q4 = a + perp.MultiplyBy(lowerEdge);
-                // Etiket: kirişin içinde, alt kenardan 3 cm üstte. X: kirişin sağında, Y: kirişin solunda.
-                double t = GetBeamLabelAlongParameter(beam.FixedAxisId, dir);
-                Point2d bottomAtT = new Point2d((1 - t) * q4.X + t * q3.X, (1 - t) * q4.Y + t * q3.Y);
-                Point2d labelCenter2d = bottomAtT + perp.MultiplyBy(3.0);
-                var center = new Point3d(labelCenter2d.X, labelCenter2d.Y, 0);
+                // Çizilen kiriş poligonunun eksen yönüne göre sol alt, üst sağ ve alt sağ köşeleri
+                if (!GetBeamDrawnCorners(drawnGeometry, firstA, u, perp, out Point2d rectBottomLeft, out Point2d rectUpperRight, out Point2d rectBottomRight))
+                    continue;
 
+                int beamFloor = GetBeamFloorNo(beamId);
                 var floorInfo = _model.Floors.FirstOrDefault(f => f.FloorNo == beamFloor);
                 string katEtiketi = floorInfo?.ShortName ?? beamFloor.ToString(CultureInfo.InvariantCulture);
-                int beamNumero = GetBeamNumero(beam.BeamId);
+                int beamNumero = GetBeamNumero(beamId);
                 string labelText = string.Format(CultureInfo.InvariantCulture, "K{0}{1} ({2}/{3})",
-                    katEtiketi, beamNumero, (int)Math.Round(beam.WidthCm), (int)Math.Round(beam.HeightCm));
-                double beamAngleRad = Math.Atan2(dir.Y, dir.X);
-                DrawBeamLabel(tr, btr, db, center, labelText, 12.0, beamAngleRad);
+                    katEtiketi, beamNumero, (int)Math.Round(firstBeam.WidthCm), (int)Math.Round(firstBeam.HeightCm));
+                double textWidthCm = EstimateTextWidthCm(labelText, labelHeightCm);
+
+                // Eksen boyunca parametre: tMin (sol), tMax (sağ), pMin (alt kenar)
+                double tMin = (rectBottomLeft - firstA).DotProduct(u);
+                double tMax = (rectBottomRight - firstA).DotProduct(u);
+                double pMin = (rectBottomLeft - firstA).DotProduct(perp);
+                const double labelOffsetFromAxisCm = 2.0;
+                const double stepCm = 15.0;
+
+                Geometry obstacles = null;
+                try
+                {
+                    var otherBeamGeoms = beamLabelInfos.Where(x => x.beamId != beamId).Select(x => x.drawnGeometry).ToList();
+                    if (otherBeamGeoms.Count > 0)
+                    {
+                        var otherUnion = otherBeamGeoms.Count == 1 ? otherBeamGeoms[0] : NetTopologySuite.Operation.Union.CascadedPolygonUnion.Union(otherBeamGeoms);
+                        if (kolonPerdeUnion != null && !kolonPerdeUnion.IsEmpty && otherUnion != null && !otherUnion.IsEmpty)
+                            obstacles = kolonPerdeUnion.Union(otherUnion);
+                        else if (kolonPerdeUnion != null && !kolonPerdeUnion.IsEmpty)
+                            obstacles = kolonPerdeUnion;
+                        else if (otherUnion != null && !otherUnion.IsEmpty)
+                            obstacles = otherUnion;
+                    }
+                    else if (kolonPerdeUnion != null && !kolonPerdeUnion.IsEmpty)
+                        obstacles = kolonPerdeUnion;
+                }
+                catch { }
+
+                bool isFixedX = firstBeam.FixedAxisId >= 1001 && firstBeam.FixedAxisId <= 1999;
+                double beamAngleRad = Math.Atan2(u.Y, u.X);
+                Point2d insertion;
+
+                if (isFixedX)
+                {
+                    // X: başlangıç alt sağ köşe + 2 cm; merkeze doğru sola 15 cm adımlarla kaydır, kesişme yoksa kullan
+                    double tIns = Math.Max(tMin, tMax - textWidthCm);
+                    insertion = firstA + u.MultiplyBy(tIns) + perp.MultiplyBy(pMin + labelOffsetFromAxisCm);
+                    while (obstacles != null && TextBoxIntersectsObstacles(insertion, textWidthCm, labelHeightCm, beamAngleRad, 0, obstacles, factory) && tIns > tMin + 1e-6)
+                    {
+                        tIns -= stepCm;
+                        if (tIns < tMin) { tIns = tMin; break; }
+                        insertion = firstA + u.MultiplyBy(tIns) + perp.MultiplyBy(pMin + labelOffsetFromAxisCm);
+                    }
+                    insertion = firstA + u.MultiplyBy(tIns) + perp.MultiplyBy(pMin + labelOffsetFromAxisCm);
+                }
+                else
+                {
+                    // Y: başlangıç sol alt + 2 cm; merkeze doğru sağa 15 cm adımlarla kaydır, kesişme yoksa kullan
+                    double tIns = tMin;
+                    insertion = firstA + u.MultiplyBy(tIns) + perp.MultiplyBy(pMin + labelOffsetFromAxisCm);
+                    while (obstacles != null && TextBoxIntersectsObstacles(insertion, textWidthCm, labelHeightCm, beamAngleRad, 0, obstacles, factory) && tIns + textWidthCm <= tMax - 1e-6)
+                    {
+                        tIns += stepCm;
+                        if (tIns + textWidthCm > tMax) { tIns = Math.Max(tMin, tMax - textWidthCm); break; }
+                        insertion = firstA + u.MultiplyBy(tIns) + perp.MultiplyBy(pMin + labelOffsetFromAxisCm);
+                    }
+                    insertion = firstA + u.MultiplyBy(tIns) + perp.MultiplyBy(pMin + labelOffsetFromAxisCm);
+                }
+
+                DrawBeamLabel(tr, btr, db, new Point3d(insertion.X, insertion.Y, 0), labelText, labelHeightCm, beamAngleRad);
             }
         }
 
@@ -2960,6 +3009,85 @@ namespace ST4PlanIdCiz
             if (isFixedX) return dir.X >= 0 ? 0.75 : 0.25; // X kirişi: sağa
             if (isFixedY) return dir.Y >= 0 ? 0.25 : 0.75; // Y kirişi: sola
             return 0.5;
+        }
+
+        /// <summary>Yazı kutusu (bottom-left, genişlik, yükseklik, dönüş) + clearance buffer ile engelleri kesişiyorsa true.</summary>
+        private static bool TextBoxIntersectsObstacles(Point2d insertionBottomLeft, double widthCm, double heightCm, double rotationRad, double clearanceCm, Geometry obstacles, GeometryFactory factory)
+        {
+            if (obstacles == null || obstacles.IsEmpty) return false;
+            double c = Math.Cos(rotationRad);
+            double s = Math.Sin(rotationRad);
+            var p0 = insertionBottomLeft;
+            var p1 = new Point2d(p0.X + widthCm * c, p0.Y + widthCm * s);
+            var p2 = new Point2d(p1.X - heightCm * s, p1.Y + heightCm * c);
+            var p3 = new Point2d(p0.X - heightCm * s, p0.Y + heightCm * c);
+            var ring = new[]
+            {
+                new Coordinate(p0.X, p0.Y),
+                new Coordinate(p1.X, p1.Y),
+                new Coordinate(p2.X, p2.Y),
+                new Coordinate(p3.X, p3.Y),
+                new Coordinate(p0.X, p0.Y)
+            };
+            try
+            {
+                var box = factory.CreatePolygon(factory.CreateLinearRing(ring));
+                var buffered = box.Buffer(clearanceCm);
+                return buffered != null && !buffered.IsEmpty && buffered.Intersects(obstacles);
+            }
+            catch { return true; }
+        }
+
+        /// <summary>Etiket metni için yaklaşık genişlik (cm); yükseklik * karakter sayısı * oran.</summary>
+        private static double EstimateTextWidthCm(string labelText, double heightCm)
+        {
+            if (string.IsNullOrEmpty(labelText)) return 0;
+            return labelText.Length * heightCm * 0.65;
+        }
+
+        /// <summary>Çizilen kiriş geometrisinin dış halka koordinatlarına göre, eksen yönü (u, perp) ile hizalı bounding köşelerini döndürür. origin: firstA. Sol alt, üst sağ, alt sağ.</summary>
+        private static bool GetBeamDrawnCorners(Geometry drawnGeometry, Point2d origin, Vector2d u, Vector2d perp, out Point2d bottomLeft, out Point2d upperRight, out Point2d bottomRight)
+        {
+            bottomLeft = default;
+            upperRight = default;
+            bottomRight = default;
+            if (drawnGeometry == null || drawnGeometry.IsEmpty) return false;
+            var pts = new List<Point2d>();
+            if (drawnGeometry is Polygon poly && poly.ExteriorRing != null)
+            {
+                foreach (var c in poly.ExteriorRing.Coordinates)
+                    pts.Add(new Point2d(c.X, c.Y));
+            }
+            else if (drawnGeometry is MultiPolygon mp)
+            {
+                for (int i = 0; i < mp.NumGeometries; i++)
+                    if (mp.GetGeometryN(i) is Polygon p && p.ExteriorRing != null)
+                        foreach (var c in p.ExteriorRing.Coordinates)
+                            pts.Add(new Point2d(c.X, c.Y));
+            }
+            else if (drawnGeometry is GeometryCollection gc)
+            {
+                for (int i = 0; i < gc.NumGeometries; i++)
+                    if (gc.GetGeometryN(i) is Polygon p2 && p2.ExteriorRing != null)
+                        foreach (var c in p2.ExteriorRing.Coordinates)
+                            pts.Add(new Point2d(c.X, c.Y));
+            }
+            if (pts.Count < 3) return false;
+            double tMin = double.MaxValue, tMax = double.MinValue, pMin = double.MaxValue, pMax = double.MinValue;
+            foreach (var p in pts)
+            {
+                Vector2d v = p - origin;
+                double t = v.X * u.X + v.Y * u.Y;
+                double pVal = v.X * perp.X + v.Y * perp.Y;
+                if (t < tMin) tMin = t;
+                if (t > tMax) tMax = t;
+                if (pVal < pMin) pMin = pVal;
+                if (pVal > pMax) pMax = pVal;
+            }
+            bottomLeft = origin + u.MultiplyBy(tMin) + perp.MultiplyBy(pMin);
+            upperRight = origin + u.MultiplyBy(tMax) + perp.MultiplyBy(pMax);
+            bottomRight = origin + u.MultiplyBy(tMax) + perp.MultiplyBy(pMin);
+            return true;
         }
 
         private static Vector2d Rotate(Vector2d v, double angleDeg)
