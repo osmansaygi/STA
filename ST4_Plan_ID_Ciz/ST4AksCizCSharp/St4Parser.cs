@@ -104,9 +104,7 @@ namespace ST4AksCizCSharp
                         St4Text.TryParseDouble(axisParts[0], out double slope) &&
                         St4Text.TryParseDouble(axisParts[1], out double val))
                     {
-                        // Açılı akslarda yuvarlama yapma; düz akslarda 0.1mm (4 ondalık)
-                        if (Math.Abs(slope) <= 1e-9)
-                            val = Math.Round(val, 4);
+                        // Aks değeri datadaki şekliyle kullanılır; yuvarlama yok
                         val *= 100.0;
                         allValues.Add(val);
                         allSlopes.Add(slope);

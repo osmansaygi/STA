@@ -219,8 +219,8 @@ namespace ST4PlanIdCiz
             return (env.MinX, env.MaxX, env.MinY, env.MaxY);
         }
 
-        /// <summary>Union'da non-noded intersection önlemek için koordinatları 1 cm ızgaraya yuvarlar.</summary>
-        private static Coordinate C1(double x, double y) => new Coordinate(Math.Round(x, 0), Math.Round(y, 0));
+        /// <summary>Koordinatlar datadaki şekliyle kullanılır; aks yuvarlaması yok.</summary>
+        private static Coordinate C1(double x, double y) => new Coordinate(x, y);
 
         /// <summary>Katta çizilen elemanların (kolon, kiriş, perde, döşeme) birleşimi; model koordinatları (offset 0). Resimdeki gibi yapıyı takip eden dış sınır için kullanılır. Koordinatlar 1 cm yuvarlanarak non-noded intersection önlenir.</summary>
         private Geometry BuildFloorElementUnion(FloorInfo floor)
@@ -1214,6 +1214,80 @@ namespace ST4PlanIdCiz
                 : NetTopologySuite.Operation.Union.CascadedPolygonUnion.Union(geoms);
         }
 
+        /// <summary>Verilen aks kesişiminde (axisId1 x axisId2) bu katta kolon varsa kolon merkezini (offset dahil) döndürür. Kiriş uçlarını kolon aksına uzatmak/kısaltmak için kullanılır. Kesit bulunamazsa aks kesişim noktası döner (uzatma/kısaltma yine uygulanır).</summary>
+        private bool TryGetColumnCenterAtIntersection(FloorInfo floor, int axisId1, int axisId2, double offsetX, double offsetY, out Point2d center)
+        {
+            center = default;
+            int axisX = (axisId1 >= 1001 && axisId1 <= 1999) ? axisId1 : axisId2;
+            int axisY = (axisId1 >= 2001 && axisId1 <= 2999) ? axisId1 : axisId2;
+            if (axisX == axisY || (axisX < 1001 || axisX > 1999) || (axisY < 2001 || axisY > 2999)) return false;
+            var col = _model.Columns.Find(c => c.AxisXId == axisX && c.AxisYId == axisY);
+            if (col == null) return false;
+            if (!_axisService.TryIntersect(col.AxisXId, col.AxisYId, out Point2d axisNode)) return false;
+            int sectionId = ResolveColumnSectionId(floor.FloorNo, col.ColumnNo);
+            int polygonSectionId = ResolvePolygonPositionSectionId(floor.FloorNo, col.ColumnNo);
+            if (col.ColumnType == 3 && (polygonSectionId <= 0 || !_model.PolygonColumnSectionByPositionSectionId.ContainsKey(polygonSectionId)))
+            {
+                center = new Point2d(axisNode.X + offsetX, axisNode.Y + offsetY);
+                return true;
+            }
+            if (col.ColumnType != 3 && (sectionId <= 0 || !_model.ColumnDimsBySectionId.ContainsKey(sectionId)))
+            {
+                if (col.ColumnId > 0 && _model.ColumnDimsBySectionId.ContainsKey(col.ColumnId))
+                    sectionId = col.ColumnId;
+                else
+                {
+                    center = new Point2d(axisNode.X + offsetX, axisNode.Y + offsetY);
+                    return true;
+                }
+            }
+            var dim = sectionId > 0 && _model.ColumnDimsBySectionId.ContainsKey(sectionId)
+                ? _model.ColumnDimsBySectionId[sectionId]
+                : (W: 40.0, H: 40.0);
+            double hw = dim.W / 2.0;
+            double hh = dim.H / 2.0;
+            var offsetLocal = col.ColumnType == 2
+                ? ComputeColumnOffsetCircle(col.OffsetXRaw, col.OffsetYRaw)
+                : ComputeColumnOffset(col.OffsetXRaw, col.OffsetYRaw, hw, hh);
+            var offsetGlobal = Rotate(offsetLocal, col.AngleDeg);
+            center = new Point2d(axisNode.X + offsetGlobal.X + offsetX, axisNode.Y + offsetGlobal.Y + offsetY);
+            return true;
+        }
+
+        /// <summary>Tek bir kolonun bu kattaki poligonunu (alanını) döndürür. Poligon kolon (3) ve uzun boyutu kısa boyutunun 6 katına eşit veya büyük kolonlar kullanılmaz; geometriyi bozarlar. Kiriş–kolon alan kesişimi için kullanılır.</summary>
+        private Polygon GetColumnPolygon(FloorInfo floor, ColumnAxisInfo col, double offsetX, double offsetY, GeometryFactory factory)
+        {
+            if (col.ColumnType == 3) return null;
+            if (!_axisService.TryIntersect(col.AxisXId, col.AxisYId, out Point2d axisNode)) return null;
+            int sectionId = ResolveColumnSectionId(floor.FloorNo, col.ColumnNo);
+            if (col.ColumnType != 3 && (sectionId <= 0 || !_model.ColumnDimsBySectionId.ContainsKey(sectionId)) && col.ColumnId > 0 && _model.ColumnDimsBySectionId.ContainsKey(col.ColumnId))
+                sectionId = col.ColumnId;
+            if (sectionId <= 0 || !_model.ColumnDimsBySectionId.ContainsKey(sectionId))
+                sectionId = 0;
+            var dim = sectionId > 0 && _model.ColumnDimsBySectionId.ContainsKey(sectionId) ? _model.ColumnDimsBySectionId[sectionId] : (W: 40.0, H: 40.0);
+            double longSide = Math.Max(dim.W, dim.H);
+            double shortSide = Math.Min(dim.W, dim.H);
+            if (shortSide <= 1e-9 || longSide >= 6.0 * shortSide) return null;
+            double hw = dim.W / 2.0, hh = dim.H / 2.0;
+            var offsetLocal = col.ColumnType == 2 ? ComputeColumnOffsetCircle(col.OffsetXRaw, col.OffsetYRaw) : ComputeColumnOffset(col.OffsetXRaw, col.OffsetYRaw, hw, hh);
+            var offsetGlobal = Rotate(offsetLocal, col.AngleDeg);
+            var center = new Point2d(axisNode.X + offsetGlobal.X + offsetX, axisNode.Y + offsetGlobal.Y + offsetY);
+            Coordinate[] coords;
+            if (col.ColumnType == 2)
+            {
+                double radius = Math.Max(hw, hh);
+                coords = BuildCircleRing(center, radius, col.AngleDeg, 64);
+            }
+            else
+            {
+                var rect = BuildRect(center, hw, hh, col.AngleDeg);
+                coords = new Coordinate[5];
+                for (int i = 0; i < 4; i++) coords[i] = new Coordinate(rect[i].X, rect[i].Y);
+                coords[4] = coords[0];
+            }
+            return factory.CreatePolygon(factory.CreateLinearRing(coords));
+        }
+
         /// <summary>Verilen kattaki sadece kolonların birleşik alanını (NTS Geometry) döndürür. Perdeleri kolondan çıkartmak için kullanılır.</summary>
         private Geometry BuildKolonUnion(FloorInfo floor, double offsetX, double offsetY)
         {
@@ -1321,14 +1395,16 @@ namespace ST4PlanIdCiz
         {
             var factory = new GeometryFactory();
             var wallList = new List<(Geometry poly, int fixedAxisId)>();
-            var beamList = new List<Geometry>();
             Geometry kolonPerdeUnion = BuildKolonPerdeUnion(floor, offsetX, offsetY);
             Geometry kolonPerdeBoundary = (kolonPerdeUnion != null && !kolonPerdeUnion.IsEmpty) ? kolonPerdeUnion.Boundary : null;
-            const double beamEndExtensionCm = 22.0;   // Kolona tek noktada değen kiriş ucu 22 cm uzatılır
+            const double beamEndExtensionCm = 22.0;   // Perde ucu kolona değiyorsa 22 cm uzatılır
             const double touchEpsilonCm = 0.2;        // Uç kolon sınırında kabul
 
-            var beams = MergeSameIdBeamsOnFloor(floor.FloorNo);
-            foreach (var beam in beams)
+            // Perdeler: aynı akstaki birleştirme listesi kullanılır. Kirişler: birleştirme iptal, modeldeki ham kayıtlar kullanılır.
+            var beamsForWalls = MergeSameIdBeamsOnFloor(floor.FloorNo);
+            var beamsForDrawing = _model.Beams.Where(b => GetBeamFloorNo(b.BeamId) == floor.FloorNo && b.IsWallFlag != 1).ToList();
+
+            foreach (var beam in beamsForWalls)
             {
                 if (!_axisService.TryIntersect(beam.FixedAxisId, beam.StartAxisId, out Point2d p1)) continue;
                 if (!_axisService.TryIntersect(beam.FixedAxisId, beam.EndAxisId, out Point2d p2)) continue;
@@ -1339,7 +1415,8 @@ namespace ST4PlanIdCiz
                 Vector2d dir = b - a;
                 if (dir.Length <= 1e-9) continue;
                 Vector2d u = dir.GetNormal();
-                if (kolonPerdeBoundary != null && !kolonPerdeBoundary.IsEmpty)
+                // Kiriş birleştirme/kesim iptal: uzatma sadece perde (duvar) için uygulanır; kirişler ham aks aralığıyla çizilir.
+                if (beam.IsWallFlag == 1 && kolonPerdeBoundary != null && !kolonPerdeBoundary.IsEmpty)
                 {
                     var ptA = factory.CreatePoint(new Coordinate(a.X, a.Y));
                     var ptB = factory.CreatePoint(new Coordinate(b.X, b.Y));
@@ -1349,7 +1426,6 @@ namespace ST4PlanIdCiz
                     bool aOnCol = distA <= touchEpsilonCm;
                     bool bOnCol = distB <= touchEpsilonCm;
                     bool midInside = kolonPerdeUnion.Contains(mid);
-                    // Referans nokta = kirişin kolona değdiği nokta (a veya b). Uzatma sadece bu noktadan 22 cm gidilen nokta kolon kesiti içinde kalıyorsa yapılır; dışına çıkıyorsa yapılmaz.
                     var extA = factory.CreatePoint(new Coordinate(a.X - beamEndExtensionCm * u.X, a.Y - beamEndExtensionCm * u.Y));
                     var extB = factory.CreatePoint(new Coordinate(b.X + beamEndExtensionCm * u.X, b.Y + beamEndExtensionCm * u.Y));
                     bool extendAtA = aOnCol && !midInside && kolonPerdeUnion.Contains(extA);
@@ -1379,8 +1455,75 @@ namespace ST4PlanIdCiz
                     };
                     wallList.Add((factory.CreatePolygon(factory.CreateLinearRing(coordsWall)), beam.FixedAxisId));
                 }
-                else
+            }
+
+            // Kirişler: aynı BeamId'ye sahip segmentler tek birleşik geometri olarak çizilir (ID başına bir çizim).
+            var beamsById = beamsForDrawing.GroupBy(b => b.BeamId).ToList();
+            foreach (var group in beamsById)
+            {
+                var polygons = new List<Geometry>();
+                foreach (var beam in group)
                 {
+                    if (!_axisService.TryIntersect(beam.FixedAxisId, beam.StartAxisId, out Point2d p1)) continue;
+                    if (!_axisService.TryIntersect(beam.FixedAxisId, beam.EndAxisId, out Point2d p2)) continue;
+                    var a = new Point2d(p1.X + offsetX, p1.Y + offsetY);
+                    var b = new Point2d(p2.X + offsetX, p2.Y + offsetY);
+                    // Adım 2: Kirişin kapsadığı alan ile kolonun kapsadığı alan kesişiyorsa, kesişen taraftaki ucu o kolonun merkezine (aks üzerinde izdüşüm) çek.
+                    Vector2d axisDir = b - a;
+                    if (axisDir.Length > 1e-9)
+                    {
+                        Vector2d axisU = axisDir.GetNormal();
+                        double len = axisDir.Length;
+                        Point2d a0 = a;
+                        Vector2d perp0 = new Vector2d(-axisU.Y, axisU.X);
+                        double hw0 = beam.WidthCm / 2.0;
+                        ComputeBeamEdgeOffsets(beam.OffsetRaw, hw0, out double upperEdge0, out double lowerEdge0);
+                        var beamCoords = new[]
+                        {
+                            new Coordinate((a0 + perp0.MultiplyBy(upperEdge0)).X, (a0 + perp0.MultiplyBy(upperEdge0)).Y),
+                            new Coordinate((b + perp0.MultiplyBy(upperEdge0)).X, (b + perp0.MultiplyBy(upperEdge0)).Y),
+                            new Coordinate((b + perp0.MultiplyBy(lowerEdge0)).X, (b + perp0.MultiplyBy(lowerEdge0)).Y),
+                            new Coordinate((a0 + perp0.MultiplyBy(lowerEdge0)).X, (a0 + perp0.MultiplyBy(lowerEdge0)).Y),
+                            new Coordinate((a0 + perp0.MultiplyBy(upperEdge0)).X, (a0 + perp0.MultiplyBy(upperEdge0)).Y)
+                        };
+                        Geometry beamPoly = factory.CreatePolygon(factory.CreateLinearRing(beamCoords));
+                        const double intersectionToleranceCm = 0.2;
+                        Geometry beamPolyTol = beamPoly.Buffer(intersectionToleranceCm);
+                        double tMin = len;
+                        double tMax = 0;
+                        foreach (var col in _model.Columns)
+                        {
+                            Polygon colPoly = GetColumnPolygon(floor, col, offsetX, offsetY, factory);
+                            if (colPoly == null || colPoly.IsEmpty || !beamPolyTol.Intersects(colPoly)) continue;
+                            if (!TryGetColumnCenterAtIntersection(floor, col.AxisXId, col.AxisYId, offsetX, offsetY, out Point2d colCenter)) continue;
+                            double t = (colCenter - a0).DotProduct(axisU);
+                            if (t <= len * 0.5)
+                                tMin = Math.Min(tMin, t);
+                            else
+                                tMax = Math.Max(tMax, t);
+                        }
+                        if (tMin <= tMax + 1e-9)
+                        {
+                            if (tMin > len - 1e-9) tMin = 0;
+                            if (tMax < 1e-9) tMax = len;
+                            if (tMax > tMin + 1e-9)
+                            {
+                                a = a0 + axisU.MultiplyBy(tMin);
+                                b = a0 + axisU.MultiplyBy(tMax);
+                            }
+                        }
+                    }
+                    NormalizeBeamDirection(beam.FixedAxisId, ref a, ref b);
+                    Vector2d dir = b - a;
+                    if (dir.Length <= 1e-9) continue;
+                    Vector2d u = dir.GetNormal();
+                    Vector2d perp = new Vector2d(-u.Y, u.X);
+                    double hw = beam.WidthCm / 2.0;
+                    ComputeBeamEdgeOffsets(beam.OffsetRaw, hw, out double upperEdge, out double lowerEdge);
+                    Point2d q1 = a + perp.MultiplyBy(upperEdge);
+                    Point2d q2 = b + perp.MultiplyBy(upperEdge);
+                    Point2d q3 = b + perp.MultiplyBy(lowerEdge);
+                    Point2d q4 = a + perp.MultiplyBy(lowerEdge);
                     var coordsBeam = new[]
                     {
                         new Coordinate(q1.X, q1.Y),
@@ -1389,76 +1532,14 @@ namespace ST4PlanIdCiz
                         new Coordinate(q4.X, q4.Y),
                         new Coordinate(q1.X, q1.Y)
                     };
-                    beamList.Add(factory.CreatePolygon(factory.CreateLinearRing(coordsBeam)));
+                    polygons.Add(factory.CreatePolygon(factory.CreateLinearRing(coordsBeam)));
                 }
-            }
-            // Kesim: tüm kirişlerden kolon/perde çıkar; parçalara saç kılı eksiltmesi uygula (daralan boyutlar), sonra tek listede topla.
-            var beamPieces = new List<Geometry>();
-            foreach (var beamPoly in beamList)
-            {
-                if (beamPoly == null || beamPoly.IsEmpty) continue;
-                Geometry toDraw = beamPoly;
-                if (kolonPerdeUnion != null && !kolonPerdeUnion.IsEmpty)
-                {
-                    var diff = beamPoly.Difference(kolonPerdeUnion);
-                    if (diff != null && !diff.IsEmpty)
-                    {
-                        toDraw = ReducePrecisionSafe(diff, 100);
-                        if (toDraw == null || toDraw.IsEmpty) toDraw = diff;
-                    }
-                }
+                if (polygons.Count == 0) continue;
+                Geometry toDraw = polygons.Count == 1
+                    ? polygons[0]
+                    : NetTopologySuite.Operation.Union.CascadedPolygonUnion.Union(polygons);
                 if (toDraw != null && !toDraw.IsEmpty)
-                {
-                    foreach (var poly in CleanGeometryToPolygons(toDraw, factory, applySmallTriangleTrim: false))
-                    {
-                        if (poly is Polygon pg && pg.Area >= 1000.0)
-                        {
-                            if (!IsColumnEdgeHairline(pg, kolonPerdeBoundary))
-                                beamPieces.Add(pg);
-                            else
-                            {
-                                // Saç kılı büyük kirişe bitişik: kolonu 1mm şişirip tekrar keserek kırp
-                                var trimmed = pg.Difference(kolonPerdeUnion.Buffer(0.1));
-                                if (trimmed != null && !trimmed.IsEmpty)
-                                    foreach (var t in CleanGeometryToPolygons(trimmed, factory, applySmallTriangleTrim: false))
-                                        if (t is Polygon tp && tp.Area > 100.0)
-                                            beamPieces.Add(tp);
-                            }
-                        }
-                    }
-                }
-            }
-            // Kesim sonrası daralan (saç kılı eksiltmeli) parçalar üzerinden: birbirine değmeyen veya sadece 1 noktada (2mm) değenler hariç, temas edenleri birleştir.
-            const double touchToleranceCm = 0.2; // 2 mm
-            if (beamPieces.Count > 0)
-            {
-                int n = beamPieces.Count;
-                var parent = new int[n];
-                for (int i = 0; i < n; i++) parent[i] = i;
-                int Find(int x) { while (parent[x] != x) x = parent[x] = parent[parent[x]]; return x; }
-                void Union(int x, int y) { parent[Find(x)] = Find(y); }
-                for (int i = 0; i < n; i++)
-                    for (int j = i + 1; j < n; j++)
-                        if (ProperlyTouches(beamPieces[i], beamPieces[j], touchToleranceCm, kolonPerdeBoundary))
-                            Union(i, j);
-                var componentGroups = new Dictionary<int, List<Geometry>>();
-                for (int i = 0; i < n; i++)
-                {
-                    int root = Find(i);
-                    if (!componentGroups.ContainsKey(root)) componentGroups[root] = new List<Geometry>();
-                    componentGroups[root].Add(beamPieces[i]);
-                }
-                const double minBeamAreaCm2 = 1000.0; // Kiriş artığı (üçgen vb.) temizliği
-                foreach (var list in componentGroups.Values)
-                {
-                    Geometry part = list.Count == 1 ? list[0] : NetTopologySuite.Operation.Union.CascadedPolygonUnion.Union(list);
-                    if (part != null && !part.IsEmpty)
-                    {
-                        part = FilterSmallPolygons(part, minBeamAreaCm2);
-                        if (part != null && !part.IsEmpty)
-                            DrawGeometryRingsAsPolylines(tr, btr, part, LayerKiris, addHatch: false, exteriorRingsOnly: false, applySmallTriangleTrim: false);
-                    }
-                }
+                    DrawGeometryRingsAsPolylines(tr, btr, toDraw, LayerKiris, addHatch: false, exteriorRingsOnly: false, applySmallTriangleTrim: false);
             }
             if (wallList.Count > 0)
             {
