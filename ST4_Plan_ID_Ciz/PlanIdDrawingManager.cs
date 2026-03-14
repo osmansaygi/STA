@@ -139,6 +139,7 @@ namespace ST4PlanIdCiz
             EnsurePlanLayer(tr, db, LayerAksOlcu, 6, LineWeight.LineWeight018, useDashed: false);
             EnsurePlanLayer(tr, db, LayerKirisYazisi, 40, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, LayerPerdeYazisi, 240, LineWeight.LineWeight020, useDashed: false);
+            EnsurePlanLayer(tr, db, "KIRIS UZATMA ISARET (BEYKENT)", 1, LineWeight.LineWeight025, useDashed: false);
         }
 
         private static void EnsureDashedLinetype(Transaction tr, Database db)
@@ -1102,6 +1103,285 @@ namespace ST4PlanIdCiz
             return keep[0].Factory.CreateMultiPolygon(keep.OfType<Polygon>().ToArray());
         }
 
+        /// <summary>Noktadan verilen yönde ilerleyen ışının poligon kenarıyla ilk kesişimine olan mesafeyi döndürür. Kesişim yoksa double.MaxValue.</summary>
+        private static double DistanceFromPointToPolygonBoundaryInDirection(Point2d point, Vector2d dirNormalized, Polygon poly)
+        {
+            if (poly == null || poly.IsEmpty || dirNormalized.Length < 1e-9) return double.MaxValue;
+            var ring = poly.ExteriorRing;
+            if (ring == null) return double.MaxValue;
+            var coords = ring.Coordinates;
+            if (coords == null || coords.Length < 3) return double.MaxValue;
+            double px = point.X, py = point.Y;
+            double dx = dirNormalized.X, dy = dirNormalized.Y;
+            double minT = double.MaxValue;
+            for (int i = 0; i < coords.Length - 1; i++)
+            {
+                double ax = coords[i].X, ay = coords[i].Y;
+                double bx = coords[i + 1].X, by = coords[i + 1].Y;
+                double vx = bx - ax, vy = by - ay;
+                double wx = px - ax, wy = py - ay;
+                double denom = dx * vy - dy * vx;
+                if (Math.Abs(denom) < 1e-12) continue;
+                double t = (wx * vy - wy * vx) / denom;
+                double v2 = vx * vx + vy * vy;
+                if (v2 < 1e-12) continue;
+                double s = (wx * vx + wy * vy + t * (dx * vx + dy * vy)) / v2;
+                if (t > 1e-9 && s >= -1e-9 && s <= 1.0 + 1e-9 && t < minT)
+                    minT = t;
+            }
+            return minT;
+        }
+
+        /// <summary>Köşe noktasından diğer uca giden kiriş segmenti için NTS dikdörtgen (kiriş kesiti) üretir; uzatma kuralında iki kirişin sağ/sol çizgilerinin kesişmesi kontrolü için kullanılır.</summary>
+        private static Geometry BuildBeamStubPolygon(Point2d corner, Point2d otherEnd, BeamInfo beam, GeometryFactory factory)
+        {
+            Vector2d axisDir = otherEnd - corner;
+            if (axisDir.Length < 1e-9) return null;
+            Vector2d u = axisDir.GetNormal();
+            Vector2d perp = new Vector2d(-u.Y, u.X);
+            double hw = beam.WidthCm / 2.0;
+            ComputeBeamEdgeOffsets(beam.OffsetRaw, hw, out double upperEdge, out double lowerEdge);
+            var coords = new[]
+            {
+                new Coordinate((corner + perp.MultiplyBy(upperEdge)).X, (corner + perp.MultiplyBy(upperEdge)).Y),
+                new Coordinate((otherEnd + perp.MultiplyBy(upperEdge)).X, (otherEnd + perp.MultiplyBy(upperEdge)).Y),
+                new Coordinate((otherEnd + perp.MultiplyBy(lowerEdge)).X, (otherEnd + perp.MultiplyBy(lowerEdge)).Y),
+                new Coordinate((corner + perp.MultiplyBy(lowerEdge)).X, (corner + perp.MultiplyBy(lowerEdge)).Y),
+                new Coordinate((corner + perp.MultiplyBy(upperEdge)).X, (corner + perp.MultiplyBy(upperEdge)).Y)
+            };
+            return factory.CreatePolygon(factory.CreateLinearRing(coords));
+        }
+
+        /// <summary>İki konsol kiriş köşesi: sadece X ve Y aksına sabit iki kirişin birleştiği noktalar. Aynı ID'li kirişlerin iç kenarları dahil edilmez.
+        /// Uzatma kuralı (resimdeki kırmızı mesafeler):
+        /// - KZ-50 sola: Kesişim noktasından (işaret) KZ-56'nın uzatma yönünde kalan kenarına (KZ-56'nın sol dış çizgisi) kadar = 1. resimdeki kırmızı mesafe.
+        /// - KZ-56 aşağı: Kesişim noktasından KZ-50'nin uzatma yönünde kalan kenarına (KZ-50'nin alt dış çizgisi) kadar = 2. resimdeki kırmızı mesafe.
+        /// Yani uzatma = köşeden referans kirişin (diğer kirişin) dış kenar çizgisine kadar olan mesafe; ışın–poligon kenar kesişimi ile hesaplanır.
+        /// Döner: (rounded point -> beamId -> extend cm).</summary>
+        private Dictionary<(int x, int y), Dictionary<int, double>> BuildTwoBeamCornerExtensionMap(List<BeamInfo> beamsForDrawing, int floorNo, double offsetX, double offsetY, Geometry kolonPerdeUnion, GeometryFactory factory)
+        {
+            if (beamsForDrawing == null || beamsForDrawing.Count == 0) return null;
+            const int axisXMin = 1001, axisXMax = 1999;
+            const int axisYMin = 2001, axisYMax = 2999;
+
+            var pointToBeams = new Dictionary<(int x, int y), List<(BeamInfo beam, Point2d otherEnd)>>();
+            var endpointCountByBeam = new Dictionary<(int beamId, int x, int y), int>();
+            foreach (var beam in beamsForDrawing)
+            {
+                if (GetBeamFloorNo(beam.BeamId) != floorNo) continue;
+                if (!_axisService.TryIntersect(beam.FixedAxisId, beam.StartAxisId, out Point2d p1)) continue;
+                if (!_axisService.TryIntersect(beam.FixedAxisId, beam.EndAxisId, out Point2d p2)) continue;
+                var a = new Point2d(p1.X + offsetX, p1.Y + offsetY);
+                var b = new Point2d(p2.X + offsetX, p2.Y + offsetY);
+                var keyA = ((int)Math.Round(a.X), (int)Math.Round(a.Y));
+                var keyB = ((int)Math.Round(b.X), (int)Math.Round(b.Y));
+                var kA = (beam.BeamId, keyA.Item1, keyA.Item2);
+                var kB = (beam.BeamId, keyB.Item1, keyB.Item2);
+                if (!endpointCountByBeam.ContainsKey(kA)) endpointCountByBeam[kA] = 0;
+                endpointCountByBeam[kA]++;
+                if (!endpointCountByBeam.ContainsKey(kB)) endpointCountByBeam[kB] = 0;
+                endpointCountByBeam[kB]++;
+                if (!pointToBeams.ContainsKey(keyA)) pointToBeams[keyA] = new List<(BeamInfo, Point2d)>();
+                pointToBeams[keyA].Add((beam, b));
+                if (!pointToBeams.ContainsKey(keyB)) pointToBeams[keyB] = new List<(BeamInfo, Point2d)>();
+                pointToBeams[keyB].Add((beam, a));
+            }
+            var result = new Dictionary<(int x, int y), Dictionary<int, double>>();
+            foreach (var kv in pointToBeams)
+            {
+                var list = kv.Value.GroupBy(x => x.beam.BeamId).Select(g => g.First()).ToList();
+                if (list.Count != 2) continue;
+                var (beam1, other1) = list[0];
+                var (beam2, other2) = list[1];
+                int keyX = kv.Key.Item1, keyY = kv.Key.Item2;
+                int c1, c2;
+                if (!endpointCountByBeam.TryGetValue((beam1.BeamId, keyX, keyY), out c1) || c1 != 1) continue;
+                if (!endpointCountByBeam.TryGetValue((beam2.BeamId, keyX, keyY), out c2) || c2 != 1) continue;
+                int fix1 = beam1.FixedAxisId, fix2 = beam2.FixedAxisId;
+                bool oneX = (fix1 >= axisXMin && fix1 <= axisXMax) || (fix2 >= axisXMin && fix2 <= axisXMax);
+                bool oneY = (fix1 >= axisYMin && fix1 <= axisYMax) || (fix2 >= axisYMin && fix2 <= axisYMax);
+                if (!oneX || !oneY) continue;
+                var pt = factory.CreatePoint(new Coordinate(kv.Key.Item1, kv.Key.Item2));
+                if (kolonPerdeUnion != null && !kolonPerdeUnion.IsEmpty && kolonPerdeUnion.Contains(pt)) continue;
+
+                Point2d corner = new Point2d(kv.Key.Item1, kv.Key.Item2);
+                Geometry poly1 = BuildBeamStubPolygon(corner, other1, beam1, factory);
+                Geometry poly2 = BuildBeamStubPolygon(corner, other2, beam2, factory);
+                if (poly1 == null || poly2 == null || poly1.IsEmpty || poly2.IsEmpty || !poly1.Intersects(poly2))
+                    continue; // Sağ/sol çizgileri kesişmiyorsa (uç uca gelmeyen kirişler) uzatma yapma
+
+                // Uzatma = köşeden referans kirişin İÇ kenarına (uzatma yönünde en yakın yüz = işaret hizasındaki 20cm) kadar mesafe; dış kenara (60cm) göre değil.
+                Vector2d dir1 = (corner - other1).GetNormal();
+                Vector2d dir2 = (corner - other2).GetNormal();
+                double d1Out = DistanceFromPointToPolygonBoundaryInDirection(corner, dir1, poly2 as Polygon);
+                double d1In = DistanceFromPointToPolygonBoundaryInDirection(corner, new Vector2d(-dir1.X, -dir1.Y), poly2 as Polygon);
+                double d2Out = DistanceFromPointToPolygonBoundaryInDirection(corner, dir2, poly1 as Polygon);
+                double d2In = DistanceFromPointToPolygonBoundaryInDirection(corner, new Vector2d(-dir2.X, -dir2.Y), poly1 as Polygon);
+                double ext1 = (d1Out > 0 && d1Out < 1e6) && (d1In > 0 && d1In < 1e6) ? Math.Min(d1Out, d1In) : (d1Out > 0 && d1Out < 1e6 ? d1Out : (d1In > 0 && d1In < 1e6 ? d1In : beam2.WidthCm / 2.0));
+                double ext2 = (d2Out > 0 && d2Out < 1e6) && (d2In > 0 && d2In < 1e6) ? Math.Min(d2Out, d2In) : (d2Out > 0 && d2Out < 1e6 ? d2Out : (d2In > 0 && d2In < 1e6 ? d2In : beam1.WidthCm / 2.0));
+                if (ext1 <= 0 || ext1 >= 1e6) ext1 = beam2.WidthCm / 2.0;
+                if (ext2 <= 0 || ext2 >= 1e6) ext2 = beam1.WidthCm / 2.0;
+                result[kv.Key] = new Dictionary<int, double> { { beam1.BeamId, ext1 }, { beam2.BeamId, ext2 } };
+            }
+            return result.Count == 0 ? null : result;
+        }
+
+        /// <summary>İki doğru parçasının kesişim noktasını döndürür; kesişim parça içinde değilse null.</summary>
+        private static Point2d? SegmentSegmentIntersection(double ax, double ay, double bx, double by, double cx, double cy, double dx, double dy, double tol = 1e-9)
+        {
+            double vx = bx - ax, vy = by - ay;
+            double wx = dx - cx, wy = dy - cy;
+            double denom = vx * wy - vy * wx;
+            if (Math.Abs(denom) < tol) return null;
+            double rx = cx - ax, ry = cy - ay;
+            double t = (rx * wy - ry * wx) / denom;
+            double s = (rx * vy - ry * vx) / denom;
+            if (t >= -tol && t <= 1.0 + tol && s >= -tol && s <= 1.0 + tol)
+                return new Point2d(ax + t * vx, ay + t * vy);
+            return null;
+        }
+
+        /// <summary>Geometry'nin dış halka kenarlarını doğru parçaları olarak döndürür (Polygon/MultiPolygon/GeometryCollection).</summary>
+        private static void GetBoundarySegments(Geometry geom, List<(double ax, double ay, double bx, double by)> segments)
+        {
+            if (geom == null || geom.IsEmpty) return;
+            if (geom is Polygon poly && poly.ExteriorRing != null)
+            {
+                var coords = poly.ExteriorRing.Coordinates;
+                for (int i = 0; i < coords.Length - 1; i++)
+                    segments.Add((coords[i].X, coords[i].Y, coords[i + 1].X, coords[i + 1].Y));
+                return;
+            }
+            if (geom is MultiPolygon mp)
+            {
+                for (int n = 0; n < mp.NumGeometries; n++)
+                    GetBoundarySegments(mp.GetGeometryN(n), segments);
+                return;
+            }
+            if (geom is NetTopologySuite.Geometries.GeometryCollection gc)
+            {
+                for (int n = 0; n < gc.NumGeometries; n++)
+                    GetBoundarySegments(gc.GetGeometryN(n), segments);
+            }
+        }
+
+        /// <summary>Kirişin sadece iki yan kenarını (eksene dik uç yüzleri) döndürür; eksene paralel uzun kenarlar dahil edilmez. fixedAxisId 1001-1999 = X aksı (plan görünüşte uç yüzler yatay), 2001-2999 = Y aksı (uç yüzler düşey).</summary>
+        private static void GetLateralBoundarySegments(Geometry geom, int fixedAxisId, List<(double ax, double ay, double bx, double by)> segments, int axisXMin = 1001, int axisXMax = 1999)
+        {
+            var all = new List<(double ax, double ay, double bx, double by)>();
+            GetBoundarySegments(geom, all);
+            bool isXAxis = fixedAxisId >= axisXMin && fixedAxisId <= axisXMax;
+            foreach (var s in all)
+            {
+                double dx = s.bx - s.ax, dy = s.by - s.ay;
+                double len = Math.Sqrt(dx * dx + dy * dy);
+                if (len < 1e-9) continue;
+                dx /= len; dy /= len;
+                if (isXAxis) { if (Math.Abs(dx) >= 0.9) segments.Add(s); }
+                else { if (Math.Abs(dy) >= 0.9) segments.Add(s); }
+            }
+        }
+
+        /// <summary>Kolon/perde kesişiminden sonraki kiriş geometrilerinin (son hal) kesişim noktalarını döndürür. Sadece kirişin iki yan kenarı (eksene dik uç yüzler) kullanılır; eksene paralel uzun kenarlar dahil edilmez. X+Y kiriş çiftleri; nokta kolon/perde dışında; uç noktalar hariç 1 mm toleransla kenar içinde kalan kesişimler.</summary>
+        private static List<Point2d> GetMarkerPointsFromFinalBeamGeometries(List<(int beamId, Geometry toDraw, int fixedAxisId)> finalGeometries, Geometry kolonPerdeUnion, GeometryFactory factory, int axisXMin = 1001, int axisXMax = 1999, int axisYMin = 2001, int axisYMax = 2999)
+        {
+            var pointByKey = new Dictionary<(int x, int y), Point2d>();
+            for (int i = 0; i < finalGeometries.Count; i++)
+            {
+                int fixI = finalGeometries[i].fixedAxisId;
+                bool iX = fixI >= axisXMin && fixI <= axisXMax;
+                bool iY = fixI >= axisYMin && fixI <= axisYMax;
+                var segsI = new List<(double ax, double ay, double bx, double by)>();
+                GetLateralBoundarySegments(finalGeometries[i].toDraw, finalGeometries[i].fixedAxisId, segsI, axisXMin, axisXMax);
+                for (int j = i + 1; j < finalGeometries.Count; j++)
+                {
+                    int fixJ = finalGeometries[j].fixedAxisId;
+                    bool jX = fixJ >= axisXMin && fixJ <= axisXMax;
+                    bool jY = fixJ >= axisYMin && fixJ <= axisYMax;
+                    if (!((iX && jY) || (iY && jX))) continue;
+                    var segsJ = new List<(double ax, double ay, double bx, double by)>();
+                    GetLateralBoundarySegments(finalGeometries[j].toDraw, finalGeometries[j].fixedAxisId, segsJ, axisXMin, axisXMax);
+                    foreach (var s1 in segsI)
+                    foreach (var s2 in segsJ)
+                    {
+                        var pt = SegmentSegmentIntersection(s1.ax, s1.ay, s1.bx, s1.by, s2.ax, s2.ay, s2.bx, s2.by);
+                        if (!pt.HasValue) continue;
+                        const double endpointToleranceCm = 0.1; // 1 mm: uç noktalar hariç, sadece kenar içinde kalan kesişimler
+                        double px = pt.Value.X, py = pt.Value.Y;
+                        if (Math.Sqrt((px - s1.ax) * (px - s1.ax) + (py - s1.ay) * (py - s1.ay)) < endpointToleranceCm) continue;
+                        if (Math.Sqrt((px - s1.bx) * (px - s1.bx) + (py - s1.by) * (py - s1.by)) < endpointToleranceCm) continue;
+                        if (Math.Sqrt((px - s2.ax) * (px - s2.ax) + (py - s2.ay) * (py - s2.ay)) < endpointToleranceCm) continue;
+                        if (Math.Sqrt((px - s2.bx) * (px - s2.bx) + (py - s2.by) * (py - s2.by)) < endpointToleranceCm) continue;
+                        var key = ((int)Math.Round(px), (int)Math.Round(py));
+                        if (!pointByKey.ContainsKey(key)) pointByKey[key] = pt.Value;
+                    }
+                }
+            }
+            var result = new List<Point2d>();
+            foreach (var kv in pointByKey)
+            {
+                var pt = factory.CreatePoint(new Coordinate(kv.Value.X, kv.Value.Y));
+                if (kolonPerdeUnion != null && !kolonPerdeUnion.IsEmpty && kolonPerdeUnion.Contains(pt)) continue;
+                result.Add(kv.Value);
+            }
+            return result;
+        }
+
+        /// <summary>X aksı kirişi ile Y aksı kirişinin kenar çizgileri (kesit dikdörtgenleri) kesişen ve bu noktada kolon/perde/3. kiriş olmayan noktaları döndürür. Aynı ID'li kirişlerin içinde kalan kenarlar dahil edilmez; sadece her kirişin başlangıç/bitiş uçları sayılır. (Kolon/perde öncesi geometri; işaretler artık son geometriye göre çiziliyor.)</summary>
+        private List<Point2d> GetTwoBeamCornerPointsForMarker(List<BeamInfo> beamsForDrawing, int floorNo, double offsetX, double offsetY, Geometry kolonPerdeUnion, GeometryFactory factory)
+        {
+            if (beamsForDrawing == null || beamsForDrawing.Count == 0) return new List<Point2d>();
+            const int axisXMin = 1001, axisXMax = 1999;
+            const int axisYMin = 2001, axisYMax = 2999;
+            var pointToBeams = new Dictionary<(int x, int y), List<(BeamInfo beam, Point2d otherEnd)>>();
+            var endpointCountByBeam = new Dictionary<(int beamId, int x, int y), int>();
+            foreach (var beam in beamsForDrawing)
+            {
+                if (GetBeamFloorNo(beam.BeamId) != floorNo) continue;
+                if (!_axisService.TryIntersect(beam.FixedAxisId, beam.StartAxisId, out Point2d p1)) continue;
+                if (!_axisService.TryIntersect(beam.FixedAxisId, beam.EndAxisId, out Point2d p2)) continue;
+                var a = new Point2d(p1.X + offsetX, p1.Y + offsetY);
+                var b = new Point2d(p2.X + offsetX, p2.Y + offsetY);
+                var keyA = ((int)Math.Round(a.X), (int)Math.Round(a.Y));
+                var keyB = ((int)Math.Round(b.X), (int)Math.Round(b.Y));
+                var kA = (beam.BeamId, keyA.Item1, keyA.Item2);
+                var kB = (beam.BeamId, keyB.Item1, keyB.Item2);
+                if (!endpointCountByBeam.ContainsKey(kA)) endpointCountByBeam[kA] = 0;
+                endpointCountByBeam[kA]++;
+                if (!endpointCountByBeam.ContainsKey(kB)) endpointCountByBeam[kB] = 0;
+                endpointCountByBeam[kB]++;
+                if (!pointToBeams.ContainsKey(keyA)) pointToBeams[keyA] = new List<(BeamInfo, Point2d)>();
+                pointToBeams[keyA].Add((beam, b));
+                if (!pointToBeams.ContainsKey(keyB)) pointToBeams[keyB] = new List<(BeamInfo, Point2d)>();
+                pointToBeams[keyB].Add((beam, a));
+            }
+            var points = new List<Point2d>();
+            foreach (var kv in pointToBeams)
+            {
+                var list = kv.Value.GroupBy(x => x.beam.BeamId).Select(g => g.First()).ToList();
+                if (list.Count != 2) continue;
+                var (beam1, other1) = list[0];
+                var (beam2, other2) = list[1];
+                int keyX = kv.Key.Item1, keyY = kv.Key.Item2;
+                int c1, c2;
+                if (!endpointCountByBeam.TryGetValue((beam1.BeamId, keyX, keyY), out c1) || c1 != 1) continue;
+                if (!endpointCountByBeam.TryGetValue((beam2.BeamId, keyX, keyY), out c2) || c2 != 1) continue;
+                int fix1 = beam1.FixedAxisId, fix2 = beam2.FixedAxisId;
+                bool oneX = (fix1 >= axisXMin && fix1 <= axisXMax) || (fix2 >= axisXMin && fix2 <= axisXMax);
+                bool oneY = (fix1 >= axisYMin && fix1 <= axisYMax) || (fix2 >= axisYMin && fix2 <= axisYMax);
+                if (!oneX || !oneY) continue;
+                var pt = factory.CreatePoint(new Coordinate(kv.Key.x, kv.Key.y));
+                if (kolonPerdeUnion != null && !kolonPerdeUnion.IsEmpty && kolonPerdeUnion.Contains(pt)) continue;
+                Point2d corner = new Point2d(kv.Key.x, kv.Key.y);
+                Geometry poly1 = BuildBeamStubPolygon(corner, other1, beam1, factory);
+                Geometry poly2 = BuildBeamStubPolygon(corner, other2, beam2, factory);
+                if (poly1 == null || poly2 == null || poly1.IsEmpty || poly2.IsEmpty || !poly1.Intersects(poly2))
+                    continue;
+                points.Add(corner);
+            }
+            return points;
+        }
+
         /// <summary>GeometryCollection veya Boundary desteklemeyen geometriyi poligon listesine çevirip unionlar; Boundary çağrısı hata vermez.</summary>
         private static Geometry EnsureBoundarySafe(Geometry geom, GeometryFactory factory)
         {
@@ -1543,7 +1823,11 @@ namespace ST4PlanIdCiz
                 }
             }
 
-            // Kirişler: aynı BeamId'ye sahip segmentler tek birleşik geometri olarak çizilir (ID başına bir çizim).
+            // Uzatma kapalı.
+            Dictionary<(int x, int y), Dictionary<int, double>> twoBeamCornerExtendCm = null;
+            var finalBeamGeometries = new List<(int beamId, Geometry toDraw, int fixedAxisId)>();
+
+            // Kirişler: aynı BeamId'ye sahip segmentler tek birleşik geometri olarak çizilir (ID başına bir çizim). Son geometriler (kolon/perde kesişiminden sonra) işaret için toplanır.
             // Etiket konumu için çizilen geometri, ilk segment yönü ve gruptaki en kısa parça uzunluğu (cm) kaydedilir.
             var beamLabelInfos = new List<(int beamId, Geometry drawnGeometry, BeamInfo firstBeam, Point2d firstA, Point2d firstB, double minSegmentLengthCm)>();
             var beamsById = beamsForDrawing.GroupBy(b => b.BeamId).ToList();
@@ -1559,6 +1843,8 @@ namespace ST4PlanIdCiz
                     if (!_axisService.TryIntersect(beam.FixedAxisId, beam.EndAxisId, out Point2d p2)) continue;
                     var a = new Point2d(p1.X + offsetX, p1.Y + offsetY);
                     var b = new Point2d(p2.X + offsetX, p2.Y + offsetY);
+                    Point2d a0Axis = a;
+                    Point2d b0Axis = b;
                     // Adım 2: Kirişin kapsadığı alan ile kolonun kapsadığı alan kesişiyorsa, kesişen taraftaki ucu o kolonun merkezine (aks üzerinde izdüşüm) çek.
                     Vector2d axisDir = b - a;
                     if (axisDir.Length > 1e-9)
@@ -1613,6 +1899,26 @@ namespace ST4PlanIdCiz
                     Vector2d dir = b - a;
                     if (dir.Length <= 1e-9) continue;
                     Vector2d u = dir.GetNormal();
+                    // İki konsol kiriş köşesi: uçta sadece bu iki kiriş (kolon/perde/3. kiriş yok), kiriş ucunu diğer kirişin İÇ kenarına kadar uzat (işaret hizası 20cm). Her iki kiriş de uzatılır (kolon çekmesi bu ucu bozsa bile).
+                    if (twoBeamCornerExtendCm != null)
+                    {
+                        var keyA = ((int)Math.Round(a0Axis.X), (int)Math.Round(a0Axis.Y));
+                        var keyB = ((int)Math.Round(b0Axis.X), (int)Math.Round(b0Axis.Y));
+                        double len = dir.Length;
+                        if (twoBeamCornerExtendCm.TryGetValue(keyA, out var mapA) && mapA.TryGetValue(group.Key, out double extA) && extA > 0)
+                        {
+                            extA = Math.Min(extA, len * 0.5);
+                            a = a0Axis - u.MultiplyBy(extA);
+                        }
+                        if (twoBeamCornerExtendCm.TryGetValue(keyB, out var mapB) && mapB.TryGetValue(group.Key, out double extB) && extB > 0)
+                        {
+                            extB = Math.Min(extB, len * 0.5);
+                            b = b0Axis + u.MultiplyBy(extB);
+                        }
+                        dir = b - a;
+                        if (dir.Length <= 1e-9) continue;
+                        u = dir.GetNormal();
+                    }
                     Vector2d perp = new Vector2d(-u.Y, u.X);
                     double hw = beam.WidthCm / 2.0;
                     ComputeBeamEdgeOffsets(beam.OffsetRaw, hw, out double upperEdge, out double lowerEdge);
@@ -1667,8 +1973,15 @@ namespace ST4PlanIdCiz
                     }
                     catch { }
                 }
+                // Üçgen ve 1000 cm² altı kiriş artıklarını temizle
                 if (toDraw != null && !toDraw.IsEmpty)
                 {
+                    const double minBeamRemnantAreaCm2 = 1000.0;
+                    toDraw = FilterSmallPolygons(toDraw, minBeamRemnantAreaCm2);
+                }
+                if (toDraw != null && !toDraw.IsEmpty)
+                {
+                    finalBeamGeometries.Add((group.Key, toDraw, group.First().FixedAxisId));
                     DrawGeometryRingsAsPolylines(tr, btr, toDraw, LayerKiris, addHatch: false, exteriorRingsOnly: false, applySmallTriangleTrim: false);
                     if (firstAlignedA.HasValue && firstAlignedB.HasValue)
                     {
@@ -1676,6 +1989,19 @@ namespace ST4PlanIdCiz
                         beamLabelInfos.Add((group.Key, toDraw, group.First(), firstAlignedA.Value, firstAlignedB.Value, minSeg));
                     }
                 }
+            }
+            // İşaretler: sadece mevcut kirişin son halindeki (kolon/perde kesişiminden sonraki) geometrilerin kesişim noktalarına çizilir.
+            var twoBeamCornerPoints = GetMarkerPointsFromFinalBeamGeometries(finalBeamGeometries, kolonPerdeUnion, factory);
+            const double twoBeamMarkerDiameterCm = 5.0;
+            foreach (Point2d pt in twoBeamCornerPoints)
+            {
+                var circle = new Circle(new Point3d(pt.X, pt.Y, 0), Vector3d.ZAxis, twoBeamMarkerDiameterCm / 2.0)
+                {
+                    Layer = "KIRIS UZATMA ISARET (BEYKENT)",
+                    Color = Color.FromColorIndex(ColorMethod.ByAci, 1)
+                };
+                ObjectId circleId = AppendEntityReturnId(tr, btr, circle);
+                AppendHatchSolidRed(tr, btr, circleId);
             }
             var wallLabelInfos = new List<(int beamId, Geometry drawnGeometry, BeamInfo beam, Point2d firstA, Point2d firstB)>();
             if (wallList.Count > 0)
@@ -4021,6 +4347,21 @@ namespace ST4PlanIdCiz
             btr.AppendEntity(e);
             tr.AddNewlyCreatedDBObject(e, true);
             return e.ObjectId;
+        }
+
+        /// <summary>Kiriş uzatma işareti: daire sınırı içine kırmızı solid dolgu (resimdeki kırmızı nokta gibi).</summary>
+        private static void AppendHatchSolidRed(Transaction tr, BlockTableRecord btr, ObjectId boundaryId)
+        {
+            var hatch = new Hatch();
+            btr.AppendEntity(hatch);
+            tr.AddNewlyCreatedDBObject(hatch, true);
+            hatch.SetHatchPattern(HatchPatternType.PreDefined, "SOLID");
+            hatch.Color = Color.FromColorIndex(ColorMethod.ByAci, 1);
+            hatch.Layer = "KIRIS UZATMA ISARET (BEYKENT)";
+            hatch.Associative = true;
+            var ids = new ObjectIdCollection { boundaryId };
+            hatch.AppendLoop(HatchLoopTypes.Outermost, ids);
+            hatch.EvaluateHatch(true);
         }
 
         /// <summary>
