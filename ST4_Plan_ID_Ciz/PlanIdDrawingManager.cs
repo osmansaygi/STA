@@ -1653,6 +1653,20 @@ namespace ST4PlanIdCiz
                 Geometry toDraw = polygons.Count == 1
                     ? polygons[0]
                     : NetTopologySuite.Operation.Union.CascadedPolygonUnion.Union(polygons);
+                // Kirişleri kolon ve perde sınırlarında kes (Difference)
+                if (toDraw != null && !toDraw.IsEmpty && kolonPerdeUnion != null && !kolonPerdeUnion.IsEmpty)
+                {
+                    try
+                    {
+                        var diff = toDraw.Difference(kolonPerdeUnion);
+                        if (diff != null && !diff.IsEmpty)
+                        {
+                            toDraw = ReducePrecisionSafe(diff, 100);
+                            if (toDraw == null || toDraw.IsEmpty) toDraw = diff;
+                        }
+                    }
+                    catch { }
+                }
                 if (toDraw != null && !toDraw.IsEmpty)
                 {
                     DrawGeometryRingsAsPolylines(tr, btr, toDraw, LayerKiris, addHatch: false, exteriorRingsOnly: false, applySmallTriangleTrim: false);
