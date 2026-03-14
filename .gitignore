@@ -1,6 +1,7 @@
 # Derleme ciktilari
 bin/
 obj/
+*.log
 *.user
 *.suo
 .vs/
