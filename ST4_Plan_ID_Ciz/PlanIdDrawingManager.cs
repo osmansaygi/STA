@@ -752,9 +752,6 @@ namespace ST4PlanIdCiz
         private void DrawAxes(Transaction tr, BlockTableRecord btr, double offsetX, double offsetY,
             (double Xmin, double Xmax, double Ymin, double Ymax) ext)
         {
-            var xKolonAks = BuildColumnAxisIds(c => c.AxisXId, _model.AxisX.Select(a => a.Id));
-            var yKolonAks = BuildColumnAxisIds(c => c.AxisYId, _model.AxisY.Select(a => a.Id));
-
             const double axisBalonRadiusCm = 25.0;   // çap 50 cm
             const double axisLabelHeightCm = 25.0;
 
@@ -768,11 +765,15 @@ namespace ST4PlanIdCiz
             double yLo = ext.Ymin + offsetY - extCm;
             double yHi = ext.Ymax + offsetY + extCm;
 
+            var xKolonAks = BuildColumnAxisIds(c => c.AxisXId, _model.AxisX.Select(a => a.Id));
+            var yKolonAks = BuildColumnAxisIds(c => c.AxisYId, _model.AxisY.Select(a => a.Id));
+
             var xAxisTopPositions = new List<Point3d>();
             var xAxisBottomPositions = new List<Point3d>();
             var yAxisLeftPositions = new List<Point3d>();
             var yAxisRightPositions = new List<Point3d>();
 
+            // Bütün akslar her zaman gösterilir (kolon filtresi yok)
             for (int i = 0; i < _model.AxisX.Count; i++)
             {
                 var ax = _model.AxisX[i];
@@ -1310,62 +1311,142 @@ namespace ST4PlanIdCiz
             }
         }
 
-        /// <summary>İki geometrinin (çizimde görüldüğü haliyle) en az iki köşesi ortaktır (tolerans dahilinde aynı nokta). Kiriş birleştirme kuralı.</summary>
-        private static bool ShareAtLeastTwoVertices(Geometry a, Geometry b, double toleranceCm = 0.2)
+        /// <summary>Geometrinin sınırındaki köşe noktalarını döndürür (Polygon/MultiPolygon dış halkaları, kapalı halkanın son noktası hariç).</summary>
+        private static List<Coordinate> GetBoundaryVertices(Geometry geom)
         {
-            if (a == null || b == null || a.IsEmpty || b.IsEmpty) return false;
-            var coordsA = GetExteriorRingCoordinates(a);
-            var coordsB = GetExteriorRingCoordinates(b);
-            if (coordsA == null || coordsB == null || coordsA.Count < 2 || coordsB.Count < 2) return false;
-            int shared = 0;
-            for (int i = 0; i < coordsA.Count && shared < 2; i++)
+            var list = new List<Coordinate>();
+            if (geom == null || geom.IsEmpty) return list;
+            if (geom is Polygon pg && pg.ExteriorRing != null)
             {
-                double ax = coordsA[i].X, ay = coordsA[i].Y;
-                for (int j = 0; j < coordsB.Count; j++)
-                {
-                    double dx = ax - coordsB[j].X, dy = ay - coordsB[j].Y;
-                    if (dx * dx + dy * dy <= toleranceCm * toleranceCm) { shared++; break; }
-                }
-            }
-            return shared >= 2;
-        }
-
-        /// <summary>Polygon veya MultiPolygon dış halka köşelerini döndürür (kapalı halkada son nokta tekrarlanmaz).</summary>
-        private static List<Coordinate> GetExteriorRingCoordinates(Geometry geom)
-        {
-            if (geom == null || geom.IsEmpty) return null;
-            if (geom is Polygon poly && poly.ExteriorRing != null)
-            {
-                var coords = poly.ExteriorRing.Coordinates;
-                if (coords == null || coords.Length < 3) return null;
-                var list = new List<Coordinate>();
-                int n = coords.Length - 1; // son = ilk (kapalı)
-                for (int i = 0; i < n; i++) list.Add(coords[i]);
+                var coords = pg.ExteriorRing.Coordinates;
+                for (int i = 0; i < coords.Length - 1; i++) list.Add(coords[i]);
                 return list;
             }
-            if (geom is MultiPolygon mp && mp.NumGeometries > 0)
+            if (geom is MultiPolygon mp)
             {
-                var p = (Polygon)mp.GetGeometryN(0);
-                if (p?.ExteriorRing != null)
-                {
-                    var coords = p.ExteriorRing.Coordinates;
-                    if (coords != null && coords.Length >= 3)
+                for (int k = 0; k < mp.NumGeometries; k++)
+                    if (mp.GetGeometryN(k) is Polygon p && p.ExteriorRing != null)
                     {
-                        var list = new List<Coordinate>();
+                        var coords = p.ExteriorRing.Coordinates;
                         for (int i = 0; i < coords.Length - 1; i++) list.Add(coords[i]);
-                        return list;
+                    }
+                return list;
+            }
+            return list;
+        }
+
+        /// <summary>İki geometri en az iki ortak köşe noktasına (tolerans dahilinde) sahipse true.</summary>
+        private static bool ShareAtLeastTwoVertices(Geometry a, Geometry b, double toleranceCm = 0.2)
+        {
+            var va = GetBoundaryVertices(a);
+            var vb = GetBoundaryVertices(b);
+            if (va.Count == 0 || vb.Count == 0) return false;
+            int shared = 0;
+            foreach (var ca in va)
+            {
+                foreach (var cb in vb)
+                {
+                    double dx = ca.X - cb.X, dy = ca.Y - cb.Y;
+                    if (dx * dx + dy * dy <= toleranceCm * toleranceCm) { shared++; break; }
+                }
+                if (shared >= 2) return true;
+            }
+            return false;
+        }
+
+        /// <summary>Aynı hizada (yatay veya dikey) iki kiriş poligonu arasındaki boşluk sadece kolon genişliği kadar (en çok maxGapCm) ise true. KZ-30/KZ-31 gibi kolonla ayrılmış kirişleri birleştirmek için.</summary>
+        private static bool CollinearBeamsWithSmallGap(Geometry a, Geometry b, double maxGapCm = 80.0)
+        {
+            if (a == null || b == null || a.IsEmpty || b.IsEmpty) return false;
+            var envA = a.EnvelopeInternal;
+            var envB = b.EnvelopeInternal;
+            double gapX = 0, gapY = 0;
+            if (envA.MaxX < envB.MinX) gapX = envB.MinX - envA.MaxX;
+            else if (envB.MaxX < envA.MinX) gapX = envA.MinX - envB.MaxX;
+            if (envA.MaxY < envB.MinY) gapY = envB.MinY - envA.MaxY;
+            else if (envB.MaxY < envA.MinY) gapY = envA.MinY - envB.MaxY;
+            if (gapX > 0 && gapY > 0) return false;
+            double gap = Math.Max(gapX, gapY);
+            if (gap <= 0) return false;
+            if (gap > maxGapCm) return false;
+            double overlapY = Math.Min(envA.MaxY, envB.MaxY) - Math.Max(envA.MinY, envB.MinY);
+            double overlapX = Math.Min(envA.MaxX, envB.MaxX) - Math.Max(envA.MinX, envB.MinX);
+            double hA = envA.MaxY - envA.MinY, wA = envA.MaxX - envA.MinX;
+            double hB = envB.MaxY - envB.MinY, wB = envB.MaxX - envB.MinX;
+            if (gapX > 0 && overlapY < Math.Min(hA, hB) * 0.5) return false;
+            if (gapY > 0 && overlapX < Math.Min(wA, wB) * 0.5) return false;
+            return true;
+        }
+
+        /// <summary>Kiriş çizimini birleştirmek için: kolon/perde kesimi sonrası geometrilerle yapılır. Görselde birbirine değmeyenler birleştirilmez; ek olarak en az iki ortak köşesi olanlar da birleştirilir (KZ-30/KZ-31 gibi).</summary>
+        private static List<Geometry> MergeTouchingBeamGeometriesForDrawing(List<(int beamId, Geometry toDraw, int fixedAxisId)> sonCizimGeometrileri, Geometry kolonPerdeBoundary)
+        {
+            if (sonCizimGeometrileri == null || sonCizimGeometrileri.Count == 0) return new List<Geometry>();
+            var geoms = sonCizimGeometrileri.Where(x => x.toDraw != null && !x.toDraw.IsEmpty).Select(x => x.toDraw).ToList();
+            if (geoms.Count == 0) return new List<Geometry>();
+            if (geoms.Count == 1) return geoms;
+
+            int n = geoms.Count;
+            var parent = new int[n];
+            for (int i = 0; i < n; i++) parent[i] = i;
+            int Find(int i) { if (parent[i] != i) parent[i] = Find(parent[i]); return parent[i]; }
+            void Union(int i, int j) { parent[Find(i)] = Find(j); }
+
+            for (int i = 0; i < n; i++)
+                for (int j = i + 1; j < n; j++)
+                    if (ProperlyTouches(geoms[i], geoms[j], minTouchLengthCm: 0.2, kolonPerdeBoundary: kolonPerdeBoundary)
+                        || ShareAtLeastTwoVertices(geoms[i], geoms[j], toleranceCm: 0.2)
+                        || CollinearBeamsWithSmallGap(geoms[i], geoms[j], maxGapCm: 80.0))
+                        Union(i, j);
+
+            var groups = Enumerable.Range(0, n).GroupBy(Find).ToList();
+            var result = new List<Geometry>();
+            foreach (var g in groups)
+            {
+                var list = g.Select(i => geoms[i]).ToList();
+                var polygons = new List<Polygon>();
+                foreach (var geom in list)
+                {
+                    if (geom is Polygon p) polygons.Add(p);
+                    else if (geom is MultiPolygon mp)
+                        for (int i = 0; i < mp.NumGeometries; i++)
+                            if (mp.GetGeometryN(i) is Polygon p2) polygons.Add(p2);
+                }
+                if (polygons.Count == 0) continue;
+                if (polygons.Count == 1)
+                    result.Add(polygons[0]);
+                else
+                {
+                    try
+                    {
+                        var u = NetTopologySuite.Operation.Union.CascadedPolygonUnion.Union(polygons.ToArray());
+                        if (u != null && !u.IsEmpty) result.Add(u);
+                    }
+                    catch
+                    {
+                        foreach (var poly in polygons) result.Add(poly);
                     }
                 }
             }
-            return null;
+            return result;
         }
 
-        /// <summary>İki geometri kenar veya alan paylaşıyorsa true; sadece tek noktada (minTouchLengthCm toleransına kadar) değiyorsa false. Temas kolon/perde sınırına çok yakınsa (kesim kenarı) birleştirme sayılmaz.</summary>
+        /// <summary>İki geometri kenar teması (segment) veya gerçek alan örtüşmesi ile birleştirilir. Tek nokta teması ve kolon/perde kesim kenarındaki temas birleştirme sayılmaz.</summary>
         private static bool ProperlyTouches(Geometry a, Geometry b, double minTouchLengthCm = 0.2, Geometry kolonPerdeBoundary = null)
         {
             if (a == null || b == null || a.IsEmpty || b.IsEmpty) return false;
-            // Örtüşme veya içerme: birleştir
-            if (a.Intersects(b) && !a.Touches(b)) return true;
+            // Örtüşme: sadece gerçek alan örtüşmesi (köşe noktası/çizgi = alan 0 birleştirilmez)
+            if (a.Intersects(b) && !a.Touches(b))
+            {
+                try
+                {
+                    var inter = a.Intersection(b);
+                    if (inter == null || inter.IsEmpty) return false;
+                    if (inter.Area < 0.5) return false;
+                    return true;
+                }
+                catch { return false; }
+            }
             if (!a.Touches(b)) return false;
             // Sadece sınırlar temas ediyor; temas uzunluğu >= minTouchLengthCm ise kenar teması say
             try
@@ -1378,7 +1459,7 @@ namespace ST4PlanIdCiz
                 var inter = boundaryA.Intersection(boundaryB);
                 if (inter == null || inter.IsEmpty) return false;
                 if (inter.Length < minTouchLengthCm) return false;
-                // Temas kolon/perde kesim kenarına çok yakınsa (0.3 cm) birleştirme; kesim sonrası sadece gerçek kiriş-kiriş temasında birleş
+                // Görselde birbirine değmiyor: temas kolon/perde hattına çok yakınsa (0.3 cm) birleştirme yapılmaz
                 if (kolonPerdeBoundary != null && !kolonPerdeBoundary.IsEmpty && inter.Distance(kolonPerdeBoundary) <= 0.3)
                     return false;
                 return true;
@@ -2463,6 +2544,8 @@ namespace ST4PlanIdCiz
                     }
                 }
             }
+            // Kiriş birleştirme: kolon-perde kesimi işleminden hemen sonra; uzatma öncesi geometrilerle yapılır.
+            var kirisKolonPerdeKesimSonrasi = finalBeamGeometries.Select(x => (x.beamId, x.toDraw, x.fixedAxisId)).ToList();
             // İşaret noktalarını hafızaya al; sadece kırmızı işaretin kestiği kirişleri diğer kirişin mavi uçlarına (izdüşümüne) kadar uzat, sonra çiz.
             const int axisXMin = 1001, axisXMax = 1999, axisYMin = 2001, axisYMax = 2999;
             var twoBeamCornerData = GetMarkerPointsFromFinalBeamGeometries(finalBeamGeometries, kolonPerdeUnion, factory, axisXMin, axisXMax, axisYMin, axisYMax);
