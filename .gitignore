@@ -16,3 +16,8 @@ artifacts/
 # IDE
 .idea/
 *.rsuser
+
+# Yerel test / gecici (istege bagli: proje verisi kullaniliyorsa bu satirlari kaldirin)
+# *.ST4
+# *.GPR
+# *.dxf

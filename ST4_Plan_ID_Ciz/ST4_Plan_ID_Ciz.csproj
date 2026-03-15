@@ -11,12 +11,6 @@
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <Deterministic>false</Deterministic>
   </PropertyGroup>
-  <!-- Kontrol: kesim sonrası birleştirilmemiş kiriş çizimi (ayrı DLL) -->
-  <PropertyGroup Condition="'$(Configuration)' == 'Kontrol'">
-    <BaseAssemblyName>ST4_Plan_ID_Ciz_Kontrol</BaseAssemblyName>
-    <AssemblyName>$(BaseAssemblyName)_$([System.DateTime]::Now.ToString("yyyyMMdd_HHmmss"))</AssemblyName>
-    <DefineConstants>$(DefineConstants);KIRIS_KESIM_SONRASI_BIRLESIMSIZ</DefineConstants>
-  </PropertyGroup>
   <Target Name="EchoDllName" AfterTargets="Build">
     <Message Importance="high" Text="DLL kaydedildi: $(OutputPath)$(AssemblyName).dll" />
   </Target>

@@ -27,8 +27,6 @@ namespace ST4PlanIdCiz
         private List<Geometry> _drawnWallGeometriesForSlabCut;
         /// <summary>Son çizilen kattaki döşeme geometrileri (kesim + en büyük parça); birleşik katman için.</summary>
         private List<Geometry> _drawnSlabGeometriesForUnion;
-        /// <summary>Son çizilen kattaki birleşik/kat sınırı poligonu; aks sınırı kırpması için.</summary>
-        private Geometry _lastKatSiniriGeometry;
 
         public PlanIdDrawingManager(St4Model model)
         {
@@ -113,7 +111,6 @@ namespace ST4PlanIdCiz
         private const string LayerKatSiniri = "KAT SINIRI (BEYKENT)";
         private const string LayerKalipBosluk = "KALIP BOSLUK (BEYKENT)";
         private const string LayerBirlesikKatman = "BIRLESIK KATMAN (BEYKENT)";
-        private const string LayerAksSiniri = "AKS SINIRI (BEYKENT)";
         private const string LayerOlcu = "OLCU (BEYKENT)";
         private const string LayerAksOlcu = "AKS OLCU (BEYKENT)";
         private const string LayerKirisYazisi = "KIRIS ISMI (BEYKENT)";
@@ -147,7 +144,6 @@ namespace ST4PlanIdCiz
             EnsurePlanLayer(tr, db, LayerKatSiniri, 41, LineWeight.LineWeight025, useDashed: false);
             EnsurePlanLayer(tr, db, LayerKalipBosluk, 30, LineWeight.LineWeight025, useDashed: true);
             EnsurePlanLayer(tr, db, LayerBirlesikKatman, 8, LineWeight.LineWeight025, useDashed: false);
-            EnsurePlanLayer(tr, db, LayerAksSiniri, 9, LineWeight.LineWeight025, useDashed: false);
             EnsurePlanLayer(tr, db, LayerOlcu, 4, LineWeight.LineWeight018, useDashed: false);
             EnsurePlanLayer(tr, db, LayerAksOlcu, 6, LineWeight.LineWeight018, useDashed: false);
             EnsurePlanLayer(tr, db, LayerKirisYazisi, 40, LineWeight.LineWeight020, useDashed: false);
@@ -523,73 +519,7 @@ namespace ST4PlanIdCiz
             if (allPolygons.Count == 0) return;
             Geometry unionResult = allPolygons.Count == 1 ? allPolygons[0] : NetTopologySuite.Operation.Union.CascadedPolygonUnion.Union(allPolygons);
             if (unionResult != null && !unionResult.IsEmpty)
-            {
-                _lastKatSiniriGeometry = unionResult;
                 DrawGeometryRingsAsPolylines(tr, btr, unionResult, LayerKatSiniri, addHatch: false, applySmallTriangleTrim: false, vertexAngleTolDeg: 0.3, minVertexDistCm: 0.1, collinearTolCm: 0.05);
-            }
-        }
-
-        /// <summary>Eğimsiz kolon akslarının en sol, en sağ, en alt, en üst kesişim noktalarıyla her zaman 4 kenarlı aks sınırı dikdörtgenini çizer. Kırpma yok; üst/alt/sol/sağ kenarlar kat sınırı envelope'ına hizalanır (içeride kalıyorsa stretch).</summary>
-        private void DrawAxisBoundary(Transaction tr, BlockTableRecord btr, double offsetX, double offsetY)
-        {
-            var xKolonAks = BuildColumnAxisIds(c => c.AxisXId, _model.AxisX.Select(a => a.Id));
-            var yKolonAks = BuildColumnAxisIds(c => c.AxisYId, _model.AxisY.Select(a => a.Id));
-            int? leftXId = null, rightXId = null;
-            double leftX = double.MaxValue, rightX = double.MinValue;
-            foreach (var ax in _model.AxisX)
-            {
-                if (!xKolonAks.Contains(ax.Id) || Math.Abs(ax.Slope) > 1e-9) continue;
-                if (ax.ValueCm < leftX) { leftX = ax.ValueCm; leftXId = ax.Id; }
-                if (ax.ValueCm > rightX) { rightX = ax.ValueCm; rightXId = ax.Id; }
-            }
-            int? bottomYId = null, topYId = null;
-            double bottomY = double.MinValue, topY = double.MaxValue;
-            foreach (var ay in _model.AxisY)
-            {
-                if (!yKolonAks.Contains(ay.Id) || Math.Abs(ay.Slope) > 1e-9) continue;
-                if (ay.ValueCm > bottomY) { bottomY = ay.ValueCm; bottomYId = ay.Id; }
-                if (ay.ValueCm < topY) { topY = ay.ValueCm; topYId = ay.Id; }
-            }
-            if (!leftXId.HasValue || !rightXId.HasValue || !bottomYId.HasValue || !topYId.HasValue) return;
-            if (!_axisService.TryIntersect(leftXId.Value, bottomYId.Value, out Point2d pLB) ||
-                !_axisService.TryIntersect(rightXId.Value, bottomYId.Value, out Point2d pRB) ||
-                !_axisService.TryIntersect(rightXId.Value, topYId.Value, out Point2d pRT) ||
-                !_axisService.TryIntersect(leftXId.Value, topYId.Value, out Point2d pLT))
-                return;
-            double ox = offsetX, oy = offsetY;
-            double xLB = pLB.X + ox, yLB = pLB.Y + oy;
-            double xRB = pRB.X + ox, yRB = pRB.Y + oy;
-            double xRT = pRT.X + ox, yRT = pRT.Y + oy;
-            double xLT = pLT.X + ox, yLT = pLT.Y + oy;
-            if (_lastKatSiniriGeometry != null && !_lastKatSiniriGeometry.IsEmpty)
-            {
-                try
-                {
-                    var env = _lastKatSiniriGeometry.EnvelopeInternal;
-                    double kMinX = env.MinX, kMaxX = env.MaxX, kMinY = env.MinY, kMaxY = env.MaxY;
-                    double aLeft = Math.Min(xLB, xLT);
-                    double aRight = Math.Max(xRB, xRT);
-                    double aBottom = Math.Min(yLB, yRB);
-                    double aTop = Math.Max(yLT, yRT);
-                    if (aTop < kMaxY) { yLT = kMaxY; yRT = kMaxY; }
-                    if (aBottom > kMinY) { yLB = kMinY; yRB = kMinY; }
-                    if (aLeft > kMinX) { xLB = kMinX; xLT = kMinX; }
-                    if (aRight < kMaxX) { xRB = kMaxX; xRT = kMaxX; }
-                }
-                catch { }
-            }
-            var factory = new GeometryFactory();
-            var coords = new Coordinate[]
-            {
-                new Coordinate(xLB, yLB),
-                new Coordinate(xRB, yRB),
-                new Coordinate(xRT, yRT),
-                new Coordinate(xLT, yLT),
-                new Coordinate(xLB, yLB)
-            };
-            var aksSiniriPoly = factory.CreatePolygon(factory.CreateLinearRing(coords));
-            if (aksSiniriPoly != null && !aksSiniriPoly.IsEmpty)
-                DrawGeometryRingsAsPolylines(tr, btr, aksSiniriPoly, LayerAksSiniri, addHatch: false, applySmallTriangleTrim: false);
         }
 
         /// <summary>Kat sınırı poligonu çizer: eleman birleşiminin tüm dış halkaları (birden fazla kapalı alan varsa hepsi). Union yoksa bbox dikdörtgeni.</summary>
