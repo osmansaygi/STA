@@ -140,6 +140,7 @@ namespace ST4PlanIdCiz
             EnsurePlanLayer(tr, db, LayerKirisYazisi, 40, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, LayerPerdeYazisi, 240, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, "KIRIS UZATMA ISARET (BEYKENT)", 1, LineWeight.LineWeight025, useDashed: false);
+            EnsurePlanLayer(tr, db, "KIRIS UZATMA ISARET MAVI (BEYKENT)", 5, LineWeight.LineWeight025, useDashed: false);
         }
 
         private static void EnsureDashedLinetype(Transaction tr, Database db)
@@ -1282,10 +1283,96 @@ namespace ST4PlanIdCiz
             }
         }
 
-        /// <summary>Kolon/perde kesişiminden sonraki kiriş geometrilerinin (son hal) kesişim noktalarını döndürür. Sadece kirişin iki yan kenarı (eksene dik uç yüzler) kullanılır; eksene paralel uzun kenarlar dahil edilmez. X+Y kiriş çiftleri; nokta kolon/perde dışında; uç noktalar hariç 1 mm toleransla kenar içinde kalan kesişimler.</summary>
-        private static List<Point2d> GetMarkerPointsFromFinalBeamGeometries(List<(int beamId, Geometry toDraw, int fixedAxisId)> finalGeometries, Geometry kolonPerdeUnion, GeometryFactory factory, int axisXMin = 1001, int axisXMax = 1999, int axisYMin = 2001, int axisYMax = 2999)
+        /// <summary>Noktanın doğru parçasına en kısa mesafesini döndürür.</summary>
+        private static double DistancePointToSegment(double px, double py, double ax, double ay, double bx, double by)
         {
-            var pointByKey = new Dictionary<(int x, int y), Point2d>();
+            double vx = bx - ax, vy = by - ay;
+            double len2 = vx * vx + vy * vy;
+            if (len2 < 1e-18) return Math.Sqrt((px - ax) * (px - ax) + (py - ay) * (py - ay));
+            double t = Math.Max(0, Math.Min(1, ((px - ax) * vx + (py - ay) * vy) / len2));
+            double qx = ax + t * vx, qy = ay + t * vy;
+            return Math.Sqrt((px - qx) * (px - qx) + (py - qy) * (py - qy));
+        }
+
+        /// <summary>Kiriş geometrisinde kırmızı işaretin olduğu uçtaki yan kenarı (köşe noktasına en yakın lateral segment) bulur; bu kenarın başlangıç ve bitiş vertex noktalarını döndürür (mavi işaret bu vertex'lere konur).</summary>
+        private static List<Point2d> GetCornerEndVerticesOfBeamFromCorner(Geometry beamGeom, int fixedAxisId, Point2d corner, int axisXMin = 1001, int axisXMax = 1999)
+        {
+            var result = new List<Point2d>();
+            var laterals = new List<(double ax, double ay, double bx, double by)>();
+            GetLateralBoundarySegments(beamGeom, fixedAxisId, laterals, axisXMin, axisXMax);
+            if (laterals.Count == 0) return result;
+            double cx = corner.X, cy = corner.Y;
+            int nearIdx = 0;
+            double nearDist = double.MaxValue;
+            for (int i = 0; i < laterals.Count; i++)
+            {
+                var s = laterals[i];
+                double d = DistancePointToSegment(cx, cy, s.ax, s.ay, s.bx, s.by);
+                if (d < nearDist) { nearDist = d; nearIdx = i; }
+            }
+            var near = laterals[nearIdx];
+            result.Add(new Point2d(near.ax, near.ay));
+            result.Add(new Point2d(near.bx, near.by));
+            return result;
+        }
+
+        /// <summary>Tek (a,b) segmentinden kiriş dikdörtgeni poligonu üretir.</summary>
+        private static Polygon BuildBeamSegmentPolygon(Point2d a, Point2d b, BeamInfo beam, GeometryFactory factory)
+        {
+            Vector2d dir = b - a;
+            if (dir.Length <= 1e-9) return null;
+            Vector2d u = dir.GetNormal();
+            Vector2d perp = new Vector2d(-u.Y, u.X);
+            double hw = beam.WidthCm / 2.0;
+            ComputeBeamEdgeOffsets(beam.OffsetRaw, hw, out double upperEdge, out double lowerEdge);
+            var coords = new[]
+            {
+                new Coordinate((a + perp.MultiplyBy(upperEdge)).X, (a + perp.MultiplyBy(upperEdge)).Y),
+                new Coordinate((b + perp.MultiplyBy(upperEdge)).X, (b + perp.MultiplyBy(upperEdge)).Y),
+                new Coordinate((b + perp.MultiplyBy(lowerEdge)).X, (b + perp.MultiplyBy(lowerEdge)).Y),
+                new Coordinate((a + perp.MultiplyBy(lowerEdge)).X, (a + perp.MultiplyBy(lowerEdge)).Y),
+                new Coordinate((a + perp.MultiplyBy(upperEdge)).X, (a + perp.MultiplyBy(upperEdge)).Y)
+            };
+            return factory.CreatePolygon(factory.CreateLinearRing(coords));
+        }
+
+        /// <summary>Segment listesinden kiriş birleşim geometrisi (Union); kolon/perde Difference ve küçük artık filtre uygular.</summary>
+        private static Geometry BuildBeamGeometryFromSegments(List<(Point2d a, Point2d b)> segments, BeamInfo beam, GeometryFactory factory, Geometry kolonPerdeUnion)
+        {
+            if (segments == null || segments.Count == 0) return null;
+            var polygons = new List<Geometry>();
+            foreach (var (a, b) in segments)
+            {
+                var poly = BuildBeamSegmentPolygon(a, b, beam, factory);
+                if (poly != null && !poly.IsEmpty) polygons.Add(poly);
+            }
+            if (polygons.Count == 0) return null;
+            Geometry toDraw = polygons.Count == 1 ? polygons[0] : NetTopologySuite.Operation.Union.CascadedPolygonUnion.Union(polygons);
+            if (toDraw != null && !toDraw.IsEmpty && kolonPerdeUnion != null && !kolonPerdeUnion.IsEmpty)
+            {
+                try
+                {
+                    var diff = toDraw.Difference(kolonPerdeUnion);
+                    if (diff != null && !diff.IsEmpty)
+                    {
+                        toDraw = ReducePrecisionSafe(diff, 100);
+                        if (toDraw == null || toDraw.IsEmpty) toDraw = diff;
+                    }
+                }
+                catch { }
+            }
+            if (toDraw != null && !toDraw.IsEmpty)
+            {
+                const double minBeamRemnantAreaCm2 = 1000.0;
+                toDraw = FilterSmallPolygons(toDraw, minBeamRemnantAreaCm2);
+            }
+            return toDraw;
+        }
+
+        /// <summary>Kolon/perde kesişiminden sonraki kiriş geometrilerinin (son hal) kesişim noktalarını ve o noktada kesişen iki kirişin ID'lerini döndürür. Sadece kirişin iki yan kenarı (eksene dik uç yüzler) kullanılır. X+Y kiriş çiftleri; nokta kolon/perde dışında; uç noktalar hariç 1 mm toleransla kenar içinde kalan kesişimler.</summary>
+        private static List<(Point2d redPoint, int beamId1, int beamId2)> GetMarkerPointsFromFinalBeamGeometries(List<(int beamId, Geometry toDraw, int fixedAxisId)> finalGeometries, Geometry kolonPerdeUnion, GeometryFactory factory, int axisXMin = 1001, int axisXMax = 1999, int axisYMin = 2001, int axisYMax = 2999)
+        {
+            var pointByKey = new Dictionary<(int x, int y), (Point2d pt, int id1, int id2)>();
             for (int i = 0; i < finalGeometries.Count; i++)
             {
                 int fixI = finalGeometries[i].fixedAxisId;
@@ -1313,16 +1400,16 @@ namespace ST4PlanIdCiz
                         if (Math.Sqrt((px - s2.ax) * (px - s2.ax) + (py - s2.ay) * (py - s2.ay)) < endpointToleranceCm) continue;
                         if (Math.Sqrt((px - s2.bx) * (px - s2.bx) + (py - s2.by) * (py - s2.by)) < endpointToleranceCm) continue;
                         var key = ((int)Math.Round(px), (int)Math.Round(py));
-                        if (!pointByKey.ContainsKey(key)) pointByKey[key] = pt.Value;
+                        if (!pointByKey.ContainsKey(key)) pointByKey[key] = (pt.Value, finalGeometries[i].beamId, finalGeometries[j].beamId);
                     }
                 }
             }
-            var result = new List<Point2d>();
+            var result = new List<(Point2d redPoint, int beamId1, int beamId2)>();
             foreach (var kv in pointByKey)
             {
-                var pt = factory.CreatePoint(new Coordinate(kv.Value.X, kv.Value.Y));
+                var pt = factory.CreatePoint(new Coordinate(kv.Value.pt.X, kv.Value.pt.Y));
                 if (kolonPerdeUnion != null && !kolonPerdeUnion.IsEmpty && kolonPerdeUnion.Contains(pt)) continue;
-                result.Add(kv.Value);
+                result.Add((kv.Value.pt, kv.Value.id1, kv.Value.id2));
             }
             return result;
         }
@@ -1826,8 +1913,9 @@ namespace ST4PlanIdCiz
             // Uzatma kapalı.
             Dictionary<(int x, int y), Dictionary<int, double>> twoBeamCornerExtendCm = null;
             var finalBeamGeometries = new List<(int beamId, Geometry toDraw, int fixedAxisId)>();
+            var beamSegmentData = new Dictionary<int, (List<(Point2d a, Point2d b)> segments, BeamInfo firstBeam)>();
 
-            // Kirişler: aynı BeamId'ye sahip segmentler tek birleşik geometri olarak çizilir (ID başına bir çizim). Son geometriler (kolon/perde kesişiminden sonra) işaret için toplanır.
+            // Kirişler: aynı BeamId'ye sahip segmentler tek birleşik geometri olarak çizilir (ID başına bir çizim). Önce geometri üretilir ve segment verisi hafızaya alınır; işaret uzatması uygulandıktan sonra toplu çizim.
             // Etiket konumu için çizilen geometri, ilk segment yönü ve gruptaki en kısa parça uzunluğu (cm) kaydedilir.
             var beamLabelInfos = new List<(int beamId, Geometry drawnGeometry, BeamInfo firstBeam, Point2d firstA, Point2d firstB, double minSegmentLengthCm)>();
             var beamsById = beamsForDrawing.GroupBy(b => b.BeamId).ToList();
@@ -1982,7 +2070,7 @@ namespace ST4PlanIdCiz
                 if (toDraw != null && !toDraw.IsEmpty)
                 {
                     finalBeamGeometries.Add((group.Key, toDraw, group.First().FixedAxisId));
-                    DrawGeometryRingsAsPolylines(tr, btr, toDraw, LayerKiris, addHatch: false, exteriorRingsOnly: false, applySmallTriangleTrim: false);
+                    beamSegmentData[group.Key] = (new List<(Point2d a, Point2d b)>(segmentEndpoints), group.First());
                     if (firstAlignedA.HasValue && firstAlignedB.HasValue)
                     {
                         double minSeg = segmentEndpoints.Count > 0 ? segmentEndpoints.Min(s => (s.b - s.a).Length) : (firstAlignedB.Value - firstAlignedA.Value).Length;
@@ -1990,19 +2078,140 @@ namespace ST4PlanIdCiz
                     }
                 }
             }
-            // İşaretler: sadece mevcut kirişin son halindeki (kolon/perde kesişiminden sonraki) geometrilerin kesişim noktalarına çizilir.
-            var twoBeamCornerPoints = GetMarkerPointsFromFinalBeamGeometries(finalBeamGeometries, kolonPerdeUnion, factory);
-            const double twoBeamMarkerDiameterCm = 5.0;
-            foreach (Point2d pt in twoBeamCornerPoints)
+            // İşaret noktalarını hafızaya al; sadece kırmızı işaretin kestiği kirişleri diğer kirişin mavi uçlarına (izdüşümüne) kadar uzat, sonra çiz.
+            const int axisXMin = 1001, axisXMax = 1999, axisYMin = 2001, axisYMax = 2999;
+            var twoBeamCornerData = GetMarkerPointsFromFinalBeamGeometries(finalBeamGeometries, kolonPerdeUnion, factory, axisXMin, axisXMax, axisYMin, axisYMax);
+            bool isInsideOtherBeam(Point2d pt, int excludeBeamId, List<(int beamId, Geometry toDraw, int fixedAxisId)> geoms)
             {
-                var circle = new Circle(new Point3d(pt.X, pt.Y, 0), Vector3d.ZAxis, twoBeamMarkerDiameterCm / 2.0)
-                {
-                    Layer = "KIRIS UZATMA ISARET (BEYKENT)",
-                    Color = Color.FromColorIndex(ColorMethod.ByAci, 1)
-                };
-                ObjectId circleId = AppendEntityReturnId(tr, btr, circle);
-                AppendHatchSolidRed(tr, btr, circleId);
+                var ptNts = factory.CreatePoint(new Coordinate(pt.X, pt.Y));
+                foreach (var g in geoms)
+                    if (g.beamId != excludeBeamId && g.toDraw != null && !g.toDraw.IsEmpty && g.toDraw.Contains(ptNts))
+                        return true;
+                return false;
             }
+            var redCornerWithBlue = new List<(Point2d redPoint, int beamIdX, int beamIdY, List<Point2d> blueX, List<Point2d> blueY)>();
+            var beamGeomById = finalBeamGeometries.ToDictionary(g => g.beamId, g => (g.toDraw, g.fixedAxisId));
+            foreach (var (redPoint, beamId1, beamId2) in twoBeamCornerData)
+            {
+                int fix1 = beamGeomById.TryGetValue(beamId1, out var g1) ? g1.fixedAxisId : 0;
+                int fix2 = beamGeomById.TryGetValue(beamId2, out var g2) ? g2.fixedAxisId : 0;
+                bool fix1X = fix1 >= axisXMin && fix1 <= axisXMax;
+                bool fix2Y = fix2 >= axisYMin && fix2 <= axisYMax;
+                int beamIdX = fix1X ? beamId1 : beamId2;
+                int beamIdY = fix1X ? beamId2 : beamId1;
+                var blueVerticesX = new List<Point2d>();
+                var blueVerticesY = new List<Point2d>();
+                if (beamGeomById.TryGetValue(beamIdX, out var tx))
+                {
+                    foreach (var pt in GetCornerEndVerticesOfBeamFromCorner(tx.toDraw, tx.fixedAxisId, redPoint, axisXMin, axisXMax))
+                        if (!isInsideOtherBeam(pt, beamIdX, finalBeamGeometries))
+                            blueVerticesX.Add(pt);
+                }
+                if (beamGeomById.TryGetValue(beamIdY, out var ty))
+                {
+                    foreach (var pt in GetCornerEndVerticesOfBeamFromCorner(ty.toDraw, ty.fixedAxisId, redPoint, axisXMin, axisXMax))
+                        if (!isInsideOtherBeam(pt, beamIdY, finalBeamGeometries))
+                            blueVerticesY.Add(pt);
+                }
+                redCornerWithBlue.Add((redPoint, beamIdX, beamIdY, blueVerticesX, blueVerticesY));
+            }
+            const double redPointToleranceCm = 2.0;
+            var extendedSegments = new Dictionary<int, List<(Point2d a, Point2d b)>>();
+            foreach (var kv in beamSegmentData)
+                extendedSegments[kv.Key] = kv.Value.segments.Select(s => (s.a, s.b)).ToList();
+            // X aksına bağlı kiriş (plan görünüşte genelde dikey): diğer kiriş (Y aksı) üzerindeki mavi noktaya kadar Y yönünde uzatılır → targetY = blueY.Y, endpoint (sameX, targetY).
+            // Y aksına bağlı kiriş (plan görünüşte genelde yatay): diğer kiriş (X aksı) üzerindeki mavi noktaya kadar X yönünde uzatılır → targetX = blueX.X, endpoint (targetX, sameY).
+            foreach (var (redPoint, beamIdX, beamIdY, blueX, blueY) in redCornerWithBlue)
+            {
+                double rx = redPoint.X, ry = redPoint.Y;
+                if (blueY.Count > 0 && extendedSegments.TryGetValue(beamIdX, out var segsX))
+                {
+                    double targetY = (blueY.Max(p => p.Y) + blueY.Min(p => p.Y)) / 2.0;
+                    if (blueY.Count == 1) targetY = blueY[0].Y;
+                    else
+                    {
+                        bool xBeamPositiveY = false;
+                        foreach (var (a, b) in segsX)
+                        {
+                            if (Math.Sqrt((a.X - rx) * (a.X - rx) + (a.Y - ry) * (a.Y - ry)) < redPointToleranceCm)
+                                xBeamPositiveY = b.Y > a.Y;
+                            else if (Math.Sqrt((b.X - rx) * (b.X - rx) + (b.Y - ry) * (b.Y - ry)) < redPointToleranceCm)
+                                xBeamPositiveY = a.Y > b.Y;
+                            else continue;
+                            break;
+                        }
+                        targetY = xBeamPositiveY ? blueY.Max(p => p.Y) : blueY.Min(p => p.Y);
+                    }
+                    for (int i = 0; i < segsX.Count; i++)
+                    {
+                        var (a, b) = segsX[i];
+                        bool aAtRed = Math.Sqrt((a.X - rx) * (a.X - rx) + (a.Y - ry) * (a.Y - ry)) < redPointToleranceCm;
+                        bool bAtRed = Math.Sqrt((b.X - rx) * (b.X - rx) + (b.Y - ry) * (b.Y - ry)) < redPointToleranceCm;
+                        Point2d na = a, nb = b;
+                        if (aAtRed) na = new Point2d(a.X, targetY);
+                        if (bAtRed) nb = new Point2d(b.X, targetY);
+                        if (aAtRed || bAtRed) segsX[i] = (na, nb);
+                    }
+                }
+                if (blueX.Count > 0 && extendedSegments.TryGetValue(beamIdY, out var segsY))
+                {
+                    double targetX = (blueX.Max(p => p.X) + blueX.Min(p => p.X)) / 2.0;
+                    if (blueX.Count == 1) targetX = blueX[0].X;
+                    else
+                    {
+                        bool yBeamPositiveX = false;
+                        foreach (var (a, b) in segsY)
+                        {
+                            if (Math.Sqrt((a.X - rx) * (a.X - rx) + (a.Y - ry) * (a.Y - ry)) < redPointToleranceCm)
+                                yBeamPositiveX = b.X > a.X;
+                            else if (Math.Sqrt((b.X - rx) * (b.X - rx) + (b.Y - ry) * (b.Y - ry)) < redPointToleranceCm)
+                                yBeamPositiveX = a.X > b.X;
+                            else continue;
+                            break;
+                        }
+                        targetX = yBeamPositiveX ? blueX.Max(p => p.X) : blueX.Min(p => p.X);
+                    }
+                    for (int i = 0; i < segsY.Count; i++)
+                    {
+                        var (a, b) = segsY[i];
+                        bool aAtRed = Math.Sqrt((a.X - rx) * (a.X - rx) + (a.Y - ry) * (a.Y - ry)) < redPointToleranceCm;
+                        bool bAtRed = Math.Sqrt((b.X - rx) * (b.X - rx) + (b.Y - ry) * (b.Y - ry)) < redPointToleranceCm;
+                        Point2d na = a, nb = b;
+                        if (aAtRed) na = new Point2d(targetX, a.Y);
+                        if (bAtRed) nb = new Point2d(targetX, b.Y);
+                        if (aAtRed || bAtRed) segsY[i] = (na, nb);
+                    }
+                }
+            }
+            var beamsExtended = new HashSet<int>();
+            foreach (var (redPoint, beamIdX, beamIdY, _, _) in redCornerWithBlue)
+            {
+                beamsExtended.Add(beamIdX);
+                beamsExtended.Add(beamIdY);
+            }
+            for (int i = 0; i < finalBeamGeometries.Count; i++)
+            {
+                var (beamId, _, fixedAxisId) = finalBeamGeometries[i];
+                if (beamsExtended.Contains(beamId) && beamSegmentData.TryGetValue(beamId, out var segData) && extendedSegments.TryGetValue(beamId, out var segs))
+                {
+                    Geometry toDrawExt = BuildBeamGeometryFromSegments(segs, segData.firstBeam, factory, kolonPerdeUnion);
+                    if (toDrawExt != null && !toDrawExt.IsEmpty)
+                        finalBeamGeometries[i] = (beamId, toDrawExt, fixedAxisId);
+                }
+            }
+            var finalGeomByBeamId = finalBeamGeometries.ToDictionary(g => g.beamId, g => g.toDraw);
+            for (int i = 0; i < beamLabelInfos.Count; i++)
+            {
+                var (beamId, _, firstBeam, firstA, firstB, minSeg) = beamLabelInfos[i];
+                if (finalGeomByBeamId.TryGetValue(beamId, out Geometry drawnGeom) && drawnGeom != null)
+                    beamLabelInfos[i] = (beamId, drawnGeom, firstBeam, firstA, firstB, minSeg);
+            }
+            foreach (var (beamId, toDraw, _) in finalBeamGeometries)
+            {
+                if (toDraw != null && !toDraw.IsEmpty)
+                    DrawGeometryRingsAsPolylines(tr, btr, toDraw, LayerKiris, addHatch: false, exteriorRingsOnly: false, applySmallTriangleTrim: false);
+            }
+            // İşaretler (kırmızı/mavi daire) çizilmiyor; uzatma mantığı aynen uygulanıyor.
             var wallLabelInfos = new List<(int beamId, Geometry drawnGeometry, BeamInfo beam, Point2d firstA, Point2d firstB)>();
             if (wallList.Count > 0)
             {
@@ -4358,6 +4567,21 @@ namespace ST4PlanIdCiz
             hatch.SetHatchPattern(HatchPatternType.PreDefined, "SOLID");
             hatch.Color = Color.FromColorIndex(ColorMethod.ByAci, 1);
             hatch.Layer = "KIRIS UZATMA ISARET (BEYKENT)";
+            hatch.Associative = true;
+            var ids = new ObjectIdCollection { boundaryId };
+            hatch.AppendLoop(HatchLoopTypes.Outermost, ids);
+            hatch.EvaluateHatch(true);
+        }
+
+        /// <summary>Mavi işaret: daire sınırı içine mavi solid dolgu (kırmızı işarete bağlı kirişin karşı ucu; başka kiriş içinde değilse).</summary>
+        private static void AppendHatchSolidBlue(Transaction tr, BlockTableRecord btr, ObjectId boundaryId)
+        {
+            var hatch = new Hatch();
+            btr.AppendEntity(hatch);
+            tr.AddNewlyCreatedDBObject(hatch, true);
+            hatch.SetHatchPattern(HatchPatternType.PreDefined, "SOLID");
+            hatch.Color = Color.FromColorIndex(ColorMethod.ByAci, 5);
+            hatch.Layer = "KIRIS UZATMA ISARET MAVI (BEYKENT)";
             hatch.Associative = true;
             var ids = new ObjectIdCollection { boundaryId };
             hatch.AppendLoop(HatchLoopTypes.Outermost, ids);
