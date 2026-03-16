@@ -17,7 +17,15 @@ artifacts/
 .idea/
 *.rsuser
 
-# Yerel test / gecici (istege bagli: proje verisi kullaniliyorsa bu satirlari kaldirin)
+# Yerel test / gecici
+*.bak
+*.log
+Drawing*.log
+# Proje disi veri (sismik, LISP vb.)
+sismik_rapor_excel.py
+Sismik_*.csv
+Sismik_*.pdf
+DPDOSEME.fas
+# Opsiyonel: cok sayida ST4/GPR kullanmiyorsaniz acin
 # *.ST4
 # *.GPR
-# *.dxf

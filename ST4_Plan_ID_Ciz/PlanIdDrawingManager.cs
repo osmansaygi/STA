@@ -1375,83 +1375,6 @@ namespace ST4PlanIdCiz
             return false;
         }
 
-        /// <summary>Aynı hizada (yatay veya dikey) iki kiriş poligonu arasındaki boşluk sadece kolon genişliği kadar (en çok maxGapCm) ise true. KZ-30/KZ-31 gibi kolonla ayrılmış kirişleri birleştirmek için.</summary>
-        private static bool CollinearBeamsWithSmallGap(Geometry a, Geometry b, double maxGapCm = 80.0)
-        {
-            if (a == null || b == null || a.IsEmpty || b.IsEmpty) return false;
-            var envA = a.EnvelopeInternal;
-            var envB = b.EnvelopeInternal;
-            double gapX = 0, gapY = 0;
-            if (envA.MaxX < envB.MinX) gapX = envB.MinX - envA.MaxX;
-            else if (envB.MaxX < envA.MinX) gapX = envA.MinX - envB.MaxX;
-            if (envA.MaxY < envB.MinY) gapY = envB.MinY - envA.MaxY;
-            else if (envB.MaxY < envA.MinY) gapY = envA.MinY - envB.MaxY;
-            if (gapX > 0 && gapY > 0) return false;
-            double gap = Math.Max(gapX, gapY);
-            if (gap <= 0) return false;
-            if (gap > maxGapCm) return false;
-            double overlapY = Math.Min(envA.MaxY, envB.MaxY) - Math.Max(envA.MinY, envB.MinY);
-            double overlapX = Math.Min(envA.MaxX, envB.MaxX) - Math.Max(envA.MinX, envB.MinX);
-            double hA = envA.MaxY - envA.MinY, wA = envA.MaxX - envA.MinX;
-            double hB = envB.MaxY - envB.MinY, wB = envB.MaxX - envB.MinX;
-            if (gapX > 0 && overlapY < Math.Min(hA, hB) * 0.5) return false;
-            if (gapY > 0 && overlapX < Math.Min(wA, wB) * 0.5) return false;
-            return true;
-        }
-
-        /// <summary>Kiriş çizimini birleştirmek için: kolon/perde kesimi sonrası geometrilerle yapılır. Görselde birbirine değmeyenler birleştirilmez; ek olarak en az iki ortak köşesi olanlar da birleştirilir (KZ-30/KZ-31 gibi).</summary>
-        private static List<Geometry> MergeTouchingBeamGeometriesForDrawing(List<(int beamId, Geometry toDraw, int fixedAxisId)> sonCizimGeometrileri, Geometry kolonPerdeBoundary)
-        {
-            if (sonCizimGeometrileri == null || sonCizimGeometrileri.Count == 0) return new List<Geometry>();
-            var geoms = sonCizimGeometrileri.Where(x => x.toDraw != null && !x.toDraw.IsEmpty).Select(x => x.toDraw).ToList();
-            if (geoms.Count == 0) return new List<Geometry>();
-            if (geoms.Count == 1) return geoms;
-
-            int n = geoms.Count;
-            var parent = new int[n];
-            for (int i = 0; i < n; i++) parent[i] = i;
-            int Find(int i) { if (parent[i] != i) parent[i] = Find(parent[i]); return parent[i]; }
-            void Union(int i, int j) { parent[Find(i)] = Find(j); }
-
-            for (int i = 0; i < n; i++)
-                for (int j = i + 1; j < n; j++)
-                    if (ProperlyTouches(geoms[i], geoms[j], minTouchLengthCm: 0.2, kolonPerdeBoundary: kolonPerdeBoundary)
-                        || ShareAtLeastTwoVertices(geoms[i], geoms[j], toleranceCm: 0.2)
-                        || CollinearBeamsWithSmallGap(geoms[i], geoms[j], maxGapCm: 80.0))
-                        Union(i, j);
-
-            var groups = Enumerable.Range(0, n).GroupBy(Find).ToList();
-            var result = new List<Geometry>();
-            foreach (var g in groups)
-            {
-                var list = g.Select(i => geoms[i]).ToList();
-                var polygons = new List<Polygon>();
-                foreach (var geom in list)
-                {
-                    if (geom is Polygon p) polygons.Add(p);
-                    else if (geom is MultiPolygon mp)
-                        for (int i = 0; i < mp.NumGeometries; i++)
-                            if (mp.GetGeometryN(i) is Polygon p2) polygons.Add(p2);
-                }
-                if (polygons.Count == 0) continue;
-                if (polygons.Count == 1)
-                    result.Add(polygons[0]);
-                else
-                {
-                    try
-                    {
-                        var u = NetTopologySuite.Operation.Union.CascadedPolygonUnion.Union(polygons.ToArray());
-                        if (u != null && !u.IsEmpty) result.Add(u);
-                    }
-                    catch
-                    {
-                        foreach (var poly in polygons) result.Add(poly);
-                    }
-                }
-            }
-            return result;
-        }
-
         /// <summary>İki geometri kenar teması (segment) veya gerçek alan örtüşmesi ile birleştirilir. Tek nokta teması ve kolon/perde kesim kenarındaki temas birleştirme sayılmaz.</summary>
         private static bool ProperlyTouches(Geometry a, Geometry b, double minTouchLengthCm = 0.2, Geometry kolonPerdeBoundary = null)
         {
@@ -1486,52 +1409,6 @@ namespace ST4PlanIdCiz
                 return true;
             }
             catch { return false; }
-        }
-
-        /// <summary>Kolon kenarı boyunca oluşan saç kılı: (1) Bir segment kolon sınırıyla tam üst üste, (2) Diğer segment ona paralel ve arası &lt; 1mm, (3) İki segmentin ortak vertexi yok. Bu üç koşul sağlanıyorsa true.</summary>
-        private static bool IsColumnEdgeHairline(Polygon pg, Geometry kolonPerdeBoundary)
-        {
-            if (pg == null || pg.IsEmpty || kolonPerdeBoundary == null || kolonPerdeBoundary.IsEmpty) return false;
-            var ring = pg.ExteriorRing;
-            if (ring == null || ring.NumPoints < 4) return false;
-            var coords = ring.Coordinates;
-            int n = coords.Length - 1; // kapalı halka: son = ilk, segment sayısı n
-            const double onColumnEpsilonCm = 0.15;  // segment kolon üzerinde kabul (daire kolon / precision sonrası için 1.5mm)
-            const double parallelEpsilon = 1e-6;   // paralellik
-            const double maxGapCm = 0.1;            // 1 mm
-
-            for (int i = 0; i < n; i++)
-            {
-                var a = coords[i];
-                var b = coords[i + 1];
-                double sx = b.X - a.X, sy = b.Y - a.Y;
-                double lenS = Math.Sqrt(sx * sx + sy * sy);
-                if (lenS < 1e-6) continue;
-
-                Geometry segGeom = pg.Factory.CreateLineString(new[] { a, b });
-                if (segGeom.Distance(kolonPerdeBoundary) > onColumnEpsilonCm) continue; // kural 1: bu segment kolon üzerinde değil
-
-                for (int j = 0; j < n; j++)
-                {
-                    if (j == i) continue;
-                    int prev = (i + n - 1) % n, next = (i + 1) % n;
-                    if (j == prev || j == next) continue; // kural 3: ortak vertex yok
-                    var c = coords[j];
-                    var d = coords[j + 1];
-                    double tx = d.X - c.X, ty = d.Y - c.Y;
-                    double lenT = Math.Sqrt(tx * tx + ty * ty);
-                    if (lenT < 1e-6) continue;
-
-                    double cross = sx * ty - sy * tx;
-                    if (Math.Abs(cross) > parallelEpsilon * (lenS * lenT + 1)) continue; // kural 2: paralel değil
-
-                    double dist = Math.Abs((c.X - a.X) * sy - (c.Y - a.Y) * sx) / lenS;
-                    if (dist >= maxGapCm) continue; // kural 2: arası 1mm'den az olmalı
-
-                    return true; // üç kural da sağlandı → kolon kenarı saç kılı
-                }
-            }
-            return false;
         }
 
         /// <summary>Alanı minAreaCm2'den küçük poligonları çıkarır; kiriş artığı (üçgen vb.) temizliği için. Koordinat birimi cm, alan cm².</summary>
