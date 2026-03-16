@@ -7,6 +7,12 @@ namespace ST4AksCizCSharp
     public sealed class SlabInfo
     {
         public int SlabId { get; set; }
+        /// <summary>Döşeme kalınlığı (cm). Floors Data p[1].</summary>
+        public double ThicknessCm { get; set; }
+        /// <summary>Hareketli yük (kN/m²). Floors Data 4. sütun p[3], *10 ile.</summary>
+        public double LiveLoadKNm2 { get; set; }
+        /// <summary>Döşeme üst kotunun kattan farkı (cm). Floors Data 16. sütun p[15]; negatif = kat kotundan aşağı.</summary>
+        public double OffsetFromFloorCm { get; set; }
         /// <summary>Eksen 1 (X veya Y)</summary>
         public int Axis1 { get; set; }
         /// <summary>Eksen 2 (X veya Y)</summary>

@@ -43,6 +43,13 @@ namespace ST4AksCizCSharp
                 string line = rawLines[i] ?? string.Empty;
                 string u = line.Trim().ToLowerInvariant();
 
+                if (i == 9 && line.Length > 0)
+                {
+                    var bp = St4Text.SplitCsv(line);
+                    if (bp.Count >= 1 && St4Text.TryParseDouble(bp[0], out double baseKotu))
+                        model.BuildingBaseKotu = baseKotu;
+                }
+
                 if (u.Contains("floors data"))
                 {
                     inFloorsData = true;
@@ -196,6 +203,9 @@ namespace ST4AksCizCSharp
                         if (St4Text.TryParseDouble(p[2], out double h)) height = h;
                         if (p.Count >= 8 && St4Text.TryParseInt(p[7], out int o)) off = o;
                         if (p.Count >= 15 && St4Text.TryParseInt(p[14], out int wf)) wallFlag = wf;
+                        double point1KotCm = 0.0, point2KotCm = 0.0;
+                        if (p.Count >= 12 && St4Text.TryParseDouble(p[11], out point1KotCm)) { }
+                        if (p.Count >= 13 && St4Text.TryParseDouble(p[12], out point2KotCm)) { }
                         if (width <= 0) width = 40.0;
                         if (beamId >= 100)
                         {
@@ -208,6 +218,8 @@ namespace ST4AksCizCSharp
                                 WidthCm = width,
                                 HeightCm = height,
                                 OffsetRaw = off,
+                                Point1KotCm = point1KotCm,
+                                Point2KotCm = point2KotCm,
                                 IsWallFlag = wallFlag
                             });
                         }
@@ -279,7 +291,23 @@ namespace ST4AksCizCSharp
                         St4Text.TryParseInt(p[11], out int a4) &&
                         slabId > 0)
                     {
-                        model.Slabs.Add(new SlabInfo { SlabId = slabId, Axis1 = a1, Axis2 = a2, Axis3 = a3, Axis4 = a4 });
+                        double thicknessCm = 15.0;
+                        double liveLoadKNm2 = 0.0;
+                        double offsetFromFloorCm = 0.0;
+                        if (p.Count > 1) St4Text.TryParseDouble(p[1], out thicknessCm);
+                        if (p.Count > 3 && St4Text.TryParseDouble(p[3], out double qRaw)) liveLoadKNm2 = qRaw * 10.0;
+                        if (p.Count > 15 && St4Text.TryParseDouble(p[15], out double offCm)) offsetFromFloorCm = offCm;
+                        model.Slabs.Add(new SlabInfo
+                        {
+                            SlabId = slabId,
+                            ThicknessCm = thicknessCm,
+                            LiveLoadKNm2 = liveLoadKNm2,
+                            OffsetFromFloorCm = offsetFromFloorCm,
+                            Axis1 = a1,
+                            Axis2 = a2,
+                            Axis3 = a3,
+                            Axis4 = a4
+                        });
                         if (p.Count >= 25 && p[24] == "1")
                             model.StairSlabIds.Add(slabId);
                         if (slabId >= 100 && slabId <= 999)
@@ -547,8 +575,12 @@ namespace ST4AksCizCSharp
                     {
                         double widthCm = 30.0;
                         if (p.Count > 0 && St4Text.TryParseDouble(p[0], out double w0) && w0 > 0) widthCm = w0;
+                        double heightCm = 0.0;
+                        if (p.Count > 1 && St4Text.TryParseDouble(p[1], out double h1) && h1 > 0) heightCm = h1;
                         int offsetRaw = 0;
                         if (p.Count > 5) St4Text.TryParseInt(p[5], out offsetRaw);
+                        double bottomKotM = 0.0;
+                        if (p.Count > 6) St4Text.TryParseDouble(p[6], out bottomKotM);
                         model.TieBeams.Add(new TieBeamInfo
                         {
                             Name = pendingTieBeamName ?? "",
@@ -556,7 +588,9 @@ namespace ST4AksCizCSharp
                             StartAxisId = startAxis,
                             EndAxisId = endAxis,
                             WidthCm = widthCm,
-                            OffsetRaw = offsetRaw
+                            HeightCm = heightCm,
+                            OffsetRaw = offsetRaw,
+                            BottomKotM = bottomKotM
                         });
                         pendingTieBeamName = null;
                     }
@@ -594,10 +628,14 @@ namespace ST4AksCizCSharp
                         }
                         if (x1 != 0 && y1 != 0)
                         {
+                            double liveLoadKNm2 = 0;
+                            if (p.Count >= 7 && St4Text.TryParseDouble(p[6], out double col7))
+                                liveLoadKNm2 = col7 / 10.0;
                             model.SlabFoundations.Add(new SlabFoundationInfo
                             {
                                 Name = pendingSlabName ?? "",
                                 ThicknessCm = thickness,
+                                LiveLoadKNm2 = liveLoadKNm2,
                                 AxisX1 = x1,
                                 AxisX2 = x2,
                                 AxisY1 = y1,

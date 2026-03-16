@@ -33,11 +33,14 @@ namespace ST4AksCizCSharp
         public List<ContinuousFoundationInfo> ContinuousFoundations { get; } = new List<ContinuousFoundationInfo>();
         /// <summary>Radye temeller (Slab foundations): dört eksenle sınırlı dörtgen plak.</summary>
         public List<SlabFoundationInfo> SlabFoundations { get; } = new List<SlabFoundationInfo>();
-        /// <summary>Bağ kirişleri (Tie beams): temel planında kiriş mantığında çizilir; 1. satır: genişlik, 3–5 sabit/başlangıç/bitiş aks, 6. sütun kaçıklık (mm).</summary>
+        /// <summary>Bağ kirişi verisi (Tie beams): temel planında kiriş mantığında çizilir; 1. satır: genişlik, 3–5 sabit/başlangıç/bitiş aks, 6. sütun kaçıklık (mm). Çizimde: sürekli temel veya radye içinde ise TEMEL HATILI katmanına → "Radye temel temel hatılı"; dışında ise TEMEL katmanına → "Bağ kirişi".</summary>
         public List<TieBeamInfo> TieBeams { get; } = new List<TieBeamInfo>();
 
         /// <summary>Column axis data satır sırasıyla konumlar (tekil temel eşleştirmesi için; kolon listesinden bağımsız). Index 0 = 1. satır = ColumnRef 101.</summary>
         public List<ColumnAxisPositionEntry> ColumnAxisPositions { get; } = new List<ColumnAxisPositionEntry>();
+
+        /// <summary>Bina taban kotu (m). Dosya 10. satır 1. sütun (örn. -3.31).</summary>
+        public double BuildingBaseKotu { get; set; }
     }
 
     /// <summary>Column axis data tek satırı: aks kesişimi + kaçıklık (tekil temel merkezi için).</summary>
@@ -50,7 +53,7 @@ namespace ST4AksCizCSharp
         public double AngleDeg { get; set; }
     }
 
-    /// <summary>Bağ kirişi: /Tie beams/ bölümü; sabit aks üzerinde iki aks arası şerit, kaçıklık 6. sütun (mm).</summary>
+    /// <summary>Bağ kirişi kaydı (Tie beams bölümü): sabit aks üzerinde iki aks arası şerit, kaçıklık 6. sütun (mm). Çizimde katmana göre: TEMEL HATILI → radye temel temel hatılı; TEMEL → bağ kirişi.</summary>
     public sealed class TieBeamInfo
     {
         public string Name { get; set; }
@@ -58,8 +61,12 @@ namespace ST4AksCizCSharp
         public int StartAxisId { get; set; }
         public int EndAxisId { get; set; }
         public double WidthCm { get; set; }
+        /// <summary>Kesit yüksekliği (cm); etiket yüksekliği = data yüksekliği (örn. radye kalınlığı) - HeightCm. 2. sütundan okunabilir.</summary>
+        public double HeightCm { get; set; }
         /// <summary>6. sütun: kaçıklık (mm), kiriş kurallarıyla aynı.</summary>
         public int OffsetRaw { get; set; }
+        /// <summary>7. sütun: radye temel hatılı alt kotu, bina tabanına göre (m). Örn: -.7 = taban altı 0.7 m.</summary>
+        public double BottomKotM { get; set; }
     }
 
     public sealed class ContinuousFoundationInfo
@@ -81,9 +88,9 @@ namespace ST4AksCizCSharp
         public int AmpatmanAlign { get; set; }
         /// <summary>2. satır 4. sütun: ampatman genişliği (cm); 3. sütundan farklı ise çizilir.</summary>
         public double AmpatmanWidthCm { get; set; }
-        /// <summary>2. satır 12. sütun: temel hatılı genişliği (cm); 0 ise çizilmez.</summary>
+        /// <summary>2. satır 12. sütun: radye temel temel hatılı genişliği (cm); 0 ise çizilmez.</summary>
         public double TieBeamWidthCm { get; set; }
-        /// <summary>2. satır 14. sütun: temel hatılı kaçıklığı (mm), X/Y aksına göre 0/±1/&gt;1/&lt;-1 kuralı.</summary>
+        /// <summary>2. satır 14. sütun: radye temel temel hatılı kaçıklığı (mm), X/Y aksına göre 0/±1/&gt;1/&lt;-1 kuralı.</summary>
         public int TieBeamOffsetRaw { get; set; }
     }
 
@@ -91,6 +98,8 @@ namespace ST4AksCizCSharp
     {
         public string Name { get; set; }
         public double ThicknessCm { get; set; }
+        /// <summary>7. sütun (örn. 50) / 10 = hareketli yük kN/m².</summary>
+        public double LiveLoadKNm2 { get; set; }
         /// <summary>İki X ekseni (1001..1999).</summary>
         public int AxisX1 { get; set; }
         public int AxisX2 { get; set; }

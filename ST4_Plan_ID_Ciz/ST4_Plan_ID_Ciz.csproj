@@ -57,4 +57,8 @@
   <Target Name="CopyAntetDxf" AfterTargets="Build">
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\antet_01.dxf" DestinationFolder="$(OutputPath)" Condition="Exists('$(MSBuildProjectDirectory)\..\antet_01.dxf')" />
   </Target>
+  <Target Name="CopyYatayKot" AfterTargets="Build">
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\YATAY_KOT.dxf" DestinationFolder="$(OutputPath)" Condition="Exists('$(MSBuildProjectDirectory)\..\YATAY_KOT.dxf')" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\YATAY_KOT.dwg" DestinationFolder="$(OutputPath)" Condition="Exists('$(MSBuildProjectDirectory)\..\YATAY_KOT.dwg')" />
+  </Target>
 </Project>
