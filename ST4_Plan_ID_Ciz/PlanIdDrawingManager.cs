@@ -86,29 +86,37 @@ namespace ST4PlanIdCiz
                         InsertBlockReferenceAt(tr, btr, antetBlockId.Value, offsetX + (firstFloorAxisExt.Xmin + firstFloorAxisExt.Xmax) * 0.5, offsetY + firstFloorAxisExt.Ymax + AntetGapAbovePlanCm);
                 }
 
-                for (int floorIdx = 0; floorIdx < _model.Floors.Count; floorIdx++)
+                List<List<int>> formworkGroups = GetFormworkFloorGroups();
+                for (int groupIdx = 0; groupIdx < formworkGroups.Count; groupIdx++)
                 {
-                    var floor = _model.Floors[floorIdx];
-                    double offsetX = (floorIdx + planStartIndex) * (floorWidth + floorGap);
+                    var group = formworkGroups[groupIdx];
+                    var drawFloor = _model.Floors[group[0]];
+                    int labelFloorIdx = group.OrderBy(i => _model.Floors[i].ElevationM).First();
+                    var labelFloor = _model.Floors[labelFloorIdx];
+                    double offsetX = (groupIdx + planStartIndex) * (floorWidth + floorGap);
                     double offsetY = 0.0;
 
-                    Geometry elemUnion = BuildFloorElementUnion(floor);
+                    Geometry elemUnion = BuildFloorElementUnion(drawFloor);
                     var floorAxisExt = GetAksSiniriEnvelope(elemUnion);
                     DrawAxes(tr, btr, offsetX, offsetY, floorAxisExt);
-                    DrawColumns(tr, btr, floor, offsetX, offsetY);
-                    DrawBeamsAndWalls(tr, btr, floor, offsetX, offsetY);
-                    DrawSlabs(tr, btr, floor, offsetX, offsetY);
+                    DrawColumns(tr, btr, drawFloor, offsetX, offsetY);
+                    DrawBeamsAndWalls(tr, btr, drawFloor, offsetX, offsetY);
+                    DrawSlabs(tr, btr, drawFloor, offsetX, offsetY);
                     DrawSlabVoids(tr, btr, elemUnion, offsetX, offsetY);
-                    DrawUnifiedLayer(tr, btr, floor, offsetX, offsetY, elemUnion);
-                    DrawFloorTitle(tr, btr, floor, offsetX, offsetY, floorAxisExt, isFoundationPlan: false);
+                    DrawUnifiedLayer(tr, btr, drawFloor, offsetX, offsetY, elemUnion);
+                    DrawFloorTitle(tr, btr, labelFloor, offsetX, offsetY, floorAxisExt, isFoundationPlan: false);
+                    if (group.Count > 1)
+                        DrawSimilarFloorsNote(tr, btr, offsetX, offsetY, floorAxisExt, group.Where(i => i != labelFloorIdx).Select(i => _model.Floors[i]).ToList());
                     if (antetBlockId.HasValue)
                         InsertBlockReferenceAt(tr, btr, antetBlockId.Value, offsetX + (floorAxisExt.Xmin + floorAxisExt.Xmax) * 0.5, offsetY + floorAxisExt.Ymax + AntetGapAbovePlanCm);
                 }
 
                 tr.Commit();
 
+                int numFormworkPlans = formworkGroups.Count;
                 ed.WriteMessage(
-                    "\nST4PLANID: {0} kat, akslar, kolonlar (poligon dahil), kirişler, perdeler ve döşemeler{1} ID'leriyle cizildi. (cm)",
+                    "\nST4PLANID: {0} kalip plani ({1} kat gruplandı), akslar, kolonlar (poligon dahil), kirişler, perdeler ve döşemeler{2} ID'leriyle cizildi. (cm)",
+                    numFormworkPlans,
                     _model.Floors.Count,
                     hasFoundations ? string.Format(", temel plani (surekli: {0}, radye: {1}, bag kirisi: {2}, tekil: {3})", _model.ContinuousFoundations.Count, _model.SlabFoundations.Count, _model.TieBeams.Count, _model.SingleFootings.Count) : "");
             }
@@ -5409,6 +5417,69 @@ namespace ST4PlanIdCiz
             return maxNumber < 100 ? 2 : 3;
         }
 
+        /// <summary>Kotlar hariç kalıp içeriğine göre kat imzası: döşeme (ebat, hareketli yük), kiriş/perde (ebat, kot yok), kolon (boyut, yükseklik yok), perde yerleşim ve boyut. Aynı imzaya sahip katlar tek plan olarak çizilir.</summary>
+        private string GetFloorFormworkSignature(FloorInfo floor)
+        {
+            int floorNo = floor.FloorNo;
+            var ci = CultureInfo.InvariantCulture;
+            var parts = new List<string>();
+
+            // Döşemeler: eksenler, kalınlık, hareketli yük (kot yok)
+            var slabLines = new List<string>();
+            foreach (var s in _model.Slabs)
+            {
+                if (GetSlabFloorNo(s.SlabId) != floorNo) continue;
+                slabLines.Add(string.Format(ci, "S,{0},{1},{2},{3},{4},{5}", s.Axis1, s.Axis2, s.Axis3, s.Axis4, s.ThicknessCm, s.LiveLoadKNm2));
+            }
+            slabLines.Sort(StringComparer.Ordinal);
+            parts.Add(string.Join("|", slabLines));
+
+            // Kirişler ve perdeler: sabit/başlangıç/bitiş eksen, en, yükseklik, kaçıklık (kot yok); IsWallFlag ile perde ayrımı
+            var beamLines = new List<string>();
+            foreach (var b in _model.Beams)
+            {
+                if (GetBeamFloorNo(b.BeamId) != floorNo) continue;
+                beamLines.Add(string.Format(ci, "B,{0},{1},{2},{3},{4},{5},{6}", b.FixedAxisId, b.StartAxisId, b.EndAxisId, b.WidthCm, b.HeightCm, b.OffsetRaw, b.IsWallFlag));
+            }
+            beamLines.Sort(StringComparer.Ordinal);
+            parts.Add(string.Join("|", beamLines));
+
+            // Kolonlar: konum (eksen, kaçıklık, açı), boyut (en x boy; yükseklik yok); poligon için kesit kimliği
+            var colLines = new List<string>();
+            foreach (var col in _model.Columns)
+            {
+                int sectionId = ResolveColumnSectionId(floorNo, col.ColumnNo);
+                int polygonSectionId = ResolvePolygonPositionSectionId(floorNo, col.ColumnNo);
+                if (col.ColumnType == 3)
+                {
+                    if (polygonSectionId <= 0 || !_model.PolygonColumnSectionByPositionSectionId.TryGetValue(polygonSectionId, out int polyId)) continue;
+                    colLines.Add(string.Format(ci, "C,{0},{1},{2},{3},{4},{5},P,{6}", col.ColumnNo, col.AxisXId, col.AxisYId, col.OffsetXRaw, col.OffsetYRaw, col.AngleDeg.ToString(ci), polyId));
+                }
+                else
+                {
+                    if (sectionId <= 0 || !_model.ColumnDimsBySectionId.TryGetValue(sectionId, out var dim)) continue;
+                    colLines.Add(string.Format(ci, "C,{0},{1},{2},{3},{4},{5},R,{6},{7}", col.ColumnNo, col.AxisXId, col.AxisYId, col.OffsetXRaw, col.OffsetYRaw, col.AngleDeg.ToString(ci), dim.W, dim.H));
+                }
+            }
+            colLines.Sort(StringComparer.Ordinal);
+            parts.Add(string.Join("|", colLines));
+
+            return string.Join("\n", parts);
+        }
+
+        /// <summary>Kalıp imzasına göre kat grupları: her grup aynı planı paylaşır; çizimde gruptan tek plan çizilir.</summary>
+        private List<List<int>> GetFormworkFloorGroups()
+        {
+            var sigToIndices = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+            for (int i = 0; i < _model.Floors.Count; i++)
+            {
+                string sig = GetFloorFormworkSignature(_model.Floors[i]);
+                if (!sigToIndices.TryGetValue(sig, out var list)) { list = new List<int>(); sigToIndices[sig] = list; }
+                list.Add(i);
+            }
+            return sigToIndices.Values.ToList();
+        }
+
         private void DrawFloorTitle(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY,
             (double Xmin, double Xmax, double Ymin, double Ymax) ext, bool isFoundationPlan = false)
         {
@@ -5417,6 +5488,17 @@ namespace ST4PlanIdCiz
                 ? "TEMEL PLANI (aks + 1. kat kolon + surekli/radye temel)"
                 : string.Format(CultureInfo.InvariantCulture, "{0} ({1}m)", floor.Name, floor.ElevationM.ToString("0", CultureInfo.InvariantCulture));
             AppendEntity(tr, btr, MakeCenteredText(LayerBaslik, 12, title, titlePos));
+        }
+
+        /// <summary>Çizilmeyen benzer katları planın üstüne not olarak yazar (kalıp planı gruplama).</summary>
+        private void DrawSimilarFloorsNote(Transaction tr, BlockTableRecord btr, double offsetX, double offsetY,
+            (double Xmin, double Xmax, double Ymin, double Ymax) ext, List<FloorInfo> otherFloors)
+        {
+            if (otherFloors == null || otherFloors.Count == 0) return;
+            string names = string.Join(", ", otherFloors.Select(f => string.IsNullOrEmpty(f.ShortName) ? f.Name : f.ShortName));
+            string note = names + " bu planla aynıdır (çizilmedi).";
+            var notePos = new Point3d(offsetX + (ext.Xmin + ext.Xmax) / 2.0, offsetY + ext.Ymax + 28, 0);
+            AppendEntity(tr, btr, MakeCenteredText(LayerBaslik, 8, note, notePos));
         }
 
         /// <summary>Kiriş/perde etiketi: bottomLeftAligned false ise Right, true ise Left; topAligned true ise üst; useMiddleCenter true ise orta merkez. layer verilmezse KIRIS ISMI.</summary>
