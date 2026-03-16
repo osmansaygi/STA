@@ -54,4 +54,7 @@
     <Message Importance="high" Text="  AutoCAD: NETLOAD → yukaridaki klasore gidin → $(AssemblyName).dll dosyasini yukleyin." />
     <Message Importance="high" Text="========================================" />
   </Target>
+  <Target Name="CopyAntetDxf" AfterTargets="Build">
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\antet_01.dxf" DestinationFolder="$(OutputPath)" Condition="Exists('$(MSBuildProjectDirectory)\..\antet_01.dxf')" />
+  </Target>
 </Project>

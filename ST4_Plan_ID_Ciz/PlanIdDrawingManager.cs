@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
+using System.Reflection;
 using Autodesk.AutoCAD.Colors;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
@@ -34,6 +36,9 @@ namespace ST4PlanIdCiz
             _axisService = new AxisGeometryService(model);
         }
 
+        /// <summary>Antet blok referansının plan üstünden yukarı mesafesi (cm).</summary>
+        private const double AntetGapAbovePlanCm = 50.0;
+
         public void Draw(Database db, Editor ed)
         {
             using (var tr = db.TransactionManager.StartTransaction())
@@ -48,6 +53,13 @@ namespace ST4PlanIdCiz
 
                 bool hasFoundations = _model.ContinuousFoundations.Count > 0 || _model.SlabFoundations.Count > 0 || _model.TieBeams.Count > 0 || _model.SingleFootings.Count > 0;
                 int planStartIndex = hasFoundations ? 1 : 0;
+
+                string antetPath = GetAntetDxfPath();
+                ObjectId? antetBlockId = null;
+                if (!string.IsNullOrEmpty(antetPath) && File.Exists(antetPath))
+                    antetBlockId = LoadExternalDrawingAsBlock(tr, db, antetPath);
+                else if (!string.IsNullOrEmpty(antetPath))
+                    ed.WriteMessage("\nST4PLANID: Antet dosyasi bulunamadi: {0}", antetPath);
 
                 if (hasFoundations && _model.Floors.Count > 0)
                 {
@@ -69,6 +81,8 @@ namespace ST4PlanIdCiz
                     DrawSingleFootings(tr, btr, firstFloor, offsetX, offsetY, drawTemelOutline: false);
                     DrawPerdeLabelsForFloor(tr, btr, firstFloor, offsetX, offsetY, kolonPerdeUnion);
                     DrawFloorTitle(tr, btr, firstFloor, offsetX, offsetY, firstFloorAxisExt, isFoundationPlan: true);
+                    if (antetBlockId.HasValue)
+                        InsertBlockReferenceAt(tr, btr, antetBlockId.Value, offsetX + (firstFloorAxisExt.Xmin + firstFloorAxisExt.Xmax) * 0.5, offsetY + firstFloorAxisExt.Ymax + AntetGapAbovePlanCm);
                 }
 
                 for (int floorIdx = 0; floorIdx < _model.Floors.Count; floorIdx++)
@@ -86,6 +100,8 @@ namespace ST4PlanIdCiz
                     DrawSlabVoids(tr, btr, elemUnion, offsetX, offsetY);
                     DrawUnifiedLayer(tr, btr, floor, offsetX, offsetY, elemUnion);
                     DrawFloorTitle(tr, btr, floor, offsetX, offsetY, floorAxisExt, isFoundationPlan: false);
+                    if (antetBlockId.HasValue)
+                        InsertBlockReferenceAt(tr, btr, antetBlockId.Value, offsetX + (floorAxisExt.Xmin + floorAxisExt.Xmax) * 0.5, offsetY + floorAxisExt.Ymax + AntetGapAbovePlanCm);
                 }
 
                 tr.Commit();
@@ -95,6 +111,54 @@ namespace ST4PlanIdCiz
                     _model.Floors.Count,
                     hasFoundations ? string.Format(", temel plani (surekli: {0}, radye: {1}, bag kirisi: {2}, tekil: {3})", _model.ContinuousFoundations.Count, _model.SlabFoundations.Count, _model.TieBeams.Count, _model.SingleFootings.Count) : "");
             }
+        }
+
+        /// <summary>Antet DXF dosyasının yolu: DLL ile aynı klasörde antet_01.dxf.</summary>
+        private static string GetAntetDxfPath()
+        {
+            try
+            {
+                string dir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+                return string.IsNullOrEmpty(dir) ? "antet_01.dxf" : Path.Combine(dir, "antet_01.dxf");
+            }
+            catch { return "antet_01.dxf"; }
+        }
+
+        /// <summary>DXF/DWG dosyasını çizime blok tanımı olarak yükler; blok referansı oluşturmaz. Dönüş: blok ObjectId veya null.</summary>
+        private static ObjectId? LoadExternalDrawingAsBlock(Transaction tr, Database destDb, string filePath)
+        {
+            Database sourceDb = null;
+            try
+            {
+                sourceDb = new Database(false, true);
+                sourceDb.ReadDwgFile(filePath, FileOpenMode.OpenForReadAndAllShare, true, null);
+                var bt = (BlockTable)tr.GetObject(destDb.BlockTableId, OpenMode.ForRead);
+                string baseName = Path.GetFileNameWithoutExtension(filePath);
+                if (string.IsNullOrEmpty(baseName)) baseName = "INSERTED";
+                string blockName = baseName;
+                int suffix = 0;
+                while (bt.Has(blockName))
+                    blockName = baseName + "_" + (++suffix);
+                ObjectId blockId = destDb.Insert(blockName, sourceDb, true);
+                return blockId;
+            }
+            catch (System.Exception ex)
+            {
+                Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument?.Editor.WriteMessage("\nST4PLANID antet yukleme hatasi: {0}", ex.Message);
+                return null;
+            }
+            finally
+            {
+                sourceDb?.Dispose();
+            }
+        }
+
+        /// <summary>Verilen blok tanımını model uzayında (x,y) noktasına bir blok referansı olarak ekler.</summary>
+        private static void InsertBlockReferenceAt(Transaction tr, BlockTableRecord btr, ObjectId blockId, double x, double y)
+        {
+            var br = new BlockReference(new Point3d(x, y, 0), blockId);
+            btr.AppendEntity(br);
+            tr.AddNewlyCreatedDBObject(br, true);
         }
 
         private const string LayerAks = "AKS CIZGISI (BEYKENT)";
@@ -1009,6 +1073,8 @@ namespace ST4PlanIdCiz
 
         private void DrawColumns(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY)
         {
+            int maxColNo = _model.Columns.Count > 0 ? _model.Columns.Max(c => c.ColumnNo) : 0;
+            int colPad = GetLabelPadWidth(maxColNo);
             foreach (var col in _model.Columns)
             {
                 if (!_axisService.TryIntersect(col.AxisXId, col.AxisYId, out Point2d axisNode)) continue;
@@ -1058,54 +1124,68 @@ namespace ST4PlanIdCiz
                 }
 
                 Point2d labelRef = GetColumnLabelReferencePoint(center, col.AngleDeg, col.ColumnType, hw, hh, polygonSectionId);
-                AppendColumnLabel(tr, btr, labelRef, col.AngleDeg, col.ColumnNo, col.ColumnType, dim);
+                AppendColumnLabel(tr, btr, labelRef, col.AngleDeg, col.ColumnNo, col.ColumnType, dim, floor, colPad);
             }
         }
 
-        /// <summary>Açısız kolonda sağ alt köşe (center+(hw,-hh)); açılı kolonda en alt nokta (min Y). Poligon için en alt köşe.</summary>
+        /// <summary>Kolonun sağ alt köşesi: kolon açısına göre (dünya Y değil). Dikdörtgen: rect[1]; daire: merkez + r*(sağ-alt yönü); poligon: kolon yerelinde sağ-alt köşe.</summary>
         private Point2d GetColumnLabelReferencePoint(Point2d center, double angleDeg, int columnType, double hw, double hh, int polygonSectionId)
         {
             const double tol = 1e-6;
+            double angleRad = angleDeg * (Math.PI / 180.0);
             bool angled = Math.Abs(angleDeg) > tol;
             if (columnType == 2)
             {
                 double r = Math.Max(hw, hh);
                 if (!angled)
                     return new Point2d(center.X + r, center.Y - r);
-                return new Point2d(center.X, center.Y - r);
+                double cos = Math.Cos(angleRad), sin = Math.Sin(angleRad);
+                double dx = (cos + sin) / Math.Sqrt(2), dy = (sin - cos) / Math.Sqrt(2);
+                return new Point2d(center.X + r * dx, center.Y + r * dy);
             }
             if (columnType == 3 && TryGetPolygonColumn(polygonSectionId, center, angleDeg, out var polyPoints))
             {
-                double minY = polyPoints.Min(p => p.Y);
+                double cos = Math.Cos(angleRad), sin = Math.Sin(angleRad);
                 int idx = 0;
-                for (int i = 1; i < polyPoints.Length; i++)
-                    if (polyPoints[i].Y < polyPoints[idx].Y) idx = i;
+                double best = double.NegativeInfinity;
+                for (int i = 0; i < polyPoints.Length; i++)
+                {
+                    double lx = (polyPoints[i].X - center.X) * cos + (polyPoints[i].Y - center.Y) * sin;
+                    double lyDown = (polyPoints[i].X - center.X) * sin - (polyPoints[i].Y - center.Y) * cos;
+                    double score = lx + lyDown;
+                    if (score > best) { best = score; idx = i; }
+                }
                 return polyPoints[idx];
             }
             var rect = BuildRect(center, hw, hh, angleDeg);
-            if (!angled)
-                return new Point2d(center.X + hw, center.Y - hh);
-            int idxMin = 0;
-            for (int i = 1; i < rect.Length; i++)
-                if (rect[i].Y < rect[idxMin].Y) idxMin = i;
-            return rect[idxMin];
+            return rect[1];
         }
 
-        /// <summary>Kolon etiketi: KOLON ISMI (BEYKENT), sadece Left justify (yatay sol, dikey baseline). Açısız: ref=sağ alt, isim 22 cm alt 10 cm sağ, boyut 18 cm altında; yazı kolon açısında. Eğimli: ref=en alt nokta, isim 22 cm aşağı 10 cm sağ (dünya koordinatı), boyut 18 cm aşağıda; yazı yatay (2. resim gibi).</summary>
-        private void AppendColumnLabel(Transaction tr, BlockTableRecord btr, Point2d refPoint, double angleDeg, int columnNo, int columnType, (double W, double H) dim)
+        /// <summary>Kolon etiketi: KOLON ISMI (BEYKENT), format "S" + Story ID + kolon no (haneli, örn. SB01 S15). Isim üstte boyut altta; boyut satırı kolon açısı yönünde altında.</summary>
+        private void AppendColumnLabel(Transaction tr, BlockTableRecord btr, Point2d refPoint, double angleDeg, int columnNo, int columnType, (double W, double H) dim, FloorInfo floor, int columnNoPadWidth = 2)
         {
             const double labelHeightCm = 12.0;
             const double gapNameToDimCm = 18.0;
             const double offsetRightCm = 10.0;
             const double offsetNameDownCm = 22.0;
             double angleRad = angleDeg * (Math.PI / 180.0);
-            bool noAngle = Math.Abs(angleDeg) < 1e-6;
-            Point2d namePos = new Point2d(refPoint.X + offsetRightCm, refPoint.Y - offsetNameDownCm);
-            Point2d dimPos = new Point2d(namePos.X, namePos.Y - gapNameToDimCm);
-            double rotationRad = noAngle ? angleRad : 0.0;
+            double cos = Math.Cos(angleRad), sin = Math.Sin(angleRad);
+            Point2d namePos = new Point2d(
+                refPoint.X + offsetRightCm * cos + offsetNameDownCm * sin,
+                refPoint.Y + offsetRightCm * sin - offsetNameDownCm * cos);
+            // Boyut satırı: ismin "altında" kolon açısı yönünde
+            double dx = gapNameToDimCm * Math.Sin(angleRad);
+            double dy = -gapNameToDimCm * Math.Cos(angleRad);
+            Point2d dimPos = new Point2d(namePos.X + dx, namePos.Y + dy);
+            double rotationRad = angleRad;
             Database db = btr.Database;
             ObjectId styleId = GetOrCreateElemanEtiketTextStyle(tr, db);
-            string nameLine = "SB-" + columnNo.ToString(CultureInfo.InvariantCulture);
+            string storyId = floor != null && !string.IsNullOrEmpty(floor.ShortName)
+                ? floor.ShortName
+                : (floor != null ? floor.FloorNo.ToString(CultureInfo.InvariantCulture) : "B");
+            int pad = columnNoPadWidth < 1 ? 1 : columnNoPadWidth;
+            string nameLine = "S" + storyId + columnNo.ToString("D" + pad, CultureInfo.InvariantCulture);
+            string dimLine = string.Format(CultureInfo.InvariantCulture, "({0:F0}/{1:F0})", dim.W, dim.H);
             var vertMode = TextVerticalMode.TextBottom;
             if (columnType == 3)
             {
@@ -1137,7 +1217,6 @@ namespace ST4PlanIdCiz
                 Rotation = rotationRad
             };
             AppendEntity(tr, btr, txt1);
-            string dimLine = string.Format(CultureInfo.InvariantCulture, "({0:F0}/{1:F0})", dim.W, dim.H);
             var txt2 = new DBText
             {
                 Layer = LayerKolonIsmi,
@@ -2797,6 +2876,8 @@ namespace ST4PlanIdCiz
             }
 
             const double minSegmentAfterShortenCm = 1.0;
+            int maxBeamNumero = beamLabelInfos.Count > 0 ? beamLabelInfos.Max(x => GetBeamNumero(x.beamId)) : 0;
+            int beamPad = GetLabelPadWidth(maxBeamNumero);
             foreach (var (beamId, drawnGeometry, firstBeam, firstA, firstB, _) in beamLabelInfos)
             {
                 Vector2d dir = firstB - firstA;
@@ -2811,8 +2892,9 @@ namespace ST4PlanIdCiz
                 var floorInfo = _model.Floors.FirstOrDefault(f => f.FloorNo == beamFloor);
                 string katEtiketi = floorInfo?.ShortName ?? beamFloor.ToString(CultureInfo.InvariantCulture);
                 int beamNumero = GetBeamNumero(beamId);
+                string beamNumeroStr = beamNumero.ToString("D" + beamPad, CultureInfo.InvariantCulture);
                 string labelText = string.Format(CultureInfo.InvariantCulture, "K{0}{1} ({2}/{3})",
-                    katEtiketi, beamNumero, (int)Math.Round(firstBeam.WidthCm), (int)Math.Round(firstBeam.HeightCm));
+                    katEtiketi, beamNumeroStr, (int)Math.Round(firstBeam.WidthCm), (int)Math.Round(firstBeam.HeightCm));
 
                 // Etiket boyutları (resimdeki gibi): 70cm x 14cm referans, genişlik = 70 * karakter sayısı / 13
                 double labelHeightCm = BeamLabelRefHeightCm;
@@ -2887,6 +2969,8 @@ namespace ST4PlanIdCiz
                     baseObstaclesWalls = baseObstaclesBeams;
             }
             catch { }
+            int maxWallNumero = wallLabelInfos.Count > 0 ? wallLabelInfos.Max(x => GetBeamNumero(x.beamId)) : 0;
+            int wallPad = GetLabelPadWidth(maxWallNumero);
             foreach (var (wallBeamId, drawnGeometry, beam, firstA, firstB) in wallLabelInfos)
             {
                 Vector2d dir = firstB - firstA;
@@ -2899,15 +2983,16 @@ namespace ST4PlanIdCiz
                 var floorInfo = _model.Floors.FirstOrDefault(f => f.FloorNo == beamFloor);
                 string katEtiketi = floorInfo?.ShortName ?? beamFloor.ToString(CultureInfo.InvariantCulture);
                 int beamNumero = GetBeamNumero(wallBeamId);
+                string beamNumeroStr = beamNumero.ToString("D" + wallPad, CultureInfo.InvariantCulture);
                 Point2d wallCenter = drawnGeometry.Centroid != null && !drawnGeometry.Centroid.IsEmpty
                     ? new Point2d(drawnGeometry.Centroid.X, drawnGeometry.Centroid.Y)
                     : new Point2d((firstA.X + firstB.X) * 0.5, (firstA.Y + firstB.Y) * 0.5);
                 double perdeLengthCm = GetPerdeLengthCm(wallCenter, u, kolonUnionForWalls, factory, firstA.GetDistanceTo(firstB));
                 const double perdeLabelMinLengthForDimensionsCm = 160.0;
                 string labelText = perdeLengthCm < perdeLabelMinLengthForDimensionsCm
-                    ? string.Format(CultureInfo.InvariantCulture, "P{0}{1}", katEtiketi, beamNumero)
+                    ? string.Format(CultureInfo.InvariantCulture, "P{0}{1}", katEtiketi, beamNumeroStr)
                     : string.Format(CultureInfo.InvariantCulture, "P{0}{1} ({2}/{3})",
-                        katEtiketi, beamNumero, (int)Math.Round(beam.WidthCm), (int)Math.Round(perdeLengthCm));
+                        katEtiketi, beamNumeroStr, (int)Math.Round(beam.WidthCm), (int)Math.Round(perdeLengthCm));
                 double textWidthCm = EstimateTextWidthCm(labelText, wallLabelHeightCm);
                 double tMin = (rectBottomLeft - firstA).DotProduct(u);
                 double tMax = (rectBottomRight - firstA).DotProduct(u);
@@ -3058,6 +3143,8 @@ namespace ST4PlanIdCiz
             const double wallLabelHeightCm = 12.0;
             const double wallLabelOffsetCm = 2.0;
             const double wallLabelStepCm = 15.0;
+            int maxWallNumeroFloor = wallLabelInfos.Count > 0 ? wallLabelInfos.Max(x => GetBeamNumero(x.beamId)) : 0;
+            int wallPadFloor = GetLabelPadWidth(maxWallNumeroFloor);
             foreach (var (wallBeamId, drawnGeometry, beam, firstA, firstB) in wallLabelInfos)
             {
                 Vector2d dir = firstB - firstA;
@@ -3070,15 +3157,16 @@ namespace ST4PlanIdCiz
                 var floorInfo = _model.Floors.FirstOrDefault(f => f.FloorNo == beamFloor);
                 string katEtiketi = floorInfo?.ShortName ?? beamFloor.ToString(CultureInfo.InvariantCulture);
                 int beamNumero = GetBeamNumero(wallBeamId);
+                string beamNumeroStr = beamNumero.ToString("D" + wallPadFloor, CultureInfo.InvariantCulture);
                 Point2d wallCenter = drawnGeometry.Centroid != null && !drawnGeometry.Centroid.IsEmpty
                     ? new Point2d(drawnGeometry.Centroid.X, drawnGeometry.Centroid.Y)
                     : new Point2d((firstA.X + firstB.X) * 0.5, (firstA.Y + firstB.Y) * 0.5);
                 double perdeLengthCm = GetPerdeLengthCm(wallCenter, u, kolonUnionForWalls, factory, firstA.GetDistanceTo(firstB));
                 const double perdeLabelMinLengthForDimensionsCm = 160.0;
                 string labelText = perdeLengthCm < perdeLabelMinLengthForDimensionsCm
-                    ? string.Format(CultureInfo.InvariantCulture, "P{0}{1}", katEtiketi, beamNumero)
+                    ? string.Format(CultureInfo.InvariantCulture, "P{0}{1}", katEtiketi, beamNumeroStr)
                     : string.Format(CultureInfo.InvariantCulture, "P{0}{1} ({2}/{3})",
-                        katEtiketi, beamNumero, (int)Math.Round(beam.WidthCm), (int)Math.Round(perdeLengthCm));
+                        katEtiketi, beamNumeroStr, (int)Math.Round(beam.WidthCm), (int)Math.Round(perdeLengthCm));
                 double textWidthCm = EstimateTextWidthCm(labelText, wallLabelHeightCm);
                 double tMin = (rectBottomLeft - firstA).DotProduct(u);
                 double tMax = (rectBottomRight - firstA).DotProduct(u);
@@ -4347,6 +4435,13 @@ namespace ST4PlanIdCiz
         {
             if (_model.BeamFloorKeyStep > 0) return beamId % _model.BeamFloorKeyStep;
             return beamId >= 1000 ? (beamId % 1000) : (beamId % 100);
+        }
+
+        /// <summary>Etiket numara hane sayısı: max 1–99 ise 2 hane (01), 100–999 ise 3 hane (001).</summary>
+        private static int GetLabelPadWidth(int maxNumber)
+        {
+            if (maxNumber < 1) return 1;
+            return maxNumber < 100 ? 2 : 3;
         }
 
         private void DrawFloorTitle(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY,

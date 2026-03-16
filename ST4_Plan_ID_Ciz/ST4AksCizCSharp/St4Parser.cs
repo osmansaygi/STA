@@ -718,9 +718,16 @@ namespace ST4AksCizCSharp
             if (storyLines.Count < 3) return;
             for (int i = 0; i < storyLines.Count; i++)
             {
+                if (i < 2) continue;
                 var p = St4Text.SplitCsv(storyLines[i]);
                 if (p.Count < 2) continue;
-                if (!St4Text.TryParseInt(p[1], out int floorNo) || floorNo <= 0 || i < 2) continue;
+
+                int floorNo;
+                if (St4Text.TryParseInt(p[1], out int parsed) && parsed > 0)
+                    floorNo = parsed;
+                else
+                    floorNo = (i - 2) / 3;
+                if (floorNo <= 0) continue;
 
                 double elev = 0.0;
                 if (p.Count > 0) St4Text.TryParseDouble(p[0], out elev);
