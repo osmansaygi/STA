@@ -447,6 +447,14 @@ namespace ST4AksCizCSharp
                         int tieBeamOffsetRaw = 0;
                         if (p.Count > 11) St4Text.TryParseDouble(p[11], out tieBeamWidthCm);
                         if (p.Count > 13) St4Text.TryParseInt(p[13], out tieBeamOffsetRaw);
+                        double heightCm = 0.0;
+                        if (p.Count > 1 && St4Text.TryParseDouble(p[1], out double hVal) && hVal > 0) heightCm = hVal;
+                        int labelAxisId = 0;
+                        if (p.Count > 4 && St4Text.TryParseInt(p[4], out int ax4) && ax4 >= 1001 && ax4 <= 2999) labelAxisId = ax4;
+                        double bottomKotBinaGoreCm = 0.0;
+                        if (p.Count > 9) St4Text.TryParseDouble(p[9], out bottomKotBinaGoreCm);
+                        double hatilLabelHeightCm = 0.0;
+                        if (p.Count > 12 && St4Text.TryParseDouble(p[12], out double h13) && h13 > 0) hatilLabelHeightCm = h13;
                         model.ContinuousFoundations.Add(new ContinuousFoundationInfo
                         {
                             Name = pendingContinuousName ?? "",
@@ -454,6 +462,10 @@ namespace ST4AksCizCSharp
                             StartAxisId = startAxis,
                             EndAxisId = endAxis,
                             WidthCm = widthCm,
+                            HeightCm = heightCm,
+                            BottomKotBinaGoreCm = bottomKotBinaGoreCm,
+                            HatilLabelHeightCm = hatilLabelHeightCm,
+                            LabelAxisId = labelAxisId,
                             StartExtensionCm = startExtCm,
                             EndExtensionCm = endExtCm,
                             OffsetRaw = offsetRaw,
@@ -581,6 +593,8 @@ namespace ST4AksCizCSharp
                         if (p.Count > 5) St4Text.TryParseInt(p[5], out offsetRaw);
                         double bottomKotM = 0.0;
                         if (p.Count > 6) St4Text.TryParseDouble(p[6], out bottomKotM);
+                        int labelAxisId = 0;
+                        if (p.Count > 2 && St4Text.TryParseInt(p[2], out int ax3) && ax3 >= 1001 && ax3 <= 2999) labelAxisId = ax3;
                         model.TieBeams.Add(new TieBeamInfo
                         {
                             Name = pendingTieBeamName ?? "",
@@ -590,7 +604,8 @@ namespace ST4AksCizCSharp
                             WidthCm = widthCm,
                             HeightCm = heightCm,
                             OffsetRaw = offsetRaw,
-                            BottomKotM = bottomKotM
+                            BottomKotM = bottomKotM,
+                            LabelAxisId = labelAxisId
                         });
                         pendingTieBeamName = null;
                     }

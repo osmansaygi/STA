@@ -67,6 +67,8 @@ namespace ST4AksCizCSharp
         public int OffsetRaw { get; set; }
         /// <summary>7. sütun: radye temel hatılı alt kotu, bina tabanına göre (m). Örn: -.7 = taban altı 0.7 m.</summary>
         public double BottomKotM { get; set; }
+        /// <summary>Etiket dönüşü için kullanılacak aks ID (0 ise FixedAxisId kullanılır). 3. sütun (1-based) = p[2] fixed axis.</summary>
+        public int LabelAxisId { get; set; }
     }
 
     public sealed class ContinuousFoundationInfo
@@ -90,8 +92,16 @@ namespace ST4AksCizCSharp
         public double AmpatmanWidthCm { get; set; }
         /// <summary>2. satır 12. sütun: radye temel temel hatılı genişliği (cm); 0 ise çizilmez.</summary>
         public double TieBeamWidthCm { get; set; }
+        /// <summary>1. satır 13. sütun (p[12]): altında sürekli temel bulunan temel hatılı yüksekliği (cm); etiket metninde TH-xx (en/yükseklik) olarak yazılır.</summary>
+        public double HatilLabelHeightCm { get; set; }
         /// <summary>2. satır 14. sütun: radye temel temel hatılı kaçıklığı (mm), X/Y aksına göre 0/±1/&gt;1/&lt;-1 kuralı.</summary>
         public int TieBeamOffsetRaw { get; set; }
+        /// <summary>Kesit yüksekliği (cm). 2. satır 2. sütundan okunabilir.</summary>
+        public double HeightCm { get; set; }
+        /// <summary>1. satır 10. sütun (p[9]): bina alt kotuna göre sürekli temelin alt kotu (cm).</summary>
+        public double BottomKotBinaGoreCm { get; set; }
+        /// <summary>Etiket dönüşü için kullanılacak aks ID (0 ise FixedAxisId kullanılır). 4. sütun (1-based) = p[4] fixed axis.</summary>
+        public int LabelAxisId { get; set; }
     }
 
     public sealed class SlabFoundationInfo

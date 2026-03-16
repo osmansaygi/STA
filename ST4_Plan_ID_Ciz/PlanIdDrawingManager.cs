@@ -73,9 +73,10 @@ namespace ST4PlanIdCiz
                     DrawWallsForFloor(tr, btr, firstFloor, offsetX, offsetY);
                     Geometry temelUnion = BuildTemelUnion(offsetX, offsetY, firstFloor);
                     Geometry kolonPerdeUnion = BuildKolonPerdeUnion(firstFloor, offsetX, offsetY);
+                    Geometry slabUnionForLabels = BuildSlabFoundationsUnion(offsetX, offsetY);
                     DrawTemelMerged(tr, btr, offsetX, offsetY, firstFloor, temelUnion);
-                    var temelHatiliRaws = new List<(Geometry geom, double widthCm, double heightDisplayCm, double kot)>();
-                    DrawContinuousFoundations(tr, btr, offsetX, offsetY, firstFloor, drawTemelOutline: false, temelUnion, kolonPerdeUnion, temelHatiliRaws);
+                    var temelHatiliRaws = new List<(Geometry geom, double widthCm, double heightDisplayCm, double kot, bool isRadyeTemelHatili)>();
+                    DrawContinuousFoundations(tr, btr, offsetX, offsetY, firstFloor, drawTemelOutline: false, temelUnion, kolonPerdeUnion, temelHatiliRaws, slabUnionForLabels);
                     DrawSlabFoundations(tr, btr, offsetX, offsetY, drawTemelOutline: false);
                     DrawTieBeams(tr, btr, firstFloor, offsetX, offsetY, kolonPerdeUnion, temelHatiliRaws);
                     DrawSingleFootings(tr, btr, firstFloor, offsetX, offsetY, drawTemelOutline: false);
@@ -186,6 +187,7 @@ namespace ST4PlanIdCiz
         private const string LayerKotYazi = "KOT YAZI (BEYKENT)";
         private const string LayerKotCizgisi = "KOT CIZGISI (BEYKENT)";
         private const string LayerTemelHatiliIsmi = "TEMEL HATILI ISMI (BEYKENT)";
+        private const string LayerTemelIsmi = "TEMEL ISMI (BEYKENT)";
         /// <summary>Kiriş etiket çizim boyutları (resimdeki gibi): 70cm x 14cm referans (13 karakter). Genişlik = RefWidth * metin uzunluğu / RefCharCount.</summary>
         private const double BeamLabelRefWidthCm = 70.0;
         private const double BeamLabelRefHeightCm = 12.0;
@@ -212,6 +214,7 @@ namespace ST4PlanIdCiz
             EnsurePlanLayer(tr, db, "TEMEL AMPATMAN (BEYKENT)", 21, LineWeight.LineWeight040, useDashed: false);
             EnsurePlanLayer(tr, db, "TEMEL HATILI (BEYKENT)", 230, LineWeight.LineWeight030, useDashed: false);
             EnsurePlanLayer(tr, db, LayerTemelHatiliIsmi, 243, LineWeight.LineWeight020, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerTemelIsmi, 40, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, LayerKatSiniri, 41, LineWeight.LineWeight025, useDashed: false);
             EnsurePlanLayer(tr, db, LayerKalipBosluk, 30, LineWeight.LineWeight025, useDashed: true);
             EnsurePlanLayer(tr, db, LayerBirlesikKatman, 8, LineWeight.LineWeight025, useDashed: false);
@@ -1315,6 +1318,89 @@ namespace ST4PlanIdCiz
             if (Math.Abs(axis.Slope) > 1e-9)
                 angleY += Math.PI / 2.0;
             return angleY;
+        }
+
+        /// <summary>
+        /// Verilen aks ID'sine ait eksen çizgisinin plan açısını (radyan) döndürür. Etiketin aksa paralel çizilmesi için kullanılır.
+        /// X: doğru yönü (Slope,1) → Atan2(1, Slope). Y: doğru yönü (-1, Slope) → Atan2(Slope, -1).
+        /// Açı (-π/2, π/2] aralığına normalize edilir; böylece etiket çizimde ters (baş aşağı) görünmez.
+        /// </summary>
+        private double GetAxisLineAngleRad(int axisId)
+        {
+            var axis = _model.AxisX.Concat(_model.AxisY).FirstOrDefault(a => a.Id == axisId);
+            if (axis == null) return 0.0;
+            double angleRad;
+            if (axis.Kind == AxisKind.X)
+                angleRad = Math.Atan2(1.0, axis.Slope);
+            else
+                angleRad = Math.Atan2(axis.Slope, -1.0);
+            // Eksen doğrusunun iki yönü var (θ ve θ+π); metnin okunaklı olması için (-π/2, π/2] seç
+            while (angleRad > Math.PI / 2.0) angleRad -= Math.PI;
+            while (angleRad <= -Math.PI / 2.0) angleRad += Math.PI;
+            return angleRad;
+        }
+
+        /// <summary>Point2d[] dikdörtgenini NTS Polygon'a çevirir (kapalı halka).</summary>
+        private static Polygon RectToPolygon(GeometryFactory factory, Point2d[] rect)
+        {
+            if (rect == null || rect.Length < 4) return null;
+            var coords = new Coordinate[5];
+            for (int i = 0; i < 4; i++) coords[i] = new Coordinate(rect[i].X, rect[i].Y);
+            coords[4] = coords[0];
+            return factory.CreatePolygon(factory.CreateLinearRing(coords));
+        }
+
+        /// <summary>Sürekli temel etiketi: etiket kutusu diğer sürekli temeller veya radye alanı ile kesişiyorsa yazı açısı doğrultusunda sadece sağa/sola kaydırarak temiz alan arar. Sürekli/radye alanı içine taşımaz. Temiz alan yoksa taşımaz.</summary>
+        private static void TryFindClearLabelPositionForContinuous(GeometryFactory factory, ref double labelCx, ref double labelCy, double axisAngleRad, string labelText, List<Geometry> obstaclePolygons, int currentObstacleIndex = -1, Geometry slabUnion = null)
+        {
+            const double labelHeightCm = 12.0;
+            const double toleranceCm = 5.0;
+            const double extraShiftCm = 4.0;
+            double labelWidthCm = Math.Max(55.0, (labelText?.Length ?? 0) * 7.0);
+            double cosA = Math.Cos(axisAngleRad);
+            double sinA = Math.Sin(axisAngleRad);
+            Polygon LabelBoxAt(double cx, double cy)
+            {
+                double brX = cx; double brY = cy;
+                double blX = cx - labelWidthCm * cosA; double blY = cy - labelWidthCm * sinA;
+                double tlX = blX - labelHeightCm * sinA; double tlY = blY + labelHeightCm * cosA;
+                double trX = brX - labelHeightCm * sinA; double trY = brY + labelHeightCm * cosA;
+                var coords = new[] { new Coordinate(brX, brY), new Coordinate(blX, blY), new Coordinate(tlX, tlY), new Coordinate(trX, trY), new Coordinate(brX, brY) };
+                return factory.CreatePolygon(factory.CreateLinearRing(coords));
+            }
+            bool IntersectsObstaclesWithTolerance(Geometry box)
+            {
+                if (box == null || box.IsEmpty) return false;
+                Geometry checkArea = null;
+                try { checkArea = box.Buffer(toleranceCm); } catch { checkArea = box; }
+                if (checkArea == null || checkArea.IsEmpty) return false;
+                for (int i = 0; i < (obstaclePolygons?.Count ?? 0); i++)
+                {
+                    if (i == currentObstacleIndex) continue;
+                    var obs = obstaclePolygons[i];
+                    if (obs != null && !obs.IsEmpty && checkArea.Intersects(obs)) return true;
+                }
+                if (slabUnion != null && !slabUnion.IsEmpty && checkArea.Intersects(slabUnion)) return true;
+                return false;
+            }
+            if (!IntersectsObstaclesWithTolerance(LabelBoxAt(labelCx, labelCy))) return;
+            double step = 10.0;
+            for (int n = 1; n <= 25; n++)
+            {
+                foreach (double sign in new[] { 1.0, -1.0 })
+                {
+                    double dx = sign * n * step * cosA;
+                    double dy = sign * n * step * sinA;
+                    double cx = labelCx + dx;
+                    double cy = labelCy + dy;
+                    if (!IntersectsObstaclesWithTolerance(LabelBoxAt(cx, cy)))
+                    {
+                        labelCx = cx + sign * extraShiftCm * cosA;
+                        labelCy = cy + sign * extraShiftCm * sinA;
+                        return;
+                    }
+                }
+            }
         }
 
         /// <summary>Geometriyi verilen ölçeğe (örn. 100 = 0.01 cm) indirger; ince sliver'lar birleşir. Hata olursa null döner.</summary>
@@ -4637,13 +4723,16 @@ namespace ST4PlanIdCiz
             }
         }
 
-        /// <param name="temelHatiliRaws">Dolu verilirse sürekli temel hatılı (TieBeamWidthCm) poligonları (diff öncesi) (geom, widthCm, heightDisplayCm, kot) olarak eklenir; DrawTieBeams'ta radye temel temel hatılı ile birleştirilip TEMEL HATILI katmanında çizilir.</param>
-        private void DrawContinuousFoundations(Transaction tr, BlockTableRecord btr, double offsetX, double offsetY, FloorInfo floor, bool drawTemelOutline = true, Geometry temelUnion = null, Geometry kolonPerdeUnion = null, List<(Geometry geom, double widthCm, double heightDisplayCm, double kot)> temelHatiliRaws = null)
+        /// <param name="temelHatiliRaws">Dolu verilirse sürekli temel hatılı (geom, widthCm, heightDisplayCm, kot, isRadyeTemelHatili=false).</param>
+        /// <param name="slabUnion">Radye temel alanı birleşiği; etiket taşınırken bu alanın içine girmemesi için kullanılır.</param>
+        private void DrawContinuousFoundations(Transaction tr, BlockTableRecord btr, double offsetX, double offsetY, FloorInfo floor, bool drawTemelOutline = true, Geometry temelUnion = null, Geometry kolonPerdeUnion = null, List<(Geometry geom, double widthCm, double heightDisplayCm, double kot, bool isRadyeTemelHatili)> temelHatiliRaws = null, Geometry slabUnion = null)
         {
             const string layer = "TEMEL (BEYKENT)";
             const string layerAmpatman = "TEMEL AMPATMAN (BEYKENT)";
             var factory = new GeometryFactory();
             var ampatmanPolygons = new List<Geometry>();
+            var continuousRectsForLabelCheck = new List<Geometry>();
+            int cfIndex = 0;
             foreach (var cf in _model.ContinuousFoundations)
             {
                 if (!_axisService.TryIntersect(cf.FixedAxisId, cf.StartAxisId, out Point2d p1) ||
@@ -4667,6 +4756,8 @@ namespace ST4PlanIdCiz
                 };
                 for (int i = 0; i < rect.Length; i++)
                     rect[i] = new Point2d(rect[i].X + offsetX, rect[i].Y + offsetY);
+                var rectPoly = RectToPolygon(factory, rect);
+                continuousRectsForLabelCheck.Add(rectPoly);
                 if (drawTemelOutline)
                 {
                     var pl = ToPolyline(rect, true);
@@ -4674,12 +4765,38 @@ namespace ST4PlanIdCiz
                     AppendEntity(tr, btr, pl);
                 }
 
-                if (!string.IsNullOrEmpty(cf.Name))
                 {
-                    double cx = (rect[0].X + rect[1].X + rect[2].X + rect[3].X) / 4.0;
-                    double cy = (rect[0].Y + rect[1].Y + rect[2].Y + rect[3].Y) / 4.0;
-                    AppendEntity(tr, btr, MakeCenteredText(LayerYazi, 5, cf.Name.Trim(), new Point3d(cx, cy, 0)));
+                    // 5. sütun 1 yönü (X ekseni 1001-1999): etiket temel sol çizgisinin 3 cm soluna. Diğerleri: üst kenarın 3 cm üstüne.
+                    Vector2d perpUnit = perp.GetNormal();
+                    double labelCx, labelCy;
+                    if (cf.FixedAxisId >= 1001 && cf.FixedAxisId <= 1999)
+                    {
+                        // Sol çizgi = rect[2]-rect[3] (alt kenar, -perp yönü); 3 cm soluna = -perp yönünde 3 cm
+                        double leftMidX = (rect[2].X + rect[3].X) / 2.0;
+                        double leftMidY = (rect[2].Y + rect[3].Y) / 2.0;
+                        labelCx = leftMidX - perpUnit.X * 3.0;
+                        labelCy = leftMidY - perpUnit.Y * 3.0;
+                    }
+                    else
+                    {
+                        double upperMidX = (rect[0].X + rect[1].X) / 2.0;
+                        double upperMidY = (rect[0].Y + rect[1].Y) / 2.0;
+                        labelCx = upperMidX + perpUnit.X * 3.0;
+                        labelCy = upperMidY + perpUnit.Y * 3.0;
+                    }
+                    int temelNo = cfIndex + 1;
+                    int eni = (int)Math.Round(cf.WidthCm);
+                    int yukseklik = (int)Math.Round(cf.HeightCm);
+                    string eniStr = eni.ToString(CultureInfo.InvariantCulture);
+                    if (cf.AmpatmanWidthCm > 0 && Math.Abs(cf.AmpatmanWidthCm - cf.WidthCm) > 1e-6)
+                        eniStr = eniStr + "-" + ((int)Math.Round(cf.AmpatmanWidthCm)).ToString(CultureInfo.InvariantCulture);
+                    string labelText = string.Format(CultureInfo.InvariantCulture, "T-{0} ({1}/{2})", temelNo, eniStr, yukseklik);
+                    int labelAxisId = cf.LabelAxisId != 0 ? cf.LabelAxisId : cf.FixedAxisId;
+                    double axisAngleRad = GetAxisLineAngleRad(labelAxisId);
+                    TryFindClearLabelPositionForContinuous(factory, ref labelCx, ref labelCy, axisAngleRad, labelText, continuousRectsForLabelCheck, cfIndex, slabUnion);
+                    DrawTemelIsmiLabel(tr, btr, btr.Database, labelCx, labelCy, labelText, axisAngleRad, bottomRightAligned: true);
                 }
+                cfIndex++;
 
                 if (cf.AmpatmanWidthCm > 0 && Math.Abs(cf.AmpatmanWidthCm - cf.WidthCm) > 1e-6)
                 {
@@ -4748,7 +4865,8 @@ namespace ST4PlanIdCiz
 
                     if (temelHatiliRaws != null)
                     {
-                        temelHatiliRaws.Add((hatilPoly, cf.TieBeamWidthCm, 0, _model.BuildingBaseKotu));
+                        double temelUstKotu = _model.BuildingBaseKotu + (cf.BottomKotBinaGoreCm + cf.HeightCm) / 100.0;
+                        temelHatiliRaws.Add((hatilPoly, cf.TieBeamWidthCm, cf.HatilLabelHeightCm, temelUstKotu, false));
                     }
                     else
                     {
@@ -4786,6 +4904,7 @@ namespace ST4PlanIdCiz
         {
             const string layer = "TEMEL (BEYKENT)";
             const double defaultHalfCm = 20.0;
+            int sfIndex = 0;
             foreach (var sf in _model.SingleFootings)
             {
                 int positionIndex = sf.ColumnRef - 100;
@@ -4859,19 +4978,74 @@ namespace ST4PlanIdCiz
                     pl.Layer = layer;
                     AppendEntity(tr, btr, pl);
                 }
-                if (!string.IsNullOrEmpty(sf.Name))
-                    AppendEntity(tr, btr, MakeCenteredText(LayerYazi, 5, sf.Name.Trim(), new Point3d(footingCenter.X, footingCenter.Y, 0)));
+                sfIndex++;
+                int xBoyu = (int)Math.Round(sf.SizeXCm);
+                int yBoyu = (int)Math.Round(sf.SizeYCm);
+                string labelText = string.Format(CultureInfo.InvariantCulture, "TT-{0} ({1}/{2})", sfIndex, xBoyu, yBoyu);
+                double footingAngleRad = sf.AngleDeg * Math.PI / 180.0;
+                // Temel eksenine göre sol üst köşenin üstüne yaz: rect[3] = sol üst, etiket = köşe + (0, 3) cm (14 - 11 cm aşağı taşındı, temel yerel Y)
+                Point2d solUstKose = new Point2d(rect[3].X, rect[3].Y);
+                Vector2d upLocal = new Vector2d(0, 3.0);
+                Vector2d upWorld = Rotate(upLocal, sf.AngleDeg);
+                double labelCx = solUstKose.X + upWorld.X;
+                double labelCy = solUstKose.Y + upWorld.Y;
+                DrawTemelIsmiLabel(tr, btr, btr.Database, labelCx, labelCy, labelText, footingAngleRad, bottomLeftAligned: true);
             }
         }
 
-        private void DrawTieBeams(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY, Geometry kolonPerdeUnion = null, List<(Geometry geom, double widthCm, double heightDisplayCm, double kot)> temelHatiliRaws = null)
+        private void DrawTieBeams(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY, Geometry kolonPerdeUnion = null, List<(Geometry geom, double widthCm, double heightDisplayCm, double kot, bool isRadyeTemelHatili)> temelHatiliRaws = null)
         {
             const string layerTemel = "TEMEL (BEYKENT)";
             const string layerHatili = "TEMEL HATILI (BEYKENT)";
             var factory = new GeometryFactory();
             Geometry cfUnion = BuildContinuousFoundationsUnion(offsetX, offsetY);
             Geometry slabUnion = BuildSlabFoundationsUnion(offsetX, offsetY);
-            var hatiliRaws = new List<(Geometry geom, double widthCm, double heightDisplayCm, double kot)>();
+            var hatiliRaws = new List<(Geometry geom, double widthCm, double heightDisplayCm, double kot, bool isRadyeTemelHatili)>();
+
+            // Bağ kirişi etiketi: aynı (eni, yükseklik) = (WidthCm, HeightCm) olanlar aynı numara (01); farklı kesitler 02, 03... (BK-xx (eni/yükseklik)).
+            var tieBeamLabelInfos = new Dictionary<int, (int numero, double lengthCm)>();
+            var passIndexToKey = new List<(int passIndex, int w, int h)>();
+            int passIndex = 0;
+            foreach (var tb in _model.TieBeams)
+            {
+                passIndex++;
+                if (!_axisService.TryIntersect(tb.FixedAxisId, tb.StartAxisId, out Point2d p1) ||
+                    !_axisService.TryIntersect(tb.FixedAxisId, tb.EndAxisId, out Point2d p2))
+                    continue;
+                if (p1.GetDistanceTo(p2) <= 1e-9) continue;
+                int offsetForBeam = (tb.FixedAxisId >= 1001 && tb.FixedAxisId <= 1999) ? -tb.OffsetRaw : tb.OffsetRaw;
+                ComputeBeamEdgeOffsets(offsetForBeam, tb.WidthCm / 2.0, out double upperEdge, out double lowerEdge);
+                Vector2d perp = new Vector2d(-(p2.Y - p1.Y), (p2.X - p1.X));
+                Point2d[] rectLocal = new[]
+                {
+                    p1 + perp.MultiplyBy(upperEdge),
+                    p2 + perp.MultiplyBy(upperEdge),
+                    p2 + perp.MultiplyBy(lowerEdge),
+                    p1 + perp.MultiplyBy(lowerEdge)
+                };
+                var coordsPass = new Coordinate[5];
+                for (int i = 0; i < 4; i++) coordsPass[i] = new Coordinate(rectLocal[i].X + offsetX, rectLocal[i].Y + offsetY);
+                coordsPass[4] = coordsPass[0];
+                var tbPolyPass = factory.CreatePolygon(factory.CreateLinearRing(coordsPass));
+                bool insideContinuous = cfUnion != null && !cfUnion.IsEmpty && cfUnion.Contains(tbPolyPass);
+                bool insideSlab = slabUnion != null && !slabUnion.IsEmpty && slabUnion.Contains(tbPolyPass);
+                if (insideContinuous || insideSlab) continue;
+                double lengthCm = p1.GetDistanceTo(p2);
+                int w = (int)Math.Round(tb.WidthCm);
+                int h = (int)Math.Round(tb.HeightCm);
+                passIndexToKey.Add((passIndex, w, h));
+                tieBeamLabelInfos[passIndex] = (0, lengthCm);
+            }
+            // Kesit (eni,yükseklik) gruplarına göre numara: her farklı (w,h) grubu 1, 2, 3...
+            var keyToNumero = new Dictionary<(int w, int h), int>();
+            int nextNumero = 1;
+            foreach (var (pi, w, h) in passIndexToKey)
+            {
+                var key = (w, h);
+                if (!keyToNumero.TryGetValue(key, out int num))
+                    keyToNumero[key] = num = nextNumero++;
+                tieBeamLabelInfos[pi] = (num, tieBeamLabelInfos[pi].lengthCm);
+            }
 
             int tbIndex = 0;
             foreach (var tb in _model.TieBeams)
@@ -4910,25 +5084,49 @@ namespace ST4PlanIdCiz
 
                 if (layer == layerTemel)
                 {
-                    string label = !string.IsNullOrWhiteSpace(tb.Name) ? tb.Name.Trim() : ("TB" + tbIndex);
-                    AppendEntity(tr, btr, MakeCenteredText(LayerYazi, 5, label, new Point3d(cx, cy, 0)));
+                    if (tieBeamLabelInfos.TryGetValue(tbIndex, out var labelInfo))
+                    {
+                        int eni = (int)Math.Round(tb.WidthCm);
+                        int yukseklik = (int)Math.Round(tb.HeightCm);
+                        string labelText = string.Format(CultureInfo.InvariantCulture, "BK-{0:D2} ({1}/{2})", labelInfo.numero, eni, yukseklik);
+                        int labelAxisId = tb.LabelAxisId != 0 ? tb.LabelAxisId : tb.FixedAxisId;
+                        double axisAngleRad = GetAxisLineAngleRad(labelAxisId);
+                        Vector2d perpUnit = perp.GetNormal();
+                        double labelCx, labelCy;
+                        // 3. sütun 1 yönü (X 1001-1999): etiket sol çizginin 3 cm soluna. Diğerleri: üst kenar + 3 cm.
+                        if (tb.LabelAxisId >= 1001 && tb.LabelAxisId <= 1999)
+                        {
+                            double leftMidX = (rect[2].X + rect[3].X) / 2.0;
+                            double leftMidY = (rect[2].Y + rect[3].Y) / 2.0;
+                            labelCx = leftMidX - perpUnit.X * 3.0;
+                            labelCy = leftMidY - perpUnit.Y * 3.0;
+                        }
+                        else
+                        {
+                            double upperMidX = (rect[0].X + rect[1].X) / 2.0;
+                            double upperMidY = (rect[0].Y + rect[1].Y) / 2.0;
+                            labelCx = upperMidX + perpUnit.X * 3.0;
+                            labelCy = upperMidY + perpUnit.Y * 3.0;
+                        }
+                        DrawTemelIsmiLabel(tr, btr, btr.Database, labelCx, labelCy, labelText, axisAngleRad, bottomLeftAligned: true);
+                    }
                 }
                 else
                 {
                     // Radye temel temel hatılı: yazılacak yükseklik = 2. sütun (HeightCm) - konumlandığı radye temelin yüksekliği
                     double radyeYukseklikCm = TryGetSlabThicknessAtPoint(offsetX, offsetY, tbPoly, factory);
                     double heightDisplayCm = Math.Max(0, tb.HeightCm - radyeYukseklikCm);
-                    hatiliRaws.Add((tbPoly, tb.WidthCm, heightDisplayCm, _model.BuildingBaseKotu));
+                    hatiliRaws.Add((tbPoly, tb.WidthCm, heightDisplayCm, _model.BuildingBaseKotu, true));
                 }
             }
 
-            var allHatilRaws = new List<(Geometry geom, double widthCm, double heightDisplayCm, double kot)>();
+            var allHatilRaws = new List<(Geometry geom, double widthCm, double heightDisplayCm, double kot, bool isRadyeTemelHatili)>();
             if (temelHatiliRaws != null) allHatilRaws.AddRange(temelHatiliRaws);
             allHatilRaws.AddRange(hatiliRaws);
             if (allHatilRaws.Count > 0)
             {
-                var hatilPieces = new List<(Polygon poly, double widthCm, double heightDisplayCm, double kot)>();
-                foreach (var (geom, w, h, kot) in allHatilRaws)
+                var hatilPieces = new List<(Polygon poly, double widthCm, double heightDisplayCm, double kot, bool isRadyeTemelHatili)>();
+                foreach (var (geom, w, h, kot, isRadye) in allHatilRaws)
                 {
                     if (geom == null || geom.IsEmpty) continue;
                     Geometry toDraw = geom;
@@ -4945,7 +5143,7 @@ namespace ST4PlanIdCiz
                     {
                         foreach (var poly in CleanGeometryToPolygons(toDraw, factory, applySmallTriangleTrim: false))
                             if (poly is Polygon pg && pg.Area >= 1000.0)
-                                hatilPieces.Add((pg, w, h, kot));
+                                hatilPieces.Add((pg, w, h, kot, isRadye));
                     }
                 }
                 const double touchToleranceCm = 0.2;
@@ -4970,7 +5168,7 @@ namespace ST4PlanIdCiz
                         componentGroups[root].Add(i);
                     }
                     const double minHatilAreaCm2 = 1000.0;
-                    var components = new List<(Geometry part, double widthCm, double heightDisplayCm, double kot)>();
+                    var components = new List<(Geometry part, double widthCm, double heightDisplayCm, double kot, bool isRadyeTemelHatili)>();
                     foreach (var list in componentGroups.Values)
                     {
                         var polys = list.Select(i => hatilPieces[i].poly).ToList();
@@ -4983,7 +5181,7 @@ namespace ST4PlanIdCiz
                             {
                                 DrawGeometryRingsAsPolylines(tr, btr, part, layerHatili, addHatch: false, exteriorRingsOnly: false, applySmallTriangleTrim: false);
                                 var first = hatilPieces[list[0]];
-                                components.Add((part, first.widthCm, first.heightDisplayCm, first.kot));
+                                components.Add((part, first.widthCm, first.heightDisplayCm, first.kot, first.isRadyeTemelHatili));
                             }
                         }
                     }
@@ -4993,12 +5191,14 @@ namespace ST4PlanIdCiz
             }
         }
 
-        /// <summary>Radye temel temel hatılı etiketleri: TH-numara (en/yükseklik). Konum: kesimden sonraki poligonun merkezine ortalı; yazı middle-center; eksen yatay kabul 180° açı.</summary>
-        private void DrawRadyeTemelTemelHatiliLabels(Transaction tr, BlockTableRecord btr, Database db, List<(Polygon poly, double widthCm, double heightDisplayCm, double kot)> pieces)
+        /// <summary>Radye temel temel hatılı: TH-01 (en/yükseklik). Sürekli temel altı hatılı: TH (en/yükseklik), numara ve - yok. Yazı yüksekliği 12 cm.</summary>
+        private void DrawRadyeTemelTemelHatiliLabels(Transaction tr, BlockTableRecord btr, Database db, List<(Polygon poly, double widthCm, double heightDisplayCm, double kot, bool isRadyeTemelHatili)> pieces)
         {
             if (pieces == null || pieces.Count == 0) return;
+            const double labelHeightCm = 12.0;
+            var radyeIndices = pieces.Select((p, i) => (p, i)).Where(x => x.p.isRadyeTemelHatili).Select(x => x.i).ToList();
             var keyToIndices = new Dictionary<(int w, int h, int k), List<int>>();
-            for (int i = 0; i < pieces.Count; i++)
+            foreach (int i in radyeIndices)
             {
                 var c = pieces[i];
                 int w = (int)Math.Round(c.widthCm);
@@ -5013,23 +5213,19 @@ namespace ST4PlanIdCiz
             for (int no = 1; no <= keyOrder.Count; no++)
                 foreach (int i in keyToIndices[keyOrder[no - 1]])
                     indexToNo[i] = no;
-
-            const double labelHeightCm = 12.0;
             int pad = GetLabelPadWidth(keyOrder.Count);
+
             for (int i = 0; i < pieces.Count; i++)
             {
-                if (!indexToNo.TryGetValue(i, out int no)) continue;
-                var (poly, widthCm, heightDisplayCm, _) = pieces[i];
+                var (poly, widthCm, heightDisplayCm, _, isRadyeTemelHatili) = pieces[i];
                 if (poly == null || poly.ExteriorRing == null) continue;
-                string labelText = string.Format(CultureInfo.InvariantCulture, "TH-{0} ({1}/{2})",
-                    no.ToString("D" + pad, CultureInfo.InvariantCulture),
-                    (int)Math.Round(widthCm),
-                    (int)Math.Round(heightDisplayCm));
+                string labelText = isRadyeTemelHatili && indexToNo.TryGetValue(i, out int no)
+                    ? string.Format(CultureInfo.InvariantCulture, "TH-{0} ({1}/{2})", no.ToString("D" + pad, CultureInfo.InvariantCulture), (int)Math.Round(widthCm), (int)Math.Round(heightDisplayCm))
+                    : string.Format(CultureInfo.InvariantCulture, "TH ({0}/{1})", (int)Math.Round(widthCm), (int)Math.Round(heightDisplayCm));
                 if (!GetPolygonPrincipalDirection(poly, out Point2d center, out Vector2d u, out Vector2d perp))
                     continue;
-                // Yazı açısı: hatılın fixlendiği aksın açısıyla aynı; sadece X yönüne fixlenmişse 180° ekle (ters okunmasın)
                 double angleRad = Math.Atan2(u.Y, u.X);
-                bool isFixedX = Math.Abs(u.X) >= Math.Abs(u.Y); // X aksı: u yatay
+                bool isFixedX = Math.Abs(u.X) >= Math.Abs(u.Y);
                 if (isFixedX)
                     angleRad += Math.PI;
                 DrawBeamLabel(tr, btr, db, new Point3d(center.X, center.Y, 0), labelText, labelHeightCm, angleRad, LayerTemelHatiliIsmi, useMiddleCenter: true);
@@ -5239,6 +5435,27 @@ namespace ST4PlanIdCiz
                 VerticalMode = useMiddleCenter ? TextVerticalMode.TextVerticalMid : (topAligned ? TextVerticalMode.TextTop : TextVerticalMode.TextBottom),
                 AlignmentPoint = insertionPoint,
                 Rotation = rotationRad
+            };
+            AppendEntity(tr, btr, txt);
+        }
+
+        /// <summary>Sürekli/tekil temel ve bağ kirişi etiketi: TEMEL ISMI (BEYKENT) katmanı, 12 cm yükseklik, ETIKET yazı stili, 0.2 mm kalınlık. bottomRightAligned: sağ alt (metin sola ve yukarı). bottomLeftAligned: sol alt (metin sağa ve yukarı).</summary>
+        private void DrawTemelIsmiLabel(Transaction tr, BlockTableRecord btr, Database db, double centerX, double centerY, string labelText, double rotationRad, bool bottomRightAligned = false, bool bottomLeftAligned = false)
+        {
+            const double labelHeightCm = 12.0;
+            ObjectId textStyleId = GetOrCreateElemanEtiketTextStyle(tr, db);
+            var txt = new DBText
+            {
+                Layer = LayerTemelIsmi,
+                TextStyleId = textStyleId,
+                Height = labelHeightCm,
+                TextString = labelText ?? string.Empty,
+                Position = new Point3d(centerX, centerY, 0),
+                HorizontalMode = bottomRightAligned ? TextHorizontalMode.TextRight : (bottomLeftAligned ? TextHorizontalMode.TextLeft : TextHorizontalMode.TextCenter),
+                VerticalMode = (bottomRightAligned || bottomLeftAligned) ? TextVerticalMode.TextBottom : TextVerticalMode.TextVerticalMid,
+                AlignmentPoint = new Point3d(centerX, centerY, 0),
+                Rotation = rotationRad,
+                LineWeight = LineWeight.LineWeight020
             };
             AppendEntity(tr, btr, txt);
         }
