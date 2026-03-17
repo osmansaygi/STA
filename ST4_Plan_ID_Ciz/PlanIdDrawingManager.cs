@@ -36,6 +36,268 @@ namespace ST4PlanIdCiz
             _axisService = new AxisGeometryService(model);
         }
 
+        /// <summary>Kolon donatı tablosu için: her kolon numarasında temel planında üzerine geldiği temelin yüksekliği (cm) ve o kolona değen en yüksek temel hatılı yüksekliği (cm). Temel planı ilk kat (floor) ile hesaplanır.</summary>
+        public Dictionary<int, (double? temelCm, double? hatilCm)> GetColumnFoundationHeights(FloorInfo firstFloor)
+        {
+            var result = new Dictionary<int, (double?, double?)>();
+            if (firstFloor == null) return result;
+            var factory = new GeometryFactory();
+            const double offsetX = 0.0, offsetY = 0.0;
+
+            foreach (var col in _model.Columns)
+            {
+                int colNo = col.ColumnNo;
+                if (!_axisService.TryIntersect(col.AxisXId, col.AxisYId, out Point2d axisNode))
+                    continue;
+                int sectionId = ResolveColumnSectionId(firstFloor.FloorNo, colNo);
+                double hw = 20.0, hh = 20.0;
+                if (sectionId > 0 && _model.ColumnDimsBySectionId.TryGetValue(sectionId, out var dim)) { hw = dim.W / 2.0; hh = dim.H / 2.0; }
+                var offsetLocal = col.ColumnType == 2 ? ComputeColumnOffsetCircle(col.OffsetXRaw, col.OffsetYRaw) : ComputeColumnOffset(col.OffsetXRaw, col.OffsetYRaw, hw, hh);
+                var offsetGlobal = Rotate(offsetLocal, col.AngleDeg);
+                var center = new Point2d(axisNode.X + offsetGlobal.X + offsetX, axisNode.Y + offsetGlobal.Y + offsetY);
+                var pt = factory.CreatePoint(new Coordinate(center.X, center.Y));
+
+                int polygonSectionId = ResolvePolygonPositionSectionId(firstFloor.FloorNo, colNo);
+                Geometry colPoly = null;
+                if (col.ColumnType == 2)
+                {
+                    var coords = BuildCircleRing(center, Math.Max(hw, hh), col.AngleDeg, 64);
+                    colPoly = factory.CreatePolygon(factory.CreateLinearRing(coords));
+                }
+                else if (col.ColumnType == 3 && TryGetPolygonColumn(polygonSectionId, center, col.AngleDeg, out var polyPoints))
+                {
+                    var coords = new Coordinate[polyPoints.Length + 1];
+                    for (int i = 0; i < polyPoints.Length; i++) coords[i] = new Coordinate(polyPoints[i].X, polyPoints[i].Y);
+                    coords[polyPoints.Length] = coords[0];
+                    colPoly = factory.CreatePolygon(factory.CreateLinearRing(coords));
+                }
+                else
+                {
+                    var rect = BuildRect(center, hw, hh, col.AngleDeg);
+                    var coords = new Coordinate[5];
+                    for (int i = 0; i < 4; i++) coords[i] = new Coordinate(rect[i].X, rect[i].Y);
+                    coords[4] = coords[0];
+                    colPoly = factory.CreatePolygon(factory.CreateLinearRing(coords));
+                }
+
+                double? temelCm = null;
+                var singleFooting = _model.SingleFootings.FirstOrDefault(sf => sf.ColumnRef == 100 + colNo);
+                if (singleFooting != null)
+                    temelCm = singleFooting.HeightCm;
+                if (!temelCm.HasValue)
+                {
+                    foreach (var cf in _model.ContinuousFoundations)
+                    {
+                        if (!_axisService.TryIntersect(cf.FixedAxisId, cf.StartAxisId, out Point2d p1) || !_axisService.TryIntersect(cf.FixedAxisId, cf.EndAxisId, out Point2d p2)) continue;
+                        Vector2d along = (p2 - p1).GetNormal();
+                        if (p1.GetDistanceTo(p2) <= 1e-9) continue;
+                        Point2d p1Eff = p1 - along.MultiplyBy(cf.StartExtensionCm);
+                        Point2d p2Eff = p2 + along.MultiplyBy(cf.EndExtensionCm);
+                        int offsetForBeam = (cf.FixedAxisId >= 1001 && cf.FixedAxisId <= 1999) ? -cf.OffsetRaw : cf.OffsetRaw;
+                        ComputeBeamEdgeOffsets(offsetForBeam, cf.WidthCm / 2.0, out double upperEdge, out double lowerEdge);
+                        Vector2d perp = new Vector2d(-along.Y, along.X);
+                        Point2d[] r = new[] { p1Eff + perp.MultiplyBy(upperEdge), p2Eff + perp.MultiplyBy(upperEdge), p2Eff + perp.MultiplyBy(lowerEdge), p1Eff + perp.MultiplyBy(lowerEdge) };
+                        var coords = new Coordinate[5];
+                        for (int i = 0; i < 4; i++) coords[i] = new Coordinate(r[i].X + offsetX, r[i].Y + offsetY);
+                        coords[4] = coords[0];
+                        var poly = factory.CreatePolygon(factory.CreateLinearRing(coords));
+                        if (poly.Contains(pt)) { temelCm = cf.HeightCm; break; }
+                    }
+                }
+                if (!temelCm.HasValue)
+                {
+                    foreach (var sf in _model.SlabFoundations)
+                    {
+                        if (!_axisService.TryIntersect(sf.AxisX1, sf.AxisY1, out Point2d p11) || !_axisService.TryIntersect(sf.AxisX1, sf.AxisY2, out Point2d p12) ||
+                            !_axisService.TryIntersect(sf.AxisX2, sf.AxisY1, out Point2d p21) || !_axisService.TryIntersect(sf.AxisX2, sf.AxisY2, out Point2d p22)) continue;
+                        var coords = new[] { new Coordinate(p11.X + offsetX, p11.Y + offsetY), new Coordinate(p21.X + offsetX, p21.Y + offsetY), new Coordinate(p22.X + offsetX, p22.Y + offsetY), new Coordinate(p12.X + offsetX, p12.Y + offsetY), new Coordinate(p11.X + offsetX, p11.Y + offsetY) };
+                        var poly = factory.CreatePolygon(factory.CreateLinearRing(coords));
+                        if (poly.Contains(pt)) { temelCm = sf.ThicknessCm; break; }
+                    }
+                }
+
+                double? hatilCm = null;
+                if (colPoly != null && !colPoly.IsEmpty)
+                {
+                    foreach (var cf in _model.ContinuousFoundations)
+                    {
+                        if (cf.TieBeamWidthCm <= 0) continue;
+                        if (!_axisService.TryIntersect(cf.FixedAxisId, cf.StartAxisId, out Point2d p1) || !_axisService.TryIntersect(cf.FixedAxisId, cf.EndAxisId, out Point2d p2)) continue;
+                        Vector2d along = (p2 - p1).GetNormal();
+                        if (p1.GetDistanceTo(p2) <= 1e-9) continue;
+                        ComputeTieBeamEdgeOffsets(cf.FixedAxisId, cf.TieBeamOffsetRaw, cf.TieBeamWidthCm / 2.0, out double hu, out double hl);
+                        Vector2d perp = new Vector2d(-along.Y, along.X);
+                        Point2d[] hatilRect = new[] { p1 + perp.MultiplyBy(hu), p2 + perp.MultiplyBy(hu), p2 + perp.MultiplyBy(hl), p1 + perp.MultiplyBy(hl) };
+                        var hcoords = new Coordinate[5];
+                        for (int i = 0; i < 4; i++) hcoords[i] = new Coordinate(hatilRect[i].X + offsetX, hatilRect[i].Y + offsetY);
+                        hcoords[4] = hcoords[0];
+                        var hatilPoly = factory.CreatePolygon(factory.CreateLinearRing(hcoords));
+                        if (hatilPoly.Intersects(colPoly) && cf.HatilLabelHeightCm > 0)
+                        {
+                            if (!hatilCm.HasValue || cf.HatilLabelHeightCm > hatilCm.Value) hatilCm = cf.HatilLabelHeightCm;
+                        }
+                    }
+                    foreach (var tb in _model.TieBeams)
+                    {
+                        if (!_axisService.TryIntersect(tb.FixedAxisId, tb.StartAxisId, out Point2d p1) || !_axisService.TryIntersect(tb.FixedAxisId, tb.EndAxisId, out Point2d p2)) continue;
+                        Vector2d along = (p2 - p1).GetNormal();
+                        if (p1.GetDistanceTo(p2) <= 1e-9) continue;
+                        int offsetForBeam = (tb.FixedAxisId >= 1001 && tb.FixedAxisId <= 1999) ? -tb.OffsetRaw : tb.OffsetRaw;
+                        ComputeBeamEdgeOffsets(offsetForBeam, tb.WidthCm / 2.0, out double upperEdge, out double lowerEdge);
+                        Vector2d perp = new Vector2d(-along.Y, along.X);
+                        Point2d[] rect = new[] { p1 + perp.MultiplyBy(upperEdge), p2 + perp.MultiplyBy(upperEdge), p2 + perp.MultiplyBy(lowerEdge), p1 + perp.MultiplyBy(lowerEdge) };
+                        var tcoords = new Coordinate[5];
+                        for (int i = 0; i < 4; i++) tcoords[i] = new Coordinate(rect[i].X + offsetX, rect[i].Y + offsetY);
+                        tcoords[4] = tcoords[0];
+                        var tbPoly = factory.CreatePolygon(factory.CreateLinearRing(tcoords));
+                        if (tbPoly.Intersects(colPoly) && tb.HeightCm > 0)
+                        {
+                            if (!hatilCm.HasValue || tb.HeightCm > hatilCm.Value) hatilCm = tb.HeightCm;
+                        }
+                    }
+                }
+                result[colNo] = (temelCm, hatilCm);
+            }
+            return result;
+        }
+
+        /// <summary>Kolon donatı tablosu için: verilen kattaki her kolon numarası → (ColumnType, W, H). ColumnType: 1=dikdörtgen, 2=daire (W=çap), 3=poligon.</summary>
+        public Dictionary<int, (int columnType, double W, double H)> GetColumnDimensionsForFloor(FloorInfo floor)
+        {
+            var result = new Dictionary<int, (int, double, double)>();
+            if (floor == null) return result;
+            foreach (var col in _model.Columns)
+            {
+                if (col.ColumnType == 3) { result[col.ColumnNo] = (3, 0, 0); continue; }
+                int sectionId = ResolveColumnSectionId(floor.FloorNo, col.ColumnNo);
+                if (sectionId <= 0 || !_model.ColumnDimsBySectionId.TryGetValue(sectionId, out var dim))
+                {
+                    result[col.ColumnNo] = (col.ColumnType, 0, 0);
+                    continue;
+                }
+                result[col.ColumnNo] = (col.ColumnType, dim.W, dim.H);
+            }
+            return result;
+        }
+
+        /// <summary>Bu katta bu kolon numarası için ST4'te kesit/poligon tanımı var mı (tablo hücresi dolu mu).</summary>
+        public bool HasColumnOnFloor(FloorInfo floor, ColumnAxisInfo col)
+        {
+            if (floor == null || col == null) return false;
+            if (col.ColumnType == 3)
+            {
+                int ps = ResolvePolygonPositionSectionId(floor.FloorNo, col.ColumnNo);
+                return ps > 0 && _model.PolygonColumnSectionByPositionSectionId.ContainsKey(ps);
+            }
+            int sid = ResolveColumnSectionId(floor.FloorNo, col.ColumnNo);
+            return sid > 0 && _model.ColumnDimsBySectionId.ContainsKey(sid);
+        }
+
+        /// <summary>Kolon donatı tablosu: alt kot cm = (ST4 kolon alt kotu m + bina taban kotu m)×100 (genel kota). ST4’te alt 0 = model zemin kotu; taban -5.18 ise -518 cm.</summary>
+        public Dictionary<int, (double altKotCm, double yukseklikCm, double? kirisUstAltFarkCm)> GetColumnTableExtraData(FloorInfo floor)
+        {
+            var result = new Dictionary<int, (double, double, double?)>();
+            if (floor == null) return result;
+            double floorElevM = floor.ElevationM;
+            double baseKotuM = _model.BuildingBaseKotu;
+            double defaultAltKotCm = (baseKotuM + floorElevM) * 100.0;
+            int floorIdx = _model.Floors.IndexOf(floor);
+            double defaultYukseklikCm = 0;
+            if (floorIdx >= 0 && floorIdx < _model.Floors.Count - 1)
+                defaultYukseklikCm = (_model.Floors[floorIdx + 1].ElevationM - floorElevM) * 100.0;
+
+            var factory = new GeometryFactory();
+            const double ox = 0.0, oy = 0.0;
+
+            foreach (var col in _model.Columns)
+            {
+                int sectionId = ResolveColumnSectionId(floor.FloorNo, col.ColumnNo);
+                if (col.ColumnType != 3 && (sectionId <= 0 || !_model.ColumnDimsBySectionId.ContainsKey(sectionId)) && col.ColumnId > 0 && _model.ColumnDimsBySectionId.ContainsKey(col.ColumnId))
+                    sectionId = col.ColumnId;
+                double altKotCm = defaultAltKotCm;
+                double yukseklikCm = defaultYukseklikCm;
+                if (col.ColumnType == 3)
+                {
+                    int posId = ResolvePolygonPositionSectionId(floor.FloorNo, col.ColumnNo);
+                    if (posId > 0 && _model.PolygonColumnKotMFromBinaTabaniByPositionId.TryGetValue(posId, out var pk))
+                    {
+                        altKotCm = (pk.altM + baseKotuM) * 100.0;
+                        yukseklikCm = (pk.ustM - pk.altM) * 100.0;
+                    }
+                }
+                else if (sectionId > 0 && _model.ColumnKotMFromBinaTabaniBySectionId.TryGetValue(sectionId, out var kotM))
+                {
+                    altKotCm = (kotM.altM + baseKotuM) * 100.0;
+                    yukseklikCm = (kotM.ustM - kotM.altM) * 100.0;
+                }
+
+                Geometry colPoly = GetColumnPolygonForTable(floor, col, ox, oy, factory);
+                double? kirisFark = null;
+                if (colPoly != null && !colPoly.IsEmpty)
+                {
+                    var beamsOnFloor = _model.Beams.Where(b => GetBeamFloorNo(b.BeamId) == floor.FloorNo && b.IsWallFlag != 1).ToList();
+                    double maxUst = double.MinValue;
+                    double minAlt = double.MaxValue;
+                    double floorLevelCm = (baseKotuM + floorElevM) * 100.0;
+                    foreach (var beam in beamsOnFloor)
+                    {
+                        if (!_axisService.TryIntersect(beam.FixedAxisId, beam.StartAxisId, out Point2d p1) ||
+                            !_axisService.TryIntersect(beam.FixedAxisId, beam.EndAxisId, out Point2d p2))
+                            continue;
+                        var line = factory.CreateLineString(new[] { new Coordinate(p1.X, p1.Y), new Coordinate(p2.X, p2.Y) });
+                        if (!colPoly.Intersects(line)) continue;
+                        double kotUstCm = floorLevelCm + Math.Max(beam.Point1KotCm, beam.Point2KotCm);
+                        double hCm = beam.HeightCm > 0 ? beam.HeightCm : 30.0;
+                        double kotAltCm = kotUstCm - hCm;
+                        if (kotUstCm > maxUst) maxUst = kotUstCm;
+                        if (kotAltCm < minAlt) minAlt = kotAltCm;
+                    }
+                    if (maxUst > double.MinValue && minAlt < double.MaxValue)
+                        kirisFark = maxUst - minAlt;
+                }
+                result[col.ColumnNo] = (altKotCm, yukseklikCm, kirisFark);
+            }
+            return result;
+        }
+
+        /// <summary>Kolon poligonu (tip 3 dahil), offset ile. Tablo/kiriş kesişimi için.</summary>
+        private Geometry GetColumnPolygonForTable(FloorInfo floor, ColumnAxisInfo col, double offsetX, double offsetY, GeometryFactory factory)
+        {
+            if (!_axisService.TryIntersect(col.AxisXId, col.AxisYId, out Point2d axisNode)) return null;
+            int sectionId = ResolveColumnSectionId(floor.FloorNo, col.ColumnNo);
+            int polygonSectionId = ResolvePolygonPositionSectionId(floor.FloorNo, col.ColumnNo);
+            if (col.ColumnType != 3 && (sectionId <= 0 || !_model.ColumnDimsBySectionId.ContainsKey(sectionId)) && col.ColumnId > 0 && _model.ColumnDimsBySectionId.ContainsKey(col.ColumnId))
+                sectionId = col.ColumnId;
+            double hw = 0, hh = 0;
+            if (sectionId > 0 && _model.ColumnDimsBySectionId.TryGetValue(sectionId, out var dim)) { hw = dim.W / 2.0; hh = dim.H / 2.0; }
+            var offsetLocal = col.ColumnType == 2 ? ComputeColumnOffsetCircle(col.OffsetXRaw, col.OffsetYRaw) : ComputeColumnOffset(col.OffsetXRaw, col.OffsetYRaw, hw, hh);
+            var offsetGlobal = Rotate(offsetLocal, col.AngleDeg);
+            var center = new Point2d(axisNode.X + offsetGlobal.X + offsetX, axisNode.Y + offsetGlobal.Y + offsetY);
+            Coordinate[] coords;
+            if (col.ColumnType == 3)
+            {
+                if (polygonSectionId <= 0 || !TryGetPolygonColumn(polygonSectionId, center, col.AngleDeg, out var polyPoints))
+                    return null;
+                coords = new Coordinate[polyPoints.Length + 1];
+                for (int i = 0; i < polyPoints.Length; i++)
+                    coords[i] = new Coordinate(polyPoints[i].X, polyPoints[i].Y);
+                coords[polyPoints.Length] = coords[0];
+            }
+            else if (col.ColumnType == 2)
+            {
+                double radius = Math.Max(hw, hh);
+                coords = BuildCircleRing(center, radius, col.AngleDeg, 64);
+            }
+            else
+            {
+                var rect = BuildRect(center, hw, hh, col.AngleDeg);
+                coords = new Coordinate[5];
+                for (int i = 0; i < 4; i++) coords[i] = new Coordinate(rect[i].X, rect[i].Y);
+                coords[4] = coords[0];
+            }
+            return factory.CreatePolygon(factory.CreateLinearRing(coords));
+        }
+
         /// <summary>Antet blok referansının plan üstünden yukarı mesafesi (cm).</summary>
         private const double AntetGapAbovePlanCm = 50.0;
 
@@ -86,37 +348,30 @@ namespace ST4PlanIdCiz
                         InsertBlockReferenceAt(tr, btr, antetBlockId.Value, offsetX + (firstFloorAxisExt.Xmin + firstFloorAxisExt.Xmax) * 0.5, offsetY + firstFloorAxisExt.Ymax + AntetGapAbovePlanCm);
                 }
 
-                List<List<int>> formworkGroups = GetFormworkFloorGroups();
-                for (int groupIdx = 0; groupIdx < formworkGroups.Count; groupIdx++)
+                // Benzer kat birleştirme şimdilik kapalı; açmak için GetFormworkFloorGroups() ile döngüyü gruplar üzerinden çalıştır, labelFloor = en alt kat, DrawSimilarFloorsNote ile not yaz.
+                for (int floorIdx = 0; floorIdx < _model.Floors.Count; floorIdx++)
                 {
-                    var group = formworkGroups[groupIdx];
-                    var drawFloor = _model.Floors[group[0]];
-                    int labelFloorIdx = group.OrderBy(i => _model.Floors[i].ElevationM).First();
-                    var labelFloor = _model.Floors[labelFloorIdx];
-                    double offsetX = (groupIdx + planStartIndex) * (floorWidth + floorGap);
+                    var floor = _model.Floors[floorIdx];
+                    double offsetX = (floorIdx + planStartIndex) * (floorWidth + floorGap);
                     double offsetY = 0.0;
 
-                    Geometry elemUnion = BuildFloorElementUnion(drawFloor);
+                    Geometry elemUnion = BuildFloorElementUnion(floor);
                     var floorAxisExt = GetAksSiniriEnvelope(elemUnion);
                     DrawAxes(tr, btr, offsetX, offsetY, floorAxisExt);
-                    DrawColumns(tr, btr, drawFloor, offsetX, offsetY);
-                    DrawBeamsAndWalls(tr, btr, drawFloor, offsetX, offsetY);
-                    DrawSlabs(tr, btr, drawFloor, offsetX, offsetY);
+                    DrawColumns(tr, btr, floor, offsetX, offsetY);
+                    DrawBeamsAndWalls(tr, btr, floor, offsetX, offsetY);
+                    DrawSlabs(tr, btr, floor, offsetX, offsetY);
                     DrawSlabVoids(tr, btr, elemUnion, offsetX, offsetY);
-                    DrawUnifiedLayer(tr, btr, drawFloor, offsetX, offsetY, elemUnion);
-                    DrawFloorTitle(tr, btr, labelFloor, offsetX, offsetY, floorAxisExt, isFoundationPlan: false);
-                    if (group.Count > 1)
-                        DrawSimilarFloorsNote(tr, btr, offsetX, offsetY, floorAxisExt, group.Where(i => i != labelFloorIdx).Select(i => _model.Floors[i]).ToList());
+                    DrawUnifiedLayer(tr, btr, floor, offsetX, offsetY, elemUnion);
+                    DrawFloorTitle(tr, btr, floor, offsetX, offsetY, floorAxisExt, isFoundationPlan: false);
                     if (antetBlockId.HasValue)
                         InsertBlockReferenceAt(tr, btr, antetBlockId.Value, offsetX + (floorAxisExt.Xmin + floorAxisExt.Xmax) * 0.5, offsetY + floorAxisExt.Ymax + AntetGapAbovePlanCm);
                 }
 
                 tr.Commit();
 
-                int numFormworkPlans = formworkGroups.Count;
                 ed.WriteMessage(
-                    "\nST4PLANID: {0} kalip plani ({1} kat gruplandı), akslar, kolonlar (poligon dahil), kirişler, perdeler ve döşemeler{2} ID'leriyle cizildi. (cm)",
-                    numFormworkPlans,
+                    "\nST4PLANID: {0} kat, akslar, kolonlar (poligon dahil), kirişler, perdeler ve döşemeler{1} ID'leriyle cizildi. (cm)",
                     _model.Floors.Count,
                     hasFoundations ? string.Format(", temel plani (surekli: {0}, radye: {1}, bag kirisi: {2}, tekil: {3})", _model.ContinuousFoundations.Count, _model.SlabFoundations.Count, _model.TieBeams.Count, _model.SingleFootings.Count) : "");
             }
@@ -1208,7 +1463,9 @@ namespace ST4PlanIdCiz
                 : (floor != null ? floor.FloorNo.ToString(CultureInfo.InvariantCulture) : "B");
             int pad = columnNoPadWidth < 1 ? 1 : columnNoPadWidth;
             string nameLine = "S" + storyId + columnNo.ToString("D" + pad, CultureInfo.InvariantCulture);
-            string dimLine = string.Format(CultureInfo.InvariantCulture, "({0:F0}/{1:F0})", dim.W, dim.H);
+            string dimLine = columnType == 2
+                ? "R= " + dim.W.ToString("F0", CultureInfo.InvariantCulture)
+                : string.Format(CultureInfo.InvariantCulture, "({0:F0}/{1:F0})", dim.W, dim.H);
             var vertMode = TextVerticalMode.TextBottom;
             if (columnType == 3)
             {
@@ -1217,7 +1474,7 @@ namespace ST4PlanIdCiz
                     Layer = LayerKolonIsmi,
                     Height = labelHeightCm,
                     TextStyleId = styleId,
-                    TextString = nameLine,
+                    TextString = KolonDonatiTableDrawer.NormalizeDiameterSymbol(nameLine),
                     Position = new Point3d(namePos.X, namePos.Y, 0),
                     HorizontalMode = TextHorizontalMode.TextLeft,
                     VerticalMode = vertMode,
@@ -1232,7 +1489,7 @@ namespace ST4PlanIdCiz
                 Layer = LayerKolonIsmi,
                 Height = labelHeightCm,
                 TextStyleId = styleId,
-                TextString = nameLine,
+                TextString = KolonDonatiTableDrawer.NormalizeDiameterSymbol(nameLine),
                 Position = new Point3d(namePos.X, namePos.Y, 0),
                 HorizontalMode = TextHorizontalMode.TextLeft,
                 VerticalMode = vertMode,
@@ -1245,7 +1502,7 @@ namespace ST4PlanIdCiz
                 Layer = LayerKolonIsmi,
                 Height = labelHeightCm,
                 TextStyleId = styleId,
-                TextString = dimLine,
+                TextString = KolonDonatiTableDrawer.NormalizeDiameterSymbol(dimLine),
                 Position = new Point3d(dimPos.X, dimPos.Y, 0),
                 HorizontalMode = TextHorizontalMode.TextLeft,
                 VerticalMode = vertMode,
@@ -3573,7 +3830,7 @@ namespace ST4PlanIdCiz
                 Layer = LayerDosemeIsmi,
                 Height = labelHeightCm,
                 TextStyleId = textStyleId,
-                TextString = mainLabel,
+                TextString = KolonDonatiTableDrawer.NormalizeDiameterSymbol(mainLabel),
                 Position = new Point3d(leftX, mainY, 0),
                 HorizontalMode = TextHorizontalMode.TextLeft,
                 VerticalMode = TextVerticalMode.TextBottom,
@@ -3627,7 +3884,7 @@ namespace ST4PlanIdCiz
                     Layer = LayerYukYazisi,
                     Height = subTextHeightCm,
                     TextStyleId = textStyleId,
-                    TextString = qLine,
+                    TextString = KolonDonatiTableDrawer.NormalizeDiameterSymbol(qLine),
                     Position = new Point3d(leftX, nextY, 0),
                     HorizontalMode = TextHorizontalMode.TextLeft,
                     VerticalMode = TextVerticalMode.TextBottom,
@@ -3647,7 +3904,7 @@ namespace ST4PlanIdCiz
                 Layer = LayerKotYazi,
                 Height = kotTextHeightCm,
                 TextStyleId = textStyleId,
-                TextString = topElevStr,
+                TextString = KolonDonatiTableDrawer.NormalizeDiameterSymbol(topElevStr),
                 Position = new Point3d(leftXKot, nextY, 0),
                 HorizontalMode = TextHorizontalMode.TextLeft,
                 VerticalMode = TextVerticalMode.TextBottom,
@@ -3665,7 +3922,7 @@ namespace ST4PlanIdCiz
                 Layer = LayerKotYazi,
                 Height = kotTextHeightCm,
                 TextStyleId = textStyleId,
-                TextString = bottomElevStr,
+                TextString = KolonDonatiTableDrawer.NormalizeDiameterSymbol(bottomElevStr),
                 Position = new Point3d(leftXKot, nextY, 0),
                 HorizontalMode = TextHorizontalMode.TextLeft,
                 VerticalMode = TextVerticalMode.TextBottom,
@@ -3776,7 +4033,7 @@ namespace ST4PlanIdCiz
                 Layer = LayerDosemeIsmi,
                 Height = labelHeightCm,
                 TextStyleId = textStyleId,
-                TextString = mainLabel,
+                TextString = KolonDonatiTableDrawer.NormalizeDiameterSymbol(mainLabel),
                 Position = new Point3d(leftX, mainY, 0),
                 HorizontalMode = TextHorizontalMode.TextLeft,
                 VerticalMode = TextVerticalMode.TextBottom,
@@ -3820,7 +4077,7 @@ namespace ST4PlanIdCiz
                     Layer = LayerYukYazisi,
                     Height = subTextHeightCm,
                     TextStyleId = textStyleId,
-                    TextString = qLine,
+                    TextString = KolonDonatiTableDrawer.NormalizeDiameterSymbol(qLine),
                     Position = new Point3d(leftX, nextY, 0),
                     HorizontalMode = TextHorizontalMode.TextLeft,
                     VerticalMode = TextVerticalMode.TextBottom,
@@ -3840,7 +4097,7 @@ namespace ST4PlanIdCiz
                 Layer = LayerKotYazi,
                 Height = kotTextHeightCm,
                 TextStyleId = textStyleId,
-                TextString = topElevStr,
+                TextString = KolonDonatiTableDrawer.NormalizeDiameterSymbol(topElevStr),
                 Position = new Point3d(leftXKot, nextY, 0),
                 HorizontalMode = TextHorizontalMode.TextLeft,
                 VerticalMode = TextVerticalMode.TextBottom,
@@ -3858,7 +4115,7 @@ namespace ST4PlanIdCiz
                 Layer = LayerKotYazi,
                 Height = kotTextHeightCm,
                 TextStyleId = textStyleId,
-                TextString = bottomElevStr,
+                TextString = KolonDonatiTableDrawer.NormalizeDiameterSymbol(bottomElevStr),
                 Position = new Point3d(leftXKot, nextY, 0),
                 HorizontalMode = TextHorizontalMode.TextLeft,
                 VerticalMode = TextVerticalMode.TextBottom,
@@ -3953,7 +4210,7 @@ namespace ST4PlanIdCiz
                 Layer = LayerKotYazi,
                 Height = kotTextHeightCm,
                 TextStyleId = textStyleId,
-                TextString = topElevStr,
+                TextString = KolonDonatiTableDrawer.NormalizeDiameterSymbol(topElevStr),
                 Position = new Point3d(topX, topYout, 0),
                 HorizontalMode = TextHorizontalMode.TextLeft,
                 VerticalMode = TextVerticalMode.TextBottom,
@@ -3967,7 +4224,7 @@ namespace ST4PlanIdCiz
                 Layer = LayerKotYazi,
                 Height = kotTextHeightCm,
                 TextStyleId = textStyleId,
-                TextString = bottomElevStr,
+                TextString = KolonDonatiTableDrawer.NormalizeDiameterSymbol(bottomElevStr),
                 Position = new Point3d(bottomX, bottomYout, 0),
                 HorizontalMode = TextHorizontalMode.TextLeft,
                 VerticalMode = TextVerticalMode.TextBottom,
@@ -5511,7 +5768,7 @@ namespace ST4PlanIdCiz
                 Layer = layer,
                 TextStyleId = textStyleId,
                 Height = textHeightCm,
-                TextString = labelText ?? string.Empty,
+                TextString = KolonDonatiTableDrawer.NormalizeDiameterSymbol(labelText ?? string.Empty),
                 Position = insertionPoint,
                 HorizontalMode = useMiddleCenter ? TextHorizontalMode.TextCenter : (bottomLeftAligned ? TextHorizontalMode.TextLeft : TextHorizontalMode.TextRight),
                 VerticalMode = useMiddleCenter ? TextVerticalMode.TextVerticalMid : (topAligned ? TextVerticalMode.TextTop : TextVerticalMode.TextBottom),
@@ -5531,7 +5788,7 @@ namespace ST4PlanIdCiz
                 Layer = LayerTemelIsmi,
                 TextStyleId = textStyleId,
                 Height = labelHeightCm,
-                TextString = labelText ?? string.Empty,
+                TextString = KolonDonatiTableDrawer.NormalizeDiameterSymbol(labelText ?? string.Empty),
                 Position = new Point3d(centerX, centerY, 0),
                 HorizontalMode = bottomRightAligned ? TextHorizontalMode.TextRight : (bottomLeftAligned ? TextHorizontalMode.TextLeft : TextHorizontalMode.TextCenter),
                 VerticalMode = (bottomRightAligned || bottomLeftAligned) ? TextVerticalMode.TextBottom : TextVerticalMode.TextVerticalMid,
@@ -5548,7 +5805,7 @@ namespace ST4PlanIdCiz
             {
                 Layer = layer,
                 Height = height,
-                TextString = value ?? string.Empty,
+                TextString = KolonDonatiTableDrawer.NormalizeDiameterSymbol(value ?? string.Empty),
                 Position = p,
                 HorizontalMode = TextHorizontalMode.TextCenter,
                 VerticalMode = TextVerticalMode.TextVerticalMid,

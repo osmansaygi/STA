@@ -35,6 +35,8 @@ namespace ST4AksCizCSharp
             bool skipNextSingleFootingLine = false;
             bool skipNextContinuousLine = false;
             bool skipNextSlabLine = false;
+            int pendingColSectionForKotLine = 0;
+            int pendingPolygonPositionIdForKot = 0;
             int? headerNX = null;
             int? headerNY = null;
 
@@ -240,6 +242,15 @@ namespace ST4AksCizCSharp
                 if (inColData && line.Length > 2)
                 {
                     var p = St4Text.SplitCsv(line);
+                    if (pendingColSectionForKotLine > 0)
+                    {
+                        double ustM = 0, altM = 0;
+                        if (p.Count > 6) St4Text.TryParseDouble(p[6], out ustM);
+                        if (p.Count > 7) St4Text.TryParseDouble(p[7], out altM);
+                        model.ColumnKotMFromBinaTabaniBySectionId[pendingColSectionForKotLine] = (ustM, altM);
+                        pendingColSectionForKotLine = 0;
+                        continue;
+                    }
                     if (p.Count >= 2 &&
                         St4Text.TryParseInt(p[0], out int sectionId) &&
                         St4Text.TryParseDouble(p[1], out double cw) &&
@@ -252,6 +263,7 @@ namespace ST4AksCizCSharp
                             model.ColumnDimsBySectionId[sectionId] = (cw, ch);
                         else
                             model.ColumnDimsBySectionId[sectionId] = (cw, cw);
+                        pendingColSectionForKotLine = sectionId;
                     }
                     continue;
                 }
@@ -352,12 +364,22 @@ namespace ST4AksCizCSharp
                 if (inPolygonCols && line.Length > 2)
                 {
                     var p = St4Text.SplitCsv(line);
+                    if (pendingPolygonPositionIdForKot > 0 && p.Count >= 4)
+                    {
+                        double ustM = 0, altM = 0;
+                        St4Text.TryParseDouble(p[2], out ustM);
+                        St4Text.TryParseDouble(p[3], out altM);
+                        model.PolygonColumnKotMFromBinaTabaniByPositionId[pendingPolygonPositionIdForKot] = (ustM, altM);
+                        pendingPolygonPositionIdForKot = 0;
+                        continue;
+                    }
                     if (p.Count >= 2 &&
                         St4Text.TryParseInt(p[0], out int positionSectionId) &&
                         St4Text.TryParseInt(p[1], out int polygonSectionId) &&
                         positionSectionId >= 100)
                     {
                         model.PolygonColumnSectionByPositionSectionId[positionSectionId] = polygonSectionId;
+                        pendingPolygonPositionIdForKot = positionSectionId;
                     }
                     continue;
                 }

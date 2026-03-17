@@ -23,6 +23,10 @@ namespace ST4AksCizCSharp
         /// <summary>Şu an çizimde kullanılmıyor; ileride başka kaynaktan doldurulabilir.</summary>
         public Dictionary<int, int> SlabIdToFloorNo { get; } = new Dictionary<int, int>();
         public Dictionary<int, (double W, double H)> ColumnDimsBySectionId { get; } = new Dictionary<int, (double W, double H)>();
+        /// <summary>Columns Data 2. satır: 7. sütun üst (bina tabanından m), 8. sütun alt (bina tabanından m). Kesit section id.</summary>
+        public Dictionary<int, (double ustM, double altM)> ColumnKotMFromBinaTabaniBySectionId { get; } = new Dictionary<int, (double, double)>();
+        /// <summary>Polygon columns: konum satırından sonraki satırda 3. sütun üst kot (m), 4. sütun alt kot (m). Anahtar positionSectionId (105,205,305).</summary>
+        public Dictionary<int, (double ustM, double altM)> PolygonColumnKotMFromBinaTabaniByPositionId { get; } = new Dictionary<int, (double, double)>();
         public Dictionary<int, List<Point2d>> PolygonSections { get; } = new Dictionary<int, List<Point2d>>();
         public Dictionary<int, int> PolygonColumnSectionByPositionSectionId { get; } = new Dictionary<int, int>();
         public List<int> ColumnIdsFromColumnsData { get; } = new List<int>();
