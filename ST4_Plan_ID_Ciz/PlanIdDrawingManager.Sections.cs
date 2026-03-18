@@ -59,6 +59,8 @@ namespace ST4PlanIdCiz
         private const double KesitOlcuAaDimLineOffsetCm = 20.0;
         /// <summary>B-B: ölçü çizgisi referans kenarının bu kadar altında (cm).</summary>
         private const double KesitOlcuBbDimLineBelowRefCm = 20.0;
+        /// <summary>B-B: en alttaki kiriş/hatıl ölçüsü kesit dışına taşmasın diye referansın üstünde (cm).</summary>
+        private const double KesitOlcuBbDimLineAboveRefCm = 20.0;
         /// <summary>Toplam + kesişim çift ölçü çizgileri arası (cm).</summary>
         private const double KesitOlcuCiftOlcuAraligiCm = 20.0;
         private const double KesitOlcuKesisimMinCm = 5.0;
@@ -1646,6 +1648,34 @@ namespace ST4PlanIdCiz
             return (true, bestLo, bestHi);
         }
 
+        /// <summary>B-B en alt kiriş/hatıl: dayanak üst zincir kenarı; iç ölçü çizgisi mümkünse döşeme/radye bandında (kesitten geçsin).</summary>
+        private static void KesitBbEnAltOlcuYerleri(SectionSlice s, double originY, double amin,
+            IEnumerable<SectionSlice> ustOrtusenler, out double yRefUstKenar, out double yDimIcBant)
+        {
+            double b0 = Math.Min(s.A0, s.A1), b1 = Math.Max(s.A0, s.A1);
+            yRefUstKenar = originY + b1 - amin;
+            yDimIcBant = yRefUstKenar + 20.0;
+            foreach (var d in ustOrtusenler)
+            {
+                if (d == null || !KesitSliceAOverlap(s, d)) continue;
+                double d0 = Math.Min(d.A0, d.A1), d1 = Math.Max(d.A0, d.A1);
+                double lo = Math.Max(b0, d0), hi = Math.Min(b1, d1);
+                if (hi - lo >= 3.0)
+                {
+                    double yUstKisim = originY + lo + (hi - lo) * 0.78 - amin;
+                    yDimIcBant = Math.Max(yDimIcBant, yUstKisim);
+                }
+                if (d0 >= b1 - 6.0 && d1 > d0 + KesitOlcuKesisimMinCm)
+                {
+                    double yDosemeIc = originY + d0 + (d1 - d0) * 0.42 - amin;
+                    if (yDosemeIc >= yRefUstKenar - 1e-3)
+                        yDimIcBant = Math.Max(yDimIcBant, yDosemeIc);
+                }
+            }
+            if (yDimIcBant < yRefUstKenar + 20.0 - 1e-3)
+                yDimIcBant = yRefUstKenar + 20.0;
+        }
+
         /// <summary>Kesit şemasında kiriş/döşeme/temel kalınlık ölçüleri; OLCU (BEYKENT), PLAN_OLCU stili.</summary>
         private void DrawKesitSchematicDimensions(Transaction tr, BlockTableRecord btr, List<SectionSlice> slices,
             double originX, double originY, double amin, double minZ, double spanZ,
@@ -1690,15 +1720,24 @@ namespace ST4PlanIdCiz
                     }
                     var temelGovdeKesisim = slices.Where(x => x.Layer == "TEMEL (BEYKENT)" &&
                         (x.Order == SectionOrderContinuousFoundation || x.Order == SectionOrderSingleFooting || x.Order == SectionOrderSlabFoundation)).ToList();
-                    foreach (var s in slices.Where(x => x.Order == SectionOrderTieBeam || x.Order == SectionOrderHatilStrip))
+                    var hatilAaList = slices.Where(x => x.Order == SectionOrderTieBeam || x.Order == SectionOrderHatilStrip).ToList();
+                    double hatilAaEnSag = hatilAaList.Count == 0 ? double.NegativeInfinity : hatilAaList.Max(x => Math.Max(x.A0, x.A1));
+                    foreach (var s in hatilAaList)
                     {
                         double aMax = Math.Max(s.A0, s.A1);
+                        double aMin = Math.Min(s.A0, s.A1);
                         double xR = originX + (aMax - amin);
+                        double xLbeam = originX + (aMin - amin);
+                        bool olcuSol = aMax >= hatilAaEnSag - 1e-3;
+                        double xW = olcuSol ? xLbeam : xR;
+                        int st = NextStaggerAa(olcuSol ? aMin - 1e7 : aMax);
+                        double dimInner = olcuSol
+                            ? xLbeam - KesitOlcuAaDimLineOffsetCm - st * KesitOlcuStaggerCm
+                            : xR + KesitOlcuAaDimLineOffsetCm + st * KesitOlcuStaggerCm;
+                        double dimOuterOfset = olcuSol ? -KesitOlcuCiftOlcuAraligiCm : KesitOlcuCiftOlcuAraligiCm;
                         double h0 = Math.Min(s.Z0, s.Z1), h1 = Math.Max(s.Z0, s.Z1);
                         double yBot = originY + (h0 - minZ), yTop = originY + (h1 - minZ);
                         if (Math.Abs(yTop - yBot) < 2.0) { double m = (yTop + yBot) * 0.5; yBot = m - 1.0; yTop = m + 1.0; }
-                        int st = NextStaggerAa(aMax);
-                        double dimInner = xR + KesitOlcuAaDimLineOffsetCm + st * KesitOlcuStaggerCm;
                         var (okZ, ol, oh) = KesitEnBuyukZKesisim(s, temelGovdeKesisim);
                         bool stacked = false;
                         if (okZ && oh - ol >= KesitOlcuKesisimMinCm - 1e-6)
@@ -1706,22 +1745,22 @@ namespace ST4PlanIdCiz
                             if (ol <= h0 + KesitOlcuZFlushEpsCm && oh - h0 >= KesitOlcuKesisimMinCm - 1e-6 && h1 - oh >= KesitOlcuKesisimMinCm - 1e-6)
                             {
                                 double ySp = originY + (oh - minZ);
-                                AddAligned(new Point3d(xR, yBot, 0), new Point3d(xR, ySp, 0), new Point3d(dimInner, (yBot + ySp) * 0.5, 0));
-                                AddAligned(new Point3d(xR, ySp, 0), new Point3d(xR, yTop, 0), new Point3d(dimInner, (ySp + yTop) * 0.5, 0));
-                                AddAligned(new Point3d(xR, yBot, 0), new Point3d(xR, yTop, 0), new Point3d(dimInner + KesitOlcuCiftOlcuAraligiCm, (yBot + yTop) * 0.5, 0));
+                                AddAligned(new Point3d(xW, yBot, 0), new Point3d(xW, ySp, 0), new Point3d(dimInner, (yBot + ySp) * 0.5, 0));
+                                AddAligned(new Point3d(xW, ySp, 0), new Point3d(xW, yTop, 0), new Point3d(dimInner, (ySp + yTop) * 0.5, 0));
+                                AddAligned(new Point3d(xW, yBot, 0), new Point3d(xW, yTop, 0), new Point3d(dimInner + dimOuterOfset, (yBot + yTop) * 0.5, 0));
                                 stacked = true;
                             }
                             else if (oh >= h1 - KesitOlcuZFlushEpsCm && ol - h0 >= KesitOlcuKesisimMinCm - 1e-6 && h1 - ol >= KesitOlcuKesisimMinCm - 1e-6)
                             {
                                 double ySp = originY + (ol - minZ);
-                                AddAligned(new Point3d(xR, yBot, 0), new Point3d(xR, ySp, 0), new Point3d(dimInner, (yBot + ySp) * 0.5, 0));
-                                AddAligned(new Point3d(xR, ySp, 0), new Point3d(xR, yTop, 0), new Point3d(dimInner, (ySp + yTop) * 0.5, 0));
-                                AddAligned(new Point3d(xR, yBot, 0), new Point3d(xR, yTop, 0), new Point3d(dimInner + KesitOlcuCiftOlcuAraligiCm, (yBot + yTop) * 0.5, 0));
+                                AddAligned(new Point3d(xW, yBot, 0), new Point3d(xW, ySp, 0), new Point3d(dimInner, (yBot + ySp) * 0.5, 0));
+                                AddAligned(new Point3d(xW, ySp, 0), new Point3d(xW, yTop, 0), new Point3d(dimInner, (ySp + yTop) * 0.5, 0));
+                                AddAligned(new Point3d(xW, yBot, 0), new Point3d(xW, yTop, 0), new Point3d(dimInner + dimOuterOfset, (yBot + yTop) * 0.5, 0));
                                 stacked = true;
                             }
                         }
                         if (!stacked)
-                            AddAligned(new Point3d(xR, yBot, 0), new Point3d(xR, yTop, 0), new Point3d(dimInner, (yBot + yTop) * 0.5, 0));
+                            AddAligned(new Point3d(xW, yBot, 0), new Point3d(xW, yTop, 0), new Point3d(dimInner, (yBot + yTop) * 0.5, 0));
                     }
                     int radyeIx = 0;
                     foreach (var s in slices.Where(x => x.Order == SectionOrderSlabFoundation))
@@ -1740,15 +1779,24 @@ namespace ST4PlanIdCiz
                 else
                 {
                     var dosemeKirisKesisim = slices.Where(x => x.Layer == LayerDoseme).ToList();
-                    foreach (var s in slices.Where(x => x.Layer == LayerKiris))
+                    var kirisAaList = slices.Where(x => x.Layer == LayerKiris).ToList();
+                    double kirisAaEnSag = kirisAaList.Count == 0 ? double.NegativeInfinity : kirisAaList.Max(x => Math.Max(x.A0, x.A1));
+                    foreach (var s in kirisAaList)
                     {
                         double aMax = Math.Max(s.A0, s.A1);
+                        double aMin = Math.Min(s.A0, s.A1);
                         double xR = originX + (aMax - amin);
+                        double xLbeam = originX + (aMin - amin);
+                        bool olcuSol = aMax >= kirisAaEnSag - 1e-3;
+                        double xW = olcuSol ? xLbeam : xR;
+                        int st = NextStaggerAa(olcuSol ? aMin - 1e7 : aMax);
+                        double dimInner = olcuSol
+                            ? xLbeam - KesitOlcuAaDimLineOffsetCm - st * KesitOlcuStaggerCm
+                            : xR + KesitOlcuAaDimLineOffsetCm + st * KesitOlcuStaggerCm;
+                        double dimOuterOfset = olcuSol ? -KesitOlcuCiftOlcuAraligiCm : KesitOlcuCiftOlcuAraligiCm;
                         double Zb = Math.Min(s.Z0, s.Z1), Zt = Math.Max(s.Z0, s.Z1);
                         double yBot = originY + (Zb - minZ), yTop = originY + (Zt - minZ);
                         if (Math.Abs(yTop - yBot) < 2.0) { double m = (yTop + yBot) * 0.5; yBot = m - 1.0; yTop = m + 1.0; }
-                        int st = NextStaggerAa(aMax);
-                        double dimInner = xR + KesitOlcuAaDimLineOffsetCm + st * KesitOlcuStaggerCm;
                         SectionSlice bestD = null;
                         double bestA = 0;
                         double s0 = Math.Min(s.A0, s.A1), s1 = Math.Max(s.A0, s.A1);
@@ -1769,14 +1817,14 @@ namespace ST4PlanIdCiz
                             {
                                 double zSp = Zt - d1;
                                 double ySp = originY + (zSp - minZ);
-                                AddAligned(new Point3d(xR, yTop, 0), new Point3d(xR, ySp, 0), new Point3d(dimInner, (yTop + ySp) * 0.5, 0));
-                                AddAligned(new Point3d(xR, ySp, 0), new Point3d(xR, yBot, 0), new Point3d(dimInner, (ySp + yBot) * 0.5, 0));
-                                AddAligned(new Point3d(xR, yTop, 0), new Point3d(xR, yBot, 0), new Point3d(dimInner + KesitOlcuCiftOlcuAraligiCm, (yTop + yBot) * 0.5, 0));
+                                AddAligned(new Point3d(xW, yTop, 0), new Point3d(xW, ySp, 0), new Point3d(dimInner, (yTop + ySp) * 0.5, 0));
+                                AddAligned(new Point3d(xW, ySp, 0), new Point3d(xW, yBot, 0), new Point3d(dimInner, (ySp + yBot) * 0.5, 0));
+                                AddAligned(new Point3d(xW, yTop, 0), new Point3d(xW, yBot, 0), new Point3d(dimInner + dimOuterOfset, (yTop + yBot) * 0.5, 0));
                                 stacked = true;
                             }
                         }
                         if (!stacked)
-                            AddAligned(new Point3d(xR, yBot, 0), new Point3d(xR, yTop, 0), new Point3d(dimInner, (yBot + yTop) * 0.5, 0));
+                            AddAligned(new Point3d(xW, yBot, 0), new Point3d(xW, yTop, 0), new Point3d(dimInner, (yBot + yTop) * 0.5, 0));
                     }
                     foreach (var s in slices.Where(x => x.Layer == LayerDoseme))
                     {
@@ -1823,12 +1871,27 @@ namespace ST4PlanIdCiz
                     }
                     var temelGovdeBb = slices.Where(x => x.Layer == "TEMEL (BEYKENT)" &&
                         (x.Order == SectionOrderContinuousFoundation || x.Order == SectionOrderSingleFooting || x.Order == SectionOrderSlabFoundation)).ToList();
-                    foreach (var s in slices.Where(x => x.Order == SectionOrderTieBeam || x.Order == SectionOrderHatilStrip))
+                    var hatilBbList = slices.Where(x => x.Order == SectionOrderTieBeam || x.Order == SectionOrderHatilStrip).ToList();
+                    double hatilBbEnAltZincir = hatilBbList.Count == 0 ? double.PositiveInfinity : hatilBbList.Min(x => Math.Min(x.A0, x.A1));
+                    foreach (var s in hatilBbList)
                     {
                         KotXR(s, out double xL, out double xR);
-                        double yRef = originY + Math.Min(s.A0, s.A1) - amin;
-                        int st = NextStaggerBb(yRef);
-                        double yDimInner = yRef - KesitOlcuBbDimLineBelowRefCm - st * KesitOlcuStaggerCm;
+                        bool olcuUst = Math.Min(s.A0, s.A1) <= hatilBbEnAltZincir + 1e-3;
+                        double yRef, yDimInner, yDimDis;
+                        if (olcuUst)
+                        {
+                            KesitBbEnAltOlcuYerleri(s, originY, amin, temelGovdeBb.Where(x => x.Order == SectionOrderSlabFoundation), out yRef, out double yIc);
+                            int st = NextStaggerBb(yRef + 1e7);
+                            yDimInner = yIc + st * (KesitOlcuStaggerCm * 0.35);
+                            yDimDis = yDimInner + KesitOlcuCiftOlcuAraligiCm;
+                        }
+                        else
+                        {
+                            yRef = originY + Math.Min(s.A0, s.A1) - amin;
+                            int st = NextStaggerBb(yRef);
+                            yDimInner = yRef - KesitOlcuBbDimLineBelowRefCm - st * KesitOlcuStaggerCm;
+                            yDimDis = yDimInner - KesitOlcuCiftOlcuAraligiCm;
+                        }
                         double bestLen = 0, bestIl = xL, bestIr = xR;
                         foreach (var t in temelGovdeBb)
                         {
@@ -1845,14 +1908,22 @@ namespace ST4PlanIdCiz
                             {
                                 AddAligned(new Point3d(xL, yRef, 0), new Point3d(bestIr, yRef, 0), new Point3d((xL + bestIr) * 0.5, yDimInner, 0));
                                 AddAligned(new Point3d(bestIr, yRef, 0), new Point3d(xR, yRef, 0), new Point3d((bestIr + xR) * 0.5, yDimInner, 0));
-                                AddAligned(new Point3d(xL, yRef, 0), new Point3d(xR, yRef, 0), new Point3d((xL + xR) * 0.5, yDimInner - KesitOlcuCiftOlcuAraligiCm, 0));
+                                AddAligned(new Point3d(xL, yRef, 0), new Point3d(xR, yRef, 0), new Point3d((xL + xR) * 0.5, yDimDis, 0));
                                 stacked = true;
                             }
                             else if (bestIr >= xR - eps && bestIl - xL >= KesitOlcuKesisimMinCm - 1e-6 && xR - bestIl >= KesitOlcuKesisimMinCm - 1e-6)
                             {
-                                AddAligned(new Point3d(bestIl, yRef, 0), new Point3d(xR, yRef, 0), new Point3d((bestIl + xR) * 0.5, yDimInner, 0));
-                                AddAligned(new Point3d(xL, yRef, 0), new Point3d(bestIl, yRef, 0), new Point3d((xL + bestIl) * 0.5, yDimInner, 0));
-                                AddAligned(new Point3d(xL, yRef, 0), new Point3d(xR, yRef, 0), new Point3d((xL + xR) * 0.5, yDimInner - KesitOlcuCiftOlcuAraligiCm, 0));
+                                if (xR - bestIl <= bestIl - xL + 1e-3)
+                                {
+                                    AddAligned(new Point3d(bestIl, yRef, 0), new Point3d(xR, yRef, 0), new Point3d((bestIl + xR) * 0.5, yDimInner, 0));
+                                    AddAligned(new Point3d(xL, yRef, 0), new Point3d(bestIl, yRef, 0), new Point3d((xL + bestIl) * 0.5, yDimInner, 0));
+                                }
+                                else
+                                {
+                                    AddAligned(new Point3d(xL, yRef, 0), new Point3d(bestIl, yRef, 0), new Point3d((xL + bestIl) * 0.5, yDimInner, 0));
+                                    AddAligned(new Point3d(bestIl, yRef, 0), new Point3d(xR, yRef, 0), new Point3d((bestIl + xR) * 0.5, yDimInner, 0));
+                                }
+                                AddAligned(new Point3d(xL, yRef, 0), new Point3d(xR, yRef, 0), new Point3d((xL + xR) * 0.5, yDimDis, 0));
                                 stacked = true;
                             }
                         }
@@ -1873,16 +1944,32 @@ namespace ST4PlanIdCiz
                 }
                 else
                 {
-                    foreach (var s in slices.Where(x => x.Layer == LayerKiris))
+                    var kirisBbList = slices.Where(x => x.Layer == LayerKiris).ToList();
+                    var dosemeBbAll = slices.Where(x => x.Layer == LayerDoseme).ToList();
+                    double kirisBbEnAltZincir = kirisBbList.Count == 0 ? double.PositiveInfinity : kirisBbList.Min(x => Math.Min(x.A0, x.A1));
+                    foreach (var s in kirisBbList)
                     {
                         KotXR(s, out double xL, out double xR);
-                        double yRef = originY + Math.Min(s.A0, s.A1) - amin;
-                        int st = NextStaggerBb(yRef);
-                        double yDimInner = yRef - KesitOlcuBbDimLineBelowRefCm - st * KesitOlcuStaggerCm;
+                        bool olcuUst = Math.Min(s.A0, s.A1) <= kirisBbEnAltZincir + 1e-3;
+                        double yRef, yDimInner, yDimDis;
+                        if (olcuUst)
+                        {
+                            KesitBbEnAltOlcuYerleri(s, originY, amin, dosemeBbAll, out yRef, out double yIc);
+                            int st = NextStaggerBb(yRef + 1e7);
+                            yDimInner = yIc + st * (KesitOlcuStaggerCm * 0.35);
+                            yDimDis = yDimInner + KesitOlcuCiftOlcuAraligiCm;
+                        }
+                        else
+                        {
+                            yRef = originY + Math.Min(s.A0, s.A1) - amin;
+                            int st = NextStaggerBb(yRef);
+                            yDimInner = yRef - KesitOlcuBbDimLineBelowRefCm - st * KesitOlcuStaggerCm;
+                            yDimDis = yDimInner - KesitOlcuCiftOlcuAraligiCm;
+                        }
                         SectionSlice bestD = null;
                         double bestA = 0;
                         double s0 = Math.Min(s.A0, s.A1), s1 = Math.Max(s.A0, s.A1);
-                        foreach (var d in slices.Where(x => x.Layer == LayerDoseme))
+                        foreach (var d in dosemeBbAll)
                         {
                             if (!KesitSliceAOverlap(s, d)) continue;
                             double d0 = Math.Min(d.A0, d.A1), d1a = Math.Max(d.A0, d.A1);
@@ -1893,23 +1980,43 @@ namespace ST4PlanIdCiz
                         if (bestD != null)
                         {
                             KotXR(bestD, out double xdL, out double xdR);
-                            double slabW = Math.Abs(xdR - xdL);
-                            double d1r = Math.Min(slabW, xR - Math.Max(xL, xdL));
-                            double d1l = Math.Min(slabW, Math.Min(xR, xdR) - xL);
-                            if (d1r >= KesitOlcuKesisimMinCm - 1e-6 && xR - d1r - xL >= KesitOlcuKesisimMinCm - 1e-6)
+                            double sxa = Math.Min(xdL, xdR), sxb = Math.Max(xdL, xdR);
+                            double il = Math.Max(xL, sxa), ir = Math.Min(xR, sxb);
+                            double ov = ir - il;
+                            double slabW = sxb - sxa;
+                            double d1r = Math.Min(slabW, xR - Math.Max(xL, sxa));
+                            double d1l = Math.Min(slabW, Math.Min(xR, sxb) - xL);
+                            void IcDisIkiParca(double xSp)
                             {
-                                double xSp = xR - d1r;
-                                AddAligned(new Point3d(xSp, yRef, 0), new Point3d(xR, yRef, 0), new Point3d((xSp + xR) * 0.5, yDimInner, 0));
                                 AddAligned(new Point3d(xL, yRef, 0), new Point3d(xSp, yRef, 0), new Point3d((xL + xSp) * 0.5, yDimInner, 0));
-                                AddAligned(new Point3d(xL, yRef, 0), new Point3d(xR, yRef, 0), new Point3d((xL + xR) * 0.5, yDimInner - KesitOlcuCiftOlcuAraligiCm, 0));
+                                AddAligned(new Point3d(xSp, yRef, 0), new Point3d(xR, yRef, 0), new Point3d((xSp + xR) * 0.5, yDimInner, 0));
+                                AddAligned(new Point3d(xL, yRef, 0), new Point3d(xR, yRef, 0), new Point3d((xL + xR) * 0.5, yDimDis, 0));
+                            }
+                            // Döşeme solda: kısa solda (20) + uzun sağda (40), döşeme sağ kenarı = ir
+                            if (ov >= KesitOlcuKesisimMinCm - 1e-6 && il <= xL + KesitOlcuZFlushEpsCm && xR - ir >= KesitOlcuKesisimMinCm - 1e-6)
+                            {
+                                IcDisIkiParca(ir);
                                 stacked = true;
                             }
-                            else if (!stacked && d1l >= KesitOlcuKesisimMinCm - 1e-6 && xL + d1l < xR - KesitOlcuKesisimMinCm + 1e-6)
+                            else if (d1l >= KesitOlcuKesisimMinCm - 1e-6 && xL + d1l < xR - KesitOlcuKesisimMinCm + 1e-6)
                             {
-                                double xSp = xL + d1l;
-                                AddAligned(new Point3d(xL, yRef, 0), new Point3d(xSp, yRef, 0), new Point3d((xL + xSp) * 0.5, yDimInner, 0));
-                                AddAligned(new Point3d(xSp, yRef, 0), new Point3d(xR, yRef, 0), new Point3d((xSp + xR) * 0.5, yDimInner, 0));
-                                AddAligned(new Point3d(xL, yRef, 0), new Point3d(xR, yRef, 0), new Point3d((xL + xR) * 0.5, yDimInner - KesitOlcuCiftOlcuAraligiCm, 0));
+                                IcDisIkiParca(xL + d1l);
+                                stacked = true;
+                            }
+                            else if (d1r >= KesitOlcuKesisimMinCm - 1e-6 && xR - d1r - xL >= KesitOlcuKesisimMinCm - 1e-6)
+                            {
+                                double xSp = xR - d1r;
+                                if (ov >= KesitOlcuKesisimMinCm - 1e-6 && ir >= xR - KesitOlcuZFlushEpsCm && il - xL >= KesitOlcuKesisimMinCm - 1e-6)
+                                {
+                                    AddAligned(new Point3d(il, yRef, 0), new Point3d(xR, yRef, 0), new Point3d((il + xR) * 0.5, yDimInner, 0));
+                                    AddAligned(new Point3d(xL, yRef, 0), new Point3d(il, yRef, 0), new Point3d((xL + il) * 0.5, yDimInner, 0));
+                                }
+                                else
+                                {
+                                    AddAligned(new Point3d(xSp, yRef, 0), new Point3d(xR, yRef, 0), new Point3d((xSp + xR) * 0.5, yDimInner, 0));
+                                    AddAligned(new Point3d(xL, yRef, 0), new Point3d(xSp, yRef, 0), new Point3d((xL + xSp) * 0.5, yDimInner, 0));
+                                }
+                                AddAligned(new Point3d(xL, yRef, 0), new Point3d(xR, yRef, 0), new Point3d((xL + xR) * 0.5, yDimDis, 0));
                                 stacked = true;
                             }
                         }
