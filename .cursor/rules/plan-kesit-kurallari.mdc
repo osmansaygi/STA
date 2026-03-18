@@ -1,0 +1,17 @@
+---
+description: ST4PLANID plan kesit çizgileri ve kesit kutusu kuralları
+alwaysApply: false
+---
+
+# Plan kesit kuralları
+
+- **Kesit 1-1 (üst):** Her zaman **yatay** kesit çizgisinin profili; kutu **planların üstünde**, plandaki yatay hatta göre X hizalı.
+- **Kesit 2-2 (sol):** Her zaman **dikey** kesit çizgisinin profili; kutu **planların solunda**, dikey hatta göre Y hizalı. Üst/sol kutular aks etiketlerinden **≥100 cm** uzak.
+- **Şerit:** Kesitte hangi elemanların sayılacağı için planda ~**50 cm** tampon.
+- **Etiket:** 1-1 / 2-2 yazısı kesit çizgisinden **360 cm**, mümkünse **içeri** (aks etiketlerinden kaçınmak için).
+- **Kesit kutusu:** Şeritte kesişen **kolon, kiriş, perde, döşeme** (kalıp); temel planında ayrıca **sürekli temel, radye, bağ kirişi, temel hatılı/tie, tekil temel** vb. ST4 kotlarıyla şematik gösterilir.
+- **Paralel aks:** Kesit şeridi bu elemanların içinden geçerken kesit hattı, elemanın **sabit aks uzanımına paralel olmamalı** (boyuna kesme cezası).
+- **Sol kutu:** Zincir ekseninde Y aynası yok; **kot ekseninde (X) simetri**.
+- **Uzun bölge:** En uzun dolu band **tercih**, zorunlu değil.
+
+Antet, üst kesit kutusunun üstünde konumlanır.

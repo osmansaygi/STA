@@ -19,7 +19,7 @@ namespace ST4PlanIdCiz
     /// Akslar, kolonlar (dikdörtgen + daire + poligon), kirişler, perdeler ve döşemeleri
     /// tüm eleman ID'leriyle çizer; katlar yan yana dizilir.
     /// </summary>
-    public sealed class PlanIdDrawingManager
+    public sealed partial class PlanIdDrawingManager
     {
         private readonly St4Model _model;
         private readonly AxisGeometryService _axisService;
@@ -298,9 +298,6 @@ namespace ST4PlanIdCiz
             return factory.CreatePolygon(factory.CreateLinearRing(coords));
         }
 
-        /// <summary>Antet blok referansının plan üstünden yukarı mesafesi (cm).</summary>
-        private const double AntetGapAbovePlanCm = 50.0;
-
         public void Draw(Database db, Editor ed)
         {
             using (var tr = db.TransactionManager.StartTransaction())
@@ -315,13 +312,6 @@ namespace ST4PlanIdCiz
 
                 bool hasFoundations = _model.ContinuousFoundations.Count > 0 || _model.SlabFoundations.Count > 0 || _model.TieBeams.Count > 0 || _model.SingleFootings.Count > 0;
                 int planStartIndex = hasFoundations ? 1 : 0;
-
-                string antetPath = GetAntetDxfPath();
-                ObjectId? antetBlockId = null;
-                if (!string.IsNullOrEmpty(antetPath) && File.Exists(antetPath))
-                    antetBlockId = LoadExternalDrawingAsBlock(tr, db, antetPath);
-                else if (!string.IsNullOrEmpty(antetPath))
-                    ed.WriteMessage("\nST4PLANID: Antet dosyasi bulunamadi: {0}", antetPath);
 
                 if (hasFoundations && _model.Floors.Count > 0)
                 {
@@ -344,8 +334,7 @@ namespace ST4PlanIdCiz
                     DrawSingleFootings(tr, btr, firstFloor, offsetX, offsetY, drawTemelOutline: false);
                     DrawPerdeLabelsForFloor(tr, btr, firstFloor, offsetX, offsetY, kolonPerdeUnion);
                     DrawFloorTitle(tr, btr, firstFloor, offsetX, offsetY, firstFloorAxisExt, isFoundationPlan: true);
-                    if (antetBlockId.HasValue)
-                        InsertBlockReferenceAt(tr, btr, antetBlockId.Value, offsetX + (firstFloorAxisExt.Xmin + firstFloorAxisExt.Xmax) * 0.5, offsetY + firstFloorAxisExt.Ymax + AntetGapAbovePlanCm);
+                    DrawPlanSections(tr, btr, db, firstFloor, offsetX, offsetY, firstFloorAxisExt, isFoundationPlan: true);
                 }
 
                 // Benzer kat birleştirme şimdilik kapalı; açmak için GetFormworkFloorGroups() ile döngüyü gruplar üzerinden çalıştır, labelFloor = en alt kat, DrawSimilarFloorsNote ile not yaz.
@@ -364,8 +353,7 @@ namespace ST4PlanIdCiz
                     DrawSlabVoids(tr, btr, elemUnion, offsetX, offsetY);
                     DrawUnifiedLayer(tr, btr, floor, offsetX, offsetY, elemUnion);
                     DrawFloorTitle(tr, btr, floor, offsetX, offsetY, floorAxisExt, isFoundationPlan: false);
-                    if (antetBlockId.HasValue)
-                        InsertBlockReferenceAt(tr, btr, antetBlockId.Value, offsetX + (floorAxisExt.Xmin + floorAxisExt.Xmax) * 0.5, offsetY + floorAxisExt.Ymax + AntetGapAbovePlanCm);
+                    DrawPlanSections(tr, btr, db, floor, offsetX, offsetY, floorAxisExt, isFoundationPlan: false);
                 }
 
                 tr.Commit();
@@ -375,54 +363,6 @@ namespace ST4PlanIdCiz
                     _model.Floors.Count,
                     hasFoundations ? string.Format(", temel plani (surekli: {0}, radye: {1}, bag kirisi: {2}, tekil: {3})", _model.ContinuousFoundations.Count, _model.SlabFoundations.Count, _model.TieBeams.Count, _model.SingleFootings.Count) : "");
             }
-        }
-
-        /// <summary>Antet DXF dosyasının yolu: DLL ile aynı klasörde antet_01.dxf.</summary>
-        private static string GetAntetDxfPath()
-        {
-            try
-            {
-                string dir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-                return string.IsNullOrEmpty(dir) ? "antet_01.dxf" : Path.Combine(dir, "antet_01.dxf");
-            }
-            catch { return "antet_01.dxf"; }
-        }
-
-        /// <summary>DXF/DWG dosyasını çizime blok tanımı olarak yükler; blok referansı oluşturmaz. Dönüş: blok ObjectId veya null.</summary>
-        private static ObjectId? LoadExternalDrawingAsBlock(Transaction tr, Database destDb, string filePath)
-        {
-            Database sourceDb = null;
-            try
-            {
-                sourceDb = new Database(false, true);
-                sourceDb.ReadDwgFile(filePath, FileOpenMode.OpenForReadAndAllShare, true, null);
-                var bt = (BlockTable)tr.GetObject(destDb.BlockTableId, OpenMode.ForRead);
-                string baseName = Path.GetFileNameWithoutExtension(filePath);
-                if (string.IsNullOrEmpty(baseName)) baseName = "INSERTED";
-                string blockName = baseName;
-                int suffix = 0;
-                while (bt.Has(blockName))
-                    blockName = baseName + "_" + (++suffix);
-                ObjectId blockId = destDb.Insert(blockName, sourceDb, true);
-                return blockId;
-            }
-            catch (System.Exception ex)
-            {
-                Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument?.Editor.WriteMessage("\nST4PLANID antet yukleme hatasi: {0}", ex.Message);
-                return null;
-            }
-            finally
-            {
-                sourceDb?.Dispose();
-            }
-        }
-
-        /// <summary>Verilen blok tanımını model uzayında (x,y) noktasına bir blok referansı olarak ekler.</summary>
-        private static void InsertBlockReferenceAt(Transaction tr, BlockTableRecord btr, ObjectId blockId, double x, double y)
-        {
-            var br = new BlockReference(new Point3d(x, y, 0), blockId);
-            btr.AppendEntity(br);
-            tr.AddNewlyCreatedDBObject(br, true);
         }
 
         private const string LayerAks = "AKS CIZGISI (BEYKENT)";
@@ -451,6 +391,9 @@ namespace ST4PlanIdCiz
         private const string LayerKotCizgisi = "KOT CIZGISI (BEYKENT)";
         private const string LayerTemelHatiliIsmi = "TEMEL HATILI ISMI (BEYKENT)";
         private const string LayerTemelIsmi = "TEMEL ISMI (BEYKENT)";
+        private const string LayerKesit = "KESIT (BEYKENT)";
+        private const string LayerKesitIsmi = "KESIT ISMI (BEYKENT)";
+        private const string YaziBeykentTextStyleName = "YAZI (BEYKENT)";
         /// <summary>Kiriş etiket çizim boyutları (resimdeki gibi): 70cm x 14cm referans (13 karakter). Genişlik = RefWidth * metin uzunluğu / RefCharCount.</summary>
         private const double BeamLabelRefWidthCm = 70.0;
         private const double BeamLabelRefHeightCm = 12.0;
@@ -493,6 +436,8 @@ namespace ST4PlanIdCiz
             EnsurePlanLayer(tr, db, LayerKotCizgisi, 7, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, "KIRIS UZATMA ISARET (BEYKENT)", 1, LineWeight.LineWeight025, useDashed: false);
             EnsurePlanLayer(tr, db, "KIRIS UZATMA ISARET MAVI (BEYKENT)", 5, LineWeight.LineWeight025, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerKesit, 151, LineWeight.LineWeight060, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerKesitIsmi, 6, LineWeight.LineWeight020, useDashed: false);
         }
 
         private static void EnsureDashedLinetype(Transaction tr, Database db)
@@ -533,7 +478,10 @@ namespace ST4PlanIdCiz
                 tr.AddNewlyCreatedDBObject(rec, true);
             }
             else
+            {
                 rec.Color = Color.FromColorIndex(ColorMethod.ByAci, (short)colorIndex);
+                rec.LineWeight = lineWeight;
+            }
             if (useDashed)
             {
                 var ltt = (LinetypeTable)tr.GetObject(db.LinetypeTableId, OpenMode.ForRead);
@@ -1024,8 +972,9 @@ namespace ST4PlanIdCiz
         private void DrawAxes(Transaction tr, BlockTableRecord btr, double offsetX, double offsetY,
             (double Xmin, double Xmax, double Ymin, double Ymax) ext)
         {
-            const double axisBalonRadiusCm = 25.0;   // çap 50 cm
-            const double axisLabelHeightCm = 25.0;
+            Database db = btr.Database;
+            const double axisBalonRadiusCm = 20.0;   // çap 40 cm
+            const double axisLabelHeightCm = 20.0;
 
             const double dimOffsetFromBalonCm = 55.0;  // ölçü çizgisi aks balonundan 55 cm (içeri doğru)
             const double dimRowGapCm = 20.0;           // iki aks ölçü sırası arasında 20 cm
@@ -1061,17 +1010,19 @@ namespace ST4PlanIdCiz
                 bool inclinedX = Math.Abs(ax.Slope) > 1e-9;
                 if (!inclinedX)
                 {
-                    string xLabel = (i + 1).ToString(CultureInfo.InvariantCulture);
+                    string xLabel = (_model.GprAxisXLabelByRow.TryGetValue(i + 1, out var gx) && !string.IsNullOrWhiteSpace(gx))
+                        ? gx.Trim()
+                        : (i + 1).ToString(CultureInfo.InvariantCulture);
                     Point3d centerTop = AxisBalonCenterAtEnd(q2, q1, axisBalonRadiusCm);
                     Point3d centerBot = AxisBalonCenterAtEnd(q1, q2, axisBalonRadiusCm);
                     xAxisTopPositions.Add(centerTop);
                     xAxisBottomPositions.Add(centerBot);
                     var circleTop = new Circle(centerTop, Vector3d.ZAxis, axisBalonRadiusCm) { Layer = LayerAksBalonu };
                     AppendEntity(tr, btr, circleTop);
-                    AppendEntity(tr, btr, MakeCenteredText(LayerAksYazisi, axisLabelHeightCm, xLabel, centerTop));
+                    AppendEntity(tr, btr, MakeCenteredAxisLabelText(tr, db, axisLabelHeightCm, xLabel, centerTop));
                     var circleBot = new Circle(centerBot, Vector3d.ZAxis, axisBalonRadiusCm) { Layer = LayerAksBalonu };
                     AppendEntity(tr, btr, circleBot);
-                    AppendEntity(tr, btr, MakeCenteredText(LayerAksYazisi, axisLabelHeightCm, xLabel, centerBot));
+                    AppendEntity(tr, btr, MakeCenteredAxisLabelText(tr, db, axisLabelHeightCm, xLabel, centerBot));
                 }
             }
 
@@ -1090,26 +1041,85 @@ namespace ST4PlanIdCiz
                 bool inclinedY = Math.Abs(ay.Slope) > 1e-9;
                 if (!inclinedY)
                 {
-                    string yLabel = j < 26 ? ((char)('A' + j)).ToString() : "A" + (j - 25).ToString(CultureInfo.InvariantCulture);
+                    string yLabel = (_model.GprAxisYLabelByRow.TryGetValue(j + 1, out var gy) && !string.IsNullOrWhiteSpace(gy))
+                        ? gy.Trim()
+                        : (j < 26 ? ((char)('A' + j)).ToString() : "A" + (j - 25).ToString(CultureInfo.InvariantCulture));
                     Point3d centerRight = AxisBalonCenterAtEnd(q2, q1, axisBalonRadiusCm);
                     Point3d centerLeft = AxisBalonCenterAtEnd(q1, q2, axisBalonRadiusCm);
                     yAxisLeftPositions.Add(centerLeft);
                     yAxisRightPositions.Add(centerRight);
                     var circleRight = new Circle(centerRight, Vector3d.ZAxis, axisBalonRadiusCm) { Layer = LayerAksBalonu };
                     AppendEntity(tr, btr, circleRight);
-                    AppendEntity(tr, btr, MakeCenteredText(LayerAksYazisi, axisLabelHeightCm, yLabel, centerRight));
+                    AppendEntity(tr, btr, MakeCenteredAxisLabelText(tr, db, axisLabelHeightCm, yLabel, centerRight));
                     var circleLeft = new Circle(centerLeft, Vector3d.ZAxis, axisBalonRadiusCm) { Layer = LayerAksBalonu };
                     AppendEntity(tr, btr, circleLeft);
-                    AppendEntity(tr, btr, MakeCenteredText(LayerAksYazisi, axisLabelHeightCm, yLabel, centerLeft));
+                    AppendEntity(tr, btr, MakeCenteredAxisLabelText(tr, db, axisLabelHeightCm, yLabel, centerLeft));
                 }
             }
 
-            Database db = btr.Database;
             ObjectId aksOlcuDimStyleId = GetOrCreateAksOlcuDimStyle(tr, db, dimTextHeightCm);
             if (xAxisTopPositions.Count >= 2)
                 DrawAxisDimensionsXFourSides(tr, btr, xAxisTopPositions, xAxisBottomPositions, dimOffsetFromBalonCm, dimRowGapCm, aksOlcuDimStyleId);
             if (yAxisLeftPositions.Count >= 2)
                 DrawAxisDimensionsYFourSides(tr, btr, yAxisLeftPositions, yAxisRightPositions, dimOffsetFromBalonCm, dimRowGapCm, aksOlcuDimStyleId);
+        }
+
+        /// <summary>Kesit çizgisini aks balon merkezlerine uzatmak için sınır X/Y (world cm) + balon merkez listeleri.</summary>
+        private void GetSectionCutBalloonExtents(double offsetX, double offsetY, (double Xmin, double Xmax, double Ymin, double Ymax) ext,
+            out double xLeftBalloon, out double xRightBalloon, out double yBottomBalloon, out double yTopBalloon,
+            out List<Point3d> xBotBalloons, out List<Point3d> xTopBalloons, out List<Point3d> yLeftBalloons, out List<Point3d> yRightBalloons)
+        {
+            const double axisBalonRadiusCm = 20.0;
+            double extCm = AxisExtensionBeyondBoundaryCm;
+            double xLo = ext.Xmin + offsetX - extCm;
+            double xHi = ext.Xmax + offsetX + extCm;
+            double yLo = ext.Ymin + offsetY - extCm;
+            double yHi = ext.Ymax + offsetY + extCm;
+            var xKolonAks = BuildColumnAxisIds(c => c.AxisXId, _model.AxisX.Select(a => a.Id));
+            var yKolonAks = BuildColumnAxisIds(c => c.AxisYId, _model.AxisY.Select(a => a.Id));
+            var xTopCenters = new List<Point3d>();
+            var xBotCenters = new List<Point3d>();
+            var yL = new List<Point3d>();
+            var yR = new List<Point3d>();
+            for (int i = 0; i < _model.AxisX.Count; i++)
+            {
+                var ax = _model.AxisX[i];
+                if (!xKolonAks.Contains(ax.Id)) continue;
+                double yBotE = ext.Ymin + offsetY - extCm;
+                double yTopE = ext.Ymax + offsetY + extCm;
+                double xBotE = offsetX + ax.ValueCm + ax.Slope * (ext.Ymin - extCm);
+                double xTopE = offsetX + ax.ValueCm + ax.Slope * (ext.Ymax + extCm);
+                var p1 = new Point3d(xBotE, yBotE, 0);
+                var p2 = new Point3d(xTopE, yTopE, 0);
+                if (!ClipSegmentToRectangle(p1, p2, xLo, xHi, yLo, yHi, out Point3d q1, out Point3d q2)) continue;
+                if (Math.Abs(ax.Slope) > 1e-9) continue;
+                xTopCenters.Add(AxisBalonCenterAtEnd(q2, q1, axisBalonRadiusCm));
+                xBotCenters.Add(AxisBalonCenterAtEnd(q1, q2, axisBalonRadiusCm));
+            }
+            for (int j = 0; j < _model.AxisY.Count; j++)
+            {
+                var ay = _model.AxisY[j];
+                if (!yKolonAks.Contains(ay.Id)) continue;
+                double xLeft = ext.Xmin + offsetX - extCm;
+                double xRight = ext.Xmax + offsetX + extCm;
+                double yLeft = -(ay.ValueCm + ay.Slope * (ext.Xmin - extCm)) + offsetY;
+                double yRight = -(ay.ValueCm + ay.Slope * (ext.Xmax + extCm)) + offsetY;
+                var p1 = new Point3d(xLeft, yLeft, 0);
+                var p2 = new Point3d(xRight, yRight, 0);
+                if (!ClipSegmentToRectangle(p1, p2, xLo, xHi, yLo, yHi, out Point3d q1, out Point3d q2)) continue;
+                if (Math.Abs(ay.Slope) > 1e-9) continue;
+                yL.Add(AxisBalonCenterAtEnd(q1, q2, axisBalonRadiusCm));
+                yR.Add(AxisBalonCenterAtEnd(q2, q1, axisBalonRadiusCm));
+            }
+            double pad = extCm + axisBalonRadiusCm + 40;
+            xLeftBalloon = yL.Count > 0 ? yL.Min(p => p.X) : offsetX + ext.Xmin - pad;
+            xRightBalloon = yR.Count > 0 ? yR.Max(p => p.X) : offsetX + ext.Xmax + pad;
+            yBottomBalloon = xBotCenters.Count > 0 ? xBotCenters.Min(p => p.Y) : offsetY + ext.Ymin - pad;
+            yTopBalloon = xTopCenters.Count > 0 ? xTopCenters.Max(p => p.Y) : offsetY + ext.Ymax + pad;
+            xBotBalloons = xBotCenters;
+            xTopBalloons = xTopCenters;
+            yLeftBalloons = yL;
+            yRightBalloons = yR;
         }
 
         /// <summary>X aksları için 4 tarafta (üst + alt) çift sıra ölçü; balondan içeri doğru 55 cm ve 75 cm.</summary>
@@ -1271,6 +1281,45 @@ namespace ST4PlanIdCiz
             tr.AddNewlyCreatedDBObject(rec, true);
             txtTable.DowngradeOpen();
             return id;
+        }
+
+        /// <summary>Kesit harf etiketi: çizimde "YAZI (BEYKENT)" stili kullanılır.</summary>
+        private static ObjectId GetOrCreateYaziBeykentTextStyle(Transaction tr, Database db)
+        {
+            var txtTable = (TextStyleTable)tr.GetObject(db.TextStyleTableId, OpenMode.ForRead);
+            if (txtTable.Has(YaziBeykentTextStyleName)) return txtTable[YaziBeykentTextStyleName];
+
+            var rec = new TextStyleTableRecord { Name = YaziBeykentTextStyleName };
+            try
+            {
+                rec.Font = new Autodesk.AutoCAD.GraphicsInterface.FontDescriptor("Bahnschrift Light Condensed", false, false, 0, 0);
+            }
+            catch
+            {
+                try { rec.Font = new Autodesk.AutoCAD.GraphicsInterface.FontDescriptor("Arial", false, false, 0, 0); } catch { }
+            }
+            try { rec.TextSize = 0.0; } catch { }
+            try { rec.XScale = 1.0; } catch { }
+            txtTable.UpgradeOpen();
+            ObjectId id = txtTable.Add(rec);
+            tr.AddNewlyCreatedDBObject(rec, true);
+            txtTable.DowngradeOpen();
+            return id;
+        }
+
+        private DBText MakeCenteredAxisLabelText(Transaction tr, Database db, double height, string value, Point3d p)
+        {
+            return new DBText
+            {
+                Layer = LayerAksYazisi,
+                Height = height,
+                TextStyleId = GetOrCreateElemanEtiketTextStyle(tr, db),
+                TextString = KolonDonatiTableDrawer.NormalizeDiameterSymbol(value ?? string.Empty),
+                Position = p,
+                HorizontalMode = TextHorizontalMode.TextCenter,
+                VerticalMode = TextVerticalMode.TextVerticalMid,
+                AlignmentPoint = p
+            };
         }
 
         /// <summary>Doğru parçasını dikdörtgene kırpar. Kırpılmış uçları q1, q2 olarak döndürür. Parça dikdörtgenle kesişmiyorsa false.</summary>

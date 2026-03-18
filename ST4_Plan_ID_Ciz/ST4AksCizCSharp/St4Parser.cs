@@ -473,8 +473,10 @@ namespace ST4AksCizCSharp
                         if (p.Count > 1 && St4Text.TryParseDouble(p[1], out double hVal) && hVal > 0) heightCm = hVal;
                         int labelAxisId = 0;
                         if (p.Count > 4 && St4Text.TryParseInt(p[4], out int ax4) && ax4 >= 1001 && ax4 <= 2999) labelAxisId = ax4;
+                        // 11. sütun (p[10]): bina alt kotuna göre alt yüzey kotu (m); örn. -.5 → tabandan 50 cm aşağı
                         double bottomKotBinaGoreCm = 0.0;
-                        if (p.Count > 9) St4Text.TryParseDouble(p[9], out bottomKotBinaGoreCm);
+                        if (p.Count > 10 && St4Text.TryParseDouble(p[10], out double bottomKotM))
+                            bottomKotBinaGoreCm = bottomKotM * 100.0;
                         double hatilLabelHeightCm = 0.0;
                         if (p.Count > 12 && St4Text.TryParseDouble(p[12], out double h13) && h13 > 0) hatilLabelHeightCm = h13;
                         model.ContinuousFoundations.Add(new ContinuousFoundationInfo

@@ -57,6 +57,7 @@ namespace ST4PlanIdCiz
 
                 var parser = new St4Parser();
                 var model = parser.Parse(fileRes.StringResult);
+                GprYapiAksLabels.TryMergeFromGprBesideSt4(fileRes.StringResult, model);
                 var manager = new PlanIdDrawingManager(model);
                 manager.Draw(db, ed);
                 doc.SendStringToExecute("_.ZOOM _E ", true, false, false);

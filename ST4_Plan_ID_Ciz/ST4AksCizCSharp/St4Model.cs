@@ -45,6 +45,11 @@ namespace ST4AksCizCSharp
 
         /// <summary>Bina taban kotu (m). Dosya 10. satır 1. sütun (örn. -3.31).</summary>
         public double BuildingBaseKotu { get; set; }
+
+        /// <summary>GPR "YAPI AKS BİLGİLERİ" tablosu: X aks satır sırası (1…) → özel etiket (yalnızca isim doluysa).</summary>
+        public Dictionary<int, string> GprAxisXLabelByRow { get; } = new Dictionary<int, string>();
+        /// <summary>GPR: Y aks satır sırası (1…) → özel etiket.</summary>
+        public Dictionary<int, string> GprAxisYLabelByRow { get; } = new Dictionary<int, string>();
     }
 
     /// <summary>Column axis data tek satırı: aks kesişimi + kaçıklık (tekil temel merkezi için).</summary>
