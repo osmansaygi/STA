@@ -393,6 +393,7 @@ namespace ST4PlanIdCiz
         private const string LayerTemelIsmi = "TEMEL ISMI (BEYKENT)";
         private const string LayerKesit = "KESIT (BEYKENT)";
         private const string LayerKesitIsmi = "KESIT ISMI (BEYKENT)";
+        private const string LayerKesitSiniri = "KESIT SINIRI (BEYKENT)";
         private const string YaziBeykentTextStyleName = "YAZI (BEYKENT)";
         /// <summary>Kiriş etiket çizim boyutları (resimdeki gibi): 70cm x 14cm referans (13 karakter). Genişlik = RefWidth * metin uzunluğu / RefCharCount.</summary>
         private const double BeamLabelRefWidthCm = 70.0;
@@ -438,6 +439,7 @@ namespace ST4PlanIdCiz
             EnsurePlanLayer(tr, db, "KIRIS UZATMA ISARET MAVI (BEYKENT)", 5, LineWeight.LineWeight025, useDashed: false);
             EnsurePlanLayer(tr, db, LayerKesit, 151, LineWeight.LineWeight060, useDashed: false);
             EnsurePlanLayer(tr, db, LayerKesitIsmi, 6, LineWeight.LineWeight020, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerKesitSiniri, 241, LineWeight.LineWeight020, useDashed: true);
         }
 
         private static void EnsureDashedLinetype(Transaction tr, Database db)

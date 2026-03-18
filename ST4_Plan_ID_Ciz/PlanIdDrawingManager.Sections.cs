@@ -31,6 +31,16 @@ namespace ST4PlanIdCiz
         private const double SectionMinStoryHeightCm = 280.0;
         private const double SectionStairAvoidBufferCm = 90.0;
         private const double SectionCutOptimizeStepCm = 55.0;
+        /// <summary>Kesit sınırı: kiriş alt/üst kotundan taşma (cm).</summary>
+        private const double KesitSiniriKotTasmasiCm = 50.0;
+        /// <summary>Kiriş yokken döşeme üst kot + bu kadar (cm).</summary>
+        private const double KesitSiniriDosemeUstTasmasiCm = 50.0;
+        /// <summary>Kiriş yokken döşeme alt kot − bu kadar (cm).</summary>
+        private const double KesitSiniriDosemeAltTasmasiCm = 100.0;
+        /// <summary>Temel kesiti: kolon/perde hariç eleman alt/üst kot taşması (cm).</summary>
+        private const double KesitSiniriTemelKotTasmasiCm = 50.0;
+        /// <summary>Kesit sınırı: kesit boyunca sol/sağ taşma (cm).</summary>
+        private const double KesitSiniriBoyunaTasmasiCm = 100.0;
 
         private sealed class SectionSlice
         {
@@ -540,6 +550,7 @@ namespace ST4PlanIdCiz
                 planTop + SectionAbovePlanGapCm + 28.0,
                 axisTopBandY + SectionMinAboveAxisTopLabelsCm + 12.0);
             DrawSchematicFromSlicesOneToOne(tr, btr, slicesTop, contentTopX, contentTopY, aminT, minZT, spanAT, spanZT, horizontalAlongX: true, mirrorElevationX: false, drawReferenceAxis: false);
+            DrawKesitSiniriFromBeams(tr, btr, slicesTop, contentTopX, contentTopY, aminT, minZT, spanZT, horizontalAlongX: true, mirrorElevationX: false, isFoundationPlan);
             DrawKesitTitleBelowSchematic(tr, btr, db, "A-A KESİTİ", contentTopX + spanAT * 0.5, contentTopY - 14.0);
 
             double aminL = GetAmin(slicesLeft), amaxL = GetAmax(slicesLeft), minZL = GetZmin(slicesLeft), maxZL = GetZmax(slicesLeft);
@@ -554,6 +565,7 @@ namespace ST4PlanIdCiz
                 offsetX + xmin - SectionLeftGapFromPlanCm - spanZL - 28.0,
                 schematicRightMaxX - spanZL - 28.0);
             DrawSchematicFromSlicesOneToOne(tr, btr, slicesLeft, contentLeftX, contentLeftY, aminL, minZL, spanAL, spanZL, horizontalAlongX: false, mirrorElevationX: true, drawReferenceAxis: false);
+            DrawKesitSiniriFromBeams(tr, btr, slicesLeft, contentLeftX, contentLeftY, aminL, minZL, spanZL, horizontalAlongX: false, mirrorElevationX: true, isFoundationPlan);
             DrawKesitTitleVerticalRightOfSection(tr, btr, db, "B-B KESİTİ", contentLeftX + spanZL + 48.0, contentLeftY + spanAL * 0.5);
         }
 
@@ -1122,6 +1134,77 @@ namespace ST4PlanIdCiz
             }
 
             return list;
+        }
+
+        /// <summary>Temel: kolon/perde hariç kot ±50 cm, boyuna tüm eleman ±100. Normal kat: kiriş/döşeme kuralı + boy ±100.</summary>
+        private void DrawKesitSiniriFromBeams(Transaction tr, BlockTableRecord btr, List<SectionSlice> slices,
+            double originX, double originY, double amin, double minZ, double spanZ, bool horizontalAlongX, bool mirrorElevationX,
+            bool isFoundationPlan)
+        {
+            if (slices == null || slices.Count == 0) return;
+            double aLo = slices.Min(s => s.A0) - KesitSiniriBoyunaTasmasiCm;
+            double aHi = slices.Max(s => s.A1) + KesitSiniriBoyunaTasmasiCm;
+            double zLo, zHi;
+            if (isFoundationPlan)
+            {
+                var temelOnly = slices.Where(s => s.Layer != LayerKolon && s.Layer != LayerPerde).ToList();
+                if (temelOnly.Count == 0) return;
+                double g = KesitSiniriTemelKotTasmasiCm;
+                zLo = temelOnly.Min(s => s.Z0) - g;
+                zHi = temelOnly.Max(s => s.Z1) + g;
+            }
+            else
+            {
+                var beams = slices.Where(s => s.Layer == LayerKiris).ToList();
+                if (beams.Count > 0)
+                {
+                    zLo = beams.Min(s => s.Z0) - KesitSiniriKotTasmasiCm;
+                    zHi = beams.Max(s => s.Z1) + KesitSiniriKotTasmasiCm;
+                }
+                else
+                {
+                    var slabs = slices.Where(s => s.Layer == LayerDoseme).ToList();
+                    if (slabs.Count == 0) return;
+                    zLo = slabs.Min(s => s.Z0) - KesitSiniriDosemeAltTasmasiCm;
+                    zHi = slabs.Max(s => s.Z1) + KesitSiniriDosemeUstTasmasiCm;
+                }
+            }
+            var pl = new Polyline(4);
+            if (horizontalAlongX)
+            {
+                double x0 = originX + (aLo - amin);
+                double x1 = originX + (aHi - amin);
+                double y0 = originY + (zLo - minZ);
+                double y1 = originY + (zHi - minZ);
+                pl.AddVertexAt(0, new Point2d(x0, y0), 0, 0, 0);
+                pl.AddVertexAt(1, new Point2d(x1, y0), 0, 0, 0);
+                pl.AddVertexAt(2, new Point2d(x1, y1), 0, 0, 0);
+                pl.AddVertexAt(3, new Point2d(x0, y1), 0, 0, 0);
+            }
+            else
+            {
+                double y0 = originY + (aLo - amin);
+                double y1 = originY + (aHi - amin);
+                double x0, x1;
+                if (mirrorElevationX)
+                {
+                    x0 = originX + spanZ - (zHi - minZ);
+                    x1 = originX + spanZ - (zLo - minZ);
+                }
+                else
+                {
+                    x0 = originX + (zLo - minZ);
+                    x1 = originX + (zHi - minZ);
+                }
+                pl.AddVertexAt(0, new Point2d(x0, y0), 0, 0, 0);
+                pl.AddVertexAt(1, new Point2d(x1, y0), 0, 0, 0);
+                pl.AddVertexAt(2, new Point2d(x1, y1), 0, 0, 0);
+                pl.AddVertexAt(3, new Point2d(x0, y1), 0, 0, 0);
+            }
+            pl.Closed = true;
+            pl.Layer = LayerKesitSiniri;
+            pl.ConstantWidth = 0;
+            AppendEntity(tr, btr, pl);
         }
 
         /// <summary>Model cm birebir: yatay eksen = kesit boyunca mesafe, dikey = kot (genel cm).</summary>
