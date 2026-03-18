@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using Autodesk.AutoCAD.Colors;
 using Autodesk.AutoCAD.DatabaseServices;
@@ -41,12 +42,32 @@ namespace ST4PlanIdCiz
         private const double KesitSiniriTemelKotTasmasiCm = 50.0;
         /// <summary>Kesit sınırı: kesit boyunca sol/sağ taşma (cm).</summary>
         private const double KesitSiniriBoyunaTasmasiCm = 100.0;
+        /// <summary>Kesit dilim sırası: sürekli temel (TEMEL etiketi için).</summary>
+        private const int SectionOrderContinuousFoundation = 10;
+        /// <summary>Temel üst kesitte kolon/perde: kesit sınırı üst çizgisinin üstünde, metin alt kenarına bu kadar (cm); TextBottom ile tamamen sınır dışında.</summary>
+        private const double KesitTemelKolonPerdeUstBoslukCm = 20.0;
+        /// <summary>Sürekli temel T- etiketi: A-A üstte boşluk (cm).</summary>
+        private const double KesitSurekliTemelEtiketGapCm = 5.0;
+        /// <summary>Temel sol kesitte sürekli temel T- etiketi: kesit bloğunun sol kenarından bu kadar sola (cm).</summary>
+        private const double KesitSurekliTemelEtiketSolBbCm = 10.0;
+        private const int SectionOrderSingleFooting = 11;
+        private const int SectionOrderSlabFoundation = 12;
+        private const int SectionOrderTieBeam = 14;
+        private const int SectionOrderHatilStrip = 15;
+        /// <summary>A-A: ölçü çizgisi eleman sağ kenarından bu kadar sağda (cm).</summary>
+        private const double KesitOlcuAaDimLineOffsetCm = 20.0;
+        /// <summary>B-B: ölçü çizgisi referans kenarının bu kadar altında (cm).</summary>
+        private const double KesitOlcuBbDimLineBelowRefCm = 20.0;
+        private const double KesitOlcuRadyeAralikCm = 2000.0;
+        private const double KesitOlcuStaggerCm = 16.0;
 
         private sealed class SectionSlice
         {
             public double A0, A1, Z0, Z1;
             public string Layer;
             public int Order;
+            /// <summary>Kesit şemasında kiriş/kolon/perde etiketi; boşsa yazılmaz.</summary>
+            public string Etiket;
         }
 
         private List<Geometry> BuildStairAvoidZonesForFloor(FloorInfo floor)
@@ -549,8 +570,11 @@ namespace ST4PlanIdCiz
             double contentTopY = Math.Max(
                 planTop + SectionAbovePlanGapCm + 28.0,
                 axisTopBandY + SectionMinAboveAxisTopLabelsCm + 12.0);
+            ObjectId planOlcuDimId = GetOrCreatePlanOlcuDimStyle(tr, db, 12.0);
             DrawSchematicFromSlicesOneToOne(tr, btr, slicesTop, contentTopX, contentTopY, aminT, minZT, spanAT, spanZT, horizontalAlongX: true, mirrorElevationX: false, drawReferenceAxis: false);
             DrawKesitSiniriFromBeams(tr, btr, slicesTop, contentTopX, contentTopY, aminT, minZT, spanZT, horizontalAlongX: true, mirrorElevationX: false, isFoundationPlan);
+            DrawKesitSchematicDimensions(tr, btr, slicesTop, contentTopX, contentTopY, aminT, minZT, spanZT, horizontalAlongX: true, mirrorElevationX: false, isFoundationPlan, planOlcuDimId);
+            DrawKesitSchematicElementLabels(tr, btr, db, slicesTop, floor, contentTopX, contentTopY, aminT, minZT, spanZT, true, false, isFoundationPlan);
             DrawKesitTitleBelowSchematic(tr, btr, db, "A-A KESİTİ", contentTopX + spanAT * 0.5, contentTopY - 14.0);
 
             double aminL = GetAmin(slicesLeft), amaxL = GetAmax(slicesLeft), minZL = GetZmin(slicesLeft), maxZL = GetZmax(slicesLeft);
@@ -566,6 +590,8 @@ namespace ST4PlanIdCiz
                 schematicRightMaxX - spanZL - 28.0);
             DrawSchematicFromSlicesOneToOne(tr, btr, slicesLeft, contentLeftX, contentLeftY, aminL, minZL, spanAL, spanZL, horizontalAlongX: false, mirrorElevationX: true, drawReferenceAxis: false);
             DrawKesitSiniriFromBeams(tr, btr, slicesLeft, contentLeftX, contentLeftY, aminL, minZL, spanZL, horizontalAlongX: false, mirrorElevationX: true, isFoundationPlan);
+            DrawKesitSchematicDimensions(tr, btr, slicesLeft, contentLeftX, contentLeftY, aminL, minZL, spanZL, horizontalAlongX: false, mirrorElevationX: true, isFoundationPlan, planOlcuDimId);
+            DrawKesitSchematicElementLabels(tr, btr, db, slicesLeft, floor, contentLeftX, contentLeftY, aminL, minZL, spanZL, false, true, isFoundationPlan);
             DrawKesitTitleVerticalRightOfSection(tr, btr, db, "B-B KESİTİ", contentLeftX + spanZL + 48.0, contentLeftY + spanAL * 0.5);
         }
 
@@ -808,7 +834,7 @@ namespace ST4PlanIdCiz
 
         /// <summary>Kesit düzlemi = çizgi; poligon kolonda birden fazla parça ayrı dilim.</summary>
         private void TryAddSliceCutLine(Geometry cutLine, Geometry footprint, Point2d alongOrigin, Vector2d dirUnit,
-            double z0, double z1, string layer, int order, List<SectionSlice> list)
+            double z0, double z1, string layer, int order, List<SectionSlice> list, string etiket = null)
         {
             if (footprint == null || footprint.IsEmpty || cutLine == null || cutLine.IsEmpty) return;
             try
@@ -818,9 +844,47 @@ namespace ST4PlanIdCiz
                 if (inter == null || inter.IsEmpty) return;
                 var du = dirUnit.GetNormal();
                 foreach (var (a0, a1) in AlongSpansFromLinePolygonIntersect(inter, alongOrigin, du))
-                    list.Add(new SectionSlice { A0 = a0, A1 = a1, Z0 = z0, Z1 = z1, Layer = layer, Order = order });
+                    list.Add(new SectionSlice { A0 = a0, A1 = a1, Z0 = z0, Z1 = z1, Layer = layer, Order = order, Etiket = etiket });
             }
             catch { /* non-noded */ }
+        }
+
+        private string FormatSectionBeamSliceLabel(BeamInfo beam, FloorInfo floor)
+        {
+            int bf = GetBeamFloorNo(beam.BeamId);
+            var fl = floor != null && floor.FloorNo == bf ? floor : _model.Floors.FirstOrDefault(f => f.FloorNo == bf);
+            string kat = fl != null && !string.IsNullOrEmpty(fl.ShortName) ? fl.ShortName : bf.ToString(CultureInfo.InvariantCulture);
+            int n = GetBeamNumero(beam.BeamId);
+            int maxN = _model.Beams.Where(b => GetBeamFloorNo(b.BeamId) == bf && b.IsWallFlag != 1).Select(b => GetBeamNumero(b.BeamId)).DefaultIfEmpty(0).Max();
+            int pad = GetLabelPadWidth(Math.Max(maxN, n));
+            return string.Format(CultureInfo.InvariantCulture, "K{0}{1} ({2}/{3})", kat, n.ToString("D" + pad, CultureInfo.InvariantCulture),
+                (int)Math.Round(beam.WidthCm), (int)Math.Round(beam.HeightCm));
+        }
+
+        private string FormatSectionPerdeSliceLabel(BeamInfo beam, FloorInfo floor)
+        {
+            int bf = GetBeamFloorNo(beam.BeamId);
+            var fl = floor != null && floor.FloorNo == bf ? floor : _model.Floors.FirstOrDefault(f => f.FloorNo == bf);
+            string kat = fl != null && !string.IsNullOrEmpty(fl.ShortName) ? fl.ShortName : bf.ToString(CultureInfo.InvariantCulture);
+            int n = GetBeamNumero(beam.BeamId);
+            int maxN = _model.Beams.Where(b => GetBeamFloorNo(b.BeamId) == bf && b.IsWallFlag == 1).Select(b => GetBeamNumero(b.BeamId)).DefaultIfEmpty(0).Max();
+            int pad = GetLabelPadWidth(Math.Max(maxN, n));
+            return string.Format(CultureInfo.InvariantCulture, "P{0}{1} ({2}/{3})", kat, n.ToString("D" + pad, CultureInfo.InvariantCulture),
+                (int)Math.Round(beam.WidthCm), (int)Math.Round(beam.HeightCm));
+        }
+
+        private string FormatSectionKolonSliceLabel(ColumnAxisInfo col, FloorInfo floor, (double W, double H) dim)
+        {
+            int maxCol = _model.Columns.Count > 0 ? _model.Columns.Max(c => c.ColumnNo) : 99;
+            int colPad = GetLabelPadWidth(maxCol);
+            string storyId = floor != null && !string.IsNullOrEmpty(floor.ShortName)
+                ? floor.ShortName
+                : (floor != null ? floor.FloorNo.ToString(CultureInfo.InvariantCulture) : "B");
+            string nameLine = "S" + storyId + col.ColumnNo.ToString("D" + colPad, CultureInfo.InvariantCulture);
+            string dimLine = col.ColumnType == 2
+                ? "R= " + dim.W.ToString("F0", CultureInfo.InvariantCulture)
+                : string.Format(CultureInfo.InvariantCulture, "({0:F0}/{1:F0})", dim.W, dim.H);
+            return nameLine + " " + dimLine;
         }
 
         private Geometry BeamFootprintPoly(BeamInfo beam)
@@ -1054,18 +1118,27 @@ namespace ST4PlanIdCiz
                     }
                     if (!colExtra.TryGetValue(col.ColumnNo, out var ek)) continue;
                     double yuk = ek.yukseklikCm > 1.0 ? ek.yukseklikCm : SectionMinStoryHeightCm;
-                    TryAddSliceCutLine(cutLine, colPoly, alongOrigin, dirN, ek.altKotCm, ek.altKotCm + yuk, LayerKolon, 50, list);
+                    string kEt = FormatSectionKolonSliceLabel(col, floor, dim);
+                    TryAddSliceCutLine(cutLine, colPoly, alongOrigin, dirN, ek.altKotCm, ek.altKotCm + yuk, LayerKolon, 50, list, kEt);
                 }
             }
 
             if (isFoundationPlan)
             {
+                int cfSliceIndex = 0;
                 foreach (var cf in _model.ContinuousFoundations)
                 {
                     var poly = ContinuousFootprintPoly(cf);
                     double z0 = baseCm + cf.BottomKotBinaGoreCm;
                     double z1 = z0 + cf.HeightCm;
-                    TryAddSliceCutLine(cutLine, poly, alongOrigin, dirN, z0, z1, "TEMEL (BEYKENT)", 10, list);
+                    int eni = (int)Math.Round(cf.WidthCm);
+                    int yukCf = (int)Math.Round(cf.HeightCm);
+                    string eniStr = eni.ToString(CultureInfo.InvariantCulture);
+                    if (cf.AmpatmanWidthCm > 0 && Math.Abs(cf.AmpatmanWidthCm - cf.WidthCm) > 1e-6)
+                        eniStr = eniStr + "-" + ((int)Math.Round(cf.AmpatmanWidthCm)).ToString(CultureInfo.InvariantCulture);
+                    string cfEtik = string.Format(CultureInfo.InvariantCulture, "T-{0} ({1}/{2})", cfSliceIndex + 1, eniStr, yukCf);
+                    TryAddSliceCutLine(cutLine, poly, alongOrigin, dirN, z0, z1, "TEMEL (BEYKENT)", SectionOrderContinuousFoundation, list, cfEtik);
+                    cfSliceIndex++;
                     var hat = HatilStripOnContinuousPoly(cf);
                     if (hat != null && cf.HatilLabelHeightCm > 0)
                     {
@@ -1101,7 +1174,7 @@ namespace ST4PlanIdCiz
                     var poly = BeamFootprintPoly(beam);
                     double zu = floorLevelCm + Math.Max(beam.Point1KotCm, beam.Point2KotCm);
                     double h = beam.HeightCm > 0 ? beam.HeightCm : 40.0;
-                    TryAddSliceCutLine(cutLine, poly, alongOrigin, dirN, zu - h, zu, LayerPerde, 40, list);
+                    TryAddSliceCutLine(cutLine, poly, alongOrigin, dirN, zu - h, zu, LayerPerde, 40, list, FormatSectionPerdeSliceLabel(beam, floor));
                 }
             }
             else
@@ -1120,7 +1193,7 @@ namespace ST4PlanIdCiz
                     var poly = BeamFootprintPoly(beam);
                     double zu = floorLevelCm + Math.Max(beam.Point1KotCm, beam.Point2KotCm);
                     double h = beam.HeightCm > 0 ? beam.HeightCm : 30.0;
-                    TryAddSliceCutLine(cutLine, poly, alongOrigin, dirN, zu - h, zu, LayerKiris, 30, list);
+                    TryAddSliceCutLine(cutLine, poly, alongOrigin, dirN, zu - h, zu, LayerKiris, 30, list, FormatSectionBeamSliceLabel(beam, floor));
                 }
                 foreach (var beam in MergeSameIdBeamsOnFloor(floorNo))
                 {
@@ -1128,7 +1201,7 @@ namespace ST4PlanIdCiz
                     var poly = BeamFootprintPoly(beam);
                     double zu = floorLevelCm + Math.Max(beam.Point1KotCm, beam.Point2KotCm);
                     double h = beam.HeightCm > 0 ? beam.HeightCm : 40.0;
-                    TryAddSliceCutLine(cutLine, poly, alongOrigin, dirN, zu - h, zu, LayerPerde, 40, list);
+                    TryAddSliceCutLine(cutLine, poly, alongOrigin, dirN, zu - h, zu, LayerPerde, 40, list, FormatSectionPerdeSliceLabel(beam, floor));
                 }
                 addColPolys();
             }
@@ -1136,19 +1209,16 @@ namespace ST4PlanIdCiz
             return list;
         }
 
-        /// <summary>Temel: kolon/perde hariç kot ±50 cm, boyuna tüm eleman ±100. Normal kat: kiriş/döşeme kuralı + boy ±100.</summary>
-        private void DrawKesitSiniriFromBeams(Transaction tr, BlockTableRecord btr, List<SectionSlice> slices,
-            double originX, double originY, double amin, double minZ, double spanZ, bool horizontalAlongX, bool mirrorElevationX,
-            bool isFoundationPlan)
+        private bool TryGetKesitSiniriBounds(List<SectionSlice> slices, bool isFoundationPlan, out double aLo, out double aHi, out double zLo, out double zHi)
         {
-            if (slices == null || slices.Count == 0) return;
-            double aLo = slices.Min(s => s.A0) - KesitSiniriBoyunaTasmasiCm;
-            double aHi = slices.Max(s => s.A1) + KesitSiniriBoyunaTasmasiCm;
-            double zLo, zHi;
+            aLo = aHi = zLo = zHi = 0;
+            if (slices == null || slices.Count == 0) return false;
+            aLo = slices.Min(s => s.A0) - KesitSiniriBoyunaTasmasiCm;
+            aHi = slices.Max(s => s.A1) + KesitSiniriBoyunaTasmasiCm;
             if (isFoundationPlan)
             {
                 var temelOnly = slices.Where(s => s.Layer != LayerKolon && s.Layer != LayerPerde).ToList();
-                if (temelOnly.Count == 0) return;
+                if (temelOnly.Count == 0) return false;
                 double g = KesitSiniriTemelKotTasmasiCm;
                 zLo = temelOnly.Min(s => s.Z0) - g;
                 zHi = temelOnly.Max(s => s.Z1) + g;
@@ -1164,11 +1234,21 @@ namespace ST4PlanIdCiz
                 else
                 {
                     var slabs = slices.Where(s => s.Layer == LayerDoseme).ToList();
-                    if (slabs.Count == 0) return;
+                    if (slabs.Count == 0) return false;
                     zLo = slabs.Min(s => s.Z0) - KesitSiniriDosemeAltTasmasiCm;
                     zHi = slabs.Max(s => s.Z1) + KesitSiniriDosemeUstTasmasiCm;
                 }
             }
+            return true;
+        }
+
+        /// <summary>Temel: kolon/perde hariç kot ±50 cm, boyuna tüm eleman ±100. Normal kat: kiriş/döşeme kuralı + boy ±100.</summary>
+        private void DrawKesitSiniriFromBeams(Transaction tr, BlockTableRecord btr, List<SectionSlice> slices,
+            double originX, double originY, double amin, double minZ, double spanZ, bool horizontalAlongX, bool mirrorElevationX,
+            bool isFoundationPlan)
+        {
+            if (!TryGetKesitSiniriBounds(slices, isFoundationPlan, out double aLo, out double aHi, out double zLo, out double zHi))
+                return;
             var pl = new Polyline(4);
             if (horizontalAlongX)
             {
@@ -1205,6 +1285,322 @@ namespace ST4PlanIdCiz
             pl.Layer = LayerKesitSiniri;
             pl.ConstantWidth = 0;
             AppendEntity(tr, btr, pl);
+        }
+
+        /// <summary>A-A: kiriş alt; kolon/perde temel üstü / kalıp altı. B-B: kolon-perde temelde sınır solu, kalıpta sınır sağı, kesit boyu ortalı; kalıp kiriş sağda ortalı.</summary>
+        private void DrawKesitSchematicElementLabels(Transaction tr, BlockTableRecord btr, Database db, List<SectionSlice> slices,
+            FloorInfo _floor, double originX, double originY, double amin, double minZ, double spanZ,
+            bool horizontalAlongX, bool mirrorElevationX, bool isFoundationPlan)
+        {
+            if (slices == null || slices.Count == 0) return;
+            const double beamUnderGap = 5.0;
+            const double siniriGap = 12.0;
+            const double labelH = 11.0;
+            const double rotDikKesit = Math.PI / 2.0;
+            const double kirisSagGap = 8.0;
+            bool hasSiniri = TryGetKesitSiniriBounds(slices, isFoundationPlan, out _, out _, out double zLoS, out double zHiS);
+            double zHiEff = hasSiniri ? zHiS : slices.Max(s => s.Z1);
+            double zLoEff = hasSiniri ? zLoS : slices.Min(s => s.Z0);
+            bool kolonPerdeUstunde = isFoundationPlan;
+            double yKolonPerdeBaseAa = 0;
+            if (horizontalAlongX && !kolonPerdeUstunde)
+                yKolonPerdeBaseAa = originY + (zLoEff - minZ) - siniriGap;
+            void kesitSiniriXSolSag(out double xSol, out double xSag)
+            {
+                if (mirrorElevationX)
+                {
+                    xSol = originX + spanZ - (zHiEff - minZ);
+                    xSag = originX + spanZ - (zLoEff - minZ);
+                }
+                else
+                {
+                    xSol = originX + (zLoEff - minZ);
+                    xSag = originX + (zHiEff - minZ);
+                }
+            }
+            ObjectId styleId = GetOrCreateElemanEtiketTextStyle(tr, db);
+            void putLabel(double x, double y, string txt, string layer, double rotationRad)
+            {
+                if (string.IsNullOrEmpty(txt)) return;
+                bool horiz = Math.Abs(rotationRad) < 1e-6;
+                AppendEntity(tr, btr, new DBText
+                {
+                    Layer = layer,
+                    Height = labelH,
+                    TextStyleId = styleId,
+                    TextString = txt,
+                    Rotation = rotationRad,
+                    HorizontalMode = TextHorizontalMode.TextCenter,
+                    VerticalMode = horiz ? TextVerticalMode.TextTop : TextVerticalMode.TextVerticalMid,
+                    Position = new Point3d(x, y, 0),
+                    AlignmentPoint = new Point3d(x, y, 0)
+                });
+            }
+            foreach (var s in slices.Where(x => x.Layer == LayerKiris && !string.IsNullOrEmpty(x.Etiket)))
+            {
+                if (horizontalAlongX)
+                {
+                    double cx = originX + ((s.A0 + s.A1) * 0.5 - amin);
+                    double yUnder = originY + (s.Z0 - minZ) - beamUnderGap;
+                    putLabel(cx, yUnder, s.Etiket, LayerKirisYazisi, 0);
+                }
+                else if (!isFoundationPlan)
+                {
+                    double cy = originY + ((s.A0 + s.A1) * 0.5 - amin);
+                    double xKirisSag = mirrorElevationX
+                        ? originX + spanZ - (s.Z0 - minZ) + kirisSagGap
+                        : originX + (s.Z1 - minZ) + kirisSagGap;
+                    putLabel(xKirisSag, cy, s.Etiket, LayerKirisYazisi, rotDikKesit);
+                }
+            }
+            const double temelEtiketH = 12.0;
+            foreach (var s in slices.Where(x => x.Layer == "TEMEL (BEYKENT)" && x.Order == SectionOrderContinuousFoundation && !string.IsNullOrEmpty(x.Etiket)))
+            {
+                if (horizontalAlongX)
+                {
+                    double cx = originX + ((s.A0 + s.A1) * 0.5 - amin);
+                    double yAlt = originY + (s.Z1 - minZ) + KesitSurekliTemelEtiketGapCm;
+                    AppendEntity(tr, btr, new DBText
+                    {
+                        Layer = LayerTemelIsmi,
+                        Height = temelEtiketH,
+                        TextStyleId = styleId,
+                        TextString = KolonDonatiTableDrawer.NormalizeDiameterSymbol(s.Etiket),
+                        Rotation = 0,
+                        HorizontalMode = TextHorizontalMode.TextCenter,
+                        VerticalMode = TextVerticalMode.TextBottom,
+                        Position = new Point3d(cx, yAlt, 0),
+                        AlignmentPoint = new Point3d(cx, yAlt, 0),
+                        LineWeight = LineWeight.LineWeight020
+                    });
+                }
+                else if (isFoundationPlan)
+                {
+                    double cy = originY + ((s.A0 + s.A1) * 0.5 - amin);
+                    double xSolKenar = mirrorElevationX
+                        ? originX + spanZ - (s.Z1 - minZ)
+                        : originX + (s.Z0 - minZ);
+                    double xTxt = xSolKenar - KesitSurekliTemelEtiketSolBbCm;
+                    AppendEntity(tr, btr, new DBText
+                    {
+                        Layer = LayerTemelIsmi,
+                        Height = temelEtiketH,
+                        TextStyleId = styleId,
+                        TextString = KolonDonatiTableDrawer.NormalizeDiameterSymbol(s.Etiket),
+                        Rotation = rotDikKesit,
+                        HorizontalMode = TextHorizontalMode.TextCenter,
+                        VerticalMode = TextVerticalMode.TextVerticalMid,
+                        Position = new Point3d(xTxt, cy, 0),
+                        AlignmentPoint = new Point3d(xTxt, cy, 0),
+                        LineWeight = LineWeight.LineWeight020
+                    });
+                }
+            }
+            kesitSiniriXSolSag(out double xSiniriSol, out double xSiniriSag);
+            double kolPerXOffset = siniriGap + labelH * 0.55;
+            int rowKp = 0;
+            foreach (var g in slices.Where(x => (x.Layer == LayerKolon || x.Layer == LayerPerde) && !string.IsNullOrEmpty(x.Etiket)).GroupBy(x => x.Etiket))
+            {
+                string layer = g.First().Layer == LayerKolon ? LayerKolonIsmi : LayerPerdeYazisi;
+                double aMid = g.Average(s => (s.A0 + s.A1) * 0.5);
+                rowKp++;
+                if (horizontalAlongX)
+                {
+                    double xKp = originX + (aMid - amin);
+                    if (kolonPerdeUstunde)
+                    {
+                        double yAltKenar = originY + (zHiEff - minZ) + KesitTemelKolonPerdeUstBoslukCm + (rowKp - 1) * (labelH + 3);
+                        AppendEntity(tr, btr, new DBText
+                        {
+                            Layer = layer,
+                            Height = labelH,
+                            TextStyleId = styleId,
+                            TextString = g.Key,
+                            Rotation = 0,
+                            HorizontalMode = TextHorizontalMode.TextCenter,
+                            VerticalMode = TextVerticalMode.TextBottom,
+                            Position = new Point3d(xKp, yAltKenar, 0),
+                            AlignmentPoint = new Point3d(xKp, yAltKenar, 0)
+                        });
+                    }
+                    else
+                    {
+                        double yRow = yKolonPerdeBaseAa - (rowKp - 1) * (labelH + 3);
+                        putLabel(xKp, yRow, g.Key, layer, 0);
+                    }
+                }
+                else
+                {
+                    double cy = originY + (aMid - amin) + (rowKp - 1) * 3.0;
+                    double xTxt = isFoundationPlan ? xSiniriSol - kolPerXOffset : xSiniriSag + kolPerXOffset;
+                    putLabel(xTxt, cy, g.Key, layer, rotDikKesit);
+                }
+            }
+        }
+
+        private static List<double> KesitRadyeOlcuIstasyonlari(double a0, double a1, double adimCm)
+        {
+            if (a1 < a0) { double t = a0; a0 = a1; a1 = t; }
+            var list = new List<double>();
+            double L = a1 - a0;
+            if (L <= adimCm + 1e-6)
+                list.Add((a0 + a1) * 0.5);
+            else
+            {
+                for (double u = a0 + adimCm * 0.5; u < a1 - 1e-6; u += adimCm)
+                    list.Add(u);
+            }
+            return list;
+        }
+
+        /// <summary>Kesit şemasında kiriş/döşeme/temel kalınlık ölçüleri; OLCU (BEYKENT), PLAN_OLCU stili.</summary>
+        private void DrawKesitSchematicDimensions(Transaction tr, BlockTableRecord btr, List<SectionSlice> slices,
+            double originX, double originY, double amin, double minZ, double spanZ,
+            bool horizontalAlongX, bool mirrorElevationX, bool isFoundationPlan, ObjectId dimStyleId)
+        {
+            if (slices == null || slices.Count == 0 || dimStyleId.IsNull) return;
+
+            void AddAligned(Point3d p1, Point3d p2, Point3d dimLinePt)
+            {
+                AppendEntity(tr, btr, new AlignedDimension(p1, p2, dimLinePt, "", dimStyleId)
+                {
+                    Layer = LayerOlcu,
+                    LineWeight = LineWeight.LineWeight020
+                });
+            }
+
+            var staggerAaRight = new Dictionary<long, int>();
+            int NextStaggerAa(double aKey)
+            {
+                long k = (long)Math.Round(aKey * 0.05);
+                int n = staggerAaRight.TryGetValue(k, out int v) ? v + 1 : 0;
+                staggerAaRight[k] = n;
+                return n;
+            }
+
+            if (horizontalAlongX)
+            {
+                if (isFoundationPlan)
+                {
+                    foreach (var s in slices.Where(x =>
+                                 x.Order == SectionOrderContinuousFoundation ||
+                                 x.Order == SectionOrderSingleFooting ||
+                                 x.Order == SectionOrderTieBeam ||
+                                 x.Order == SectionOrderHatilStrip))
+                    {
+                        double aMax = Math.Max(s.A0, s.A1);
+                        double xR = originX + (aMax - amin);
+                        double y0 = originY + (s.Z0 - minZ);
+                        double y1 = originY + (s.Z1 - minZ);
+                        if (y1 - y0 < 2.0) y1 = y0 + 2.0;
+                        int st = NextStaggerAa(aMax);
+                        double dimX = xR + KesitOlcuAaDimLineOffsetCm + st * KesitOlcuStaggerCm;
+                        AddAligned(new Point3d(xR, y0, 0), new Point3d(xR, y1, 0), new Point3d(dimX, (y0 + y1) * 0.5, 0));
+                    }
+                    int radyeIx = 0;
+                    foreach (var s in slices.Where(x => x.Order == SectionOrderSlabFoundation))
+                    {
+                        double y0 = originY + (s.Z0 - minZ);
+                        double y1 = originY + (s.Z1 - minZ);
+                        if (y1 - y0 < 2.0) y1 = y0 + 2.0;
+                        foreach (double aSta in KesitRadyeOlcuIstasyonlari(s.A0, s.A1, KesitOlcuRadyeAralikCm))
+                        {
+                            double xm = originX + (aSta - amin);
+                            double dimX = xm + KesitOlcuAaDimLineOffsetCm + (radyeIx++ % 5) * (KesitOlcuStaggerCm * 0.45);
+                            AddAligned(new Point3d(xm, y0, 0), new Point3d(xm, y1, 0), new Point3d(dimX, (y0 + y1) * 0.5, 0));
+                        }
+                    }
+                }
+                else
+                {
+                    foreach (var s in slices.Where(x => x.Layer == LayerKiris))
+                    {
+                        double aMax = Math.Max(s.A0, s.A1);
+                        double xR = originX + (aMax - amin);
+                        double y0 = originY + (s.Z0 - minZ);
+                        double y1 = originY + (s.Z1 - minZ);
+                        if (y1 - y0 < 2.0) y1 = y0 + 2.0;
+                        int st = NextStaggerAa(aMax);
+                        double dimX = xR + KesitOlcuAaDimLineOffsetCm + st * KesitOlcuStaggerCm;
+                        AddAligned(new Point3d(xR, y0, 0), new Point3d(xR, y1, 0), new Point3d(dimX, (y0 + y1) * 0.5, 0));
+                    }
+                    foreach (var s in slices.Where(x => x.Layer == LayerDoseme))
+                    {
+                        double xm = originX + ((s.A0 + s.A1) * 0.5 - amin);
+                        double y0 = originY + (s.Z0 - minZ);
+                        double y1 = originY + (s.Z1 - minZ);
+                        if (y1 - y0 < 2.0) y1 = y0 + 2.0;
+                        int st = NextStaggerAa((s.A0 + s.A1) * 0.5);
+                        double dimX = xm + KesitOlcuAaDimLineOffsetCm + st * KesitOlcuStaggerCm;
+                        AddAligned(new Point3d(xm, y0, 0), new Point3d(xm, y1, 0), new Point3d(dimX, (y0 + y1) * 0.5, 0));
+                    }
+                }
+            }
+            else
+            {
+                var staggerBb = new Dictionary<long, int>();
+                int NextStaggerBb(double key)
+                {
+                    long k = (long)Math.Round(key * 0.05);
+                    int n = staggerBb.TryGetValue(k, out int v) ? v + 1 : 0;
+                    staggerBb[k] = n;
+                    return n;
+                }
+                void KotXR(SectionSlice s, out double xL, out double xR)
+                {
+                    double xa = mirrorElevationX ? originX + spanZ - (s.Z1 - minZ) : originX + (s.Z0 - minZ);
+                    double xb = mirrorElevationX ? originX + spanZ - (s.Z0 - minZ) : originX + (s.Z1 - minZ);
+                    xL = Math.Min(xa, xb);
+                    xR = Math.Max(xa, xb);
+                    if (xR - xL < 2.0) xR = xL + 2.0;
+                }
+
+                if (isFoundationPlan)
+                {
+                    foreach (var s in slices.Where(x =>
+                                 x.Order == SectionOrderContinuousFoundation ||
+                                 x.Order == SectionOrderSingleFooting ||
+                                 x.Order == SectionOrderTieBeam ||
+                                 x.Order == SectionOrderHatilStrip))
+                    {
+                        KotXR(s, out double xL, out double xR);
+                        double yRef = originY + Math.Min(s.A0, s.A1) - amin;
+                        int st = NextStaggerBb(yRef);
+                        double yDimLine = yRef - KesitOlcuBbDimLineBelowRefCm - st * KesitOlcuStaggerCm;
+                        AddAligned(new Point3d(xL, yRef, 0), new Point3d(xR, yRef, 0), new Point3d((xL + xR) * 0.5, yDimLine, 0));
+                    }
+                    foreach (var s in slices.Where(x => x.Order == SectionOrderSlabFoundation))
+                    {
+                        KotXR(s, out double xL, out double xR);
+                        int ri = 0;
+                        foreach (double aSta in KesitRadyeOlcuIstasyonlari(s.A0, s.A1, KesitOlcuRadyeAralikCm))
+                        {
+                            double yRef = originY + (aSta - amin);
+                            double yDimLine = yRef - KesitOlcuBbDimLineBelowRefCm - (ri++ % 4) * 8.0;
+                            AddAligned(new Point3d(xL, yRef, 0), new Point3d(xR, yRef, 0), new Point3d((xL + xR) * 0.5, yDimLine, 0));
+                        }
+                    }
+                }
+                else
+                {
+                    foreach (var s in slices.Where(x => x.Layer == LayerKiris))
+                    {
+                        KotXR(s, out double xL, out double xR);
+                        double yRef = originY + Math.Min(s.A0, s.A1) - amin;
+                        int st = NextStaggerBb(yRef);
+                        double yDimLine = yRef - KesitOlcuBbDimLineBelowRefCm - st * KesitOlcuStaggerCm;
+                        AddAligned(new Point3d(xL, yRef, 0), new Point3d(xR, yRef, 0), new Point3d((xL + xR) * 0.5, yDimLine, 0));
+                    }
+                    foreach (var s in slices.Where(x => x.Layer == LayerDoseme))
+                    {
+                        KotXR(s, out double xL, out double xR);
+                        double yRef = originY + ((s.A0 + s.A1) * 0.5 - amin);
+                        int st = NextStaggerBb(yRef);
+                        double yDimLine = yRef - KesitOlcuBbDimLineBelowRefCm - st * KesitOlcuStaggerCm;
+                        AddAligned(new Point3d(xL, yRef, 0), new Point3d(xR, yRef, 0), new Point3d((xL + xR) * 0.5, yDimLine, 0));
+                    }
+                }
+            }
         }
 
         /// <summary>Model cm birebir: yatay eksen = kesit boyunca mesafe, dikey = kot (genel cm).</summary>

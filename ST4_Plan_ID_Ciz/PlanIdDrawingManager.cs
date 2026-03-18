@@ -401,6 +401,7 @@ namespace ST4PlanIdCiz
         private const int BeamLabelRefCharCount = 13;
         private const string AksOlcuDimStyleName = "AKS_OLCU";
         private const string AksOlcuTextStyleName = "AKS_OLCU";
+        private const string PlanOlcuDimStyleName = "PLAN_OLCU";
         private const string ElemanEtiketTextStyleName = "ETIKET";
 
         private static void EnsureLayers(Transaction tr, Database db)
@@ -425,7 +426,7 @@ namespace ST4PlanIdCiz
             EnsurePlanLayer(tr, db, LayerKatSiniri, 41, LineWeight.LineWeight025, useDashed: false);
             EnsurePlanLayer(tr, db, LayerKalipBosluk, 30, LineWeight.LineWeight025, useDashed: true);
             EnsurePlanLayer(tr, db, LayerBirlesikKatman, 8, LineWeight.LineWeight025, useDashed: false);
-            EnsurePlanLayer(tr, db, LayerOlcu, 4, LineWeight.LineWeight018, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerOlcu, 14, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, LayerAksOlcu, 6, LineWeight.LineWeight018, useDashed: false);
             EnsurePlanLayer(tr, db, LayerKirisYazisi, 40, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, LayerPerdeYazisi, 240, LineWeight.LineWeight020, useDashed: false);
@@ -1224,6 +1225,38 @@ namespace ST4PlanIdCiz
             try { newRec.Dimscale = 1.0; } catch { }
 
 
+            dst.UpgradeOpen();
+            ObjectId id = dst.Add(newRec);
+            tr.AddNewlyCreatedDBObject(newRec, true);
+            dst.DowngradeOpen();
+            return id;
+        }
+
+        /// <summary>Kesit/plan eleman ölçüleri: AKS_OLCU ile aynı özellikler, isim PLAN_OLCU.</summary>
+        private static ObjectId GetOrCreatePlanOlcuDimStyle(Transaction tr, Database db, double dimTextHeightCm)
+        {
+            var dst = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
+            if (dst.Has(PlanOlcuDimStyleName)) return dst[PlanOlcuDimStyleName];
+
+            ObjectId textStyleId = GetOrCreateAksOlcuTextStyle(tr, db);
+            var newRec = new DimStyleTableRecord();
+            newRec.Name = PlanOlcuDimStyleName;
+            try { if (!textStyleId.IsNull) newRec.Dimtxsty = textStyleId; } catch { }
+            try { newRec.Dimtxt = dimTextHeightCm; } catch { }
+            try { newRec.Dimclrt = Color.FromColorIndex(ColorMethod.ByAci, 7); } catch { }
+            try { newRec.Dimgap = 2.0; } catch { }
+            try { newRec.Dimtad = 1; } catch { }
+            try { newRec.Dimtih = false; } catch { }
+            try { newRec.Dimtoh = false; } catch { }
+            try { newRec.Dimasz = 5.0; } catch { }
+            try { newRec.Dimdec = 0; } catch { }
+            try { newRec.Dimrnd = 0.5; } catch { }
+            try { newRec.Dimlfac = 1.0; } catch { }
+            try { newRec.Dimzin = 12; } catch { }
+            try { newRec.Dimaunit = 0; } catch { }
+            try { newRec.Dimadec = 0; } catch { }
+            try { newRec.Dimtofl = true; } catch { }
+            try { newRec.Dimscale = 1.0; } catch { }
             dst.UpgradeOpen();
             ObjectId id = dst.Add(newRec);
             tr.AddNewlyCreatedDBObject(newRec, true);
