@@ -2428,6 +2428,7 @@ namespace ST4PlanIdCiz
                 }
             }
 
+            var allChains = new List<List<Point2d>>();
             foreach (var coords in rings)
             {
                 if (coords == null || coords.Length < 2) continue;
@@ -2448,12 +2449,7 @@ namespace ST4PlanIdCiz
                     if (dedup.Count < 2) { chain.Clear(); return; }
                     dedup = KesitCizgisiRemoveCollinearVertices(dedup);
                     if (dedup.Count < 2) { chain.Clear(); return; }
-                    var pl = new Polyline();
-                    for (int k = 0; k < dedup.Count; k++)
-                        pl.AddVertexAt(k, dedup[k], 0, 0, 0);
-                    pl.Layer = LayerKesitCizgisi;
-                    pl.ConstantWidth = 0;
-                    AppendEntity(tr, btr, pl);
+                    allChains.Add(dedup);
                     chain.Clear();
                 }
 
@@ -2473,6 +2469,82 @@ namespace ST4PlanIdCiz
                 }
                 FlushChain();
             }
+
+            const double joinTol = 1.2;
+            foreach (var joined in KesitCizgisiJoinTouchingOpenChains(allChains, joinTol))
+            {
+                if (joined == null || joined.Count < 2) continue;
+                var pl = new Polyline();
+                for (int k = 0; k < joined.Count; k++)
+                    pl.AddVertexAt(k, joined[k], 0, 0, 0);
+                pl.Layer = LayerKesitCizgisi;
+                pl.ConstantWidth = 0;
+                AppendEntity(tr, btr, pl);
+            }
+        }
+
+        /// <summary>Uçları birbirine değen açık polyline zincirlerini tek polyline yapar (JOIN benzeri).</summary>
+        private static List<List<Point2d>> KesitCizgisiJoinTouchingOpenChains(List<List<Point2d>> chains, double tol)
+        {
+            if (chains == null || chains.Count <= 1) return chains ?? new List<List<Point2d>>();
+            var list = chains.Where(c => c != null && c.Count >= 2).Select(c => new List<Point2d>(c)).ToList();
+            if (list.Count <= 1) return list;
+            bool changed;
+            int guard = 0;
+            do
+            {
+                changed = false;
+                if (++guard > list.Count * list.Count + 100) break;
+                for (int i = 0; i < list.Count && !changed; i++)
+                {
+                    for (int j = i + 1; j < list.Count && !changed; j++)
+                    {
+                        var merged = KesitCizgisiTryMergeTwoOpenPolylines(list[i], list[j], tol);
+                        if (merged != null)
+                        {
+                            list[i] = merged;
+                            list.RemoveAt(j);
+                            changed = true;
+                        }
+                    }
+                }
+            } while (changed);
+            return list;
+        }
+
+        private static List<Point2d> KesitCizgisiTryMergeTwoOpenPolylines(List<Point2d> a, List<Point2d> b, double tol)
+        {
+            if (a == null || b == null || a.Count < 2 || b.Count < 2) return null;
+            var a0 = a[0];
+            var ae = a[a.Count - 1];
+            var b0 = b[0];
+            var be = b[b.Count - 1];
+            if (ae.GetDistanceTo(b0) <= tol)
+            {
+                var r = new List<Point2d>(a);
+                for (int k = 1; k < b.Count; k++) r.Add(b[k]);
+                return KesitCizgisiRemoveCollinearVertices(r);
+            }
+            if (ae.GetDistanceTo(be) <= tol)
+            {
+                var r = new List<Point2d>(a);
+                for (int k = b.Count - 2; k >= 0; k--) r.Add(b[k]);
+                return KesitCizgisiRemoveCollinearVertices(r);
+            }
+            if (a0.GetDistanceTo(b0) <= tol)
+            {
+                var r = new List<Point2d>();
+                for (int k = a.Count - 1; k >= 0; k--) r.Add(a[k]);
+                for (int k = 1; k < b.Count; k++) r.Add(b[k]);
+                return KesitCizgisiRemoveCollinearVertices(r);
+            }
+            if (a0.GetDistanceTo(be) <= tol)
+            {
+                var r = new List<Point2d>(b);
+                for (int k = 1; k < a.Count; k++) r.Add(a[k]);
+                return KesitCizgisiRemoveCollinearVertices(r);
+            }
+            return null;
         }
 
         /// <summary>Açı değiştirmeyen düz hat üzerindeki ara vertex'leri siler (KESIT CIZGISI).</summary>

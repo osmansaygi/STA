@@ -396,6 +396,8 @@ namespace ST4PlanIdCiz
         private const string LayerKesitCizgisi = "KESIT CIZGISI (BEYKENT)";
         private const string LayerKesitIsmi = "KESIT ISMI (BEYKENT)";
         private const string LayerKesitSiniri = "KESIT SINIRI (BEYKENT)";
+        /// <summary>DASHED katmanlarda (AKS, KESIT SINIRI) entity çizgi tipi ölçeği; LTSCALE=1 iken kesikli okunaklı olsun.</summary>
+        private const double DashedLayerEntityLinetypeScale = 25.0;
         private const string YaziBeykentTextStyleName = "YAZI (BEYKENT)";
         /// <summary>Kiriş etiket çizim boyutları (resimdeki gibi): 70cm x 14cm referans (13 karakter). Genişlik = RefWidth * metin uzunluğu / RefCharCount.</summary>
         private const double BeamLabelRefWidthCm = 70.0;
@@ -426,7 +428,8 @@ namespace ST4PlanIdCiz
             EnsurePlanLayer(tr, db, LayerTemelHatiliIsmi, 243, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, LayerTemelIsmi, 40, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, LayerKatSiniri, 41, LineWeight.LineWeight025, useDashed: false);
-            EnsurePlanLayer(tr, db, LayerKalipBosluk, 30, LineWeight.LineWeight025, useDashed: true);
+            EnsurePlanLayer(tr, db, LayerKalipBosluk, 30, LineWeight.LineWeight025, useDashed: false);
+            SetPlanLayerLinetypeContinuous(tr, db, LayerKalipBosluk);
             EnsurePlanLayer(tr, db, LayerBirlesikKatman, 8, LineWeight.LineWeight025, useDashed: false);
             EnsurePlanLayer(tr, db, LayerOlcu, 14, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, LayerAksOlcu, 6, LineWeight.LineWeight018, useDashed: false);
@@ -444,6 +447,16 @@ namespace ST4PlanIdCiz
             EnsurePlanLayer(tr, db, LayerKesitCizgisi, 3, LineWeight.LineWeight050, useDashed: false);
             EnsurePlanLayer(tr, db, LayerKesitIsmi, 6, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, LayerKesitSiniri, 241, LineWeight.LineWeight020, useDashed: true);
+        }
+
+        private static void SetPlanLayerLinetypeContinuous(Transaction tr, Database db, string layerName)
+        {
+            var lt = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
+            if (!lt.Has(layerName)) return;
+            var ltt = (LinetypeTable)tr.GetObject(db.LinetypeTableId, OpenMode.ForRead);
+            if (!ltt.Has("Continuous")) return;
+            var rec = (LayerTableRecord)tr.GetObject(lt[layerName], OpenMode.ForWrite);
+            rec.LinetypeObjectId = ltt["Continuous"];
         }
 
         private static void EnsureDashedLinetype(Transaction tr, Database db)
@@ -6521,10 +6534,18 @@ namespace ST4PlanIdCiz
             return pl;
         }
 
+        private static void ApplyDashedLinetypeScaleToEntity(Entity e)
+        {
+            if (e == null || string.IsNullOrEmpty(e.Layer)) return;
+            if (e.Layer != LayerAks && e.Layer != LayerKesitSiniri) return;
+            try { e.LinetypeScale = DashedLayerEntityLinetypeScale; } catch { /* eski API */ }
+        }
+
         private static void AppendEntity(Transaction tr, BlockTableRecord btr, Entity e)
         {
             btr.AppendEntity(e);
             tr.AddNewlyCreatedDBObject(e, true);
+            ApplyDashedLinetypeScaleToEntity(e);
         }
 
         /// <summary>Entity ekler ve ObjectId döndürür (tarama boundary için).</summary>
@@ -6532,6 +6553,7 @@ namespace ST4PlanIdCiz
         {
             btr.AppendEntity(e);
             tr.AddNewlyCreatedDBObject(e, true);
+            ApplyDashedLinetypeScaleToEntity(e);
             return e.ObjectId;
         }
 
