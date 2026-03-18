@@ -392,6 +392,8 @@ namespace ST4PlanIdCiz
         private const string LayerTemelHatiliIsmi = "TEMEL HATILI ISMI (BEYKENT)";
         private const string LayerTemelIsmi = "TEMEL ISMI (BEYKENT)";
         private const string LayerKesit = "KESIT (BEYKENT)";
+        /// <summary>Kesit şemasında birleşik gövde; KESİT SINIRI dikdörtgeni ile kırpılır.</summary>
+        private const string LayerKesitCizgisi = "KESIT CIZGISI (BEYKENT)";
         private const string LayerKesitIsmi = "KESIT ISMI (BEYKENT)";
         private const string LayerKesitSiniri = "KESIT SINIRI (BEYKENT)";
         private const string YaziBeykentTextStyleName = "YAZI (BEYKENT)";
@@ -439,6 +441,7 @@ namespace ST4PlanIdCiz
             EnsurePlanLayer(tr, db, "KIRIS UZATMA ISARET (BEYKENT)", 1, LineWeight.LineWeight025, useDashed: false);
             EnsurePlanLayer(tr, db, "KIRIS UZATMA ISARET MAVI (BEYKENT)", 5, LineWeight.LineWeight025, useDashed: false);
             EnsurePlanLayer(tr, db, LayerKesit, 151, LineWeight.LineWeight060, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerKesitCizgisi, 3, LineWeight.LineWeight050, useDashed: false);
             EnsurePlanLayer(tr, db, LayerKesitIsmi, 6, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, LayerKesitSiniri, 241, LineWeight.LineWeight020, useDashed: true);
         }

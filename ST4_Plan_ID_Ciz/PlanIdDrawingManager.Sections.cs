@@ -6,6 +6,7 @@ using Autodesk.AutoCAD.Colors;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
 using NetTopologySuite.Geometries;
+using NetTopologySuite.Operation.Union;
 using ST4AksCizCSharp;
 
 namespace ST4PlanIdCiz
@@ -18,14 +19,14 @@ namespace ST4PlanIdCiz
         /// <summary>Plan üst kenarı ile üst kesit kutusu arası + ek 100 cm.</summary>
         private const double SectionAbovePlanGapCm = 340.0;
         private const double SectionLeftGapFromPlanCm = 320.0;
-        /// <summary>Üst kesit kutusunun, üst X aks balon/etiket bandının en az bu kadar üstünde kalması (cm).</summary>
+        /// <summary>Üst X aks balonunun kesite bakan dış yüzeyi ile KESİT SINIRI alt çizgisi arası (cm). Balon: çerçeve köşesi + 2R (R=KesitEtiketRadiusCm).</summary>
         private const double SectionMinAboveAxisTopLabelsCm = 100.0;
         /// <summary>Çap 40 cm aks balonu ile aynı; ok √2·R oranında.</summary>
         private const double KesitEtiketRadiusCm = 20.0;
         /// <summary>Kesit çizgisi ucu ile kat sınırı dikdörtgeni arasındaki boşluk (cm).</summary>
         private const double SectionCutGapFromFloorBoundaryCm = 30.0;
         private const double KesitEtiketTextHeightCm = 20.0;
-        /// <summary>Sol kesit kutusunun sağ kenarının, sol Y aks etiketlerinin en az bu kadar solunda kalması (cm).</summary>
+        /// <summary>Sol Y aks balonunun kesite bakan dış yüzeyi ile KESİT SINIRI sağ kenarı arası (cm). Balon: çerçeve köşesi − 2R.</summary>
         private const double SectionMinLeftOfAxisLeftLabelsCm = 100.0;
         private const double SectionCutLineWidthCm = 3.0;
         /// <summary>Kesit şemasında minimum kat yüksekliği (cm).</summary>
@@ -557,11 +558,15 @@ namespace ST4PlanIdCiz
 
             var colExtra = GetColumnTableExtraData(floor);
             DrawSectionCutsRevitStyleOnPlan(tr, btr, db, offsetX, offsetY, ext, xvCut, yhCut, "A", "B");
+            double extC = AxisExtensionBeyondBoundaryCm;
+            double Rbal = KesitEtiketRadiusCm;
+            // Aks balonu AxisBalonCenterAtEnd ile çerçeve köşesinden R dışarıda; kesite bakan dış yüzey çerçeveden 2R
+            double yAksBalonUstDisYuzey = offsetY + ymax + extC + 2.0 * Rbal;
+            double xAksBalonSolDisYuzey = offsetX + xmin - extC - 2.0 * Rbal;
 
             var slicesTop = CollectAllSectionSlices(floor, topA, topB, alongOrigTop, dirTop, isFoundationPlan, colExtra);
             var slicesLeft = CollectAllSectionSlices(floor, leftA, leftB, alongOrigLeft, dirLeft, isFoundationPlan, colExtra);
 
-            double planTop = offsetY + ymax;
             double GetAmin(List<SectionSlice> sl) => sl == null || sl.Count == 0 ? 0 : sl.Min(s => s.A0) - 40;
             double GetAmax(List<SectionSlice> sl) => sl == null || sl.Count == 0 ? 200 : sl.Max(s => s.A1) + 40;
             double GetZmin(List<SectionSlice> sl) => sl == null || sl.Count == 0 ? 0 : sl.Min(s => s.Z0) - 25;
@@ -574,12 +579,20 @@ namespace ST4PlanIdCiz
             // Üst kutu: planda yatay kesit hattına göre X hizası (boyunca zincir ortası)
             double alignXTop = xmin + (aminT + amaxT) * 0.5;
             double contentTopX = offsetX + alignXTop - (amaxT - aminT) * 0.5;
-            double axisTopBandY = offsetY + ymax + AxisExtensionBeyondBoundaryCm + 55.0;
-            double contentTopY = Math.Max(
-                planTop + SectionAbovePlanGapCm + 28.0,
-                axisTopBandY + SectionMinAboveAxisTopLabelsCm + 12.0);
+            double contentTopY;
+            // Üst kesit: aks balonunun kesite bakan üst dış yüzeyinden tam 100 cm yukarı (plan/340 cm zorlaması yok)
+            if (TryGetKesitSiniriPlacementZBounds(slicesTop, isFoundationPlan, out double zLoKesitT))
+            {
+                double yKesitSiniriAltOfset = zLoKesitT - minZT;
+                double yKesitSiniriAltHedef = yAksBalonUstDisYuzey + SectionMinAboveAxisTopLabelsCm;
+                contentTopY = yKesitSiniriAltHedef - yKesitSiniriAltOfset;
+            }
+            else
+            {
+                contentTopY = yAksBalonUstDisYuzey + SectionMinAboveAxisTopLabelsCm + 12.0;
+            }
             ObjectId planOlcuDimId = GetOrCreatePlanOlcuDimStyle(tr, db, 12.0);
-            DrawSchematicFromSlicesOneToOne(tr, btr, slicesTop, contentTopX, contentTopY, aminT, minZT, spanAT, spanZT, horizontalAlongX: true, mirrorElevationX: false, drawReferenceAxis: false);
+            DrawSchematicFromSlicesOneToOne(tr, btr, slicesTop, contentTopX, contentTopY, aminT, minZT, spanAT, spanZT, horizontalAlongX: true, mirrorElevationX: false, isFoundationPlan, drawReferenceAxis: false);
             DrawKesitSiniriFromBeams(tr, btr, slicesTop, contentTopX, contentTopY, aminT, minZT, spanZT, horizontalAlongX: true, mirrorElevationX: false, isFoundationPlan);
             DrawKesitSchematicDimensions(tr, btr, slicesTop, contentTopX, contentTopY, aminT, minZT, spanZT, horizontalAlongX: true, mirrorElevationX: false, isFoundationPlan, planOlcuDimId);
             DrawKesitSchematicElementLabels(tr, btr, db, slicesTop, floor, contentTopX, contentTopY, aminT, minZT, spanZT, true, false, isFoundationPlan);
@@ -591,12 +604,19 @@ namespace ST4PlanIdCiz
             // Sol kutu: planda dikey kesit X = xvCut → boyunca Y zinciri; Y hizası
             double alignYLeft = ymin + (aminL + amaxL) * 0.5;
             double contentLeftY = offsetY + alignYLeft - spanAL * 0.5;
-            double labelLeftEdgeX = offsetX + xmin - AxisExtensionBeyondBoundaryCm - 30.0;
-            double schematicRightMaxX = labelLeftEdgeX - SectionMinLeftOfAxisLeftLabelsCm;
-            double contentLeftX = Math.Min(
-                offsetX + xmin - SectionLeftGapFromPlanCm - spanZL - 28.0,
-                schematicRightMaxX - spanZL - 28.0);
-            DrawSchematicFromSlicesOneToOne(tr, btr, slicesLeft, contentLeftX, contentLeftY, aminL, minZL, spanAL, spanZL, horizontalAlongX: false, mirrorElevationX: true, drawReferenceAxis: false);
+            double contentLeftX;
+            // Sol kesit: sol aks balonunun kesite bakan yüzeyinden tam 100 cm sola (320 cm plan zorlaması yok)
+            if (TryGetKesitSiniriPlacementZBounds(slicesLeft, isFoundationPlan, out double zLoKesitL))
+            {
+                double xKesitSiniriSagOfset = spanZL - (zLoKesitL - minZL);
+                double xKesitSiniriSagHedef = xAksBalonSolDisYuzey - SectionMinLeftOfAxisLeftLabelsCm;
+                contentLeftX = xKesitSiniriSagHedef - xKesitSiniriSagOfset;
+            }
+            else
+            {
+                contentLeftX = xAksBalonSolDisYuzey - SectionMinLeftOfAxisLeftLabelsCm - spanZL - 28.0;
+            }
+            DrawSchematicFromSlicesOneToOne(tr, btr, slicesLeft, contentLeftX, contentLeftY, aminL, minZL, spanAL, spanZL, horizontalAlongX: false, mirrorElevationX: true, isFoundationPlan, drawReferenceAxis: false);
             DrawKesitSiniriFromBeams(tr, btr, slicesLeft, contentLeftX, contentLeftY, aminL, minZL, spanZL, horizontalAlongX: false, mirrorElevationX: true, isFoundationPlan);
             DrawKesitSchematicDimensions(tr, btr, slicesLeft, contentLeftX, contentLeftY, aminL, minZL, spanZL, horizontalAlongX: false, mirrorElevationX: true, isFoundationPlan, planOlcuDimId);
             DrawKesitSchematicElementLabels(tr, btr, db, slicesLeft, floor, contentLeftX, contentLeftY, aminL, minZL, spanZL, false, true, isFoundationPlan);
@@ -1402,30 +1422,52 @@ namespace ST4PlanIdCiz
             return true;
         }
 
-        /// <summary>Temel: kolon/perde hariç kot ±50 cm, boyuna tüm eleman ±100. Normal kat: kiriş/döşeme kuralı + boy ±100.</summary>
+        /// <summary>Plan üst/sol kesit ile aks balonu arası uzaklık: KESİT SINIRI kotu kolon/perde dilimlerine göre değil, kiriş-döşeme-temel gövdesine göre.</summary>
+        private static bool TryGetKesitSiniriPlacementZBounds(List<SectionSlice> slices, bool isFoundationPlan, out double zLo)
+        {
+            zLo = 0;
+            if (slices == null || slices.Count == 0) return false;
+            var sl = slices.Where(s => s.Layer != LayerKolon && s.Layer != LayerPerde).ToList();
+            if (sl.Count == 0) return false;
+            if (isFoundationPlan)
+            {
+                double g = KesitSiniriTemelKotTasmasiCm;
+                zLo = sl.Min(s => s.Z0) - g;
+                return true;
+            }
+            var beams = sl.Where(s => s.Layer == LayerKiris).ToList();
+            if (beams.Count > 0)
+            {
+                zLo = beams.Min(s => s.Z0) - KesitSiniriKotTasmasiCm;
+                return true;
+            }
+            var slabs = sl.Where(s => s.Layer == LayerDoseme).ToList();
+            if (slabs.Count == 0) return false;
+            zLo = slabs.Min(s => s.Z0) - KesitSiniriDosemeAltTasmasiCm;
+            return true;
+        }
+
+        /// <summary>KESİT SINIRI: kolon+perde dilimlerinin KESİT SINIRI dikdörtgeni kenarıyla örtüştüğü parçalar; kolon/perde yoksa veya hiç örtüşme yoksa çizilmez.</summary>
         private void DrawKesitSiniriFromBeams(Transaction tr, BlockTableRecord btr, List<SectionSlice> slices,
             double originX, double originY, double amin, double minZ, double spanZ, bool horizontalAlongX, bool mirrorElevationX,
             bool isFoundationPlan)
         {
             if (!TryGetKesitSiniriBounds(slices, isFoundationPlan, out double aLo, out double aHi, out double zLo, out double zHi))
                 return;
-            var pl = new Polyline(4);
+            if (!slices.Any(s => s.Layer == LayerKolon || s.Layer == LayerPerde))
+                return;
+            double x0, x1, y0, y1;
             if (horizontalAlongX)
             {
-                double x0 = originX + (aLo - amin);
-                double x1 = originX + (aHi - amin);
-                double y0 = originY + (zLo - minZ);
-                double y1 = originY + (zHi - minZ);
-                pl.AddVertexAt(0, new Point2d(x0, y0), 0, 0, 0);
-                pl.AddVertexAt(1, new Point2d(x1, y0), 0, 0, 0);
-                pl.AddVertexAt(2, new Point2d(x1, y1), 0, 0, 0);
-                pl.AddVertexAt(3, new Point2d(x0, y1), 0, 0, 0);
+                x0 = originX + (aLo - amin);
+                x1 = originX + (aHi - amin);
+                y0 = originY + (zLo - minZ);
+                y1 = originY + (zHi - minZ);
             }
             else
             {
-                double y0 = originY + (aLo - amin);
-                double y1 = originY + (aHi - amin);
-                double x0, x1;
+                y0 = originY + (aLo - amin);
+                y1 = originY + (aHi - amin);
                 if (mirrorElevationX)
                 {
                     x0 = originX + spanZ - (zHi - minZ);
@@ -1436,15 +1478,123 @@ namespace ST4PlanIdCiz
                     x0 = originX + (zLo - minZ);
                     x1 = originX + (zHi - minZ);
                 }
-                pl.AddVertexAt(0, new Point2d(x0, y0), 0, 0, 0);
-                pl.AddVertexAt(1, new Point2d(x1, y0), 0, 0, 0);
-                pl.AddVertexAt(2, new Point2d(x1, y1), 0, 0, 0);
-                pl.AddVertexAt(3, new Point2d(x0, y1), 0, 0, 0);
             }
-            pl.Closed = true;
-            pl.Layer = LayerKesitSiniri;
-            pl.ConstantWidth = 0;
-            AppendEntity(tr, btr, pl);
+            double xl = Math.Min(x0, x1), xr = Math.Max(x0, x1), yb = Math.Min(y0, y1), yt = Math.Max(y0, y1);
+            const double zTol = 0.25;
+            var rects = new List<(double x0, double x1, double y0, double y1)>();
+            foreach (var s in slices.Where(s => s.Layer == LayerKolon || s.Layer == LayerPerde))
+            {
+                var poly = CreateSectionSliceSchematicPolygon(new GeometryFactory(), s, originX, originY, amin, minZ, spanZ, horizontalAlongX, mirrorElevationX);
+                var e = poly.EnvelopeInternal;
+                rects.Add((e.MinX, e.MaxX, e.MinY, e.MaxY));
+            }
+            foreach (var seg in KesitSiniriSegmentsOnKolonPerdeEdges(xl, xr, yb, yt, rects, zTol))
+            {
+                var pl = new Polyline();
+                pl.AddVertexAt(0, new Point2d(seg.ax, seg.ay), 0, 0, 0);
+                pl.AddVertexAt(1, new Point2d(seg.bx, seg.by), 0, 0, 0);
+                pl.Closed = false;
+                pl.Layer = LayerKesitSiniri;
+                pl.ConstantWidth = 0;
+                AppendEntity(tr, btr, pl);
+            }
+        }
+
+        private static List<(double ax, double ay, double bx, double by)> KesitSiniriSegmentsOnKolonPerdeEdges(
+            double xl, double xr, double yb, double yt, List<(double x0, double x1, double y0, double y1)> rects, double tol)
+        {
+            var outSegs = new List<(double, double, double, double)>();
+            List<(double lo, double hi)> Merge1D(List<(double lo, double hi)> iv, double mergeTol)
+            {
+                if (iv.Count == 0) return iv;
+                iv.Sort((a, b) => a.lo.CompareTo(b.lo));
+                var m = new List<(double lo, double hi)> { iv[0] };
+                for (int i = 1; i < iv.Count; i++)
+                {
+                    var last = m[m.Count - 1];
+                    if (iv[i].lo <= last.hi + mergeTol) m[m.Count - 1] = (last.lo, Math.Max(last.hi, iv[i].hi));
+                    else m.Add(iv[i]);
+                }
+                return m;
+            }
+            var horizBottom = new List<(double lo, double hi)>();
+            var horizTop = new List<(double lo, double hi)>();
+            var vertLeft = new List<(double lo, double hi)>();
+            var vertRight = new List<(double lo, double hi)>();
+            foreach (var r in rects)
+            {
+                if (yb >= r.y0 - tol && yb <= r.y1 + tol)
+                {
+                    double a = Math.Max(xl, r.x0), b = Math.Min(xr, r.x1);
+                    if (b > a + tol) horizBottom.Add((a, b));
+                }
+                if (yt >= r.y0 - tol && yt <= r.y1 + tol)
+                {
+                    double a = Math.Max(xl, r.x0), b = Math.Min(xr, r.x1);
+                    if (b > a + tol) horizTop.Add((a, b));
+                }
+                if (xl >= r.x0 - tol && xl <= r.x1 + tol)
+                {
+                    double a = Math.Max(yb, r.y0), b = Math.Min(yt, r.y1);
+                    if (b > a + tol) vertLeft.Add((a, b));
+                }
+                if (xr >= r.x0 - tol && xr <= r.x1 + tol)
+                {
+                    double a = Math.Max(yb, r.y0), b = Math.Min(yt, r.y1);
+                    if (b > a + tol) vertRight.Add((a, b));
+                }
+            }
+            foreach (var h in Merge1D(horizBottom, tol))
+                outSegs.Add((h.lo, yb, h.hi, yb));
+            foreach (var h in Merge1D(horizTop, tol))
+                outSegs.Add((h.lo, yt, h.hi, yt));
+            foreach (var v in Merge1D(vertLeft, tol))
+                outSegs.Add((xl, v.lo, xl, v.hi));
+            foreach (var v in Merge1D(vertRight, tol))
+                outSegs.Add((xr, v.lo, xr, v.hi));
+            return outSegs;
+        }
+
+        private static Polygon CreateSectionSliceSchematicPolygon(GeometryFactory gf, SectionSlice s,
+            double originX, double originY, double amin, double minZ, double spanZ, bool horizontalAlongX, bool mirrorElevationX)
+        {
+            LinearRing ring;
+            if (horizontalAlongX)
+            {
+                double x0 = originX + (s.A0 - amin);
+                double x1 = originX + (s.A1 - amin);
+                if (x1 - x0 < 6.0) { double m = (x0 + x1) * 0.5; x0 = m - 4.0; x1 = m + 4.0; }
+                double y0 = originY + (s.Z0 - minZ);
+                double y1 = originY + (s.Z1 - minZ);
+                if (y1 - y0 < 3.0) y1 = y0 + 3.0;
+                ring = gf.CreateLinearRing(new[]
+                {
+                    new Coordinate(x0, y0), new Coordinate(x1, y0), new Coordinate(x1, y1), new Coordinate(x0, y1), new Coordinate(x0, y0)
+                });
+            }
+            else
+            {
+                double y0 = originY + (s.A0 - amin);
+                double y1 = originY + (s.A1 - amin);
+                if (y1 - y0 < 6.0) { double m = (y0 + y1) * 0.5; y0 = m - 4.0; y1 = m + 4.0; }
+                double x0, x1;
+                if (mirrorElevationX)
+                {
+                    x0 = originX + spanZ - (s.Z1 - minZ);
+                    x1 = originX + spanZ - (s.Z0 - minZ);
+                }
+                else
+                {
+                    x0 = originX + (s.Z0 - minZ);
+                    x1 = originX + (s.Z1 - minZ);
+                }
+                if (x1 - x0 < 3.0) x1 = x0 + 3.0;
+                ring = gf.CreateLinearRing(new[]
+                {
+                    new Coordinate(x0, y0), new Coordinate(x1, y0), new Coordinate(x1, y1), new Coordinate(x0, y1), new Coordinate(x0, y0)
+                });
+            }
+            return gf.CreatePolygon(ring);
         }
 
         /// <summary>A-A: kiriş alt; kolon/perde temel üstü / kalıp altı. B-B: kolon-perde temelde sınır solu, kalıpta sınır sağı, kesit boyu ortalı; kalıp kiriş sağda ortalı.</summary>
@@ -2038,7 +2188,7 @@ namespace ST4PlanIdCiz
         /// <summary>Model cm birebir: yatay eksen = kesit boyunca mesafe, dikey = kot (genel cm).</summary>
         /// <param name="mirrorElevationX">Sol kesit kutusunda kot ekseninde (X) simetri; zincir (Y) aynalanmaz.</param>
         private void DrawSchematicFromSlicesOneToOne(Transaction tr, BlockTableRecord btr, List<SectionSlice> slices,
-            double originX, double originY, double amin, double minZ, double spanA, double spanZ, bool horizontalAlongX, bool mirrorElevationX, bool drawReferenceAxis = true)
+            double originX, double originY, double amin, double minZ, double spanA, double spanZ, bool horizontalAlongX, bool mirrorElevationX, bool isFoundationPlan, bool drawReferenceAxis = true)
         {
             if (slices == null || slices.Count == 0)
             {
@@ -2069,6 +2219,8 @@ namespace ST4PlanIdCiz
                     AppendEntity(tr, btr, gr);
                 }
 
+                var gf = new GeometryFactory();
+                var slicePolys = new List<Geometry>();
                 foreach (var s in slices.OrderBy(x => x.Order).ThenBy(x => x.Z0))
                 {
                     double x0 = originX + (s.A0 - amin);
@@ -2077,15 +2229,13 @@ namespace ST4PlanIdCiz
                     double y0 = originY + (s.Z0 - minZ);
                     double y1 = originY + (s.Z1 - minZ);
                     if (y1 - y0 < 3.0) y1 = y0 + 3.0;
-                    var rect = new Polyline(4);
-                    rect.AddVertexAt(0, new Point2d(x0, y0), 0, 0, 0);
-                    rect.AddVertexAt(1, new Point2d(x1, y0), 0, 0, 0);
-                    rect.AddVertexAt(2, new Point2d(x1, y1), 0, 0, 0);
-                    rect.AddVertexAt(3, new Point2d(x0, y1), 0, 0, 0);
-                    rect.Closed = true;
-                    rect.Layer = string.IsNullOrEmpty(s.Layer) ? LayerKesit : s.Layer;
-                    AppendEntity(tr, btr, rect);
+                    var ring = gf.CreateLinearRing(new[]
+                    {
+                        new Coordinate(x0, y0), new Coordinate(x1, y0), new Coordinate(x1, y1), new Coordinate(x0, y1), new Coordinate(x0, y0)
+                    });
+                    slicePolys.Add(gf.CreatePolygon(ring));
                 }
+                TryDrawKesitSchematicMergedOutline(tr, btr, slicePolys, slices, isFoundationPlan, originX, originY, amin, minZ, spanZ, horizontalAlongX, mirrorElevationX);
             }
             else
             {
@@ -2100,6 +2250,8 @@ namespace ST4PlanIdCiz
                     AppendEntity(tr, btr, gr);
                 }
 
+                var gf2 = new GeometryFactory();
+                var slicePolys2 = new List<Geometry>();
                 foreach (var s in slices.OrderBy(x => x.Order).ThenBy(x => x.Z0))
                 {
                     double y0 = originY + (s.A0 - amin);
@@ -2117,16 +2269,251 @@ namespace ST4PlanIdCiz
                         x1 = originX + (s.Z1 - minZ);
                     }
                     if (x1 - x0 < 3.0) x1 = x0 + 3.0;
-                    var rect = new Polyline(4);
-                    rect.AddVertexAt(0, new Point2d(x0, y0), 0, 0, 0);
-                    rect.AddVertexAt(1, new Point2d(x1, y0), 0, 0, 0);
-                    rect.AddVertexAt(2, new Point2d(x1, y1), 0, 0, 0);
-                    rect.AddVertexAt(3, new Point2d(x0, y1), 0, 0, 0);
-                    rect.Closed = true;
-                    rect.Layer = string.IsNullOrEmpty(s.Layer) ? LayerKesit : s.Layer;
-                    AppendEntity(tr, btr, rect);
+                    var ring = gf2.CreateLinearRing(new[]
+                    {
+                        new Coordinate(x0, y0), new Coordinate(x1, y0), new Coordinate(x1, y1), new Coordinate(x0, y1), new Coordinate(x0, y0)
+                    });
+                    slicePolys2.Add(gf2.CreatePolygon(ring));
+                }
+                TryDrawKesitSchematicMergedOutline(tr, btr, slicePolys2, slices, isFoundationPlan, originX, originY, amin, minZ, spanZ, horizontalAlongX, mirrorElevationX);
+            }
+        }
+
+        /// <summary>KESİT SINIRI çizgisi ile aynı dikdörtgen (şema koordinatlarında).</summary>
+        private Geometry BuildKesitSiniriClipPolygon(List<SectionSlice> slices, bool isFoundationPlan,
+            double originX, double originY, double amin, double minZ, double spanZ, bool horizontalAlongX, bool mirrorElevationX)
+        {
+            if (!TryGetKesitSiniriBounds(slices, isFoundationPlan, out double aLo, out double aHi, out double zLo, out double zHi))
+                return null;
+            var gf = new GeometryFactory();
+            double x0, x1, y0, y1;
+            if (horizontalAlongX)
+            {
+                x0 = originX + (aLo - amin);
+                x1 = originX + (aHi - amin);
+                y0 = originY + (zLo - minZ);
+                y1 = originY + (zHi - minZ);
+            }
+            else
+            {
+                y0 = originY + (aLo - amin);
+                y1 = originY + (aHi - amin);
+                if (mirrorElevationX)
+                {
+                    x0 = originX + spanZ - (zHi - minZ);
+                    x1 = originX + spanZ - (zLo - minZ);
+                }
+                else
+                {
+                    x0 = originX + (zLo - minZ);
+                    x1 = originX + (zHi - minZ);
                 }
             }
+            var ring = gf.CreateLinearRing(new[]
+            {
+                new Coordinate(x0, y0), new Coordinate(x1, y0), new Coordinate(x1, y1), new Coordinate(x0, y1), new Coordinate(x0, y0)
+            });
+            return gf.CreatePolygon(ring);
+        }
+
+        /// <summary>Dilimleri union eder; KESİT SINIRI dışını keser; <see cref="LayerKesitCizgisi"/> üzerinde çizer.</summary>
+        private void TryDrawKesitSchematicMergedOutline(Transaction tr, BlockTableRecord btr, List<Geometry> slicePolys,
+            List<SectionSlice> slices, bool isFoundationPlan, double originX, double originY, double amin, double minZ, double spanZ,
+            bool horizontalAlongX, bool mirrorElevationX)
+        {
+            if (slicePolys == null || slicePolys.Count == 0) return;
+            Geometry merged;
+            try
+            {
+                var reduced = slicePolys.Select(g => ReducePrecisionSafe(g, 2) ?? g).Where(g => g != null && !g.IsEmpty).ToList();
+                merged = reduced.Count == 1 ? reduced[0] : CascadedPolygonUnion.Union(reduced);
+            }
+            catch
+            {
+                try
+                {
+                    merged = slicePolys.Count == 1 ? slicePolys[0] : CascadedPolygonUnion.Union(slicePolys);
+                }
+                catch
+                {
+                    merged = slicePolys[0];
+                }
+            }
+            if (merged == null || merged.IsEmpty) return;
+            Geometry clip = BuildKesitSiniriClipPolygon(slices, isFoundationPlan, originX, originY, amin, minZ, spanZ, horizontalAlongX, mirrorElevationX);
+            if (clip != null && !clip.IsEmpty)
+            {
+                try
+                {
+                    var m2 = ReducePrecisionSafe(merged, 2) ?? merged;
+                    var c2 = ReducePrecisionSafe(clip, 2) ?? clip;
+                    var inter = m2.Intersection(c2);
+                    if (inter != null && !inter.IsEmpty)
+                        merged = inter;
+                }
+                catch { /* tam gövde */ }
+            }
+            if (merged == null || merged.IsEmpty) return;
+            // Kolon/perde ile aynı: ANSI33 tarama (TARAMA), sınır çizgisi TARAMA üzerinde; üstte KESIT CIZGISI
+            DrawGeometryRingsAsPolylines(tr, btr, merged, LayerTarama, addHatch: true, hatchAngleRad: null,
+                exteriorRingsOnly: true, applySmallTriangleTrim: false);
+            if (clip != null && !clip.IsEmpty)
+                DrawKesitCizgisiExcludingSiniriEdges(tr, btr, merged, clip);
+            else
+                DrawGeometryRingsAsPolylines(tr, btr, merged, LayerKesitCizgisi, addHatch: false, exteriorRingsOnly: false, applySmallTriangleTrim: false);
+        }
+
+        /// <summary>KESİT SINIRI dikdörtgeni üzerindeki kenar segmentlerini çizmez (sadece iç gövde hatları).</summary>
+        private static bool KesitCizgisiSegmentOnSiniriKenari(double x1, double y1, double x2, double y2,
+            double xl, double xr, double yb, double yt, double tol)
+        {
+            if (Math.Abs(y1 - y2) < tol && Math.Abs(y1 - yb) < tol)
+            {
+                double xa = Math.Min(x1, x2), xb = Math.Max(x1, x2);
+                if (xa >= xl - tol && xb <= xr + tol) return true;
+            }
+            if (Math.Abs(y1 - y2) < tol && Math.Abs(y1 - yt) < tol)
+            {
+                double xa = Math.Min(x1, x2), xb = Math.Max(x1, x2);
+                if (xa >= xl - tol && xb <= xr + tol) return true;
+            }
+            if (Math.Abs(x1 - x2) < tol && Math.Abs(x1 - xl) < tol)
+            {
+                double ya = Math.Min(y1, y2), yb2 = Math.Max(y1, y2);
+                if (ya >= yb - tol && yb2 <= yt + tol) return true;
+            }
+            if (Math.Abs(x1 - x2) < tol && Math.Abs(x1 - xr) < tol)
+            {
+                double ya = Math.Min(y1, y2), yb2 = Math.Max(y1, y2);
+                if (ya >= yb - tol && yb2 <= yt + tol) return true;
+            }
+            return false;
+        }
+
+        private void DrawKesitCizgisiExcludingSiniriEdges(Transaction tr, BlockTableRecord btr, Geometry merged, Geometry clipPoly)
+        {
+            if (merged == null || merged.IsEmpty) return;
+            var env = clipPoly.EnvelopeInternal;
+            double xl = env.MinX, xr = env.MaxX, yb = env.MinY, yt = env.MaxY;
+            const double edgeTol = 0.45;
+            const double minSeg = 0.4;
+
+            var rings = new List<Coordinate[]>();
+            if (merged is Polygon poly)
+            {
+                rings.Add(poly.ExteriorRing.Coordinates);
+                for (int h = 0; h < poly.NumInteriorRings; h++)
+                    rings.Add(poly.InteriorRings[h].Coordinates);
+            }
+            else if (merged is MultiPolygon mp)
+            {
+                for (int i = 0; i < mp.NumGeometries; i++)
+                {
+                    var p = (Polygon)mp.GetGeometryN(i);
+                    rings.Add(p.ExteriorRing.Coordinates);
+                    for (int h = 0; h < p.NumInteriorRings; h++)
+                        rings.Add(p.InteriorRings[h].Coordinates);
+                }
+            }
+            else if (merged is GeometryCollection gc)
+            {
+                for (int i = 0; i < gc.NumGeometries; i++)
+                {
+                    if (gc.GetGeometryN(i) is Polygon p2)
+                    {
+                        rings.Add(p2.ExteriorRing.Coordinates);
+                        for (int h = 0; h < p2.NumInteriorRings; h++)
+                            rings.Add(p2.InteriorRings[h].Coordinates);
+                    }
+                }
+            }
+
+            foreach (var coords in rings)
+            {
+                if (coords == null || coords.Length < 2) continue;
+                int n = coords.Length;
+                if (n > 1 && coords[0].Equals2D(coords[n - 1])) n--;
+                if (n < 2) continue;
+
+                var chain = new List<Point2d>();
+                void FlushChain()
+                {
+                    if (chain.Count < 2) { chain.Clear(); return; }
+                    var dedup = new List<Point2d> { chain[0] };
+                    for (int k = 1; k < chain.Count; k++)
+                    {
+                        if (dedup[dedup.Count - 1].GetDistanceTo(chain[k]) >= minSeg)
+                            dedup.Add(chain[k]);
+                    }
+                    if (dedup.Count < 2) { chain.Clear(); return; }
+                    dedup = KesitCizgisiRemoveCollinearVertices(dedup);
+                    if (dedup.Count < 2) { chain.Clear(); return; }
+                    var pl = new Polyline();
+                    for (int k = 0; k < dedup.Count; k++)
+                        pl.AddVertexAt(k, dedup[k], 0, 0, 0);
+                    pl.Layer = LayerKesitCizgisi;
+                    pl.ConstantWidth = 0;
+                    AppendEntity(tr, btr, pl);
+                    chain.Clear();
+                }
+
+                for (int i = 0; i < n; i++)
+                {
+                    int j = (i + 1) % n;
+                    double ax = coords[i].X, ay = coords[i].Y;
+                    double bx = coords[j].X, by = coords[j].Y;
+                    if (KesitCizgisiSegmentOnSiniriKenari(ax, ay, bx, by, xl, xr, yb, yt, edgeTol))
+                        FlushChain();
+                    else
+                    {
+                        if (chain.Count == 0)
+                            chain.Add(new Point2d(ax, ay));
+                        chain.Add(new Point2d(bx, by));
+                    }
+                }
+                FlushChain();
+            }
+        }
+
+        /// <summary>Açı değiştirmeyen düz hat üzerindeki ara vertex'leri siler (KESIT CIZGISI).</summary>
+        private static List<Point2d> KesitCizgisiRemoveCollinearVertices(List<Point2d> pts)
+        {
+            if (pts == null || pts.Count < 3) return pts;
+            const double lineTol = 0.08;
+            var list = new List<Point2d>(pts);
+            bool changed;
+            int guard = 0;
+            do
+            {
+                changed = false;
+                if (list.Count < 3 || guard++ > list.Count + 8) break;
+                for (int i = 1; i < list.Count - 1; i++)
+                {
+                    var a = list[i - 1];
+                    var b = list[i];
+                    var c = list[i + 1];
+                    if (KesitCizgisiPointToSegmentDist(b, a, c) <= lineTol)
+                    {
+                        list.RemoveAt(i);
+                        changed = true;
+                        break;
+                    }
+                }
+            } while (changed);
+            return list;
+        }
+
+        private static double KesitCizgisiPointToSegmentDist(Point2d p, Point2d a, Point2d segB)
+        {
+            double vx = segB.X - a.X, vy = segB.Y - a.Y;
+            double len = Math.Sqrt(vx * vx + vy * vy);
+            if (len < 1e-9) return p.GetDistanceTo(a);
+            double t = ((p.X - a.X) * vx + (p.Y - a.Y) * vy) / (len * len);
+            if (t <= 0) return p.GetDistanceTo(a);
+            if (t >= 1) return p.GetDistanceTo(segB);
+            double qx = a.X + t * vx, qy = a.Y + t * vy;
+            double dx = p.X - qx, dy = p.Y - qy;
+            return Math.Sqrt(dx * dx + dy * dy);
         }
     }
 }
