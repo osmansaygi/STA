@@ -63,6 +63,15 @@ namespace ST4PlanIdCiz
             return Regex.Replace(s.Trim(), @"\s*\(govde\)\s*$", "", RegexOptions.IgnoreCase).Trim();
         }
 
+        private static readonly Regex GprColumnIdInDonatiCell = new Regex(@"^(?:SB|SZ|SA|SC)\d+$|^(?:SB|SZ|SA|SC)-\d+$|^(?:S\d+)-\d+$", RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+        /// <summary>UTF-8 ¡ (C2 A1) yanlış okunduysa tek ¡ yap.</summary>
+        private static string NormalizeGprTableLine(string line)
+        {
+            if (string.IsNullOrEmpty(line)) return line;
+            return line.Replace("\u00C2\u00A1", "\u00A1");
+        }
+
         /// <summary>GPR: ¡ sütun ayırıcı; 1-tabanlı sütun no (9 = donatı metni).</summary>
         private static string GetGprColumnByInvertedExclamation(string line, int oneBasedColumn)
         {
@@ -73,15 +82,167 @@ namespace ST4PlanIdCiz
             return string.IsNullOrEmpty(p) ? null : p;
         }
 
+        private static bool LooksLikeGprDonatiOrEtriyeText(string t)
+        {
+            if (string.IsNullOrWhiteSpace(t)) return false;
+            string s = t.Trim();
+            if (GprColumnIdInDonatiCell.IsMatch(s)) return false;
+            if (s.IndexOf("(govde)", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            if (s.IndexOf("(etriye)", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            if (s.IndexOf('\u00F8') >= 0 || s.IndexOf('\u00D8') >= 0) return true;
+            if (s.IndexOf("ø", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            if (Regex.IsMatch(s, @"\d+\s*[x×\u00D7]\s*\d+")) return true;
+            if (Regex.IsMatch(s, @"\d+\s*/\s*\d+")) return true;
+            if (Regex.IsMatch(s, @"\d+\s*fi\s*\d+", RegexOptions.IgnoreCase)) return true;
+            return false;
+        }
+
         private static string GetGprDonatiCell(string line, bool isGpr)
         {
-            if (isGpr)
+            if (!isGpr)
+                return StripGovdeSuffix(GetLastTableColumn(line).Trim());
+            line = NormalizeGprTableLine(line ?? string.Empty);
+            string c9 = GetGprColumnByInvertedExclamation(line, 9);
+            c9 = string.IsNullOrEmpty(c9) ? null : StripGovdeSuffix(c9.Trim());
+            if (!string.IsNullOrEmpty(c9) && LooksLikeGprDonatiOrEtriyeText(c9))
+                return c9;
+            var parts = line.Split('\u00A1');
+            for (int i = parts.Length - 1; i >= 1; i--)
             {
-                string c9 = GetGprColumnByInvertedExclamation(line, 9);
-                if (!string.IsNullOrEmpty(c9))
-                    return StripGovdeSuffix(c9);
+                string t = StripGovdeSuffix(parts[i].Trim());
+                if (string.IsNullOrEmpty(t)) continue;
+                if (LooksLikeGprDonatiOrEtriyeText(t))
+                    return t;
             }
+            if (!string.IsNullOrEmpty(c9) && !GprColumnIdInDonatiCell.IsMatch(c9))
+                return c9;
             return StripGovdeSuffix(GetLastTableColumn(line).Trim());
+        }
+
+        /// <summary>GPR tablo satırı: ¡ hem UTF-8 (C2 A1) hem tek bayt A1 olabilir; string bölme güvenilmez. Ham bayıttan hücreler ayrılır.</summary>
+        private static int IndexAfterGprCoordinatePrefix(ReadOnlySpan<byte> line)
+        {
+            if (line.Length < 11) return 0;
+            if (line[0] < (byte)'0' || line[0] > (byte)'9') return 0;
+            int i = 0;
+            for (int part = 0; part < 6; part++)
+            {
+                if (part == 4 && i < line.Length && line[i] == (byte)'-') i++;
+                if (i >= line.Length || line[i] < (byte)'0' || line[i] > (byte)'9') return 0;
+                while (i < line.Length && line[i] >= (byte)'0' && line[i] <= (byte)'9') i++;
+                if (part < 5)
+                {
+                    if (i >= line.Length || line[i] != (byte)',') return 0;
+                    i++;
+                }
+            }
+            while (i < line.Length && (line[i] == (byte)' ' || line[i] == (byte)'\t')) i++;
+            return i;
+        }
+
+        private static List<byte[]> SplitGprRowCellsRaw(ReadOnlySpan<byte> content)
+        {
+            var cells = new List<byte[]>();
+            int segStart = 0;
+            int i = 0;
+            while (i < content.Length)
+            {
+                if (i + 1 < content.Length && content[i] == 0xC2 && content[i + 1] == 0xA1)
+                {
+                    cells.Add(content.Slice(segStart, i - segStart).ToArray());
+                    i += 2;
+                    segStart = i;
+                    continue;
+                }
+                if (content[i] == 0xA1 && (i == 0 || content[i - 1] != 0xC2))
+                {
+                    cells.Add(content.Slice(segStart, i - segStart).ToArray());
+                    i += 1;
+                    segStart = i;
+                    continue;
+                }
+                i++;
+            }
+            cells.Add(content.Slice(segStart).ToArray());
+            return cells;
+        }
+
+        private static int ScoreGprDonatiCellCandidate(string s)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return 0;
+            string t = s.Trim();
+            if (GprColumnIdInDonatiCell.IsMatch(t)) return -100;
+            int sc = 0;
+            if (t.IndexOf("(govde)", StringComparison.OrdinalIgnoreCase) >= 0) sc += 25;
+            if (t.IndexOf("(etriye)", StringComparison.OrdinalIgnoreCase) >= 0) sc += 25;
+            if (t.IndexOf('\uFFFD') >= 0) sc -= 30;
+            if (Regex.IsMatch(t, @"[øØ\u00F8].*\d|\d.*[øØ\u00F8]")) sc += 10;
+            if (Regex.IsMatch(t, @"\d+\s*[x×\u00D7]\s*\d+")) sc += 8;
+            if (Regex.IsMatch(t, @"/\s*\d+")) sc += 4;
+            return sc;
+        }
+
+        private static string DecodeGprDonatiCellBytes(byte[] seg)
+        {
+            if (seg == null || seg.Length == 0) return string.Empty;
+            var utf8 = new UTF8Encoding(false, false);
+            var w1252 = Encoding.GetEncoding(1252);
+            Encoding w1254 = null;
+            try { w1254 = Encoding.GetEncoding(1254); } catch { w1254 = w1252; }
+            string best = utf8.GetString(seg);
+            int bestSc = ScoreGprDonatiCellCandidate(best);
+            foreach (var enc in new[] { w1252, w1254 })
+            {
+                string c = enc.GetString(seg);
+                int sc = ScoreGprDonatiCellCandidate(c);
+                if (sc > bestSc) { bestSc = sc; best = c; }
+            }
+            return best;
+        }
+
+        private static string GprDonatiRegexFallback(ReadOnlySpan<byte> content)
+        {
+            byte[] arr = content.Length == 0 ? Array.Empty<byte>() : content.ToArray();
+            var utf8 = new UTF8Encoding(false, false);
+            foreach (var enc in new[] { utf8, Encoding.GetEncoding(1252), Encoding.GetEncoding(1254) })
+            {
+                string s = enc.GetString(arr);
+                var m = Regex.Match(s, @"([\d\s+x×\u00D7\u00F8Ø/\.\(\)]+)\(govde\)", RegexOptions.IgnoreCase);
+                if (m.Success && m.Groups[1].Value.Trim().Length >= 3)
+                    return m.Groups[1].Value.Trim() + "(govde)";
+                m = Regex.Match(s, @"([\d\s+x×\u00D7\u00F8Ø/\.\(\)]+)\(etriye\)", RegexOptions.IgnoreCase);
+                if (m.Success && m.Groups[1].Value.Trim().Length >= 2)
+                    return m.Groups[1].Value.Trim() + "(etriye)";
+            }
+            return null;
+        }
+
+        private static string ExtractGprDonatiCellFromRawLine(byte[] lineBytes)
+        {
+            if (lineBytes == null || lineBytes.Length == 0) return null;
+            int off = IndexAfterGprCoordinatePrefix(lineBytes);
+            ReadOnlySpan<byte> content = lineBytes.AsSpan(off);
+            while (content.Length > 0 && (content[0] == (byte)' ' || content[0] == (byte)'\t'))
+                content = content.Slice(1);
+            if (content.Length == 0) return null;
+            var cells = SplitGprRowCellsRaw(content);
+            if (cells.Count < 4)
+                return GprDonatiRegexFallback(content);
+            int[] tryIdx = { 9, 10, 8, 11, 7, 6 };
+            string best = null;
+            int bestSc = int.MinValue;
+            foreach (int idx in tryIdx)
+            {
+                if (idx >= cells.Count) continue;
+                string dec = DecodeGprDonatiCellBytes(cells[idx]).Trim();
+                int sc = ScoreGprDonatiCellCandidate(dec);
+                if (sc > bestSc) { bestSc = sc; best = dec; }
+            }
+            if (!string.IsNullOrEmpty(best) && (bestSc >= 8 || LooksLikeGprDonatiOrEtriyeText(best)))
+                return best;
+            string fb = GprDonatiRegexFallback(content);
+            if (!string.IsNullOrEmpty(fb)) return fb;
+            return string.IsNullOrEmpty(best) ? null : best;
         }
 
         private static string ReplaceTimesWithAsciiX(string s)
@@ -96,38 +257,85 @@ namespace ST4PlanIdCiz
             return ReplaceTimesWithAsciiX(NormalizeDiameterSymbol(StripGovdeSuffix(raw)));
         }
 
-        private static bool TryGetDonatiForFloorColumn(Dictionary<string, (string ebat, string donati, string etriye)> data, int floorIndex, int colNo, bool gprHasSaAfterSz, bool gprHasScCati, int catiFloorIndex, out string donati)
+        /// <summary>Kısa adda tire var: SB-21; yok: SB01. Sayısal kat: S1-02.</summary>
+        private static List<string> GprDataKeysForFloorColumn(string storyPrefix, bool hyphenBeforeColNo, int colNo)
+        {
+            var keys = new List<string>();
+            if (string.IsNullOrEmpty(storyPrefix)) return keys;
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            void Add(string k) { if (seen.Add(k)) keys.Add(k); }
+            string n = colNo.ToString(CultureInfo.InvariantCulture);
+            string d2 = colNo.ToString("D2", CultureInfo.InvariantCulture);
+            string d3 = colNo.ToString("D3", CultureInfo.InvariantCulture);
+            if (hyphenBeforeColNo)
+            {
+                Add(storyPrefix + "-" + n);
+                Add(storyPrefix + "-" + d2);
+                if (colNo < 1000) Add(storyPrefix + "-" + d3);
+            }
+            else
+            {
+                Add(storyPrefix + n);
+                Add(storyPrefix + d2);
+                Add(storyPrefix + d3);
+            }
+            return keys;
+        }
+
+        private static bool TryGetDonatiForFloorColumn(Dictionary<string, (string ebat, string donati, string etriye)> data, string storyPrefix, bool hyphenBeforeColNo, int colNo, out string donati)
         {
             donati = null;
             if (data == null || data.Count == 0) return false;
-            string prefix = GetFloorPrefix(floorIndex, gprHasSaAfterSz, gprHasScCati, catiFloorIndex) + "-";
-            foreach (var kv in data)
+            foreach (var key in GprDataKeysForFloorColumn(storyPrefix, hyphenBeforeColNo, colNo))
             {
-                if (!kv.Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
-                string rest = kv.Key.Substring(prefix.Length).Trim();
-                if (int.TryParse(rest, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed) && parsed == colNo)
+                if (data.TryGetValue(key, out var t) && !string.IsNullOrWhiteSpace(t.donati))
                 {
-                    donati = kv.Value.donati;
-                    return !string.IsNullOrWhiteSpace(donati);
+                    donati = t.donati;
+                    return true;
                 }
             }
             return false;
         }
 
-        private static bool TryGetEtriyeForFloorColumn(Dictionary<string, (string ebat, string donati, string etriye)> data, int floorIndex, int colNo, bool gprHasSaAfterSz, bool gprHasScCati, int catiFloorIndex, out string etriye)
+        private static bool TryGetEtriyeForFloorColumn(Dictionary<string, (string ebat, string donati, string etriye)> data, string storyPrefix, bool hyphenBeforeColNo, int colNo, out string etriye)
         {
             etriye = null;
             if (data == null || data.Count == 0) return false;
-            string prefix = GetFloorPrefix(floorIndex, gprHasSaAfterSz, gprHasScCati, catiFloorIndex) + "-";
-            foreach (var kv in data)
+            foreach (var key in GprDataKeysForFloorColumn(storyPrefix, hyphenBeforeColNo, colNo))
             {
-                if (!kv.Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
-                string rest = kv.Key.Substring(prefix.Length).Trim();
-                if (int.TryParse(rest, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed) && parsed == colNo)
+                if (data.TryGetValue(key, out var t) && !string.IsNullOrWhiteSpace(t.etriye))
                 {
-                    etriye = kv.Value.etriye;
-                    return !string.IsNullOrWhiteSpace(etriye);
+                    etriye = t.etriye;
+                    return true;
                 }
+            }
+            return false;
+        }
+
+        /// <summary>GPR anahtarından kat öneği ve kolon no (SB01, SB-21, S1-02).</summary>
+        private static bool TryParseGprStoryKey(string key, out string storyPrefix, out int columnNo)
+        {
+            storyPrefix = null;
+            columnNo = 0;
+            if (string.IsNullOrWhiteSpace(key)) return false;
+            key = key.Trim().ToUpperInvariant();
+            var m = Regex.Match(key, @"^(SB|SZ|SA|SC)(\d+)$");
+            if (m.Success)
+            {
+                storyPrefix = m.Groups[1].Value;
+                return int.TryParse(m.Groups[2].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out columnNo);
+            }
+            m = Regex.Match(key, @"^(SB|SZ|SA|SC)-(\d+)$");
+            if (m.Success)
+            {
+                storyPrefix = m.Groups[1].Value;
+                return int.TryParse(m.Groups[2].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out columnNo);
+            }
+            m = Regex.Match(key, @"^(S\d+)-(\d+)$");
+            if (m.Success)
+            {
+                storyPrefix = m.Groups[1].Value;
+                return int.TryParse(m.Groups[2].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out columnNo);
             }
             return false;
         }
@@ -145,9 +353,52 @@ namespace ST4PlanIdCiz
             return string.IsNullOrEmpty(s) ? null : s;
         }
 
-        /// <summary>
-        /// SL_09.GPR: UTF-8, sütun ayırıcı ¡ (C2 A1). ASLIM/A_AKD gibi eski çıktılar: Windows-1252, tek bayt A1=¡, D7=×, F8=ø.
-        /// </summary>
+        private static int CountGprInvertedExclamationColumns(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return 0;
+            return s.Split('\u00A1').Length;
+        }
+
+        private static byte[][] SplitFileIntoRawLines(byte[] b)
+        {
+            var lines = new List<byte[]>(Math.Max(256, b.Length / 64));
+            int start = 0;
+            for (int i = 0; i <= b.Length; i++)
+            {
+                if (i < b.Length && b[i] != (byte)'\n' && b[i] != (byte)'\r')
+                    continue;
+                int len = i - start;
+                ReadOnlySpan<byte> span = len <= 0 ? ReadOnlySpan<byte>.Empty : new ReadOnlySpan<byte>(b, start, len);
+                while (span.Length > 0 && span[span.Length - 1] == (byte)'\r')
+                    span = span.Slice(0, span.Length - 1);
+                lines.Add(span.Length == 0 ? Array.Empty<byte>() : span.ToArray());
+                if (i < b.Length && b[i] == (byte)'\r' && i + 1 < b.Length && b[i + 1] == (byte)'\n')
+                    i++;
+                start = i + 1;
+            }
+            return lines.ToArray();
+        }
+
+        /// <summary>GPR: satır metni (başlık, Panel); donatı hücresi ayrıca ham bayıttan okunur.</summary>
+        private static void LoadGprFileLines(string filePath, out string[] textLines, out byte[][] rawLines)
+        {
+            byte[] b = File.ReadAllBytes(filePath);
+            rawLines = SplitFileIntoRawLines(b);
+            var utf8 = new UTF8Encoding(false, false);
+            var win1252 = Encoding.GetEncoding(1252);
+            textLines = new string[rawLines.Length];
+            for (int k = 0; k < rawLines.Length; k++)
+            {
+                byte[] lb = rawLines[k];
+                string u = utf8.GetString(lb);
+                string w = win1252.GetString(lb);
+                int cu = CountGprInvertedExclamationColumns(u);
+                int cw = CountGprInvertedExclamationColumns(w);
+                bool uBad = u.IndexOf('\uFFFD') >= 0;
+                textLines[k] = (uBad || cu < 8) && cw >= 10 ? w : u;
+            }
+        }
+
         private static string[] ReadGprPrnLines(string filePath)
         {
             byte[] b = File.ReadAllBytes(filePath);
@@ -166,7 +417,7 @@ namespace ST4PlanIdCiz
             }
             Encoding enc;
             if (utf8Delim >= 25 && utf8Delim >= winDelim)
-                enc = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: false);
+                enc = new UTF8Encoding(false, false);
             else if (winDelim >= 25)
                 enc = Encoding.GetEncoding(1252);
             else if (winDelim > utf8Delim * 2)
@@ -176,15 +427,46 @@ namespace ST4PlanIdCiz
             return enc.GetString(b).Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
         }
 
-        /// <summary>Kolon id (örn. SB-01) -> (ebat, donati, etriye).</summary>
+        /// <summary>GPR: "… Kolon Moment büyütme katsayısı" dipnotu — bundan sonrası (temel vb.) kolon donatısı değildir.</summary>
+        private static bool IsGprKolonMomentBuyutmeFootnoteLine(string rawLine, byte[] rawBytes)
+        {
+            if (string.IsNullOrEmpty(rawLine)) return false;
+            string s = rawLine.Trim();
+            if (s.IndexOf("BETONARME HESAP", StringComparison.OrdinalIgnoreCase) >= 0) return false;
+            int ik = s.IndexOf("Kolon", StringComparison.OrdinalIgnoreCase);
+            int im = s.IndexOf("Moment", StringComparison.OrdinalIgnoreCase);
+            if (ik < 0 || im < 0 || im < ik)
+            {
+                if (rawBytes == null || rawBytes.Length < 20) return false;
+                if (!GprRawLineContainsAscii(rawBytes, "MOMENT")) return false;
+                if (GprRawLineContainsAscii(rawBytes, "BETONARME HESAP")) return false;
+                s = Encoding.GetEncoding(1252).GetString(rawBytes);
+                ik = s.IndexOf("Kolon", StringComparison.OrdinalIgnoreCase);
+                im = s.IndexOf("Moment", StringComparison.OrdinalIgnoreCase);
+                if (ik < 0 || im < 0 || im < ik) return false;
+            }
+            int p = im + 6;
+            while (p < s.Length && char.IsWhiteSpace(s[p])) p++;
+            if (p < s.Length && (s[p] == 'b' || s[p] == 'B')) return true;
+            if (s.IndexOf("katsay", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            if (rawBytes != null && GprRawLineContainsAscii(rawBytes, "KATSAY")) return true;
+            return false;
+        }
+
+        /// <summary>Kolon id (örn. SB-01) -> (ebat, donati, etriye). GPR: yalnızca ilk KOLON BETONARME HESAP ile ilk Kolon Moment b… satırı arası.</summary>
         public static Dictionary<string, (string ebat, string donati, string etriye)> ParseKolonBetonarmeFromFile(string filePath, out string error)
         {
             error = null;
             var result = new Dictionary<string, (string, string, string)>(StringComparer.OrdinalIgnoreCase);
+            bool isGpr = filePath.EndsWith(".gpr", StringComparison.OrdinalIgnoreCase);
             string[] lines;
+            byte[][] gprRawLines = null;
             try
             {
-                lines = ReadGprPrnLines(filePath);
+                if (isGpr)
+                    LoadGprFileLines(filePath, out lines, out gprRawLines);
+                else
+                    lines = ReadGprPrnLines(filePath);
             }
             catch (Exception ex)
             {
@@ -192,47 +474,243 @@ namespace ST4PlanIdCiz
                 return result;
             }
 
-            bool isGpr = filePath.EndsWith(".gpr", StringComparison.OrdinalIgnoreCase);
-            int startIdx = -1;
-            for (int i = 0; i < lines.Length; i++)
+            if (isGpr && gprRawLines != null)
             {
-                string raw = lines[i] ?? string.Empty;
-                string content = StripGprLinePrefix(raw);
-                if (content.IndexOf("KOLON BETONARME HESAP", StringComparison.OrdinalIgnoreCase) >= 0)
+                int iKolon = -1;
+                for (int j = 0; j < lines.Length; j++)
                 {
-                    startIdx = i + 1;
-                    break;
+                    string c = StripGprLinePrefix(lines[j] ?? string.Empty);
+                    if (c.IndexOf("KOLON BETONARME HESAP", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        iKolon = j;
+                        break;
+                    }
+                    if (j < gprRawLines.Length && GprRawLineContainsKolonHeader(gprRawLines[j]))
+                    {
+                        iKolon = j;
+                        break;
+                    }
                 }
+                if (iKolon < 0)
+                {
+                    error = "KOLON BETONARME HESAP SONUCLARI bolumu bulunamadi.";
+                    return result;
+                }
+                int iEnd = lines.Length;
+                bool foundMoment = false;
+                for (int j = iKolon + 1; j < lines.Length; j++)
+                {
+                    byte[] rb = j < gprRawLines.Length ? gprRawLines[j] : null;
+                    string raw = lines[j] ?? string.Empty;
+                    if (IsGprKolonMomentBuyutmeFootnoteLine(raw, rb))
+                    {
+                        iEnd = j;
+                        foundMoment = true;
+                        break;
+                    }
+                }
+                if (!foundMoment)
+                {
+                    for (int j = iKolon + 1; j < lines.Length; j++)
+                    {
+                        string c = StripGprLinePrefix(lines[j] ?? string.Empty);
+                        byte[] rb = j < gprRawLines.Length ? gprRawLines[j] : null;
+                        if (IsGprTemelBetonarmeSectionHeader(c, rb))
+                        {
+                            iEnd = j;
+                            break;
+                        }
+                    }
+                }
+                AppendKolonBetonarmeSection(lines, iKolon + 1, isGpr, result, gprRawLines, iEnd, true);
+                return result;
             }
-            if (startIdx < 0) { error = "KOLON BETONARME HESAP SONUCLARI bolumu bulunamadi."; return result; }
 
-            var colIdRegex = new Regex(@"([A-Z]{1,2}\d*-\d+)", RegexOptions.IgnoreCase);
+            int searchFrom = 0;
+            int sectionCount = 0;
+            while (searchFrom < lines.Length)
+            {
+                int headerIdx = -1;
+                for (int j = searchFrom; j < lines.Length; j++)
+                {
+                    string c = StripGprLinePrefix(lines[j] ?? string.Empty);
+                    if (c.IndexOf("KOLON BETONARME HESAP", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        headerIdx = j;
+                        break;
+                    }
+                }
+                if (headerIdx < 0)
+                    break;
+                sectionCount++;
+                searchFrom = AppendKolonBetonarmeSection(lines, headerIdx + 1, isGpr, result, null, int.MaxValue, false);
+            }
+
+            if (sectionCount == 0)
+            {
+                error = "KOLON BETONARME HESAP SONUCLARI bolumu bulunamadi.";
+                return result;
+            }
+
+            return result;
+        }
+
+        /// <summary>GPR satırında ASCII alt dize (kodlama bozuk olsa bile bayt düzeyinde).</summary>
+        private static bool GprRawLineContainsAscii(byte[] line, string asciiNeedle)
+        {
+            if (line == null || string.IsNullOrEmpty(asciiNeedle)) return false;
+            byte[] n = Encoding.ASCII.GetBytes(asciiNeedle);
+            if (line.Length < n.Length) return false;
+            for (int i = 0; i <= line.Length - n.Length; i++)
+            {
+                bool ok = true;
+                for (int j = 0; j < n.Length && ok; j++)
+                {
+                    byte a = line[i + j];
+                    byte b = n[j];
+                    if (a >= (byte)'a' && a <= (byte)'z') a = (byte)(a - 32);
+                    if (b >= (byte)'a' && b <= (byte)'z') b = (byte)(b - 32);
+                    if (a != b) ok = false;
+                }
+                if (ok) return true;
+            }
+            return false;
+        }
+
+        private static bool GprRawLineContainsKolonHeader(byte[] line)
+        {
+            return line != null && line.Length >= 22 && GprRawLineContainsAscii(line, "KOLON BETONARME HESAP");
+        }
+
+        /// <summary>
+        /// GPR sayfa çerçevesi: "38,10,84" / "54,10,94" / "3,10,67" — KOLON tablosu bu satırdan önce biter;
+        /// sonraki sayfada tekrar KOLON BETONARME ile devam eder (a_klc, ia_c_blk_td, SL_09 ortak desen).
+        /// </summary>
+        private static bool IsGprKolonTablePageBreakLine(string rawLine)
+        {
+            if (string.IsNullOrWhiteSpace(rawLine)) return false;
+            string s = rawLine.Trim();
+            var m = Regex.Match(s, @"^(\d{1,3}),(10),(\d{1,4})\s*$", RegexOptions.CultureInvariant);
+            if (!m.Success) return false;
+            if (!int.TryParse(m.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int a))
+                return false;
+            if (!int.TryParse(m.Groups[3].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int c))
+                return false;
+            if (a >= 130) return false;
+            if (a < 1 || a > 250) return false;
+            if (c < 8 || c > 500) return false;
+            return true;
+        }
+
+        /// <summary>KOLON BETONARME tablosu biter (TEMEL BETONARME = bağ kirişi vb.; kolon donatısı buradan okunmaz).</summary>
+        private static bool IsGprTemelBetonarmeSectionHeader(string content, byte[] rawLine)
+        {
+            if (!string.IsNullOrEmpty(content) &&
+                content.IndexOf("TEMEL BETONARME", StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+            return rawLine != null && GprRawLineContainsAscii(rawLine, "TEMEL BETONARME");
+        }
+
+        private static string GetGprDonatiCellForRow(string content, bool isGpr, byte[] rawLine)
+        {
+            if (!isGpr || rawLine == null || rawLine.Length == 0)
+                return GetGprDonatiCell(content, isGpr);
+            string fromBytes = ExtractGprDonatiCellFromRawLine(rawLine);
+            if (!string.IsNullOrWhiteSpace(fromBytes) && LooksLikeGprDonatiOrEtriyeText(fromBytes))
+                return fromBytes.Trim();
+            string fallback = GetGprDonatiCell(content, isGpr);
+            if (!string.IsNullOrWhiteSpace(fallback) && LooksLikeGprDonatiOrEtriyeText(fallback))
+                return fallback.Trim();
+            return string.IsNullOrWhiteSpace(fromBytes) ? fallback : fromBytes.Trim();
+        }
+
+        /// <summary>Panel / POLIGON KOLON veya dosya sonuna kadar. GPR penceresi: [startIdx, lineEndExclusive).</summary>
+        private static int AppendKolonBetonarmeSection(string[] lines, int startIdx, bool isGpr, Dictionary<string, (string ebat, string donati, string etriye)> result, byte[][] gprRawLines = null, int lineEndExclusive = int.MaxValue, bool gprKolonWindowOnly = false)
+        {
+            var colIdRegex = new Regex(@"\b(S[BZAC]-\d+|S[BZAC]\d{1,4}|S\d+-\d+)\b", RegexOptions.IgnoreCase);
             var bxRegex = new Regex(@"Bx[=\s]*(\d+)", RegexOptions.IgnoreCase);
             var byRegex = new Regex(@"By[=\s]*(\d+)", RegexOptions.IgnoreCase);
             var polygonRegex = new Regex(@"Polygon", RegexOptions.IgnoreCase);
+
+            int end = lineEndExclusive >= lines.Length ? lines.Length : lineEndExclusive;
+            if (end < startIdx) end = startIdx;
 
             string currentId = null;
             string currentBx = null, currentBy = null;
             string currentDonati = null, currentEtriye = null;
             bool inBlock = false;
 
-            for (int i = startIdx; i < lines.Length; i++)
+            void FlushCurrent()
+            {
+                if (currentId != null && (currentDonati != null || currentEtriye != null))
+                {
+                    string ebat = GetEbatString(currentBx, currentBy, currentBx != null && currentBx.Equals("Polygon", StringComparison.OrdinalIgnoreCase));
+                    result[currentId] = (NormalizeDiameterSymbol(ebat ?? ""), NormalizeDiameterSymbol(currentDonati ?? ""), NormalizeDiameterSymbol(currentEtriye ?? ""));
+                }
+            }
+
+            for (int i = startIdx; i < end; i++)
             {
                 string raw = lines[i] ?? string.Empty;
                 string content = StripGprLinePrefix(raw).Trim();
                 if (content.Length == 0) continue;
+                byte[] rawForHeader = (gprRawLines != null && i < gprRawLines.Length) ? gprRawLines[i] : null;
+                if (isGpr && IsGprKolonTablePageBreakLine(raw))
+                {
+                    FlushCurrent();
+                    currentId = null;
+                    currentBx = null;
+                    currentBy = null;
+                    currentDonati = null;
+                    currentEtriye = null;
+                    inBlock = false;
+                    continue;
+                }
+                if (IsGprTemelBetonarmeSectionHeader(content, rawForHeader))
+                {
+                    FlushCurrent();
+                    if (gprKolonWindowOnly) break;
+                    return i + 1;
+                }
+                if (content.IndexOf("KOLON BETONARME HESAP", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    FlushCurrent();
+                    currentId = null;
+                    currentBx = null;
+                    currentBy = null;
+                    currentDonati = null;
+                    currentEtriye = null;
+                    inBlock = false;
+                    continue;
+                }
+                if (GprRawLineContainsKolonHeader(rawForHeader) && rawForHeader != null)
+                {
+                    FlushCurrent();
+                    currentId = null;
+                    currentBx = null;
+                    currentBy = null;
+                    currentDonati = null;
+                    currentEtriye = null;
+                    inBlock = false;
+                    continue;
+                }
                 if (content.StartsWith("Panel ", StringComparison.OrdinalIgnoreCase) ||
                     content.IndexOf("POLIGON KOLON", StringComparison.OrdinalIgnoreCase) >= 0)
-                    break;
+                {
+                    FlushCurrent();
+                    if (gprKolonWindowOnly)
+                    {
+                        currentId = null;
+                        inBlock = false;
+                        continue;
+                    }
+                    return i + 1;
+                }
 
                 var idMatch = colIdRegex.Match(content);
                 if (idMatch.Success && idMatch.Index < 20)
                 {
-                    if (currentId != null && (currentDonati != null || currentEtriye != null))
-                    {
-                        string ebat = GetEbatString(currentBx, currentBy, (currentBx != null && currentBx.Equals("Polygon", StringComparison.OrdinalIgnoreCase)));
-                        result[currentId] = (NormalizeDiameterSymbol(ebat ?? ""), NormalizeDiameterSymbol(currentDonati ?? ""), NormalizeDiameterSymbol(currentEtriye ?? ""));
-                    }
+                    FlushCurrent();
                     currentId = idMatch.Groups[1].Value.Trim().ToUpperInvariant();
                     currentBx = null; currentBy = null; currentDonati = null; currentEtriye = null;
                     inBlock = true;
@@ -243,9 +721,11 @@ namespace ST4PlanIdCiz
                     if (by.Success) currentBy = by.Groups[1].Value;
                     if (polygonRegex.IsMatch(content)) { currentBx = "Polygon"; currentBy = null; }
 
-                    string donatiCell = GetGprDonatiCell(content, isGpr);
+                    byte[] rawBytes = (gprRawLines != null && i < gprRawLines.Length) ? gprRawLines[i] : null;
+                    string donatiCell = GetGprDonatiCellForRow(content, isGpr, rawBytes);
                     SplitDonatiEtriye(donatiCell, out string don, out string et);
-                    if (!string.IsNullOrEmpty(don)) currentDonati = don;
+                    if (!string.IsNullOrEmpty(don) && !GprColumnIdInDonatiCell.IsMatch(don.Trim()))
+                        currentDonati = don;
                     if (!string.IsNullOrEmpty(et)) currentEtriye = et;
                 }
                 else if (inBlock && currentId != null)
@@ -253,18 +733,16 @@ namespace ST4PlanIdCiz
                     var by = byRegex.Match(content);
                     if (by.Success) currentBy = by.Groups[1].Value;
                     if (polygonRegex.IsMatch(content)) { currentBx = "Polygon"; currentBy = null; }
-                    string donatiCell = GetGprDonatiCell(content, isGpr);
+                    byte[] rawBytes2 = (gprRawLines != null && i < gprRawLines.Length) ? gprRawLines[i] : null;
+                    string donatiCell = GetGprDonatiCellForRow(content, isGpr, rawBytes2);
                     SplitDonatiEtriye(donatiCell, out string don, out string et);
                     if (!string.IsNullOrEmpty(et)) currentEtriye = et;
-                    if (!string.IsNullOrEmpty(don) && currentDonati == null) currentDonati = don;
+                    if (!string.IsNullOrEmpty(don) && !GprColumnIdInDonatiCell.IsMatch(don.Trim()) && currentDonati == null)
+                        currentDonati = don;
                 }
             }
-            if (currentId != null && (currentDonati != null || currentEtriye != null))
-            {
-                string ebat = GetEbatString(currentBx, currentBy, currentBx == "Polygon");
-                result[currentId] = (NormalizeDiameterSymbol(ebat ?? ""), NormalizeDiameterSymbol(currentDonati ?? ""), NormalizeDiameterSymbol(currentEtriye ?? ""));
-            }
-            return result;
+            FlushCurrent();
+            return lines.Length;
         }
 
         private static string StripGprLinePrefix(string line)
@@ -321,81 +799,83 @@ namespace ST4PlanIdCiz
             return bx ?? by ?? "";
         }
 
-        /// <summary>GPR/PRN'de SA- kodlu kolon varsa (ASLIM vb.): 0=SB, 1=SZ, 2=SA, 3=S1, ... Aksi: 0=SB, 1=SZ, 2=S1, ...</summary>
-        private static bool GprContainsSaFloorPrefix(Dictionary<string, (string ebat, string donati, string etriye)> data)
+        /// <summary>B→SB + SB01 veya B-→SB-21. 1-→S1-02. Rakamsal katlarda kolondan önce daima tire.</summary>
+        private struct GprFloorKeyFmt
         {
-            if (data == null) return false;
-            foreach (var k in data.Keys)
-            {
-                if (string.IsNullOrEmpty(k)) continue;
-                if (k.StartsWith("SA-", StringComparison.OrdinalIgnoreCase))
-                    return true;
-            }
-            return false;
+            public string StoryPrefix;
+            public bool HyphenBeforeColNo;
         }
 
-        /// <summary>GPR çatı kolon kodu SC-39, SC-40 (ASLIM CATI katı).</summary>
-        private static bool GprContainsScCatiPrefix(Dictionary<string, (string ebat, string donati, string etriye)> data)
+        private static GprFloorKeyFmt[] BuildGprFloorKeyFormats(IReadOnlyList<FloorInfo> floors)
         {
-            if (data == null) return false;
-            foreach (var k in data.Keys)
-            {
-                if (string.IsNullOrEmpty(k)) continue;
-                if (k.StartsWith("SC-", StringComparison.OrdinalIgnoreCase))
-                    return true;
-            }
-            return false;
+            if (floors == null || floors.Count == 0) return Array.Empty<GprFloorKeyFmt>();
+            var arr = new GprFloorKeyFmt[floors.Count];
+            for (int i = 0; i < floors.Count; i++)
+                arr[i] = GetGprFloorKeyFormat(floors[i].ShortName, floors[i].Name);
+            return arr;
         }
 
-        /// <summary>Son eşleşen CATI/ÇATI katı (GPR SC- ile çatı donatısı).</summary>
-        private static int FindCatiFloorIndex(IReadOnlyList<string> floorNames)
+        private static GprFloorKeyFmt GetGprFloorKeyFormat(string shortName, string floorName)
         {
-            if (floorNames == null) return -1;
-            int last = -1;
-            for (int i = 0; i < floorNames.Count; i++)
+            string sn = (shortName ?? string.Empty).Trim();
+            if (string.IsNullOrEmpty(sn))
+                return new GprFloorKeyFmt { StoryPrefix = GprPrefixFromFloorNameFallback(floorName), HyphenBeforeColNo = true };
+            bool endsWithDash = sn.EndsWith("-", StringComparison.Ordinal);
+            string token = endsWithDash ? sn.Substring(0, sn.Length - 1).Trim() : sn;
+            if (token.Length == 0)
+                return new GprFloorKeyFmt { StoryPrefix = GprPrefixFromFloorNameFallback(floorName), HyphenBeforeColNo = true };
+            if (token.Length == 1 && char.IsLetter(token[0]))
             {
-                string n = floorNames[i] ?? string.Empty;
-                if (n.IndexOf("CATI", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                    n.IndexOf("ÇATI", StringComparison.OrdinalIgnoreCase) >= 0)
-                    last = i;
+                char c = char.ToUpperInvariant(token[0]);
+                string p = c == 'B' ? "SB" : c == 'Z' ? "SZ" : c == 'A' ? "SA" : c == 'C' ? "SC" : "S1";
+                return new GprFloorKeyFmt { StoryPrefix = p, HyphenBeforeColNo = endsWithDash };
             }
-            return last;
+            if (int.TryParse(token, NumberStyles.Integer, CultureInfo.InvariantCulture, out int n) && n > 0)
+                return new GprFloorKeyFmt { StoryPrefix = "S" + n.ToString(CultureInfo.InvariantCulture), HyphenBeforeColNo = true };
+            return new GprFloorKeyFmt { StoryPrefix = GprPrefixFromFloorNameFallback(floorName), HyphenBeforeColNo = true };
         }
 
-        private static string GetFloorPrefix(int floorIndex, bool gprHasSaAfterSz, bool gprHasScCati, int catiFloorIndex)
+        private static string GprPrefixFromFloorNameFallback(string floorName)
         {
-            if (floorIndex == 0) return "SB";
-            if (floorIndex == 1) return "SZ";
-
-            if (gprHasSaAfterSz)
-            {
-                if (floorIndex == 2) return "SA";
-                if (floorIndex >= 3)
-                {
-                    if (gprHasScCati && catiFloorIndex >= 0 && floorIndex == catiFloorIndex)
-                        return "SC";
-                    if (gprHasScCati && catiFloorIndex >= 0 && floorIndex < catiFloorIndex)
-                        return "S" + (floorIndex - 2).ToString(CultureInfo.InvariantCulture);
-                    if (gprHasScCati && catiFloorIndex >= 0 && floorIndex > catiFloorIndex)
-                        return "S" + (floorIndex - 3).ToString(CultureInfo.InvariantCulture);
-                    return "S" + (floorIndex - 2).ToString(CultureInfo.InvariantCulture);
-                }
-            }
-            else
-            {
-                if (gprHasScCati && catiFloorIndex >= 0 && floorIndex == catiFloorIndex)
-                    return "SC";
-                if (floorIndex >= 2)
-                {
-                    if (gprHasScCati && catiFloorIndex >= 0 && floorIndex < catiFloorIndex)
-                        return "S" + (floorIndex - 1).ToString(CultureInfo.InvariantCulture);
-                    if (gprHasScCati && catiFloorIndex >= 0 && floorIndex > catiFloorIndex)
-                        return "S" + (floorIndex - 2).ToString(CultureInfo.InvariantCulture);
-                    return "S" + (floorIndex - 1).ToString(CultureInfo.InvariantCulture);
-                }
-            }
-
+            string nu = (floorName ?? string.Empty).Trim().ToUpperInvariant();
+            if (nu.IndexOf("BODRUM", StringComparison.Ordinal) >= 0) return "SB";
+            if (nu.IndexOf("ZEMIN", StringComparison.Ordinal) >= 0 || nu.IndexOf("ZEMİN", StringComparison.Ordinal) >= 0) return "SZ";
+            if (nu.Equals("ASMA", StringComparison.OrdinalIgnoreCase) || nu.StartsWith("ASMA ", StringComparison.OrdinalIgnoreCase)) return "SA";
+            if (nu.IndexOf("CATI", StringComparison.Ordinal) >= 0 || nu.IndexOf("ÇATI", StringComparison.Ordinal) >= 0) return "SC";
+            var m = Regex.Match(nu, @"^(\d+)\s*\.\s*N");
+            if (m.Success && int.TryParse(m.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int storyNum) && storyNum > 0)
+                return "S" + storyNum.ToString(CultureInfo.InvariantCulture);
             return "S1";
+        }
+
+        /// <summary>GPR kat önek dikey sırası: SB &lt; SZ &lt; SA &lt; S1 &lt; S2 &lt; … &lt; SC.</summary>
+        private static int GprStoryRank(string prefix)
+        {
+            if (string.IsNullOrEmpty(prefix)) return 50;
+            if (prefix.Equals("SB", StringComparison.OrdinalIgnoreCase)) return 0;
+            if (prefix.Equals("SZ", StringComparison.OrdinalIgnoreCase)) return 1;
+            if (prefix.Equals("SA", StringComparison.OrdinalIgnoreCase)) return 2;
+            if (prefix.Equals("SC", StringComparison.OrdinalIgnoreCase)) return 200;
+            if (prefix.Length >= 2 && prefix[0] == 'S' && char.IsDigit(prefix[1]))
+            {
+                if (int.TryParse(prefix.Substring(1), NumberStyles.Integer, CultureInfo.InvariantCulture, out int n) && n > 0)
+                    return 2 + n;
+            }
+            return 50;
+        }
+
+        /// <summary>Bu kolon no için GPR'de geçen en alt kat kodu. SB01 ile SB-01 aynı hiyerarşi.</summary>
+        private static int GetMinGprStoryRankForColumn(Dictionary<string, (string ebat, string donati, string etriye)> data, int colNo)
+        {
+            if (data == null || data.Count == 0) return int.MaxValue;
+            int min = int.MaxValue;
+            foreach (var k in data.Keys)
+            {
+                if (!TryParseGprStoryKey(k, out string sp, out int num) || num != colNo) continue;
+                int r = GprStoryRank(sp);
+                if (r < min) min = r;
+            }
+            return min;
         }
 
         public static bool Draw(St4Model model, Dictionary<string, (string ebat, string donati, string etriye)> columnData,
@@ -413,26 +893,14 @@ namespace ST4PlanIdCiz
             int numFloors = model.Floors.Count;
             var floorNames = model.Floors.Select(f => f.Name ?? "").ToList();
 
-            bool gprHasSaAfterSz = GprContainsSaFloorPrefix(columnData);
-            bool gprHasScCati = GprContainsScCatiPrefix(columnData);
-            int catiFloorIndex = FindCatiFloorIndex(floorNames);
-            if (gprHasScCati && catiFloorIndex < 0)
-                catiFloorIndex = numFloors - 1;
+            var floorKeyFmt = BuildGprFloorKeyFormats(model.Floors);
 
             var columnIds = new HashSet<string>(columnData?.Keys ?? Enumerable.Empty<string>(), StringComparer.OrdinalIgnoreCase);
             var rowColumnNumbers = new List<int>();
-            for (int fn = 0; fn < numFloors; fn++)
+            foreach (var k in columnData?.Keys ?? Enumerable.Empty<string>())
             {
-                string prefix = GetFloorPrefix(fn, gprHasSaAfterSz, gprHasScCati, catiFloorIndex);
-                foreach (var k in columnData?.Keys ?? Enumerable.Empty<string>())
-                {
-                    if (k.StartsWith(prefix + "-", StringComparison.OrdinalIgnoreCase))
-                    {
-                        string numPart = k.Substring(prefix.Length + 1).Trim();
-                        if (int.TryParse(numPart, NumberStyles.Integer, CultureInfo.InvariantCulture, out int colNo) && !rowColumnNumbers.Contains(colNo))
-                            rowColumnNumbers.Add(colNo);
-                    }
-                }
+                if (TryParseGprStoryKey(k, out _, out int colNo) && !rowColumnNumbers.Contains(colNo))
+                    rowColumnNumbers.Add(colNo);
             }
             rowColumnNumbers.Sort();
             if (rowColumnNumbers.Count == 0) rowColumnNumbers.Add(1);
@@ -449,7 +917,10 @@ namespace ST4PlanIdCiz
 
             DrawGrid(tr, btr, x0, yTop, numFloors, rowColumnNumbers.Count);
             DrawHeaderRow(tr, btr, db, x0, yTop, floorNames);
-            DrawDataRows(tr, btr, db, x0, yTop - RowHeightHeader, numFloors, floorNames, rowColumnNumbers, columnData ?? new Dictionary<string, (string, string, string)>(StringComparer.OrdinalIgnoreCase), columnFoundationHeights, columnDimsByFloor, columnTableExtraByFloor, columnActiveCells, gprHasSaAfterSz, gprHasScCati, catiFloorIndex);
+            DrawDataRows(tr, btr, db, x0, yTop - RowHeightHeader, numFloors, floorNames, rowColumnNumbers, columnData ?? new Dictionary<string, (string, string, string)>(StringComparer.OrdinalIgnoreCase), columnFoundationHeights, columnDimsByFloor, columnTableExtraByFloor, columnActiveCells, floorKeyFmt);
+            int gprKeys = columnData?.Count ?? 0;
+            ed.WriteMessage("\nKOLONDATA tamam: {0} kat sutunu, {1} kolon satiri, veri dosyasinda {2} kolon kodu (SB-01, S1-02, SC-39, ...).",
+                numFloors, rowColumnNumbers.Count, gprKeys);
             return true;
         }
 
@@ -573,7 +1044,7 @@ namespace ST4PlanIdCiz
             return text.Length * heightCm * TextWidthFactor * 0.65;
         }
 
-        private static void DrawDataRows(Transaction tr, BlockTableRecord btr, Database db, double x0, double yRowTop, int numFloors, List<string> floorNames, List<int> rowColumnNumbers, Dictionary<string, (string ebat, string donati, string etriye)> columnData, Dictionary<int, (double? temelCm, double? hatilCm)> columnFoundationHeights, List<Dictionary<int, (int columnType, double W, double H)>> columnDimsByFloor, List<Dictionary<int, (double altKotCm, double yukseklikCm, double? kirisUstAltFarkCm)>> columnTableExtraByFloor, HashSet<(int floorIndex, int columnNo)> columnActiveCells, bool gprHasSaAfterSz, bool gprHasScCati, int catiFloorIndex)
+        private static void DrawDataRows(Transaction tr, BlockTableRecord btr, Database db, double x0, double yRowTop, int numFloors, List<string> floorNames, List<int> rowColumnNumbers, Dictionary<string, (string ebat, string donati, string etriye)> columnData, Dictionary<int, (double? temelCm, double? hatilCm)> columnFoundationHeights, List<Dictionary<int, (int columnType, double W, double H)>> columnDimsByFloor, List<Dictionary<int, (double altKotCm, double yukseklikCm, double? kirisUstAltFarkCm)>> columnTableExtraByFloor, HashSet<(int floorIndex, int columnNo)> columnActiveCells, GprFloorKeyFmt[] floorKeyFmt)
         {
             const double labelX = 5;
             double ebadDonatiX = x0 + ColWidthKatNo + 10;
@@ -606,9 +1077,15 @@ namespace ST4PlanIdCiz
                     }
                 }
 
+                int minGprRank = GetMinGprStoryRankForColumn(columnData, colNo);
+
                 for (int f = 0; f < numFloors; f++)
                 {
                     if (columnActiveCells != null && !columnActiveCells.Contains((f, colNo)))
+                        continue;
+                    var fk = f < floorKeyFmt.Length ? floorKeyFmt[f] : new GprFloorKeyFmt { StoryPrefix = "S1", HyphenBeforeColNo = true };
+                    string fp = fk.StoryPrefix;
+                    if (minGprRank < int.MaxValue && GprStoryRank(fp) < minGprRank)
                         continue;
 
                     double cellLeft = x0 + ColWidthKatNo + ColWidthSubHeader + f * ColWidthFloor + 5;
@@ -624,13 +1101,13 @@ namespace ST4PlanIdCiz
                     {
                         if (dims.columnType == 3)
                         {
-                            if (TryGetDonatiForFloorColumn(columnData, f, colNo, gprHasSaAfterSz, gprHasScCati, catiFloorIndex, out string donRawP))
+                            if (TryGetDonatiForFloorColumn(columnData, fp, fk.HyphenBeforeColNo, colNo, out string donRawP))
                             {
                                 string donDisp = FormatDonatiDisplay(donRawP);
                                 if (!string.IsNullOrEmpty(donDisp))
                                     DrawDonatiTextUnderBoyut(tr, btr, db, boyutX, rowTop - 20 - DonatiBoyunaBoyutAltinaCm, donDisp);
                             }
-                            if (TryGetEtriyeForFloorColumn(columnData, f, colNo, gprHasSaAfterSz, gprHasScCati, catiFloorIndex, out string etRawP))
+                            if (TryGetEtriyeForFloorColumn(columnData, fp, fk.HyphenBeforeColNo, colNo, out string etRawP))
                             {
                                 string etDisp = FormatEtriyeForTableDisplay(etRawP);
                                 if (!string.IsNullOrEmpty(etDisp))
@@ -672,13 +1149,13 @@ namespace ST4PlanIdCiz
                                     double lineY = rowTop - 20 + cizgiYOffsetCm;
                                     AppendLine(tr, btr, new Point3d(lineX0, lineY, 0), new Point3d(lineX0 + cizgiLengthCm, lineY, 0), LayerCizgi);
                                 }
-                                if (TryGetDonatiForFloorColumn(columnData, f, colNo, gprHasSaAfterSz, gprHasScCati, catiFloorIndex, out string donRaw))
+                                if (TryGetDonatiForFloorColumn(columnData, fp, fk.HyphenBeforeColNo, colNo, out string donRaw))
                                 {
                                     string donDisp = FormatDonatiDisplay(donRaw);
                                     if (!string.IsNullOrEmpty(donDisp))
                                         DrawDonatiTextUnderBoyut(tr, btr, db, boyutX, rowTop - 20 - DonatiBoyunaBoyutAltinaCm, donDisp);
                                 }
-                                if (TryGetEtriyeForFloorColumn(columnData, f, colNo, gprHasSaAfterSz, gprHasScCati, catiFloorIndex, out string etRaw))
+                                if (TryGetEtriyeForFloorColumn(columnData, fp, fk.HyphenBeforeColNo, colNo, out string etRaw))
                                 {
                                     string etDisp = FormatEtriyeForTableDisplay(etRaw);
                                     if (!string.IsNullOrEmpty(etDisp))
