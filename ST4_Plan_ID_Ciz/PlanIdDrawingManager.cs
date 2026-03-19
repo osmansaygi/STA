@@ -32,6 +32,9 @@ namespace ST4PlanIdCiz
         private List<Geometry> _drawnSlabGeometriesForUnion;
         /// <summary>ST4PLANID Draw süresince tek fabrika (binlerce new önlenir).</summary>
         private GeometryFactory _ntsDrawFactory;
+        /// <summary>TEMEL50ST4 için özel 1:50 başlık/yazı modu.</summary>
+        private bool _isTemel50Mode;
+        private const double Temel50BaslikAltAksBalonBoslukCm = 50.0;
         /// <summary>Statik kesit örnekleme / şerit buffer için tek örnek.</summary>
         private static readonly GeometryFactory StaticGeomFactory = new GeometryFactory();
 
@@ -373,6 +376,67 @@ namespace ST4PlanIdCiz
             }
             }
             finally { _ntsDrawFactory = null; }
+        }
+
+        /// <summary>
+        /// Sadece temel planını (ilk kat) ve ona ait plan kesitlerini çizer.
+        /// 1/50 projeler için TEMEL50ST4 komutundan çağrılır.
+        /// </summary>
+        public void DrawFoundationPlanWithSections(Database db, Editor ed, Point3d baseInsertPoint)
+        {
+            _ntsDrawFactory = NtsGeometryServices.Instance.CreateGeometryFactory();
+            _isTemel50Mode = true;
+            try
+            {
+                using (var tr = db.TransactionManager.StartTransaction())
+                {
+                    EnsureLayers(tr, db);
+                    var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
+                    var btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
+
+                    bool hasFoundations = _model.ContinuousFoundations.Count > 0 || _model.SlabFoundations.Count > 0 || _model.TieBeams.Count > 0 || _model.SingleFootings.Count > 0;
+                    if (!hasFoundations || _model.Floors.Count == 0)
+                    {
+                        ed.WriteMessage("\nTEMEL50ST4: Cizilecek temel verisi bulunamadi.");
+                        return;
+                    }
+
+                    var firstFloor = _model.Floors[0];
+                    Geometry firstFloorUnion = BuildFloorElementUnion(firstFloor);
+                    var firstFloorAxisExt = GetAksSiniriEnvelope(firstFloorUnion);
+                    double offsetX = baseInsertPoint.X - firstFloorAxisExt.Xmin;
+                    double offsetY = baseInsertPoint.Y - firstFloorAxisExt.Ymin;
+                    DrawAxes(tr, btr, offsetX, offsetY, firstFloorAxisExt);
+                    DrawColumns(tr, btr, firstFloor, offsetX, offsetY);
+                    DrawWallsForFloor(tr, btr, firstFloor, offsetX, offsetY);
+                    Geometry temelUnion = BuildTemelUnion(offsetX, offsetY, firstFloor);
+                    Geometry kolonPerdeUnion = BuildKolonPerdeUnion(firstFloor, offsetX, offsetY);
+                    Geometry slabUnionForLabels = BuildSlabFoundationsUnion(offsetX, offsetY);
+                    DrawTemelMerged(tr, btr, offsetX, offsetY, firstFloor, temelUnion);
+                    var temelHatiliRaws = new List<(Geometry geom, double widthCm, double heightDisplayCm, double kot, bool isRadyeTemelHatili)>();
+                    DrawContinuousFoundations(tr, btr, offsetX, offsetY, firstFloor, drawTemelOutline: false, temelUnion, kolonPerdeUnion, temelHatiliRaws, slabUnionForLabels);
+                    DrawSlabFoundations(tr, btr, offsetX, offsetY, drawTemelOutline: false);
+                    DrawTieBeams(tr, btr, firstFloor, offsetX, offsetY, kolonPerdeUnion, temelHatiliRaws);
+                    DrawSingleFootings(tr, btr, firstFloor, offsetX, offsetY, drawTemelOutline: false);
+                    DrawPerdeLabelsForFloor(tr, btr, firstFloor, offsetX, offsetY, kolonPerdeUnion);
+                    DrawFloorTitle(tr, btr, firstFloor, offsetX, offsetY, firstFloorAxisExt, isFoundationPlan: true);
+                    DrawPlanSections(tr, btr, db, firstFloor, offsetX, offsetY, firstFloorAxisExt, isFoundationPlan: true, firstFloorUnion);
+
+                    tr.Commit();
+
+                    ed.WriteMessage(
+                        "\nTEMEL50ST4: Temel plani cizildi (surekli: {0}, radye: {1}, bag kirisi: {2}, tekil: {3}) ve kesitler olusturuldu.",
+                        _model.ContinuousFoundations.Count,
+                        _model.SlabFoundations.Count,
+                        _model.TieBeams.Count,
+                        _model.SingleFootings.Count);
+                }
+            }
+            finally
+            {
+                _isTemel50Mode = false;
+                _ntsDrawFactory = null;
+            }
         }
 
         private const string LayerAks = "AKS CIZGISI (BEYKENT)";
@@ -4618,6 +4682,162 @@ namespace ST4PlanIdCiz
             Geometry unionResult = temelUnion ?? BuildTemelUnion(offsetX, offsetY, floor);
             if (unionResult == null || unionResult.IsEmpty) return;
             DrawGeometryRingsAsPolylines(tr, btr, unionResult, layer, applySmallTriangleTrim: true);
+            DrawTemelIcBoslukTarama(tr, btr, BuildTemelCizimGeometrisi(unionResult));
+        }
+
+        /// <summary>Temel planı içinde kalan iç boşlukları TARAMA katmanında AR-SAND olarak tarar.</summary>
+        private void DrawTemelIcBoslukTarama(Transaction tr, BlockTableRecord btr, Geometry temelUnion)
+        {
+            if (temelUnion == null || temelUnion.IsEmpty) return;
+            var holes = new List<LinearRing>();
+            CollectInteriorRings(temelUnion, holes);
+            if (holes.Count == 0) return;
+
+            foreach (var hole in holes)
+            {
+                if (hole == null || hole.IsEmpty || hole.NumPoints < 4) continue;
+                try
+                {
+                    AppendPredefinedHatchWithoutBoundaryPolyline(tr, btr, hole.Coordinates, "AR-SAND", 1.0, 0.0, LayerTarama);
+                }
+                catch
+                {
+                    // Geçersiz halka varsa atla; çizim devam etsin.
+                }
+            }
+        }
+
+        /// <summary>Temel çizimi ile aynı ring cleanup kurallarını uygulayarak tarama için temiz geometri üretir.</summary>
+        private Geometry BuildTemelCizimGeometrisi(Geometry raw)
+        {
+            if (raw == null || raw.IsEmpty) return null;
+            var polys = new List<Polygon>();
+
+            void AddFromPolygon(Polygon p)
+            {
+                if (p == null || p.IsEmpty) return;
+                var extPts = ApplyRingCleanup(p.ExteriorRing?.Coordinates, applySmallTriangleTrim: true);
+                if (extPts == null || extPts.Count < 3) return;
+
+                var extCoords = new Coordinate[extPts.Count + 1];
+                for (int i = 0; i < extPts.Count; i++) extCoords[i] = new Coordinate(extPts[i].X, extPts[i].Y);
+                extCoords[extPts.Count] = extCoords[0];
+                var shell = _ntsDrawFactory.CreateLinearRing(extCoords);
+
+                var holeRings = new List<LinearRing>();
+                for (int h = 0; h < p.NumInteriorRings; h++)
+                {
+                    var holePts = ApplyRingCleanup(p.GetInteriorRingN(h)?.Coordinates, applySmallTriangleTrim: true);
+                    if (holePts == null || holePts.Count < 3) continue;
+                    var holeCoords = new Coordinate[holePts.Count + 1];
+                    for (int i = 0; i < holePts.Count; i++) holeCoords[i] = new Coordinate(holePts[i].X, holePts[i].Y);
+                    holeCoords[holePts.Count] = holeCoords[0];
+                    holeRings.Add(_ntsDrawFactory.CreateLinearRing(holeCoords));
+                }
+
+                try { polys.Add(_ntsDrawFactory.CreatePolygon(shell, holeRings.ToArray())); }
+                catch { /* Geçersiz halka kombinasyonu varsa atla */ }
+            }
+
+            if (raw is Polygon rp)
+            {
+                AddFromPolygon(rp);
+            }
+            else if (raw is MultiPolygon rmp)
+            {
+                for (int i = 0; i < rmp.NumGeometries; i++)
+                    AddFromPolygon(rmp.GetGeometryN(i) as Polygon);
+            }
+            else if (raw is GeometryCollection rgc)
+            {
+                for (int i = 0; i < rgc.NumGeometries; i++)
+                {
+                    if (rgc.GetGeometryN(i) is Polygon gcp) AddFromPolygon(gcp);
+                    else if (rgc.GetGeometryN(i) is MultiPolygon gcmp)
+                    {
+                        for (int j = 0; j < gcmp.NumGeometries; j++)
+                            AddFromPolygon(gcmp.GetGeometryN(j) as Polygon);
+                    }
+                }
+            }
+
+            if (polys.Count == 0) return null;
+            if (polys.Count == 1) return polys[0];
+            return _ntsDrawFactory.CreateMultiPolygon(polys.ToArray());
+        }
+
+        /// <summary>Kapalı halka için hatch çizer; sınır polyline'ını sonrasında siler (görünür çevre çizgisi kalmaz).</summary>
+        private static void AppendPredefinedHatchWithoutBoundaryPolyline(
+            Transaction tr,
+            BlockTableRecord btr,
+            Coordinate[] ringCoords,
+            string patternName,
+            double patternScale,
+            double patternAngleRad,
+            string hatchLayer)
+        {
+            if (ringCoords == null || ringCoords.Length < 4) return;
+
+            var pl = new Polyline();
+            int idx = 0;
+            for (int i = 0; i < ringCoords.Length; i++)
+            {
+                var c = ringCoords[i];
+                if (idx > 0)
+                {
+                    var prev = ringCoords[i - 1];
+                    if (Math.Abs(c.X - prev.X) < 1e-9 && Math.Abs(c.Y - prev.Y) < 1e-9) continue;
+                }
+                pl.AddVertexAt(idx++, new Point2d(c.X, c.Y), 0, 0, 0);
+            }
+            if (pl.NumberOfVertices < 3)
+            {
+                pl.Dispose();
+                return;
+            }
+            pl.Closed = true;
+            pl.Layer = hatchLayer;
+
+            ObjectId plId = AppendEntityReturnId(tr, btr, pl);
+
+            var hatch = new Hatch();
+            btr.AppendEntity(hatch);
+            tr.AddNewlyCreatedDBObject(hatch, true);
+            hatch.SetHatchPattern(HatchPatternType.PreDefined, patternName);
+            hatch.PatternScale = patternScale;
+            hatch.PatternAngle = patternAngleRad;
+            hatch.Layer = hatchLayer;
+            hatch.Associative = false;
+            hatch.AppendLoop(HatchLoopTypes.Outermost, new ObjectIdCollection { plId });
+            try { hatch.EvaluateHatch(true); }
+            catch { try { hatch.EvaluateHatch(false); } catch { } }
+
+            try { pl.Erase(); } catch { }
+        }
+
+        private static void CollectInteriorRings(Geometry geom, List<LinearRing> holes)
+        {
+            if (geom == null || geom.IsEmpty || holes == null) return;
+            if (geom is Polygon p)
+            {
+                for (int i = 0; i < p.NumInteriorRings; i++)
+                {
+                    if (p.GetInteriorRingN(i) is LinearRing ring)
+                        holes.Add(ring);
+                }
+                return;
+            }
+            if (geom is MultiPolygon mp)
+            {
+                for (int i = 0; i < mp.NumGeometries; i++)
+                    CollectInteriorRings(mp.GetGeometryN(i), holes);
+                return;
+            }
+            if (geom is GeometryCollection gc)
+            {
+                for (int i = 0; i < gc.NumGeometries; i++)
+                    CollectInteriorRings(gc.GetGeometryN(i), holes);
+            }
         }
 
         /// <summary>Kapalı bir halkanın (Coordinate dizisi) alanını cm² cinsinden döndürür (signed area, mutlak değer için Math.Abs kullan).</summary>
@@ -5867,6 +6087,29 @@ namespace ST4PlanIdCiz
         private void DrawFloorTitle(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY,
             (double Xmin, double Xmax, double Ymin, double Ymax) ext, bool isFoundationPlan = false)
         {
+            if (isFoundationPlan && _isTemel50Mode)
+            {
+                GetSectionCutBalloonExtents(offsetX, offsetY, ext,
+                    out _, out _, out double yBottomBalloon, out _,
+                    out _, out _, out _, out _);
+                double xCenter = offsetX + (ext.Xmin + ext.Xmax) / 2.0;
+                double yTopAnchor = yBottomBalloon - Temel50BaslikAltAksBalonBoslukCm;
+                var txt = new DBText
+                {
+                    Layer = LayerBaslik,
+                    Height = 30.0,
+                    TextStyleId = GetOrCreateYaziBeykentTextStyle(tr, btr.Database),
+                    TextString = "%%uTEMEL APLIKASYON PLANI (1:50)%%u",
+                    HorizontalMode = TextHorizontalMode.TextCenter,
+                    VerticalMode = TextVerticalMode.TextTop,
+                    Position = new Point3d(xCenter, yTopAnchor, 0),
+                    AlignmentPoint = new Point3d(xCenter, yTopAnchor, 0),
+                    LineWeight = LineWeight.LineWeight020
+                };
+                AppendEntity(tr, btr, txt);
+                return;
+            }
+
             var titlePos = new Point3d(offsetX + (ext.Xmin + ext.Xmax) / 2.0, offsetY + ext.Ymax + 45, 0);
             string title = isFoundationPlan
                 ? "TEMEL PLANI (aks + 1. kat kolon + surekli/radye temel)"

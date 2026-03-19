@@ -37,6 +37,7 @@ namespace ST4PlanIdCiz
         private const double KesitEtiketRadiusCm = 20.0;
         /// <summary>A-A / B-B kesit başlığı metin yüksekliği (cm).</summary>
         private const double KesitBaslikMetinYukseklikCm = 20.0;
+        private const double KesitBaslikMetinYukseklikTemel50Cm = 30.0;
         /// <summary>Üst X aks balonunun üst dış yüzeyi ile &quot;A-A KESİTİ&quot; metninin <b>alt</b> kenarı arası (cm).</summary>
         private const double KesitIsmiUstAksBalonUstuBoslukCm = 60.0;
         /// <summary>Sol Y aks balonunun kesite bakan sol dış yüzeyi ile &quot;B-B KESİTİ&quot; metninin <b>sağ</b> kenarı arası (cm).</summary>
@@ -825,7 +826,8 @@ namespace ST4PlanIdCiz
             catch { /* kesit kotları — planın geri kalanı çizilsin */ }
             // A-A başlık: üst aks balon üst yüzeyinden 60 cm yukarıda (metin alt kenarı); TextTop için üst hizası = alt + yükseklik
             double yAaBaslikUstHizasi = yAksBalonUstDisYuzey + KesitIsmiUstAksBalonUstuBoslukCm + KesitBaslikMetinYukseklikCm;
-            DrawKesitTitleBelowSchematic(tr, btr, db, "A-A KESİTİ", contentTopX + spanAT * 0.5, yAaBaslikUstHizasi);
+            string aaTitle = (isFoundationPlan && _isTemel50Mode) ? "A-A KESİTİ (1:50)" : "A-A KESİTİ";
+            DrawKesitTitleBelowSchematic(tr, btr, db, aaTitle, contentTopX + spanAT * 0.5, yAaBaslikUstHizasi);
 
             double aminL = GetAmin(slicesLeft), amaxL = GetAmax(slicesLeft), minZL = GetZmin(slicesLeft), maxZL = GetZmax(slicesLeft);
             double spanAL = Math.Max(180.0, amaxL - aminL);
@@ -854,8 +856,10 @@ namespace ST4PlanIdCiz
             try { DrawKesitSchematicElevationKots(tr, btr, db, slicesLeft, contentLeftX, contentLeftY, aminL, minZL, spanZL, horizontalAlongX: false, mirrorElevationX: true, isFoundationPlan); }
             catch { /* kesit kotları */ }
             // B-B başlık: sol aks balon sol dış yüzeyinden 60 cm sola; dikey metnin plana bakan sağ kenarı ≈ merkez + yükseklik/2
-            double xBbBaslikMerkez = xAksBalonSolDisYuzey - KesitIsmiSolAksBalonSolBoslukCm - KesitBaslikMetinYukseklikCm * 0.5;
-            DrawKesitTitleVerticalRightOfSection(tr, btr, db, "B-B KESİTİ", xBbBaslikMerkez, contentLeftY + spanAL * 0.5);
+            double bbTitleHeight = _isTemel50Mode ? KesitBaslikMetinYukseklikTemel50Cm : KesitBaslikMetinYukseklikCm;
+            double xBbBaslikMerkez = xAksBalonSolDisYuzey - KesitIsmiSolAksBalonSolBoslukCm - bbTitleHeight * 0.5;
+            string bbTitle = (isFoundationPlan && _isTemel50Mode) ? "B-B KESİTİ (1:50)" : "B-B KESİTİ";
+            DrawKesitTitleVerticalRightOfSection(tr, btr, db, bbTitle, xBbBaslikMerkez, contentLeftY + spanAL * 0.5);
         }
 
         public bool DrawSectionFromUserCut(Database db, Editor ed, Point3d worldA, Point3d worldB, Point3d sectionInsertBase, string sectionLetterRaw)
@@ -1768,12 +1772,13 @@ namespace ST4PlanIdCiz
         /// <summary>A-A yatay kesit başlığı; <see cref="TextVerticalMode.TextTop"/> — <paramref name="yTopAnchor"/> metin üst kenarı.</summary>
         private void DrawKesitTitleBelowSchematic(Transaction tr, BlockTableRecord btr, Database db, string title, double cx, double yTopAnchor)
         {
+            double titleHeight = _isTemel50Mode ? KesitBaslikMetinYukseklikTemel50Cm : KesitBaslikMetinYukseklikCm;
             var txt = new DBText
             {
                 Layer = LayerKesitIsmi,
-                Height = KesitBaslikMetinYukseklikCm,
+                Height = titleHeight,
                 TextStyleId = GetOrCreateYaziBeykentTextStyle(tr, db),
-                TextString = title,
+                TextString = _isTemel50Mode ? ("%%u" + title + "%%u") : title,
                 HorizontalMode = TextHorizontalMode.TextCenter,
                 VerticalMode = TextVerticalMode.TextTop,
                 Position = new Point3d(cx, yTopAnchor, 0),
@@ -1785,12 +1790,13 @@ namespace ST4PlanIdCiz
 
         private void DrawKesitTitleVerticalRightOfSection(Transaction tr, BlockTableRecord btr, Database db, string title, double x, double cy)
         {
+            double titleHeight = _isTemel50Mode ? KesitBaslikMetinYukseklikTemel50Cm : KesitBaslikMetinYukseklikCm;
             var txt = new DBText
             {
                 Layer = LayerKesitIsmi,
-                Height = KesitBaslikMetinYukseklikCm,
+                Height = titleHeight,
                 TextStyleId = GetOrCreateYaziBeykentTextStyle(tr, db),
-                TextString = title,
+                TextString = _isTemel50Mode ? ("%%u" + title + "%%u") : title,
                 HorizontalMode = TextHorizontalMode.TextCenter,
                 VerticalMode = TextVerticalMode.TextVerticalMid,
                 Position = new Point3d(x, cy, 0),
