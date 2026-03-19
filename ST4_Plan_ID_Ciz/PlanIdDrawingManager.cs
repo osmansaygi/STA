@@ -39,6 +39,11 @@ namespace ST4PlanIdCiz
         /// <summary>KOLON50ST4 perde+kolon kopyalarının dünya sınırları (GPR tablosu yerleşimi için).</summary>
         private Envelope _kolon50PerdeCopyExtent;
         private const double Temel50BaslikAltAksBalonBoslukCm = 50.0;
+        /// <summary>antet_02 SHEETVIEW sol-alt (cizim birimi); bire bir yerlesimde bu köse layout sol-alt ile hizalanir.</summary>
+        private const double AntetDxfSheetViewXmin = -2854.616393644967;
+        private const double AntetDxfSheetViewYmin = 1658.94236737828;
+        // Ileride: antet sablon degiskenleri — klon sonrasi DBText/ATTRIBUTE (sablon: antet_02.dwg + projede antet_02.dxf referans)
+        private const string TemelAntetEmbeddedResourceName = "ST4PlanIdCiz.TemelAntet.antet_02.dwg";
         /// <summary>Statik kesit örnekleme / şerit buffer için tek örnek.</summary>
         private static readonly GeometryFactory StaticGeomFactory = new GeometryFactory();
 
@@ -349,7 +354,8 @@ namespace ST4PlanIdCiz
                     DrawSingleFootings(tr, btr, firstFloor, offsetX, offsetY, drawTemelOutline: false);
                     DrawPerdeLabelsForFloor(tr, btr, firstFloor, offsetX, offsetY, kolonPerdeUnion);
                     DrawFloorTitle(tr, btr, firstFloor, offsetX, offsetY, firstFloorAxisExt, isFoundationPlan: true);
-                    DrawPlanSections(tr, btr, db, firstFloor, offsetX, offsetY, firstFloorAxisExt, isFoundationPlan: true, firstFloorUnion);
+                    DrawPlanSections(tr, btr, db, firstFloor, offsetX, offsetY, firstFloorAxisExt, isFoundationPlan: true, firstFloorUnion,
+                        out _, out _, out _, out _);
                 }
 
                 // Benzer kat birleştirme şimdilik kapalı; açmak için GetFormworkFloorGroups() ile döngüyü gruplar üzerinden çalıştır, labelFloor = en alt kat, DrawSimilarFloorsNote ile not yaz.
@@ -368,7 +374,8 @@ namespace ST4PlanIdCiz
                     DrawSlabVoids(tr, btr, elemUnion, offsetX, offsetY);
                     DrawUnifiedLayer(tr, btr, floor, offsetX, offsetY, elemUnion);
                     DrawFloorTitle(tr, btr, floor, offsetX, offsetY, floorAxisExt, isFoundationPlan: false);
-                    DrawPlanSections(tr, btr, db, floor, offsetX, offsetY, floorAxisExt, isFoundationPlan: false, elemUnion);
+                    DrawPlanSections(tr, btr, db, floor, offsetX, offsetY, floorAxisExt, isFoundationPlan: false, elemUnion,
+                        out _, out _, out _, out _);
                 }
 
                 tr.Commit();
@@ -1734,7 +1741,14 @@ namespace ST4PlanIdCiz
                     DrawSingleFootings(tr, btr, firstFloor, offsetX, offsetY, drawTemelOutline: false);
                     DrawPerdeLabelsForFloor(tr, btr, firstFloor, offsetX, offsetY, kolonPerdeUnion);
                     DrawFloorTitle(tr, btr, firstFloor, offsetX, offsetY, firstFloorAxisExt, isFoundationPlan: true);
-                    DrawPlanSections(tr, btr, db, firstFloor, offsetX, offsetY, firstFloorAxisExt, isFoundationPlan: true, firstFloorUnion);
+                    DrawPlanSections(tr, btr, db, firstFloor, offsetX, offsetY, firstFloorAxisExt, isFoundationPlan: true, firstFloorUnion,
+                        out double antetLayMinX, out double antetLayMaxX, out double antetLayMinY, out double antetLayMaxY);
+                    GetSectionCutBalloonExtents(offsetX, offsetY, firstFloorAxisExt,
+                        out _, out _, out double yBottomBalloonTemel, out _,
+                        out _, out _, out _, out _);
+                    double temelBaslikYTop = yBottomBalloonTemel - Temel50BaslikAltAksBalonBoslukCm;
+                    antetLayMinY = Math.Min(antetLayMinY, temelBaslikYTop - 30.0 - 100.0);
+                    TryDrawTemelAntetFromDxf(tr, btr, antetLayMinX, antetLayMinY, antetLayMaxX, antetLayMaxY, ed);
 
                     tr.Commit();
 
@@ -6079,6 +6093,108 @@ namespace ST4PlanIdCiz
                 return true;
             }
             catch { return false; }
+            finally
+            {
+                sourceDb?.Dispose();
+            }
+        }
+
+        /// <summary>TEMEL50ST4: DLL içine gömülü antet_02.dwg → geçici dosyaya yazilir; ReadDwgFile (DXF DxfIn sembol tablosu hatalarindan kacinir).</summary>
+        private static bool TryPopulateDatabaseFromEmbeddedTemelAntet(Database db, Editor ed)
+        {
+            string tmpDwg = null;
+            try
+            {
+                Assembly asm = typeof(PlanIdDrawingManager).Assembly;
+                using (Stream stream = asm.GetManifestResourceStream(TemelAntetEmbeddedResourceName))
+                {
+                    if (stream == null)
+                    {
+                        ed?.WriteMessage("\nTEMEL50ST4: Gömülü antet kaynagi yok (derlemede antet_02.dwg gomulu olmali).");
+                        return false;
+                    }
+                    tmpDwg = Path.Combine(Path.GetTempPath(), "ST4PlanIdCiz_antet_" + Guid.NewGuid().ToString("N") + ".dwg");
+                    using (var fs = new FileStream(tmpDwg, FileMode.Create, FileAccess.Write, FileShare.Read))
+                        stream.CopyTo(fs);
+                }
+                db.ReadDwgFile(tmpDwg, FileOpenMode.OpenForReadAndAllShare, true, null);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                ed?.WriteMessage("\nTEMEL50ST4: Gömülü antet acilamadi: {0}", ex.Message);
+                return false;
+            }
+            finally
+            {
+                if (!string.IsNullOrEmpty(tmpDwg))
+                {
+                    try { File.Delete(tmpDwg); } catch { }
+                }
+            }
+        }
+
+        /// <summary>Yalnizca TEMEL50ST4: gömülü antet_02.dwg bire bir (ölçeksiz öteleme). SHEETVIEW sol-alt, plan+kesit layout sol-altina oturur. TransformBy yalnizca Model Space kök Entity.</summary>
+        private void TryDrawTemelAntetFromDxf(Transaction tr, BlockTableRecord btr, double layoutMinX, double layoutMinY, double layoutMaxX, double layoutMaxY, Editor ed)
+        {
+            double contentW = layoutMaxX - layoutMinX;
+            double contentH = layoutMaxY - layoutMinY;
+            if (contentW < 10.0 || contentH < 10.0)
+            {
+                ed?.WriteMessage("\nTEMEL50ST4: Antet icin plan sinirlari gecersiz.");
+                return;
+            }
+
+            var srcLL = new Point3d(AntetDxfSheetViewXmin, AntetDxfSheetViewYmin, 0);
+            var xf = Matrix3d.Displacement(new Vector3d(layoutMinX - srcLL.X, layoutMinY - srcLL.Y, 0));
+
+            Database sourceDb = null;
+            try
+            {
+                sourceDb = new Database(false, true);
+                if (!TryPopulateDatabaseFromEmbeddedTemelAntet(sourceDb, ed))
+                    return;
+                var ids = new ObjectIdCollection();
+                ObjectId sourceMsId;
+                using (Transaction trSrc = sourceDb.TransactionManager.StartTransaction())
+                {
+                    var bt = (BlockTable)trSrc.GetObject(sourceDb.BlockTableId, OpenMode.ForRead);
+                    sourceMsId = bt[BlockTableRecord.ModelSpace];
+                    var ms = (BlockTableRecord)trSrc.GetObject(sourceMsId, OpenMode.ForRead);
+                    foreach (ObjectId id in ms)
+                    {
+                        if (id.IsValid && !id.IsErased) ids.Add(id);
+                    }
+                    trSrc.Commit();
+                }
+                if (ids.Count == 0)
+                {
+                    ed?.WriteMessage("\nTEMEL50ST4: antet dosyasinda Model Space bos.");
+                    return;
+                }
+
+                var mapping = new IdMapping();
+                btr.Database.WblockCloneObjects(ids, btr.ObjectId, mapping, DuplicateRecordCloning.Ignore, false);
+                using (Transaction trSrc = sourceDb.TransactionManager.StartTransaction())
+                {
+                    var sourceMs = (BlockTableRecord)trSrc.GetObject(sourceMsId, OpenMode.ForRead);
+                    foreach (IdPair pair in mapping)
+                    {
+                        if (!pair.Key.IsValid || !pair.Value.IsValid) continue;
+                        var entSrc = trSrc.GetObject(pair.Key, OpenMode.ForRead) as Entity;
+                        if (entSrc == null) continue;
+                        if (!entSrc.BlockId.Equals(sourceMs.ObjectId)) continue;
+                        var entDst = tr.GetObject(pair.Value, OpenMode.ForWrite) as Entity;
+                        if (entDst == null) continue;
+                        entDst.TransformBy(xf);
+                    }
+                    trSrc.Commit();
+                }
+            }
+            catch (Exception ex)
+            {
+                ed?.WriteMessage("\nTEMEL50ST4: Antet yuklenemedi: {0}", ex.Message);
+            }
             finally
             {
                 sourceDb?.Dispose();

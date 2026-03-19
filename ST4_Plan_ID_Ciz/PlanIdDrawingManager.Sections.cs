@@ -760,7 +760,8 @@ namespace ST4PlanIdCiz
 
         private void DrawPlanSections(Transaction tr, BlockTableRecord btr, Database db, FloorInfo floor,
             double offsetX, double offsetY, (double Xmin, double Xmax, double Ymin, double Ymax) ext,
-            bool isFoundationPlan, Geometry floorStructuralUnion)
+            bool isFoundationPlan, Geometry floorStructuralUnion,
+            out double layoutMinX, out double layoutMaxX, out double layoutMinY, out double layoutMaxY)
         {
             double xmin = ext.Xmin, xmax = ext.Xmax, ymin = ext.Ymin, ymax = ext.Ymax;
             double e = SectionLineExtendCm;
@@ -784,6 +785,11 @@ namespace ST4PlanIdCiz
             DrawSectionCutsRevitStyleOnPlan(tr, btr, db, offsetX, offsetY, ext, xvCut, yhCut, "A", "B");
             double extC = AxisExtensionBeyondBoundaryCm;
             double Rbal = KesitEtiketRadiusCm;
+            const double sectionLayoutPadCm = 280.0;
+            layoutMinX = offsetX + xmin - extC - 2.0 * Rbal - sectionLayoutPadCm;
+            layoutMaxX = offsetX + xmax + extC + 2.0 * Rbal + sectionLayoutPadCm;
+            layoutMinY = offsetY + ymin - extC - 2.0 * Rbal - sectionLayoutPadCm;
+            layoutMaxY = offsetY + ymax + extC + 2.0 * Rbal + sectionLayoutPadCm;
             // Aks balonu AxisBalonCenterAtEnd ile çerçeve köşesinden R dışarıda; kesite bakan dış yüzey çerçeveden 2R
             double yAksBalonUstDisYuzey = offsetY + ymax + extC + 2.0 * Rbal;
             double xAksBalonSolDisYuzey = offsetX + xmin - extC - 2.0 * Rbal;
@@ -828,6 +834,13 @@ namespace ST4PlanIdCiz
             double yAaBaslikUstHizasi = yAksBalonUstDisYuzey + KesitIsmiUstAksBalonUstuBoslukCm + KesitBaslikMetinYukseklikCm;
             string aaTitle = (isFoundationPlan && _isTemel50Mode) ? "A-A KESİTİ (1:50)" : "A-A KESİTİ";
             DrawKesitTitleBelowSchematic(tr, btr, db, aaTitle, contentTopX + spanAT * 0.5, yAaBaslikUstHizasi);
+            layoutMinX = Math.Min(layoutMinX, contentTopX - sectionLayoutPadCm);
+            layoutMaxX = Math.Max(layoutMaxX, contentTopX + spanAT + sectionLayoutPadCm);
+            layoutMinY = Math.Min(layoutMinY, contentTopY - sectionLayoutPadCm);
+            layoutMaxY = Math.Max(layoutMaxY, contentTopY + spanZT + sectionLayoutPadCm);
+            double aaTitleHeight = _isTemel50Mode ? KesitBaslikMetinYukseklikTemel50Cm : KesitBaslikMetinYukseklikCm;
+            layoutMinY = Math.Min(layoutMinY, yAaBaslikUstHizasi - aaTitleHeight - sectionLayoutPadCm);
+            layoutMaxY = Math.Max(layoutMaxY, yAaBaslikUstHizasi + sectionLayoutPadCm);
 
             double aminL = GetAmin(slicesLeft), amaxL = GetAmax(slicesLeft), minZL = GetZmin(slicesLeft), maxZL = GetZmax(slicesLeft);
             double spanAL = Math.Max(180.0, amaxL - aminL);
@@ -860,6 +873,12 @@ namespace ST4PlanIdCiz
             double xBbBaslikMerkez = xAksBalonSolDisYuzey - KesitIsmiSolAksBalonSolBoslukCm - bbTitleHeight * 0.5;
             string bbTitle = (isFoundationPlan && _isTemel50Mode) ? "B-B KESİTİ (1:50)" : "B-B KESİTİ";
             DrawKesitTitleVerticalRightOfSection(tr, btr, db, bbTitle, xBbBaslikMerkez, contentLeftY + spanAL * 0.5);
+            layoutMinX = Math.Min(layoutMinX, contentLeftX - sectionLayoutPadCm);
+            layoutMaxX = Math.Max(layoutMaxX, contentLeftX + spanZL + sectionLayoutPadCm);
+            layoutMinY = Math.Min(layoutMinY, contentLeftY - sectionLayoutPadCm);
+            layoutMaxY = Math.Max(layoutMaxY, contentLeftY + spanAL + sectionLayoutPadCm);
+            layoutMinX = Math.Min(layoutMinX, xBbBaslikMerkez - bbTitleHeight * 0.5 - sectionLayoutPadCm);
+            layoutMaxX = Math.Max(layoutMaxX, xBbBaslikMerkez + bbTitleHeight * 0.5 + sectionLayoutPadCm);
         }
 
         public bool DrawSectionFromUserCut(Database db, Editor ed, Point3d worldA, Point3d worldB, Point3d sectionInsertBase, string sectionLetterRaw)

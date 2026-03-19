@@ -1,0 +1,37 @@
+---
+description: TEMEL50ST4 gömülü antet (antet_02.dwg), yerleşim ve ileride alan doldurma bağlamı
+alwaysApply: true
+---
+
+# TEMEL50ST4 antet (kalıcı bağlam)
+
+Bu projede **temel plan anteti** yalnızca **`TEMEL50ST4`** komutu üzerinden çizilir; kullanıcı sonradan **antet bilgilerini dolduracak** (proje adı, pafta no, tarih vb.) — bu kural o işlere referans içindir.
+
+## Kaynak ve gömme
+
+- **Dosya:** repo kökünde `antet_02.dwg` (AutoCAD 2018 DWG önerilir; DXF ile aynı çizim).
+- **Gömülü kaynak:** `ST4_Plan_ID_Ciz.csproj` → `EmbeddedResource` → `LogicalName` **`ST4PlanIdCiz.TemelAntet.antet_02.dwg`**
+- **Kod sabiti:** `PlanIdDrawingManager.cs` içinde `TemelAntetEmbeddedResourceName`
+
+## Açma (önemli)
+
+- Geçici `.dwg` dosyasına yazıp **`Database.ReadDwgFile`** kullanılır.
+- **`Database.DxfIn` kullanılmaz** — gömülü DXF ile sık görülen **`eInvalidSymbolTableName`** hatasından kaçınmak için DWG tercih edildi.
+
+## Yerleşim ve geometri
+
+- **Hizalama:** DXF/DWG’deki ana **`SHEETVIEW`** dikdörtgeninin **sol-alt** köşesi, plan+kesit layout’un **sol-alt** köşesine oturur.
+- **Sabitlar:** `AntetDxfSheetViewXmin`, `AntetDxfSheetViewYmin` (`PlanIdDrawingManager.cs`) — şablon değişince güncellenmeli.
+- **Ölçek:** Antet **bire bir** (yalnızca öteleme); uniform scale yok.
+- **Klon:** `WblockCloneObjects`; **`TransformBy` yalnızca Model Space kök entity** için (`BlockId == ModelSpace`). Blok tanımı içi geometry’ye uygulanmaz (INSERT’ler bozulmasın diye).
+
+## Çağrı zinciri
+
+- `CommandEntry.cs` → `TEMEL50ST4` → `DrawFoundationPlanWithSections` → `TryDrawTemelAntetFromDxf`
+- Yardımcı: `TryPopulateDatabaseFromEmbeddedTemelAntet`
+
+## Sonraki işler (antet bilgisi doldurma)
+
+- Henüz uygulanmadı; eklenecekler: şablondaki **TEXT / ATTDEF / tablo** alanlarını ST4 veya kullanıcı girdisiyle doldurmak.
+- Uygulama yeri: `TryDrawTemelAntetFromDxf` sonrası (veya klon mapping ile hedef `DBText`/block attribute güncellemesi); yeni parametreler için `TEMEL50ST4` veya model genişletmesi düşünülebilir.
+- Şablon güncellenince hem **`antet_02.dwg`** hem gömülü derleme yenilenmeli.

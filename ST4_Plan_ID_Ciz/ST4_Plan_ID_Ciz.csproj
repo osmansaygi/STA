@@ -22,6 +22,11 @@
     <PackageReference Include="NetTopologySuite" Version="2.6.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- DWG: DxfIn DXF bazi sembol tablolarinda eInvalidSymbolTableName verebilir; ReadDwgFile ile acilir. -->
+    <EmbeddedResource Include="..\antet_02.dwg" LogicalName="ST4PlanIdCiz.TemelAntet.antet_02.dwg" />
+  </ItemGroup>
+
   <ItemGroup Condition="Exists('$(AutoCADInstallDir)\acdbmgd.dll') and Exists('$(AutoCADInstallDir)\acmgd.dll')">
     <Reference Include="acdbmgd">
       <HintPath>$(AutoCADInstallDir)\acdbmgd.dll</HintPath>
