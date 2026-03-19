@@ -13,6 +13,16 @@ namespace ST4PlanIdCiz
 {
     public sealed partial class PlanIdDrawingManager
     {
+        /// <summary>Kesit hattı, kesite <b>paralel</b> düz kolon akslarından (X aksı ↔ dikey kesit, Y aksı ↔ yatay kesit) en az bu kadar uzak olmalı (cm).</summary>
+        private const double SectionCutParallelAxisMinClearanceCm = 51.0;
+        /// <summary>Aks sınırı kutusundan kesit arama iç boşluğu (cm).</summary>
+        private const double SectionCutSearchInsetFromAxisBoxCm = 80.0;
+        /// <summary>Kolon/kiriş/döşeme birleşim zarfından ek iç boşluk (cm); kesit hattı yapı dışına çıkmasın.</summary>
+        private const double SectionCutSearchInsetFromStructureCm = 40.0;
+        /// <summary>Paralel aks altında her cm için ek ceza (kesit konumunu itmek için).</summary>
+        private const double SectionCutParallelAxisPenaltyPerCm = 850.0;
+        /// <summary>Temel planında kesit hattı poligon kolon alanından geçmesin diye uygulanan ceza (kat planlarında 0).</summary>
+        private const double SectionCutFoundationPolygonColumnPenalty = 48000.0;
         /// <summary>Kesit yerleşiminde merdiven/paralel ceza şeridi (cm). Kesit profili çizimi şeritsiz düz hat.</summary>
         private const double SectionStripHalfWidthCm = 50.0;
         private const double SectionLineExtendCm = 120.0;
@@ -23,6 +33,12 @@ namespace ST4PlanIdCiz
         private const double SectionMinAboveAxisTopLabelsCm = 100.0;
         /// <summary>Çap 40 cm aks balonu ile aynı; ok √2·R oranında.</summary>
         private const double KesitEtiketRadiusCm = 20.0;
+        /// <summary>A-A / B-B kesit başlığı metin yüksekliği (cm).</summary>
+        private const double KesitBaslikMetinYukseklikCm = 20.0;
+        /// <summary>Üst X aks balonunun üst dış yüzeyi ile &quot;A-A KESİTİ&quot; metninin <b>alt</b> kenarı arası (cm).</summary>
+        private const double KesitIsmiUstAksBalonUstuBoslukCm = 60.0;
+        /// <summary>Sol Y aks balonunun kesite bakan sol dış yüzeyi ile &quot;B-B KESİTİ&quot; metninin <b>sağ</b> kenarı arası (cm).</summary>
+        private const double KesitIsmiSolAksBalonSolBoslukCm = 60.0;
         /// <summary>Kesit çizgisi ucu ile kat sınırı dikdörtgeni arasındaki boşluk (cm).</summary>
         private const double SectionCutGapFromFloorBoundaryCm = 30.0;
         private const double KesitEtiketTextHeightCm = 20.0;
@@ -82,7 +98,7 @@ namespace ST4PlanIdCiz
         private List<Geometry> BuildStairAvoidZonesForFloor(FloorInfo floor)
         {
             var list = new List<Geometry>();
-            var factory = new GeometryFactory();
+            var factory = _ntsDrawFactory;
             int fn = floor.FloorNo;
             foreach (var slab in _model.Slabs)
             {
@@ -99,7 +115,7 @@ namespace ST4PlanIdCiz
         private List<Geometry> BuildColumnFootprintsForCutScore(FloorInfo floor)
         {
             var list = new List<Geometry>();
-            var factory = new GeometryFactory();
+            var factory = _ntsDrawFactory;
             int floorNo = floor.FloorNo;
             foreach (var col in _model.Columns)
             {
@@ -147,7 +163,7 @@ namespace ST4PlanIdCiz
         private Geometry BuildCutOccupancyUnion(FloorInfo floor, bool isFoundationPlan)
         {
             var geoms = new List<Geometry>();
-            var factory = new GeometryFactory();
+            var factory = _ntsDrawFactory;
             try
             {
                 var u = BuildFloorElementUnion(floor);
@@ -194,7 +210,7 @@ namespace ST4PlanIdCiz
         private static (double frac, double longestRun) SampleVerticalOnOccupancy(Geometry occ, double x, double ymin, double ymax)
         {
             if (occ == null || occ.IsEmpty) return (0, 0);
-            var factory = new GeometryFactory();
+            var factory = StaticGeomFactory;
             int n = Math.Max(24, (int)((ymax - ymin) / 65.0));
             int hit = 0, run = 0, bestRun = 0;
             for (int i = 0; i <= n; i++)
@@ -211,7 +227,7 @@ namespace ST4PlanIdCiz
         private static (double frac, double longestRun) SampleHorizontalOnOccupancy(Geometry occ, double y, double xmin, double xmax)
         {
             if (occ == null || occ.IsEmpty) return (0, 0);
-            var factory = new GeometryFactory();
+            var factory = StaticGeomFactory;
             int n = Math.Max(24, (int)((xmax - xmin) / 65.0));
             int hit = 0, run = 0, bestRun = 0;
             for (int i = 0; i <= n; i++)
@@ -227,7 +243,7 @@ namespace ST4PlanIdCiz
 
         private static double StairPenaltyVertical(double x, double ymin, double ymax, double e, List<Geometry> stairZones)
         {
-            var factory = new GeometryFactory();
+            var factory = StaticGeomFactory;
             Geometry strip;
             try
             {
@@ -249,7 +265,7 @@ namespace ST4PlanIdCiz
 
         private static double StairPenaltyHorizontal(double y, double xmin, double xmax, double e, List<Geometry> stairZones)
         {
-            var factory = new GeometryFactory();
+            var factory = StaticGeomFactory;
             Geometry strip;
             try
             {
@@ -355,7 +371,7 @@ namespace ST4PlanIdCiz
             var colExtra = GetColumnTableExtraData(floor);
             if (colExtra == null || colExtra.Count == 0) return 0;
             int floorNo = floor.FloorNo;
-            var gf = new GeometryFactory();
+            var gf = _ntsDrawFactory;
             double yLo = ymin - e - 5e4, yHi = ymax + e + 5e4;
             var vLine = gf.CreateLineString(new[] { new Coordinate(x, yLo), new Coordinate(x, yHi) });
             const double pen = 42000.0;
@@ -410,12 +426,123 @@ namespace ST4PlanIdCiz
             return s;
         }
 
+        /// <summary>Dikey kesit (x sabit): düz (eğimsiz) X akslarına paralel — mesafe |x − aksX|.</summary>
+        private double ParallelColumnAxisClearancePenaltyVertical(double x)
+        {
+            double pen = 0;
+            foreach (var ax in _model.AxisX)
+            {
+                if (Math.Abs(ax.Slope) > 1e-6) continue;
+                double d = Math.Abs(x - ax.ValueCm);
+                if (d < SectionCutParallelAxisMinClearanceCm)
+                    pen += (SectionCutParallelAxisMinClearanceCm - d) * SectionCutParallelAxisPenaltyPerCm;
+            }
+            return pen;
+        }
+
+        /// <summary>Yatay kesit (y sabit): düz (eğimsiz) Y akslarına paralel — mesafe |y − (−Value)|.</summary>
+        private double ParallelColumnAxisClearancePenaltyHorizontal(double y)
+        {
+            double pen = 0;
+            foreach (var ay in _model.AxisY)
+            {
+                if (Math.Abs(ay.Slope) > 1e-6) continue;
+                double yLine = -ay.ValueCm;
+                double d = Math.Abs(y - yLine);
+                if (d < SectionCutParallelAxisMinClearanceCm)
+                    pen += (SectionCutParallelAxisMinClearanceCm - d) * SectionCutParallelAxisPenaltyPerCm;
+            }
+            return pen;
+        }
+
+        /// <summary>Sadece temel planı: kesit çizgisi poligon kolon poligonunun içinden geçmesin (dikey kesit).</summary>
+        private double FoundationPolygonColumnCutPenaltyVertical(double x, double ymin, double ymax, double e, FloorInfo floor)
+        {
+            var colExtra = GetColumnTableExtraData(floor);
+            if (colExtra == null || colExtra.Count == 0) return 0;
+            int floorNo = floor.FloorNo;
+            var gf = _ntsDrawFactory;
+            double yLo = ymin - e - 5e4, yHi = ymax + e + 5e4;
+            var vLine = gf.CreateLineString(new[] { new Coordinate(x, yLo), new Coordinate(x, yHi) });
+            double s = 0;
+            foreach (var col in _model.Columns)
+            {
+                if (col.ColumnType != 3) continue;
+                int polygonSectionId = ResolvePolygonPositionSectionId(floorNo, col.ColumnNo);
+                if (polygonSectionId <= 0 || !_model.PolygonColumnSectionByPositionSectionId.ContainsKey(polygonSectionId)) continue;
+                if (!colExtra.ContainsKey(col.ColumnNo)) continue;
+                if (!_axisService.TryIntersect(col.AxisXId, col.AxisYId, out Point2d axisNode)) continue;
+                var dim = _model.ColumnDimsBySectionId.TryGetValue(ResolveColumnSectionId(floorNo, col.ColumnNo), out var d) ? d : (W: 40.0, H: 40.0);
+                double hw = dim.W / 2.0, hh = dim.H / 2.0;
+                var offsetLocal = ComputeColumnOffset(col.OffsetXRaw, col.OffsetYRaw, hw, hh);
+                var offsetGlobal = Rotate(offsetLocal, col.AngleDeg);
+                var center = new Point2d(axisNode.X + offsetGlobal.X, axisNode.Y + offsetGlobal.Y);
+                if (!TryGetPolygonColumn(polygonSectionId, center, col.AngleDeg, out var polyPts)) continue;
+                var coords = new Coordinate[polyPts.Length + 1];
+                for (int i = 0; i < polyPts.Length; i++) coords[i] = new Coordinate(polyPts[i].X, polyPts[i].Y);
+                coords[polyPts.Length] = coords[0];
+                var colPoly = gf.CreatePolygon(gf.CreateLinearRing(coords));
+                try
+                {
+                    if (!vLine.Intersects(colPoly)) continue;
+                    var inter = vLine.Intersection(colPoly);
+                    if (inter == null || inter.IsEmpty) continue;
+                    var env = inter.EnvelopeInternal;
+                    if (env.MaxY - env.MinY > 2.0)
+                        s += SectionCutFoundationPolygonColumnPenalty;
+                }
+                catch { }
+            }
+            return s;
+        }
+
+        /// <summary>Sadece temel planı: yatay kesit — poligon kolon.</summary>
+        private double FoundationPolygonColumnCutPenaltyHorizontal(double y, double xmin, double xmax, double e, FloorInfo floor)
+        {
+            var colExtra = GetColumnTableExtraData(floor);
+            if (colExtra == null || colExtra.Count == 0) return 0;
+            int floorNo = floor.FloorNo;
+            var gf = _ntsDrawFactory;
+            double xLo = xmin - e - 5e4, xHi = xmax + e + 5e4;
+            var hLine = gf.CreateLineString(new[] { new Coordinate(xLo, y), new Coordinate(xHi, y) });
+            double s = 0;
+            foreach (var col in _model.Columns)
+            {
+                if (col.ColumnType != 3) continue;
+                int polygonSectionId = ResolvePolygonPositionSectionId(floorNo, col.ColumnNo);
+                if (polygonSectionId <= 0 || !_model.PolygonColumnSectionByPositionSectionId.ContainsKey(polygonSectionId)) continue;
+                if (!colExtra.ContainsKey(col.ColumnNo)) continue;
+                if (!_axisService.TryIntersect(col.AxisXId, col.AxisYId, out Point2d axisNode)) continue;
+                var dim = _model.ColumnDimsBySectionId.TryGetValue(ResolveColumnSectionId(floorNo, col.ColumnNo), out var d) ? d : (W: 40.0, H: 40.0);
+                double hw = dim.W / 2.0, hh = dim.H / 2.0;
+                var offsetLocal = ComputeColumnOffset(col.OffsetXRaw, col.OffsetYRaw, hw, hh);
+                var offsetGlobal = Rotate(offsetLocal, col.AngleDeg);
+                var center = new Point2d(axisNode.X + offsetGlobal.X, axisNode.Y + offsetGlobal.Y);
+                if (!TryGetPolygonColumn(polygonSectionId, center, col.AngleDeg, out var polyPts)) continue;
+                var coords = new Coordinate[polyPts.Length + 1];
+                for (int i = 0; i < polyPts.Length; i++) coords[i] = new Coordinate(polyPts[i].X, polyPts[i].Y);
+                coords[polyPts.Length] = coords[0];
+                var colPoly = gf.CreatePolygon(gf.CreateLinearRing(coords));
+                try
+                {
+                    if (!hLine.Intersects(colPoly)) continue;
+                    var inter = hLine.Intersection(colPoly);
+                    if (inter == null || inter.IsEmpty) continue;
+                    var env = inter.EnvelopeInternal;
+                    if (env.MaxX - env.MinX > 2.0)
+                        s += SectionCutFoundationPolygonColumnPenalty;
+                }
+                catch { }
+            }
+            return s;
+        }
+
         private double SlenderColumnLongAxisCutPenaltyHorizontal(double y, double xmin, double xmax, double e, FloorInfo floor, bool isFoundationPlan)
         {
             var colExtra = GetColumnTableExtraData(floor);
             if (colExtra == null || colExtra.Count == 0) return 0;
             int floorNo = floor.FloorNo;
-            var gf = new GeometryFactory();
+            var gf = _ntsDrawFactory;
             double xLo = xmin - e - 5e4, xHi = xmax + e + 5e4;
             var hLine = gf.CreateLineString(new[] { new Coordinate(xLo, y), new Coordinate(xHi, y) });
             const double pen = 42000.0;
@@ -470,15 +597,67 @@ namespace ST4PlanIdCiz
             return s;
         }
 
-        private double FindBestVerticalCutX(FloorInfo floor, double xmin, double xmax, double ymin, double ymax, double e, Geometry occ, double cx, bool isFoundationPlan)
+        /// <summary>
+        /// Kesit X/Y aramasını aks kutusu ile <see cref="BuildFloorElementUnion"/> zarfının kesişimine indirger.
+        /// Aks kutusu çatı/son katta yapıdan büyük olduğunda merkez boşta kalıp kesit çizgisi kat sınırını kesmezdi; öncelik yapı içinde kalmak.
+        /// </summary>
+        private static void GetCutLineSearchBoundsFromStructure(
+            double xmin, double xmax, double ymin, double ymax,
+            Geometry structuralUnion,
+            out double xLo, out double xHi, out double yLo, out double yHi,
+            out double cxPrefer, out double cyPrefer)
+        {
+            double axInset = SectionCutSearchInsetFromAxisBoxCm;
+            double sInset = SectionCutSearchInsetFromStructureCm;
+            cxPrefer = (xmin + xmax) * 0.5;
+            cyPrefer = (ymin + ymax) * 0.5;
+            if (structuralUnion != null && !structuralUnion.IsEmpty)
+            {
+                var se = structuralUnion.EnvelopeInternal;
+                cxPrefer = (se.MinX + se.MaxX) * 0.5;
+                cyPrefer = (se.MinY + se.MaxY) * 0.5;
+                xLo = Math.Max(xmin + axInset, se.MinX + sInset);
+                xHi = Math.Min(xmax - axInset, se.MaxX - sInset);
+                yLo = Math.Max(ymin + axInset, se.MinY + sInset);
+                yHi = Math.Min(ymax - axInset, se.MaxY - sInset);
+            }
+            else
+            {
+                xLo = xmin + 100;
+                xHi = xmax - 100;
+                yLo = ymin + 100;
+                yHi = ymax - 100;
+            }
+
+            void WidenIfEmpty(ref double lo, ref double hi, double c, double spanMin, double boxMin, double boxMax)
+            {
+                if (hi > lo) return;
+                double half = Math.Max(spanMin * 0.5, (boxMax - boxMin) * 0.2);
+                lo = Math.Max(boxMin + 15, c - half);
+                hi = Math.Min(boxMax - 15, c + half);
+                if (hi <= lo)
+                {
+                    double m = Math.Max(20, (boxMax - boxMin) * 0.05);
+                    lo = boxMin + m;
+                    hi = boxMax - m;
+                }
+            }
+
+            double sx = structuralUnion != null && !structuralUnion.IsEmpty ? structuralUnion.EnvelopeInternal.MaxX - structuralUnion.EnvelopeInternal.MinX : xmax - xmin;
+            double sy = structuralUnion != null && !structuralUnion.IsEmpty ? structuralUnion.EnvelopeInternal.MaxY - structuralUnion.EnvelopeInternal.MinY : ymax - ymin;
+            WidenIfEmpty(ref xLo, ref xHi, cxPrefer, Math.Min(100, sx), xmin, xmax);
+            WidenIfEmpty(ref yLo, ref yHi, cyPrefer, Math.Min(100, sy), ymin, ymax);
+        }
+
+        private double FindBestVerticalCutX(FloorInfo floor, double xmin, double xmax, double ymin, double ymax, double e, Geometry occ, bool isFoundationPlan, Geometry structuralUnion)
         {
             var stairs = BuildStairAvoidZonesForFloor(floor);
-            var gf = new GeometryFactory();
+            var gf = _ntsDrawFactory;
             double halfW = Math.Max(60.0, SectionStripHalfWidthCm * 1.2);
-            double xLo = xmin + 100, xHi = xmax - 100;
-            if (xHi <= xLo) return cx;
+            GetCutLineSearchBoundsFromStructure(xmin, xmax, ymin, ymax, structuralUnion, out double xLo, out double xHi, out _, out _, out double cxPrefer, out _);
+            if (xHi <= xLo) return (xmin + xmax) * 0.5;
             double step = Math.Max(40.0, (xHi - xLo) / 48.0);
-            double bestX = cx;
+            double bestX = cxPrefer;
             double bestKey = double.NegativeInfinity;
             var tanV = new Vector2d(0, 1);
 
@@ -489,8 +668,10 @@ namespace ST4PlanIdCiz
                 double par = ParallelSpanAxisPenalty(strip, tanV, floor, isFoundationPlan);
                 double stair = StairPenaltyVertical(x, ymin, ymax, e, stairs);
                 double colLong = SlenderColumnLongAxisCutPenaltyVertical(x, ymin, ymax, e, floor, isFoundationPlan);
-                double key = frac * 900.0 + lng * 320.0 - stair - par - colLong - Math.Abs(x - cx) * 0.02;
-                if (key > bestKey + 1e-6 || (Math.Abs(key - bestKey) < 1e-6 && Math.Abs(x - cx) < Math.Abs(bestX - cx)))
+                double axisClr = ParallelColumnAxisClearancePenaltyVertical(x);
+                double polyCol = isFoundationPlan ? FoundationPolygonColumnCutPenaltyVertical(x, ymin, ymax, e, floor) : 0;
+                double key = frac * 900.0 + lng * 320.0 - stair - par - colLong - axisClr - polyCol - Math.Abs(x - cxPrefer) * 0.02;
+                if (key > bestKey + 1e-6 || (Math.Abs(key - bestKey) < 1e-6 && Math.Abs(x - cxPrefer) < Math.Abs(bestX - cxPrefer)))
                 {
                     bestKey = key;
                     bestX = x;
@@ -501,15 +682,15 @@ namespace ST4PlanIdCiz
             return bestX;
         }
 
-        private double FindBestHorizontalCutY(FloorInfo floor, double xmin, double xmax, double ymin, double ymax, double e, Geometry occ, double cy, bool isFoundationPlan)
+        private double FindBestHorizontalCutY(FloorInfo floor, double xmin, double xmax, double ymin, double ymax, double e, Geometry occ, bool isFoundationPlan, Geometry structuralUnion)
         {
             var stairs = BuildStairAvoidZonesForFloor(floor);
-            var gf = new GeometryFactory();
+            var gf = _ntsDrawFactory;
             double halfW = Math.Max(60.0, SectionStripHalfWidthCm * 1.2);
-            double yLo = ymin + 100, yHi = ymax - 100;
-            if (yHi <= yLo) return cy;
+            GetCutLineSearchBoundsFromStructure(xmin, xmax, ymin, ymax, structuralUnion, out _, out _, out double yLo, out double yHi, out _, out double cyPrefer);
+            if (yHi <= yLo) return (ymin + ymax) * 0.5;
             double step = Math.Max(40.0, (yHi - yLo) / 48.0);
-            double bestY = cy;
+            double bestY = cyPrefer;
             double bestKey = double.NegativeInfinity;
             var tanH = new Vector2d(1, 0);
 
@@ -520,8 +701,10 @@ namespace ST4PlanIdCiz
                 double par = ParallelSpanAxisPenalty(strip, tanH, floor, isFoundationPlan);
                 double stair = StairPenaltyHorizontal(y, xmin, xmax, e, stairs);
                 double colLong = SlenderColumnLongAxisCutPenaltyHorizontal(y, xmin, xmax, e, floor, isFoundationPlan);
-                double key = frac * 900.0 + lng * 320.0 - stair - par - colLong - Math.Abs(y - cy) * 0.02;
-                if (key > bestKey + 1e-6 || (Math.Abs(key - bestKey) < 1e-6 && Math.Abs(y - cy) < Math.Abs(bestY - cy)))
+                double axisClr = ParallelColumnAxisClearancePenaltyHorizontal(y);
+                double polyCol = isFoundationPlan ? FoundationPolygonColumnCutPenaltyHorizontal(y, xmin, xmax, e, floor) : 0;
+                double key = frac * 900.0 + lng * 320.0 - stair - par - colLong - axisClr - polyCol - Math.Abs(y - cyPrefer) * 0.02;
+                if (key > bestKey + 1e-6 || (Math.Abs(key - bestKey) < 1e-6 && Math.Abs(y - cyPrefer) < Math.Abs(bestY - cyPrefer)))
                 {
                     bestKey = key;
                     bestY = y;
@@ -534,17 +717,15 @@ namespace ST4PlanIdCiz
 
         private void DrawPlanSections(Transaction tr, BlockTableRecord btr, Database db, FloorInfo floor,
             double offsetX, double offsetY, (double Xmin, double Xmax, double Ymin, double Ymax) ext,
-            bool isFoundationPlan)
+            bool isFoundationPlan, Geometry floorStructuralUnion)
         {
             double xmin = ext.Xmin, xmax = ext.Xmax, ymin = ext.Ymin, ymax = ext.Ymax;
-            double cx = (xmin + xmax) * 0.5;
-            double cy = (ymin + ymax) * 0.5;
             double e = SectionLineExtendCm;
             Geometry occ = BuildCutOccupancyUnion(floor, isFoundationPlan);
 
             // Her zaman: yatay kesit çizgisi → KESİT 1-1 üstte; dikey kesit → KESİT 2-2 solda
-            double xvCut = FindBestVerticalCutX(floor, xmin, xmax, ymin, ymax, e, occ, cx, isFoundationPlan);
-            double yhCut = FindBestHorizontalCutY(floor, xmin, xmax, ymin, ymax, e, occ, cy, isFoundationPlan);
+            double xvCut = FindBestVerticalCutX(floor, xmin, xmax, ymin, ymax, e, occ, isFoundationPlan, floorStructuralUnion);
+            double yhCut = FindBestHorizontalCutY(floor, xmin, xmax, ymin, ymax, e, occ, isFoundationPlan, floorStructuralUnion);
 
             Point2d topA = new Point2d(xmin - e, yhCut);
             Point2d topB = new Point2d(xmax + e, yhCut);
@@ -596,7 +777,9 @@ namespace ST4PlanIdCiz
             DrawKesitSiniriFromBeams(tr, btr, slicesTop, contentTopX, contentTopY, aminT, minZT, spanZT, horizontalAlongX: true, mirrorElevationX: false, isFoundationPlan);
             DrawKesitSchematicDimensions(tr, btr, slicesTop, contentTopX, contentTopY, aminT, minZT, spanZT, horizontalAlongX: true, mirrorElevationX: false, isFoundationPlan, planOlcuDimId);
             DrawKesitSchematicElementLabels(tr, btr, db, slicesTop, floor, contentTopX, contentTopY, aminT, minZT, spanZT, true, false, isFoundationPlan);
-            DrawKesitTitleBelowSchematic(tr, btr, db, "A-A KESİTİ", contentTopX + spanAT * 0.5, contentTopY - 14.0);
+            // A-A başlık: üst aks balon üst yüzeyinden 60 cm yukarıda (metin alt kenarı); TextTop için üst hizası = alt + yükseklik
+            double yAaBaslikUstHizasi = yAksBalonUstDisYuzey + KesitIsmiUstAksBalonUstuBoslukCm + KesitBaslikMetinYukseklikCm;
+            DrawKesitTitleBelowSchematic(tr, btr, db, "A-A KESİTİ", contentTopX + spanAT * 0.5, yAaBaslikUstHizasi);
 
             double aminL = GetAmin(slicesLeft), amaxL = GetAmax(slicesLeft), minZL = GetZmin(slicesLeft), maxZL = GetZmax(slicesLeft);
             double spanAL = Math.Max(180.0, amaxL - aminL);
@@ -620,16 +803,18 @@ namespace ST4PlanIdCiz
             DrawKesitSiniriFromBeams(tr, btr, slicesLeft, contentLeftX, contentLeftY, aminL, minZL, spanZL, horizontalAlongX: false, mirrorElevationX: true, isFoundationPlan);
             DrawKesitSchematicDimensions(tr, btr, slicesLeft, contentLeftX, contentLeftY, aminL, minZL, spanZL, horizontalAlongX: false, mirrorElevationX: true, isFoundationPlan, planOlcuDimId);
             DrawKesitSchematicElementLabels(tr, btr, db, slicesLeft, floor, contentLeftX, contentLeftY, aminL, minZL, spanZL, false, true, isFoundationPlan);
-            DrawKesitTitleVerticalRightOfSection(tr, btr, db, "B-B KESİTİ", contentLeftX + spanZL + 48.0, contentLeftY + spanAL * 0.5);
+            // B-B başlık: sol aks balon sol dış yüzeyinden 60 cm sola; dikey metnin plana bakan sağ kenarı ≈ merkez + yükseklik/2
+            double xBbBaslikMerkez = xAksBalonSolDisYuzey - KesitIsmiSolAksBalonSolBoslukCm - KesitBaslikMetinYukseklikCm * 0.5;
+            DrawKesitTitleVerticalRightOfSection(tr, btr, db, "B-B KESİTİ", xBbBaslikMerkez, contentLeftY + spanAL * 0.5);
         }
 
-        /// <summary>Üst kesit başlığı şemanın altında (Y aşağı doğru).</summary>
+        /// <summary>A-A yatay kesit başlığı; <see cref="TextVerticalMode.TextTop"/> — <paramref name="yTopAnchor"/> metin üst kenarı.</summary>
         private void DrawKesitTitleBelowSchematic(Transaction tr, BlockTableRecord btr, Database db, string title, double cx, double yTopAnchor)
         {
             var txt = new DBText
             {
                 Layer = LayerKesitIsmi,
-                Height = 34,
+                Height = KesitBaslikMetinYukseklikCm,
                 TextStyleId = GetOrCreateYaziBeykentTextStyle(tr, db),
                 TextString = title,
                 HorizontalMode = TextHorizontalMode.TextCenter,
@@ -646,7 +831,7 @@ namespace ST4PlanIdCiz
             var txt = new DBText
             {
                 Layer = LayerKesitIsmi,
-                Height = 32,
+                Height = KesitBaslikMetinYukseklikCm,
                 TextStyleId = GetOrCreateYaziBeykentTextStyle(tr, db),
                 TextString = title,
                 HorizontalMode = TextHorizontalMode.TextCenter,
@@ -917,7 +1102,7 @@ namespace ST4PlanIdCiz
 
         private Geometry BeamFootprintPoly(BeamInfo beam)
         {
-            var factory = new GeometryFactory();
+            var factory = _ntsDrawFactory;
             if (!_axisService.TryIntersect(beam.FixedAxisId, beam.StartAxisId, out Point2d p1) ||
                 !_axisService.TryIntersect(beam.FixedAxisId, beam.EndAxisId, out Point2d p2)) return null;
             var a = new Point2d(p1.X, p1.Y);
@@ -941,7 +1126,7 @@ namespace ST4PlanIdCiz
 
         private Geometry ContinuousFootprintPoly(ContinuousFoundationInfo cf)
         {
-            var factory = new GeometryFactory();
+            var factory = _ntsDrawFactory;
             if (!_axisService.TryIntersect(cf.FixedAxisId, cf.StartAxisId, out Point2d p1) ||
                 !_axisService.TryIntersect(cf.FixedAxisId, cf.EndAxisId, out Point2d p2)) return null;
             Vector2d along = (p2 - p1).GetNormal();
@@ -964,7 +1149,7 @@ namespace ST4PlanIdCiz
 
         private Geometry TieBeamFootprintPoly(TieBeamInfo tb)
         {
-            var factory = new GeometryFactory();
+            var factory = _ntsDrawFactory;
             if (!_axisService.TryIntersect(tb.FixedAxisId, tb.StartAxisId, out Point2d p1) ||
                 !_axisService.TryIntersect(tb.FixedAxisId, tb.EndAxisId, out Point2d p2)) return null;
             Vector2d along = (p2 - p1).GetNormal();
@@ -985,7 +1170,7 @@ namespace ST4PlanIdCiz
 
         private Geometry SlabFoundationFootprintPoly(SlabFoundationInfo sf)
         {
-            var factory = new GeometryFactory();
+            var factory = _ntsDrawFactory;
             if (!_axisService.TryIntersect(sf.AxisX1, sf.AxisY1, out Point2d p11) ||
                 !_axisService.TryIntersect(sf.AxisX1, sf.AxisY2, out Point2d p12) ||
                 !_axisService.TryIntersect(sf.AxisX2, sf.AxisY1, out Point2d p21) ||
@@ -997,7 +1182,7 @@ namespace ST4PlanIdCiz
         private Geometry HatilStripOnContinuousPoly(ContinuousFoundationInfo cf)
         {
             if (cf.TieBeamWidthCm <= 0) return null;
-            var factory = new GeometryFactory();
+            var factory = _ntsDrawFactory;
             if (!_axisService.TryIntersect(cf.FixedAxisId, cf.StartAxisId, out Point2d p1) ||
                 !_axisService.TryIntersect(cf.FixedAxisId, cf.EndAxisId, out Point2d p2)) return null;
             Vector2d along = (p2 - p1).GetNormal();
@@ -1067,7 +1252,7 @@ namespace ST4PlanIdCiz
                 footingCenter = new Point2d(columnCenter.X + alignGlobal.X, columnCenter.Y + alignGlobal.Y);
             }
             var rect = BuildRect(footingCenter, halfX, halfY, sf.AngleDeg);
-            var factory = new GeometryFactory();
+            var factory = _ntsDrawFactory;
             var coords = new Coordinate[5];
             for (int i = 0; i < 4; i++) coords[i] = C1(rect[i].X, rect[i].Y);
             coords[4] = coords[0];
@@ -1076,7 +1261,7 @@ namespace ST4PlanIdCiz
 
         private Geometry SlabFootprintPoly(SlabInfo slab)
         {
-            var factory = new GeometryFactory();
+            var factory = _ntsDrawFactory;
             int a1 = slab.Axis1, a2 = slab.Axis2, a3 = slab.Axis3, a4 = slab.Axis4;
             if (a1 == 0 || a2 == 0 || a3 == 0 || a4 == 0) return null;
             if (!_axisService.TryIntersect(a1, a3, out Point2d p11) || !_axisService.TryIntersect(a1, a4, out Point2d p12) ||
@@ -1089,7 +1274,7 @@ namespace ST4PlanIdCiz
             bool isFoundationPlan, Dictionary<int, (double altKotCm, double yukseklikCm, double? k)> colExtra)
         {
             var list = new List<SectionSlice>();
-            var factory = new GeometryFactory();
+            var factory = _ntsDrawFactory;
             Geometry cutLine;
             try
             {
@@ -1484,7 +1669,7 @@ namespace ST4PlanIdCiz
             var rects = new List<(double x0, double x1, double y0, double y1)>();
             foreach (var s in slices.Where(s => s.Layer == LayerKolon || s.Layer == LayerPerde))
             {
-                var poly = CreateSectionSliceSchematicPolygon(new GeometryFactory(), s, originX, originY, amin, minZ, spanZ, horizontalAlongX, mirrorElevationX);
+                var poly = CreateSectionSliceSchematicPolygon(_ntsDrawFactory, s, originX, originY, amin, minZ, spanZ, horizontalAlongX, mirrorElevationX);
                 var e = poly.EnvelopeInternal;
                 rects.Add((e.MinX, e.MaxX, e.MinY, e.MaxY));
             }
@@ -1628,7 +1813,7 @@ namespace ST4PlanIdCiz
                     xSag = originX + (zHiEff - minZ);
                 }
             }
-            ObjectId styleId = GetOrCreateElemanEtiketTextStyle(tr, db);
+            ObjectId styleId = GetOrCreateYaziBeykentTextStyle(tr, db);
             void putLabel(double x, double y, string txt, string layer, double rotationRad)
             {
                 if (string.IsNullOrEmpty(txt)) return;
@@ -2200,7 +2385,8 @@ namespace ST4PlanIdCiz
                     TextHeight = 26,
                     Width = Math.Max(200.0, spanA * 0.7),
                     Attachment = AttachmentPoint.MiddleCenter,
-                    Color = Color.FromColorIndex(ColorMethod.ByAci, 8)
+                    Color = Color.FromColorIndex(ColorMethod.ByAci, 8),
+                    TextStyleId = GetOrCreateYaziBeykentTextStyle(tr, btr.Database)
                 };
                 AppendEntity(tr, btr, note);
                 return;
@@ -2219,7 +2405,7 @@ namespace ST4PlanIdCiz
                     AppendEntity(tr, btr, gr);
                 }
 
-                var gf = new GeometryFactory();
+                var gf = _ntsDrawFactory;
                 var slicePolys = new List<Geometry>();
                 foreach (var s in slices.OrderBy(x => x.Order).ThenBy(x => x.Z0))
                 {
@@ -2250,7 +2436,7 @@ namespace ST4PlanIdCiz
                     AppendEntity(tr, btr, gr);
                 }
 
-                var gf2 = new GeometryFactory();
+                var gf2 = _ntsDrawFactory;
                 var slicePolys2 = new List<Geometry>();
                 foreach (var s in slices.OrderBy(x => x.Order).ThenBy(x => x.Z0))
                 {
@@ -2285,7 +2471,7 @@ namespace ST4PlanIdCiz
         {
             if (!TryGetKesitSiniriBounds(slices, isFoundationPlan, out double aLo, out double aHi, out double zLo, out double zHi))
                 return null;
-            var gf = new GeometryFactory();
+            var gf = _ntsDrawFactory;
             double x0, x1, y0, y1;
             if (horizontalAlongX)
             {

@@ -8,6 +8,7 @@ using Autodesk.AutoCAD.Colors;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Geometry;
+using NetTopologySuite;
 using NetTopologySuite.Geometries;
 using NetTopologySuite.Operation.Union;
 using NetTopologySuite.Precision;
@@ -29,6 +30,10 @@ namespace ST4PlanIdCiz
         private List<Geometry> _drawnWallGeometriesForSlabCut;
         /// <summary>Son çizilen kattaki döşeme geometrileri (kesim + en büyük parça); birleşik katman için.</summary>
         private List<Geometry> _drawnSlabGeometriesForUnion;
+        /// <summary>ST4PLANID Draw süresince tek fabrika (binlerce new önlenir).</summary>
+        private GeometryFactory _ntsDrawFactory;
+        /// <summary>Statik kesit örnekleme / şerit buffer için tek örnek.</summary>
+        private static readonly GeometryFactory StaticGeomFactory = new GeometryFactory();
 
         public PlanIdDrawingManager(St4Model model)
         {
@@ -41,7 +46,7 @@ namespace ST4PlanIdCiz
         {
             var result = new Dictionary<int, (double?, double?)>();
             if (firstFloor == null) return result;
-            var factory = new GeometryFactory();
+            var factory = NtsGeometryServices.Instance.CreateGeometryFactory();
             const double offsetX = 0.0, offsetY = 0.0;
 
             foreach (var col in _model.Columns)
@@ -206,7 +211,7 @@ namespace ST4PlanIdCiz
             if (floorIdx >= 0 && floorIdx < _model.Floors.Count - 1)
                 defaultYukseklikCm = (_model.Floors[floorIdx + 1].ElevationM - floorElevM) * 100.0;
 
-            var factory = new GeometryFactory();
+            var factory = NtsGeometryServices.Instance.CreateGeometryFactory();
             const double ox = 0.0, oy = 0.0;
 
             foreach (var col in _model.Columns)
@@ -300,6 +305,9 @@ namespace ST4PlanIdCiz
 
         public void Draw(Database db, Editor ed)
         {
+            _ntsDrawFactory = NtsGeometryServices.Instance.CreateGeometryFactory();
+            try
+            {
             using (var tr = db.TransactionManager.StartTransaction())
             {
                 EnsureLayers(tr, db);
@@ -334,7 +342,7 @@ namespace ST4PlanIdCiz
                     DrawSingleFootings(tr, btr, firstFloor, offsetX, offsetY, drawTemelOutline: false);
                     DrawPerdeLabelsForFloor(tr, btr, firstFloor, offsetX, offsetY, kolonPerdeUnion);
                     DrawFloorTitle(tr, btr, firstFloor, offsetX, offsetY, firstFloorAxisExt, isFoundationPlan: true);
-                    DrawPlanSections(tr, btr, db, firstFloor, offsetX, offsetY, firstFloorAxisExt, isFoundationPlan: true);
+                    DrawPlanSections(tr, btr, db, firstFloor, offsetX, offsetY, firstFloorAxisExt, isFoundationPlan: true, firstFloorUnion);
                 }
 
                 // Benzer kat birleştirme şimdilik kapalı; açmak için GetFormworkFloorGroups() ile döngüyü gruplar üzerinden çalıştır, labelFloor = en alt kat, DrawSimilarFloorsNote ile not yaz.
@@ -353,7 +361,7 @@ namespace ST4PlanIdCiz
                     DrawSlabVoids(tr, btr, elemUnion, offsetX, offsetY);
                     DrawUnifiedLayer(tr, btr, floor, offsetX, offsetY, elemUnion);
                     DrawFloorTitle(tr, btr, floor, offsetX, offsetY, floorAxisExt, isFoundationPlan: false);
-                    DrawPlanSections(tr, btr, db, floor, offsetX, offsetY, floorAxisExt, isFoundationPlan: false);
+                    DrawPlanSections(tr, btr, db, floor, offsetX, offsetY, floorAxisExt, isFoundationPlan: false, elemUnion);
                 }
 
                 tr.Commit();
@@ -363,6 +371,8 @@ namespace ST4PlanIdCiz
                     _model.Floors.Count,
                     hasFoundations ? string.Format(", temel plani (surekli: {0}, radye: {1}, bag kirisi: {2}, tekil: {3})", _model.ContinuousFoundations.Count, _model.SlabFoundations.Count, _model.TieBeams.Count, _model.SingleFootings.Count) : "");
             }
+            }
+            finally { _ntsDrawFactory = null; }
         }
 
         private const string LayerAks = "AKS CIZGISI (BEYKENT)";
@@ -404,9 +414,7 @@ namespace ST4PlanIdCiz
         private const double BeamLabelRefHeightCm = 12.0;
         private const int BeamLabelRefCharCount = 13;
         private const string AksOlcuDimStyleName = "AKS_OLCU";
-        private const string AksOlcuTextStyleName = "AKS_OLCU";
         private const string PlanOlcuDimStyleName = "PLAN_OLCU";
-        private const string ElemanEtiketTextStyleName = "ETIKET";
 
         private static void EnsureLayers(Transaction tr, Database db)
         {
@@ -609,7 +617,7 @@ namespace ST4PlanIdCiz
         /// <summary>Katta çizilen elemanların (kolon, kiriş, perde, döşeme) birleşimi; model koordinatları (offset 0). Resimdeki gibi yapıyı takip eden dış sınır için kullanılır. Koordinatlar 1 cm yuvarlanarak non-noded intersection önlenir.</summary>
         private Geometry BuildFloorElementUnion(FloorInfo floor)
         {
-            var factory = new GeometryFactory();
+            var factory = _ntsDrawFactory;
             var geoms = new List<Geometry>();
             int floorNo = floor.FloorNo;
 
@@ -758,7 +766,7 @@ namespace ST4PlanIdCiz
         /// <summary>Çizimde görüldüğü şekilde tüm poligonları (kolon, kiriş, perde, döşeme, kalıp boşluk; aks ve kat sınırı hariç) birleştirip BIRLESIK KATMAN (BEYKENT) katmanında ilave çizer.</summary>
         private void DrawUnifiedLayer(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY, Geometry elementUnion)
         {
-            var factory = new GeometryFactory();
+            var factory = _ntsDrawFactory;
             var allPolygons = new List<Geometry>();
 
             Geometry kolonUnion = BuildKolonUnionSameFloorOnly(floor, offsetX, offsetY);
@@ -1209,17 +1217,26 @@ namespace ST4PlanIdCiz
             }
         }
 
-        /// <summary>Aks ölçüleri için özel dim style "AKS_OLCU": resimlerdeki ayarlar (metin beyaz 12 cm, oklar Oblique 5, birim Decimal 0.0, Fit/Text/Units/Tolerances).</summary>
+        /// <summary>Aks ölçüleri için özel dim style "AKS_OLCU": metin stili YAZI (BEYKENT), yükseklik çağrıda; oklar vb. AKS_OLCU ayarları.</summary>
         private static ObjectId GetOrCreateAksOlcuDimStyle(Transaction tr, Database db, double dimTextHeightCm)
         {
+            ObjectId yaziId = GetOrCreateYaziBeykentTextStyle(tr, db);
             var dst = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
-            if (dst.Has(AksOlcuDimStyleName)) return dst[AksOlcuDimStyleName];
-
-            ObjectId textStyleId = GetOrCreateAksOlcuTextStyle(tr, db);
+            if (dst.Has(AksOlcuDimStyleName))
+            {
+                ObjectId id = dst[AksOlcuDimStyleName];
+                try
+                {
+                    var existing = (DimStyleTableRecord)tr.GetObject(id, OpenMode.ForWrite);
+                    if (!yaziId.IsNull) existing.Dimtxsty = yaziId;
+                }
+                catch { }
+                return id;
+            }
 
             var newRec = new DimStyleTableRecord();
             newRec.Name = AksOlcuDimStyleName;
-            try { if (!textStyleId.IsNull) newRec.Dimtxsty = textStyleId; } catch { }
+            try { if (!yaziId.IsNull) newRec.Dimtxsty = yaziId; } catch { }
 
             try { newRec.Dimtxt = dimTextHeightCm; } catch { }
             try { newRec.Dimclrt = Color.FromColorIndex(ColorMethod.ByAci, 7); } catch { }
@@ -1242,22 +1259,32 @@ namespace ST4PlanIdCiz
 
 
             dst.UpgradeOpen();
-            ObjectId id = dst.Add(newRec);
+            ObjectId newDimId = dst.Add(newRec);
             tr.AddNewlyCreatedDBObject(newRec, true);
             dst.DowngradeOpen();
-            return id;
+            return newDimId;
         }
 
-        /// <summary>Kesit/plan eleman ölçüleri: AKS_OLCU ile aynı özellikler, isim PLAN_OLCU.</summary>
+        /// <summary>Kesit/plan eleman ölçüleri: AKS_OLCU ile aynı özellikler, metin YAZI (BEYKENT), isim PLAN_OLCU.</summary>
         private static ObjectId GetOrCreatePlanOlcuDimStyle(Transaction tr, Database db, double dimTextHeightCm)
         {
+            ObjectId yaziId = GetOrCreateYaziBeykentTextStyle(tr, db);
             var dst = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
-            if (dst.Has(PlanOlcuDimStyleName)) return dst[PlanOlcuDimStyleName];
+            if (dst.Has(PlanOlcuDimStyleName))
+            {
+                ObjectId id = dst[PlanOlcuDimStyleName];
+                try
+                {
+                    var existing = (DimStyleTableRecord)tr.GetObject(id, OpenMode.ForWrite);
+                    if (!yaziId.IsNull) existing.Dimtxsty = yaziId;
+                }
+                catch { }
+                return id;
+            }
 
-            ObjectId textStyleId = GetOrCreateAksOlcuTextStyle(tr, db);
             var newRec = new DimStyleTableRecord();
             newRec.Name = PlanOlcuDimStyleName;
-            try { if (!textStyleId.IsNull) newRec.Dimtxsty = textStyleId; } catch { }
+            try { if (!yaziId.IsNull) newRec.Dimtxsty = yaziId; } catch { }
             try { newRec.Dimtxt = dimTextHeightCm; } catch { }
             try { newRec.Dimclrt = Color.FromColorIndex(ColorMethod.ByAci, 7); } catch { }
             try { newRec.Dimgap = 2.0; } catch { }
@@ -1274,67 +1301,13 @@ namespace ST4PlanIdCiz
             try { newRec.Dimtofl = true; } catch { }
             try { newRec.Dimscale = 1.0; } catch { }
             dst.UpgradeOpen();
-            ObjectId id = dst.Add(newRec);
+            ObjectId newPlanDimId = dst.Add(newRec);
             tr.AddNewlyCreatedDBObject(newRec, true);
             dst.DowngradeOpen();
-            return id;
+            return newPlanDimId;
         }
 
-        /// <summary>Ölçü yazıları için text style: Bahnschrift Light Condensed, yükseklik 0 (ölçü stili belirler), genişlik 1, eğik 0.</summary>
-        private static ObjectId GetOrCreateAksOlcuTextStyle(Transaction tr, Database db)
-        {
-            var txtTable = (TextStyleTable)tr.GetObject(db.TextStyleTableId, OpenMode.ForRead);
-            if (txtTable.Has(AksOlcuTextStyleName)) return txtTable[AksOlcuTextStyleName];
-
-            var rec = new TextStyleTableRecord();
-            rec.Name = AksOlcuTextStyleName;
-            try
-            {
-                rec.Font = new Autodesk.AutoCAD.GraphicsInterface.FontDescriptor("Bahnschrift Light Condensed", false, false, 0, 0);
-            }
-            catch
-            {
-                try { rec.Font = new Autodesk.AutoCAD.GraphicsInterface.FontDescriptor("Bahnschrift", false, false, 0, 0); } catch { }
-            }
-            try { rec.TextSize = 0.0; } catch { }
-            try { rec.XScale = 1.0; } catch { }
-            try { rec.ObliquingAngle = 0.0; } catch { }
-
-            txtTable.UpgradeOpen();
-            ObjectId id = txtTable.Add(rec);
-            tr.AddNewlyCreatedDBObject(rec, true);
-            txtTable.DowngradeOpen();
-            return id;
-        }
-
-        /// <summary>Ölçü ve aks hariç diğer eleman etiketleri (kiriş, perde, döşeme vb.) için text style: Bahnschrift Light Condensed.</summary>
-        private static ObjectId GetOrCreateElemanEtiketTextStyle(Transaction tr, Database db)
-        {
-            var txtTable = (TextStyleTable)tr.GetObject(db.TextStyleTableId, OpenMode.ForRead);
-            if (txtTable.Has(ElemanEtiketTextStyleName)) return txtTable[ElemanEtiketTextStyleName];
-
-            var rec = new TextStyleTableRecord();
-            rec.Name = ElemanEtiketTextStyleName;
-            try
-            {
-                rec.Font = new Autodesk.AutoCAD.GraphicsInterface.FontDescriptor("Bahnschrift Light Condensed", false, false, 0, 0);
-            }
-            catch
-            {
-                try { rec.Font = new Autodesk.AutoCAD.GraphicsInterface.FontDescriptor("Bahnschrift", false, false, 0, 0); } catch { }
-            }
-            try { rec.TextSize = 0.0; } catch { }
-            try { rec.XScale = 1.0; } catch { }
-            try { rec.ObliquingAngle = 0.0; } catch { }
-
-            txtTable.UpgradeOpen();
-            ObjectId id = txtTable.Add(rec);
-            tr.AddNewlyCreatedDBObject(rec, true);
-            txtTable.DowngradeOpen();
-            return id;
-        }
-
-        /// <summary>Kesit harf etiketi: çizimde "YAZI (BEYKENT)" stili kullanılır.</summary>
+        /// <summary>Çizimdeki tüm metin ve ölçü yazıları için ortak stil: "YAZI (BEYKENT)".</summary>
         private static ObjectId GetOrCreateYaziBeykentTextStyle(Transaction tr, Database db)
         {
             var txtTable = (TextStyleTable)tr.GetObject(db.TextStyleTableId, OpenMode.ForRead);
@@ -1364,7 +1337,7 @@ namespace ST4PlanIdCiz
             {
                 Layer = LayerAksYazisi,
                 Height = height,
-                TextStyleId = GetOrCreateElemanEtiketTextStyle(tr, db),
+                TextStyleId = GetOrCreateYaziBeykentTextStyle(tr, db),
                 TextString = KolonDonatiTableDrawer.NormalizeDiameterSymbol(value ?? string.Empty),
                 Position = p,
                 HorizontalMode = TextHorizontalMode.TextCenter,
@@ -1557,7 +1530,7 @@ namespace ST4PlanIdCiz
             Point2d dimPos = new Point2d(namePos.X + dx, namePos.Y + dy);
             double rotationRad = angleRad;
             Database db = btr.Database;
-            ObjectId styleId = GetOrCreateElemanEtiketTextStyle(tr, db);
+            ObjectId styleId = GetOrCreateYaziBeykentTextStyle(tr, db);
             string storyId = floor != null && !string.IsNullOrEmpty(floor.ShortName)
                 ? floor.ShortName
                 : (floor != null ? floor.FloorNo.ToString(CultureInfo.InvariantCulture) : "B");
@@ -1615,7 +1588,7 @@ namespace ST4PlanIdCiz
         /// <summary>Verilen kattaki perdeleri (IsWallFlag==1) çizer; kolon alanları çıkarılır, saç teli temizliği uygulanır. Temel planında bodrum perdeleri için kullanılır.</summary>
         private void DrawWallsForFloor(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY)
         {
-            var factory = new GeometryFactory();
+            var factory = _ntsDrawFactory;
             var wallList = new List<(Geometry poly, int fixedAxisId)>();
             var beams = MergeSameIdBeamsOnFloor(floor.FloorNo);
             foreach (var beam in beams)
@@ -2330,7 +2303,7 @@ namespace ST4PlanIdCiz
         /// <summary>Verilen kattaki kolon ve perdelerin birleşik alanını (NTS Geometry) döndürür.</summary>
         private Geometry BuildKolonPerdeUnion(FloorInfo floor, double offsetX, double offsetY)
         {
-            var factory = new GeometryFactory();
+            var factory = _ntsDrawFactory;
             var geoms = new List<Geometry>();
 
             // Kolonlar
@@ -2499,7 +2472,7 @@ namespace ST4PlanIdCiz
         /// <summary>Verilen kattaki sadece kolonların birleşik alanını (NTS Geometry) döndürür. Perdeleri kolondan çıkartmak için kullanılır.</summary>
         private Geometry BuildKolonUnion(FloorInfo floor, double offsetX, double offsetY)
         {
-            var factory = new GeometryFactory();
+            var factory = _ntsDrawFactory;
             var geoms = new List<Geometry>();
 
             foreach (var col in _model.Columns)
@@ -2563,7 +2536,7 @@ namespace ST4PlanIdCiz
         /// <summary>Verilen kattaki sadece bu katta kesiti tanımlı olan kolonların birleşik alanı. Perde kesiminde kullanılır; ColumnId fallback kullanılmaz.</summary>
         private Geometry BuildKolonUnionSameFloorOnly(FloorInfo floor, double offsetX, double offsetY)
         {
-            var factory = new GeometryFactory();
+            var factory = _ntsDrawFactory;
             var geoms = new List<Geometry>();
 
             foreach (var col in _model.Columns)
@@ -2625,7 +2598,7 @@ namespace ST4PlanIdCiz
         private Geometry BuildKolonPerdeKirisUnion(FloorInfo floor, double offsetX, double offsetY)
         {
             Geometry kolonPerde = BuildKolonPerdeUnion(floor, offsetX, offsetY);
-            var factory = new GeometryFactory();
+            var factory = _ntsDrawFactory;
             var geoms = new List<Geometry>();
             if (kolonPerde != null && !kolonPerde.IsEmpty)
                 AddPolygonsToList(kolonPerde, geoms);
@@ -2662,10 +2635,10 @@ namespace ST4PlanIdCiz
 
         private void DrawBeamsAndWalls(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY)
         {
-            var factory = new GeometryFactory();
+            var factory = _ntsDrawFactory;
             var wallList = new List<(Geometry poly, int fixedAxisId, BeamInfo beam, Point2d a, Point2d b)>();
             Geometry kolonPerdeUnion = BuildKolonPerdeUnion(floor, offsetX, offsetY);
-            var kolonPerdeSafe = (kolonPerdeUnion != null && !kolonPerdeUnion.IsEmpty) ? EnsureBoundarySafe(kolonPerdeUnion, new GeometryFactory()) : null;
+            var kolonPerdeSafe = (kolonPerdeUnion != null && !kolonPerdeUnion.IsEmpty) ? EnsureBoundarySafe(kolonPerdeUnion, _ntsDrawFactory) : null;
             Geometry kolonPerdeBoundary = (kolonPerdeSafe != null && !kolonPerdeSafe.IsEmpty) ? kolonPerdeSafe.Boundary : null;
             const double beamEndExtensionCm = 22.0;   // Perde ucu kolona değiyorsa 22 cm uzatılır
             const double touchEpsilonCm = 0.2;        // Uç kolon sınırında kabul
@@ -3429,7 +3402,7 @@ namespace ST4PlanIdCiz
         /// <param name="kolonPerdeUnionForObstacles">Temel planında engel alanı için (kiriş yok); null ise BuildKolonPerdeUnion ile hesaplanır.</param>
         private void DrawPerdeLabelsForFloor(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY, Geometry kolonPerdeUnionForObstacles = null)
         {
-            var factory = new GeometryFactory();
+            var factory = _ntsDrawFactory;
             Geometry kolonPerdeUnion = kolonPerdeUnionForObstacles ?? BuildKolonPerdeUnion(floor, offsetX, offsetY);
             var kolonPerdeSafe = (kolonPerdeUnion != null && !kolonPerdeUnion.IsEmpty) ? EnsureBoundarySafe(kolonPerdeUnion, factory) : null;
             Geometry kolonPerdeBoundary = (kolonPerdeSafe != null && !kolonPerdeSafe.IsEmpty) ? kolonPerdeSafe.Boundary : null;
@@ -3620,7 +3593,7 @@ namespace ST4PlanIdCiz
         private void DrawSlabs(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY)
         {
             int floorNo = floor.FloorNo;
-            var factory = new GeometryFactory();
+            var factory = _ntsDrawFactory;
             _drawnSlabGeometriesForUnion = new List<Geometry>();
             // Çizimde görüldüğü haliyle kolon + perde + kiriş birleşimi (DrawBeamsAndWalls tarafından doldurulur)
             Geometry drawnKolonPerdeKirisUnion = BuildKolonUnionSameFloorOnly(floor, offsetX, offsetY);
@@ -3650,7 +3623,7 @@ namespace ST4PlanIdCiz
             int slabPad = GetLabelPadWidth(maxSlabNumero);
             string storyId = floor != null && !string.IsNullOrEmpty(floor.ShortName) ? floor.ShortName : (floor?.FloorNo.ToString(CultureInfo.InvariantCulture) ?? "B");
             Database db = btr.Database;
-            ObjectId slabLabelStyleId = GetOrCreateElemanEtiketTextStyle(tr, db);
+            ObjectId slabLabelStyleId = GetOrCreateYaziBeykentTextStyle(tr, db);
 
             var slabRecords = new List<(SlabInfo slab, Geometry toDraw, Point2d center)>();
             var labelSlabsNoGeometry = new HashSet<int>();
@@ -4293,7 +4266,7 @@ namespace ST4PlanIdCiz
             string bottomElevStr = string.Format(CultureInfo.InvariantCulture, "{0:+0.00;-0.00;0.00}", bottomElevM);
             if (topElevM == 0) topElevStr = "±" + topElevStr;
             if (bottomElevM == 0) bottomElevStr = "±" + bottomElevStr;
-            ObjectId textStyleId = GetOrCreateElemanEtiketTextStyle(tr, db);
+            ObjectId textStyleId = GetOrCreateYaziBeykentTextStyle(tr, db);
             double topY = centerY + kotArasiMesafeCm * 0.5 + kotTextHeightCm * 0.5 - ustKotAsagiKaydirCm;
             double bottomY = centerY - kotArasiMesafeCm * 0.5 - kotTextHeightCm * 0.5 - altKotAsagiKaydirCm;
             const double kotSymbolOffsetFromLeftCm = 3.5;
@@ -4403,7 +4376,7 @@ namespace ST4PlanIdCiz
         /// <summary>Sürekli temellerin tüm dikdörtgenlerinin birleşimi (offset uygulanmış); radye temel temel hatılı / bağ kirişi içinde mi kontrolü için.</summary>
         private Geometry BuildContinuousFoundationsUnion(double offsetX, double offsetY)
         {
-            var factory = new GeometryFactory();
+            var factory = _ntsDrawFactory;
             var polygons = new List<Geometry>();
             foreach (var cf in _model.ContinuousFoundations)
             {
@@ -4438,7 +4411,7 @@ namespace ST4PlanIdCiz
         /// <summary>Radye temellerin (slab foundations) birleşik alanı (offset uygulanmış); radye temel temel hatılı / bağ kirişi içinde mi kontrolü için.</summary>
         private Geometry BuildSlabFoundationsUnion(double offsetX, double offsetY)
         {
-            var factory = new GeometryFactory();
+            var factory = _ntsDrawFactory;
             var polygons = new List<Geometry>();
             foreach (var sf in _model.SlabFoundations)
             {
@@ -4465,7 +4438,7 @@ namespace ST4PlanIdCiz
         /// <summary>Sürekli + radye + tekil temeller ve temel hatıllarının birleşimi (iç boşluklar korunur).</summary>
         private Geometry BuildTemelUnion(double offsetX, double offsetY, FloorInfo floorForSingleFootings)
         {
-            var factory = new GeometryFactory();
+            var factory = _ntsDrawFactory;
             Geometry result = null;
 
             Geometry cf = BuildContinuousFoundationsUnion(offsetX, offsetY);
@@ -5094,7 +5067,7 @@ namespace ST4PlanIdCiz
         {
             const string layer = "TEMEL (BEYKENT)";
             const string layerAmpatman = "TEMEL AMPATMAN (BEYKENT)";
-            var factory = new GeometryFactory();
+            var factory = _ntsDrawFactory;
             var ampatmanPolygons = new List<Geometry>();
             var continuousRectsForLabelCheck = new List<Geometry>();
             int cfIndex = 0;
@@ -5362,7 +5335,7 @@ namespace ST4PlanIdCiz
         {
             const string layerTemel = "TEMEL (BEYKENT)";
             const string layerHatili = "TEMEL HATILI (BEYKENT)";
-            var factory = new GeometryFactory();
+            var factory = _ntsDrawFactory;
             Geometry cfUnion = BuildContinuousFoundationsUnion(offsetX, offsetY);
             Geometry slabUnion = BuildSlabFoundationsUnion(offsetX, offsetY);
             var hatiliRaws = new List<(Geometry geom, double widthCm, double heightDisplayCm, double kot, bool isRadyeTemelHatili)>();
@@ -5657,7 +5630,7 @@ namespace ST4PlanIdCiz
         private void DrawSlabFoundations(Transaction tr, BlockTableRecord btr, double offsetX, double offsetY, bool drawTemelOutline = true)
         {
             const string layer = "TEMEL (BEYKENT)";
-            var factory = new GeometryFactory();
+            var factory = _ntsDrawFactory;
             var polygons = new List<Geometry>();
             var radyeRecords = new List<(SlabFoundationInfo sf, Geometry poly, Point2d center)>();
             foreach (var sf in _model.SlabFoundations)
@@ -5693,7 +5666,7 @@ namespace ST4PlanIdCiz
             int radyeCount = radyeRecords.Count;
             int radyePad = GetLabelPadWidth(radyeCount);
             Database db = btr.Database;
-            ObjectId radyeLabelStyleId = GetOrCreateElemanEtiketTextStyle(tr, db);
+            ObjectId radyeLabelStyleId = GetOrCreateYaziBeykentTextStyle(tr, db);
             HashSet<int> radyeIndicesToLabel = ComputeRadyeIndicesToLabel(radyeRecords, _model.BuildingBaseKotu);
             for (int i = 0; i < radyeRecords.Count; i++)
             {
@@ -5844,7 +5817,7 @@ namespace ST4PlanIdCiz
             string title = isFoundationPlan
                 ? "TEMEL PLANI (aks + 1. kat kolon + surekli/radye temel)"
                 : string.Format(CultureInfo.InvariantCulture, "{0} ({1}m)", floor.Name, floor.ElevationM.ToString("0", CultureInfo.InvariantCulture));
-            AppendEntity(tr, btr, MakeCenteredText(LayerBaslik, 12, title, titlePos));
+            AppendEntity(tr, btr, MakeCenteredText(tr, btr.Database, LayerBaslik, 12, title, titlePos));
         }
 
         /// <summary>Çizilmeyen benzer katları planın üstüne not olarak yazar (kalıp planı gruplama).</summary>
@@ -5855,14 +5828,14 @@ namespace ST4PlanIdCiz
             string names = string.Join(", ", otherFloors.Select(f => string.IsNullOrEmpty(f.ShortName) ? f.Name : f.ShortName));
             string note = names + " bu planla aynıdır (çizilmedi).";
             var notePos = new Point3d(offsetX + (ext.Xmin + ext.Xmax) / 2.0, offsetY + ext.Ymax + 28, 0);
-            AppendEntity(tr, btr, MakeCenteredText(LayerBaslik, 8, note, notePos));
+            AppendEntity(tr, btr, MakeCenteredText(tr, btr.Database, LayerBaslik, 8, note, notePos));
         }
 
         /// <summary>Kiriş/perde etiketi: bottomLeftAligned false ise Right, true ise Left; topAligned true ise üst; useMiddleCenter true ise orta merkez. layer verilmezse KIRIS ISMI.</summary>
         private void DrawBeamLabel(Transaction tr, BlockTableRecord btr, Database db, Point3d insertionPoint, string labelText, double textHeightCm, double rotationRad, string layer = null, bool bottomLeftAligned = true, bool topAligned = false, bool useMiddleCenter = false)
         {
             if (string.IsNullOrEmpty(layer)) layer = LayerKirisYazisi;
-            ObjectId textStyleId = GetOrCreateElemanEtiketTextStyle(tr, db);
+            ObjectId textStyleId = GetOrCreateYaziBeykentTextStyle(tr, db);
             var txt = new DBText
             {
                 Layer = layer,
@@ -5878,11 +5851,11 @@ namespace ST4PlanIdCiz
             AppendEntity(tr, btr, txt);
         }
 
-        /// <summary>Sürekli/tekil temel ve bağ kirişi etiketi: TEMEL ISMI (BEYKENT) katmanı, 12 cm yükseklik, ETIKET yazı stili, 0.2 mm kalınlık. bottomRightAligned: sağ alt (metin sola ve yukarı). bottomLeftAligned: sol alt (metin sağa ve yukarı).</summary>
+        /// <summary>Sürekli/tekil temel ve bağ kirişi etiketi: TEMEL ISMI (BEYKENT) katmanı, 12 cm yükseklik, YAZI (BEYKENT) stili, 0.2 mm kalınlık. bottomRightAligned: sağ alt (metin sola ve yukarı). bottomLeftAligned: sol alt (metin sağa ve yukarı).</summary>
         private void DrawTemelIsmiLabel(Transaction tr, BlockTableRecord btr, Database db, double centerX, double centerY, string labelText, double rotationRad, bool bottomRightAligned = false, bool bottomLeftAligned = false)
         {
             const double labelHeightCm = 12.0;
-            ObjectId textStyleId = GetOrCreateElemanEtiketTextStyle(tr, db);
+            ObjectId textStyleId = GetOrCreateYaziBeykentTextStyle(tr, db);
             var txt = new DBText
             {
                 Layer = LayerTemelIsmi,
@@ -5899,12 +5872,13 @@ namespace ST4PlanIdCiz
             AppendEntity(tr, btr, txt);
         }
 
-        private static DBText MakeCenteredText(string layer, double height, string value, Point3d p)
+        private static DBText MakeCenteredText(Transaction tr, Database db, string layer, double height, string value, Point3d p)
         {
             return new DBText
             {
                 Layer = layer,
                 Height = height,
+                TextStyleId = GetOrCreateYaziBeykentTextStyle(tr, db),
                 TextString = KolonDonatiTableDrawer.NormalizeDiameterSymbol(value ?? string.Empty),
                 Position = p,
                 HorizontalMode = TextHorizontalMode.TextCenter,

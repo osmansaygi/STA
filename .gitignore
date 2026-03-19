@@ -26,6 +26,7 @@ sismik_rapor_excel.py
 Sismik_*.csv
 Sismik_*.pdf
 DPDOSEME.fas
-# Opsiyonel: cok sayida ST4/GPR kullanmiyorsaniz acin
+# Opsiyonel: GPR/ST4 depoya girmesin diye acin
 # *.ST4
 # *.GPR
+# Eski tarihli plan DLL temizligi: scripts\Clean-PlanBinDlls.ps1

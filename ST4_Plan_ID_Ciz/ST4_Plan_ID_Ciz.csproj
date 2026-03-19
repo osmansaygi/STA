@@ -11,9 +11,6 @@
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <Deterministic>false</Deterministic>
   </PropertyGroup>
-  <Target Name="EchoDllName" AfterTargets="Build">
-    <Message Importance="high" Text="DLL kaydedildi: $(OutputPath)$(AssemblyName).dll" />
-  </Target>
   <PropertyGroup>
     <AutoCADInstallDir Condition="'$(AutoCADInstallDir)' == '' and Exists('C:\Program Files\Autodesk\AutoCAD 2026\acdbmgd.dll')">C:\Program Files\Autodesk\AutoCAD 2026</AutoCADInstallDir>
     <AutoCADInstallDir Condition="'$(AutoCADInstallDir)' == '' and Exists('C:\Program Files\Autodesk\AutoCAD 2025\acdbmgd.dll')">C:\Program Files\Autodesk\AutoCAD 2025</AutoCADInstallDir>
@@ -47,6 +44,7 @@
   </Target>
 
   <Target Name="ShowDllPath" AfterTargets="Build">
+    <Message Importance="high" Text="DLL kaydedildi: $(OutputPath)$(AssemblyName).dll" />
     <Message Importance="high" Text="========================================" />
     <Message Importance="high" Text="ST4_Plan_ID_Ciz DLL YUKLEME ADRESI:" />
     <Message Importance="high" Text="  Klasor: $(MSBuildProjectDirectory)\$(OutputPath)" />
