@@ -34,6 +34,8 @@ namespace ST4PlanIdCiz
         private GeometryFactory _ntsDrawFactory;
         /// <summary>TEMEL50ST4 için özel 1:50 başlık/yazı modu.</summary>
         private bool _isTemel50Mode;
+        /// <summary>KOLON50ST4 için kolon aplikasyon ölçü modu.</summary>
+        private bool _isKolon50Mode;
         private const double Temel50BaslikAltAksBalonBoslukCm = 50.0;
         /// <summary>Statik kesit örnekleme / şerit buffer için tek örnek.</summary>
         private static readonly GeometryFactory StaticGeomFactory = new GeometryFactory();
@@ -376,6 +378,1222 @@ namespace ST4PlanIdCiz
             }
             }
             finally { _ntsDrawFactory = null; }
+        }
+
+        /// <summary>
+        /// 1/50 kolon aplikasyon planı için tüm katlarda sadece
+        /// akslar (+aks ölçüleri), kolonlar (poligon dahil) ve perdeleri çizer.
+        /// </summary>
+        public void DrawColumnApplicationPlan50(Database db, Editor ed, Point3d baseInsertPoint)
+        {
+            _ntsDrawFactory = NtsGeometryServices.Instance.CreateGeometryFactory();
+            _isKolon50Mode = true;
+            try
+            {
+                using (var tr = db.TransactionManager.StartTransaction())
+                {
+                    EnsureLayers(tr, db);
+                    var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
+                    var btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
+
+                    var ext = CalculateBaseExtents();
+                    double floorWidth = (ext.Xmax - ext.Xmin) + 80.0;
+                    double floorGap = 1000.0;
+                    Geometry firstFloorUnion = _model.Floors.Count > 0 ? BuildFloorElementUnion(_model.Floors[0]) : null;
+                    var firstFloorAxisExt = GetAksSiniriEnvelope(firstFloorUnion);
+                    double baseDx = baseInsertPoint.X - firstFloorAxisExt.Xmin;
+                    double baseDy = baseInsertPoint.Y - firstFloorAxisExt.Ymin;
+
+                    var copyLayouts = new List<(FloorInfo floor, double offsetX, double offsetY, (double Xmin, double Xmax, double Ymin, double Ymax) floorAxisExt)>();
+                    for (int floorIdx = 0; floorIdx < _model.Floors.Count; floorIdx++)
+                    {
+                        var floor = _model.Floors[floorIdx];
+                        double offsetX = baseDx + (floorIdx * (floorWidth + floorGap));
+                        double offsetY = baseDy;
+
+                        Geometry kolonPerdeUnion = BuildKolonPerdeUnion(floor, 0.0, 0.0);
+                        Geometry axisExtGeom = (kolonPerdeUnion != null && !kolonPerdeUnion.IsEmpty)
+                            ? kolonPerdeUnion
+                            : BuildFloorElementUnion(floor);
+                        var floorAxisExt = GetAksSiniriEnvelope(axisExtGeom);
+
+                        DrawAxes(tr, btr, offsetX, offsetY, floorAxisExt);
+                        DrawColumns(tr, btr, floor, offsetX, offsetY);
+                        DrawWallsForFloor(tr, btr, floor, offsetX, offsetY);
+                        DrawPerdeLabelsForFloor(tr, btr, floor, offsetX, offsetY, kolonPerdeUnion);
+                        DrawColumnPlanDimensionsForFloor(tr, btr, db, floor, offsetX, offsetY);
+                        copyLayouts.Add((floor, offsetX, offsetY, floorAxisExt));
+                    }
+
+                    DrawSimplePerdeKolonCopiesByFloorId(tr, btr, copyLayouts);
+
+                    tr.Commit();
+                    ed.WriteMessage(
+                        "\nKOLON50ST4: {0} kat icin 1/50 kolon aplikasyon plani cizildi (aks, aks olculeri, kolonlar/poligon kolonlar, perdeler).",
+                        _model.Floors.Count);
+                }
+            }
+            finally
+            {
+                _isKolon50Mode = false;
+                _ntsDrawFactory = null;
+            }
+        }
+
+        private void DrawSimplePerdeKolonCopiesByFloorId(
+            Transaction tr,
+            BlockTableRecord btr,
+            List<(FloorInfo floor, double offsetX, double offsetY, (double Xmin, double Xmax, double Ymin, double Ymax) floorAxisExt)> layouts)
+        {
+            if (!_isKolon50Mode || layouts == null || layouts.Count == 0) return;
+            var ordered = layouts.OrderBy(x => x.floor.FloorNo).ToList();
+            var first = ordered[0];
+            const double verticalGapCm = 1000.0;
+            double firstRowTopY = first.floorAxisExt.Ymax + first.offsetY + verticalGapCm + 3000.0;
+            var wallNoToX = new Dictionary<int, double>();
+
+            int altRowIndex = 0;
+            foreach (var l in ordered)
+            {
+                var wallItems = BuildPerdeWallItemsForCopy(l.floor, l.offsetX, l.offsetY, onlyXAxisWalls: false);
+                if (wallItems == null || wallItems.Count == 0) continue;
+
+                bool isFirstFloor = l.floor.FloorNo == first.floor.FloorNo;
+                double rowTopY;
+                if (isFirstFloor)
+                {
+                    rowTopY = firstRowTopY;
+                }
+                else
+                {
+                    altRowIndex++;
+                    rowTopY = firstRowTopY - (500.0 * altRowIndex);
+                }
+
+                DrawAlignedWallGroupsAsSeparateCopiesWithAnchors(tr, btr, l.floor, wallItems, rowTopY, wallNoToX, isFirstFloor);
+            }
+        }
+
+        /// <summary>
+        /// Basit kopya: mevcut plandaki perdeleri ve onlara bitişik kolonları,
+        /// geometriyi bozmadan (döndürmeden/gruplamadan) planın üstüne taşır.
+        /// </summary>
+        private void DrawSimplePerdeKolonCopyAbovePlan(
+            Transaction tr,
+            BlockTableRecord btr,
+            FloorInfo floor,
+            double offsetX,
+            double offsetY,
+            (double Xmin, double Xmax, double Ymin, double Ymax) floorAxisExt)
+        {
+            if (!_isKolon50Mode) return;
+            var wallItems = BuildPerdeWallItemsForCopy(floor, offsetX, offsetY, onlyXAxisWalls: false);
+            if (wallItems == null || wallItems.Count == 0) return;
+
+            double minY = double.MaxValue;
+            foreach (var w in wallItems)
+            {
+                if (w.wall != null && !w.wall.IsEmpty)
+                    minY = Math.Min(minY, w.wall.EnvelopeInternal.MinY);
+                foreach (var c in w.columns)
+                {
+                    if (c.geom != null && !c.geom.IsEmpty)
+                        minY = Math.Min(minY, c.geom.EnvelopeInternal.MinY);
+                }
+            }
+            if (double.IsInfinity(minY) || minY == double.MaxValue) return;
+
+            const double verticalGapCm = 1000.0;
+            double targetMinY = floorAxisExt.Ymax + offsetY + verticalGapCm;
+            // Sadece son (gruplu/ayri) kopyalar cizilsin.
+            DrawAlignedWallGroupsAsSeparateCopies(tr, btr, floor, wallItems, targetMinY + 3000.0);
+        }
+
+        private void DrawAlignedWallGroupsAsSeparateCopies(
+            Transaction tr,
+            BlockTableRecord btr,
+            FloorInfo floor,
+            List<(Geometry wall, int fixedAxisId, BeamInfo beam, List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, Point2d center, int polygonSectionId)> columns)> wallItems,
+            double baseY)
+        {
+            if (wallItems == null || wallItems.Count == 0) return;
+            var groups = BuildAlignedWallGroups(wallItems, 0.1); // 1 mm = 0.1 cm
+            if (groups.Count == 0) return;
+
+            int wallPad = GetLabelPadWidth(_model.Beams.Where(x => x.IsWallFlag == 1).Select(x => GetBeamNumero(x.BeamId)).DefaultIfEmpty(0).Max());
+            string katEtiketi = !string.IsNullOrWhiteSpace(floor.ShortName) ? floor.ShortName : floor.FloorNo.ToString(CultureInfo.InvariantCulture);
+            const double exactGapX = 340.0;
+            double topLineY = baseY; // Tum bloklarin ust perde cizgisi bu hatta oturur.
+            double anchorX = groups
+                .SelectMany(g => g)
+                .Where(i => i.wall != null && !i.wall.IsEmpty)
+                .Select(i => i.wall.EnvelopeInternal.MinX)
+                .DefaultIfEmpty(0.0)
+                .Min();
+
+            // Soldan saga: en kucuk perde numarasi solda.
+            groups = groups
+                .OrderBy(g => g.Where(i => i.beam != null).Select(i => GetBeamNumero(i.beam.BeamId)).DefaultIfEmpty(int.MaxValue).Min())
+                .ToList();
+            bool isFirstPlaced = false;
+            double prevRightEndpointPlacedX = 0.0;
+
+            foreach (var group in groups)
+            {
+                var geoms = new List<Geometry>();
+                foreach (var it in group)
+                {
+                    if (it.wall != null && !it.wall.IsEmpty) geoms.Add(it.wall);
+                    foreach (var c in it.columns)
+                        if (c.geom != null && !c.geom.IsEmpty) geoms.Add(c.geom);
+                }
+                if (geoms.Count == 0) continue;
+
+                Envelope rawEnv = null;
+                foreach (var g in geoms) rawEnv = rawEnv == null ? new Envelope(g.EnvelopeInternal) : EnvelopeUtil.ExpandToInclude(rawEnv, g.EnvelopeInternal);
+                if (rawEnv == null) continue;
+
+                // Grup bir blok gibi dusunulup, bagli oldugu aks acisi sifira getirilsin.
+                double axisAngle = GetAxisLineAngleRad(group[0].fixedAxisId);
+                double cx = (rawEnv.MinX + rawEnv.MaxX) * 0.5;
+                double cy = (rawEnv.MinY + rawEnv.MaxY) * 0.5;
+                var rot = NetTopologySuite.Geometries.Utilities.AffineTransformation.RotationInstance(-axisAngle, cx, cy);
+
+                var rotatedGroup = new List<(Geometry wall, int fixedAxisId, BeamInfo beam, List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, Point2d center, int polygonSectionId)> columns)>();
+                Envelope env = null;
+                Envelope wallEnv = null;
+                foreach (var it in group)
+                {
+                    Geometry rw = (it.wall != null && !it.wall.IsEmpty) ? rot.Transform(it.wall) : null;
+                    var rcols = new List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, Point2d center, int polygonSectionId)>();
+                    foreach (var c in it.columns)
+                    {
+                        if (c.geom == null || c.geom.IsEmpty) continue;
+                        var rcg = rot.Transform(c.geom);
+                        if (rcg == null || rcg.IsEmpty) continue;
+                        rcols.Add((rcg, c.col, c.dim, c.center, c.polygonSectionId));
+                        env = env == null ? new Envelope(rcg.EnvelopeInternal) : EnvelopeUtil.ExpandToInclude(env, rcg.EnvelopeInternal);
+                    }
+                    if (rw != null && !rw.IsEmpty)
+                    {
+                        env = env == null ? new Envelope(rw.EnvelopeInternal) : EnvelopeUtil.ExpandToInclude(env, rw.EnvelopeInternal);
+                        wallEnv = wallEnv == null ? new Envelope(rw.EnvelopeInternal) : EnvelopeUtil.ExpandToInclude(wallEnv, rw.EnvelopeInternal);
+                    }
+                    rotatedGroup.Add((rw, it.fixedAxisId, it.beam, rcols));
+                }
+                if (env == null || wallEnv == null) continue;
+
+                double blockTopWallY = rotatedGroup
+                    .Where(x => x.wall != null && !x.wall.IsEmpty)
+                    .Select(x => x.wall.EnvelopeInternal.MaxY)
+                    .DefaultIfEmpty(env.MaxY)
+                    .Max();
+
+                // Mesafe hesabı birleşmiş mevcut çizim bloğunun zarfına göre yapılır.
+                double srcLeftEndpointX = env.MinX;
+                double srcRightEndpointX = env.MaxX;
+
+                // Y: ust perde cizgisi tek dogruya hizali.
+                // X: birleşmiş blok sınırları arası net 340 cm.
+                double targetLeftEndpointX = isFirstPlaced ? (prevRightEndpointPlacedX + exactGapX) : anchorX;
+                double dx = targetLeftEndpointX - srcLeftEndpointX;
+                double dy = topLineY - blockTopWallY;
+                var trf = NetTopologySuite.Geometries.Utilities.AffineTransformation.TranslationInstance(dx, dy);
+
+                foreach (var it in rotatedGroup)
+                {
+                    var w = trf.Transform(it.wall);
+                    if (w != null && !w.IsEmpty)
+                    {
+                        DrawGeometryRingsAsPolylines(tr, btr, w, LayerPerde, addHatch: true, hatchAngleRad: 0.0, applySmallTriangleTrim: false);
+                        int wallNumero = GetBeamNumero(it.beam.BeamId);
+                        string wallNo = wallNumero.ToString("D" + wallPad, CultureInfo.InvariantCulture);
+                        string wallText = string.Format(CultureInfo.InvariantCulture, "P{0}{1}", katEtiketi, wallNo);
+                        var wEnv = w.EnvelopeInternal;
+                        DrawBeamLabel(
+                            tr,
+                            btr,
+                            btr.Database,
+                            new Point3d((wEnv.MinX + wEnv.MaxX) * 0.5, (wEnv.MinY + wEnv.MaxY) * 0.5, 0),
+                            wallText,
+                            12.0,
+                            0.0,
+                            LayerPerdeYazisi,
+                            useMiddleCenter: true);
+                    }
+                    foreach (var c in it.columns)
+                    {
+                        var cg = trf.Transform(c.geom);
+                        if (cg == null || cg.IsEmpty) continue;
+                        DrawGeometryRingsAsPolylines(tr, btr, cg, LayerKolon, addHatch: true, hatchAngleRad: 0.0, applySmallTriangleTrim: false);
+                        var cEnv = cg.EnvelopeInternal;
+                        var cCenter = new Point2d((cEnv.MinX + cEnv.MaxX) * 0.5, (cEnv.MinY + cEnv.MaxY) * 0.5);
+                        Point2d labelRef = GetColumnLabelReferencePoint(cCenter, 0.0, c.col.ColumnType, c.dim.W / 2.0, c.dim.H / 2.0, c.polygonSectionId);
+                        AppendColumnLabel(tr, btr, labelRef, 0.0, c.col.ColumnNo, c.col.ColumnType, c.dim, floor);
+                    }
+                }
+
+                prevRightEndpointPlacedX = srcRightEndpointX + dx;
+                isFirstPlaced = true;
+            }
+        }
+
+        private void DrawAlignedWallGroupsAsSeparateCopiesWithAnchors(
+            Transaction tr,
+            BlockTableRecord btr,
+            FloorInfo floor,
+            List<(Geometry wall, int fixedAxisId, BeamInfo beam, List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, Point2d center, int polygonSectionId)> columns)> wallItems,
+            double topLineY,
+            Dictionary<int, double> wallNoToX,
+            bool recordAnchors)
+        {
+            if (wallItems == null || wallItems.Count == 0) return;
+            var groups = BuildAlignedWallGroups(wallItems, 0.1);
+            if (groups.Count == 0) return;
+
+            int wallPad = GetLabelPadWidth(_model.Beams.Where(x => x.IsWallFlag == 1).Select(x => GetBeamNumero(x.BeamId)).DefaultIfEmpty(0).Max());
+            string katEtiketi = !string.IsNullOrWhiteSpace(floor.ShortName) ? floor.ShortName : floor.FloorNo.ToString(CultureInfo.InvariantCulture);
+            const double exactGapX = 340.0;
+            double anchorX = groups
+                .SelectMany(g => g)
+                .Where(i => i.wall != null && !i.wall.IsEmpty)
+                .Select(i => i.wall.EnvelopeInternal.MinX)
+                .DefaultIfEmpty(0.0)
+                .Min();
+
+            groups = groups
+                .OrderBy(g => g.Where(i => i.beam != null).Select(i => GetBeamNumero(i.beam.BeamId)).DefaultIfEmpty(int.MaxValue).Min())
+                .ToList();
+
+            bool isFirstPlaced = false;
+            double prevRightEndpointPlacedX = 0.0;
+            foreach (var group in groups)
+            {
+                var geoms = new List<Geometry>();
+                foreach (var it in group)
+                {
+                    if (it.wall != null && !it.wall.IsEmpty) geoms.Add(it.wall);
+                    foreach (var c in it.columns)
+                        if (c.geom != null && !c.geom.IsEmpty) geoms.Add(c.geom);
+                }
+                if (geoms.Count == 0) continue;
+
+                Envelope rawEnv = null;
+                foreach (var g in geoms) rawEnv = rawEnv == null ? new Envelope(g.EnvelopeInternal) : EnvelopeUtil.ExpandToInclude(rawEnv, g.EnvelopeInternal);
+                if (rawEnv == null) continue;
+
+                double axisAngle = GetAxisLineAngleRad(group[0].fixedAxisId);
+                double cx = (rawEnv.MinX + rawEnv.MaxX) * 0.5;
+                double cy = (rawEnv.MinY + rawEnv.MaxY) * 0.5;
+                var rot = NetTopologySuite.Geometries.Utilities.AffineTransformation.RotationInstance(-axisAngle, cx, cy);
+
+                var rotatedGroup = new List<(Geometry wall, int fixedAxisId, BeamInfo beam, List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, Point2d center, int polygonSectionId)> columns)>();
+                Envelope env = null;
+                foreach (var it in group)
+                {
+                    Geometry rw = (it.wall != null && !it.wall.IsEmpty) ? rot.Transform(it.wall) : null;
+                    var rcols = new List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, Point2d center, int polygonSectionId)>();
+                    foreach (var c in it.columns)
+                    {
+                        if (c.geom == null || c.geom.IsEmpty) continue;
+                        var rcg = rot.Transform(c.geom);
+                        if (rcg == null || rcg.IsEmpty) continue;
+                        rcols.Add((rcg, c.col, c.dim, c.center, c.polygonSectionId));
+                        env = env == null ? new Envelope(rcg.EnvelopeInternal) : EnvelopeUtil.ExpandToInclude(env, rcg.EnvelopeInternal);
+                    }
+                    if (rw != null && !rw.IsEmpty)
+                        env = env == null ? new Envelope(rw.EnvelopeInternal) : EnvelopeUtil.ExpandToInclude(env, rw.EnvelopeInternal);
+                    rotatedGroup.Add((rw, it.fixedAxisId, it.beam, rcols));
+                }
+                if (env == null) continue;
+
+                double blockTopWallY = rotatedGroup
+                    .Where(x => x.wall != null && !x.wall.IsEmpty)
+                    .Select(x => x.wall.EnvelopeInternal.MaxY)
+                    .DefaultIfEmpty(env.MaxY)
+                    .Max();
+                double blockBottomWallY = rotatedGroup
+                    .Where(x => x.wall != null && !x.wall.IsEmpty)
+                    .Select(x => x.wall.EnvelopeInternal.MinY)
+                    .DefaultIfEmpty(env.MinY)
+                    .Min();
+
+                double srcLeftX = env.MinX;
+                double srcRightX = env.MaxX;
+
+                int minNo = group.Where(x => x.beam != null).Select(x => GetBeamNumero(x.beam.BeamId)).DefaultIfEmpty(0).Min();
+                double targetLeftX = isFirstPlaced ? (prevRightEndpointPlacedX + exactGapX) : anchorX;
+                bool foundAnchor = false;
+                // Ayni perde numarasi farkli katta her zaman ayni X'te olsun.
+                foreach (var it in rotatedGroup)
+                {
+                    if (it.beam == null || it.wall == null || it.wall.IsEmpty) continue;
+                    int no = GetBeamNumero(it.beam.BeamId);
+                    if (!wallNoToX.TryGetValue(no, out double mapX)) continue;
+                    double thisLeft = it.wall.EnvelopeInternal.MinX;
+                    targetLeftX = mapX - (thisLeft - srcLeftX);
+                    foundAnchor = true;
+                    break;
+                }
+                if (!foundAnchor && wallNoToX.TryGetValue(minNo, out double mappedLeftX))
+                    targetLeftX = mappedLeftX;
+                double dx = targetLeftX - srcLeftX;
+                double dy = topLineY - blockTopWallY;
+                var trf = NetTopologySuite.Geometries.Utilities.AffineTransformation.TranslationInstance(dx, dy);
+                double topCutY = blockTopWallY + dy + 40.0;
+                double bottomCutY = blockBottomWallY + dy - 40.0;
+                double placedWallBottomY = blockBottomWallY + dy;
+                var clippedColumnGeoms = new List<Geometry>();
+
+                foreach (var it in rotatedGroup)
+                {
+                    var w = trf.Transform(it.wall);
+                    if (w != null && !w.IsEmpty)
+                    {
+                        DrawGeometryRingsAsPolylines(tr, btr, w, LayerPerde, addHatch: true, hatchAngleRad: 0.0, applySmallTriangleTrim: false);
+                        int wallNumero = GetBeamNumero(it.beam.BeamId);
+                        string wallNo = wallNumero.ToString("D" + wallPad, CultureInfo.InvariantCulture);
+                        string wallText = string.Format(CultureInfo.InvariantCulture, "P{0}{1}", katEtiketi, wallNo);
+                        var wEnv = w.EnvelopeInternal;
+                        DrawBeamLabel(tr, btr, btr.Database, new Point3d((wEnv.MinX + wEnv.MaxX) * 0.5, (wEnv.MinY + wEnv.MaxY) * 0.5, 0), wallText, 12.0, 0.0, LayerPerdeYazisi, useMiddleCenter: true);
+                    }
+                    foreach (var c in it.columns)
+                    {
+                        var cg = trf.Transform(c.geom);
+                        if (cg == null || cg.IsEmpty) continue;
+                        var clipped = ClipGeometryOutsideYBand(cg, bottomCutY, topCutY);
+                        if (clipped == null || clipped.IsEmpty) continue;
+                        clippedColumnGeoms.Add(clipped);
+                        DrawGeometryRingsAsPolylines(tr, btr, clipped, LayerKolon, addHatch: true, hatchAngleRad: 0.0, applySmallTriangleTrim: false);
+                        var cEnv = clipped.EnvelopeInternal;
+                        AppendColumnLabelCenteredBelowWallBottom(tr, btr, cEnv.MaxX, placedWallBottomY, c.col.ColumnNo, c.col.ColumnType, c.dim, floor);
+                    }
+                }
+
+                Geometry colUnion = null;
+                if (clippedColumnGeoms.Count == 1) colUnion = clippedColumnGeoms[0];
+                else if (clippedColumnGeoms.Count > 1)
+                {
+                    try { colUnion = CascadedPolygonUnion.Union(clippedColumnGeoms); } catch { colUnion = clippedColumnGeoms[0]; }
+                }
+                if (colUnion != null && !colUnion.IsEmpty)
+                {
+                    DrawHorizontalSectionBoundaryOnColumns(tr, btr, topCutY, colUnion, srcLeftX + dx - 50.0, srcRightX + dx + 50.0);
+                    DrawHorizontalSectionBoundaryOnColumns(tr, btr, bottomCutY, colUnion, srcLeftX + dx - 50.0, srcRightX + dx + 50.0);
+                }
+
+                if (recordAnchors)
+                {
+                    foreach (var it in rotatedGroup)
+                    {
+                        if (it.beam == null || it.wall == null || it.wall.IsEmpty) continue;
+                        int no = GetBeamNumero(it.beam.BeamId);
+                        if (wallNoToX.ContainsKey(no)) continue;
+                        wallNoToX[no] = it.wall.EnvelopeInternal.MinX + dx;
+                    }
+                }
+
+                prevRightEndpointPlacedX = srcRightX + dx;
+                isFirstPlaced = true;
+            }
+        }
+
+        private Geometry ClipGeometryOutsideYBand(Geometry geom, double minY, double maxY)
+        {
+            if (geom == null || geom.IsEmpty) return geom;
+            try
+            {
+                var env = geom.EnvelopeInternal;
+                double minX = env.MinX - 10000.0;
+                double maxX = env.MaxX + 10000.0;
+                double extMaxY = env.MaxY + 10000.0;
+                double extMinY = env.MinY - 10000.0;
+                if (maxY <= minY + 1e-6) return geom;
+
+                var upperHalf = _ntsDrawFactory.CreatePolygon(_ntsDrawFactory.CreateLinearRing(new[]
+                {
+                    new Coordinate(minX, maxY),
+                    new Coordinate(maxX, maxY),
+                    new Coordinate(maxX, extMaxY),
+                    new Coordinate(minX, extMaxY),
+                    new Coordinate(minX, maxY)
+                }));
+
+                var lowerHalf = _ntsDrawFactory.CreatePolygon(_ntsDrawFactory.CreateLinearRing(new[]
+                {
+                    new Coordinate(minX, extMinY),
+                    new Coordinate(maxX, extMinY),
+                    new Coordinate(maxX, minY),
+                    new Coordinate(minX, minY),
+                    new Coordinate(minX, extMinY)
+                }));
+
+                var diffTop = geom.Difference(upperHalf);
+                if (diffTop == null || diffTop.IsEmpty) return diffTop;
+                var diffBand = diffTop.Difference(lowerHalf);
+                var kept = (diffBand != null && !diffBand.IsEmpty) ? diffBand : diffTop;
+
+                // Kesit siniri hattiyla birebir cakisan kolon kenarlarini dusur.
+                const double edgeEps = 0.01; // 0.1 mm
+                var topStrip = _ntsDrawFactory.CreatePolygon(_ntsDrawFactory.CreateLinearRing(new[]
+                {
+                    new Coordinate(minX, maxY - edgeEps),
+                    new Coordinate(maxX, maxY - edgeEps),
+                    new Coordinate(maxX, maxY + edgeEps),
+                    new Coordinate(minX, maxY + edgeEps),
+                    new Coordinate(minX, maxY - edgeEps)
+                }));
+                var botStrip = _ntsDrawFactory.CreatePolygon(_ntsDrawFactory.CreateLinearRing(new[]
+                {
+                    new Coordinate(minX, minY - edgeEps),
+                    new Coordinate(maxX, minY - edgeEps),
+                    new Coordinate(maxX, minY + edgeEps),
+                    new Coordinate(minX, minY + edgeEps),
+                    new Coordinate(minX, minY - edgeEps)
+                }));
+                var noTopEdge = kept.Difference(topStrip);
+                if (noTopEdge == null || noTopEdge.IsEmpty) return noTopEdge;
+                var noBothEdges = noTopEdge.Difference(botStrip);
+                return (noBothEdges != null && !noBothEdges.IsEmpty) ? noBothEdges : noTopEdge;
+            }
+            catch
+            {
+                return geom;
+            }
+        }
+
+        private void DrawHorizontalSectionBoundaryOnColumns(Transaction tr, BlockTableRecord btr, double y, Geometry columnUnion, double xMin, double xMax)
+        {
+            if (columnUnion == null || columnUnion.IsEmpty || xMax <= xMin) return;
+            try
+            {
+                var line = _ntsDrawFactory.CreateLineString(new[] { new Coordinate(xMin, y), new Coordinate(xMax, y) });
+                var inter = line.Intersection(columnUnion);
+                if (inter == null || inter.IsEmpty) return;
+
+                if (inter is LineString ls)
+                {
+                    DrawLineStringSegment(tr, btr, ls);
+                    return;
+                }
+                if (inter is MultiLineString mls)
+                {
+                    for (int i = 0; i < mls.NumGeometries; i++)
+                        DrawLineStringSegment(tr, btr, mls.GetGeometryN(i) as LineString);
+                    return;
+                }
+                if (inter is GeometryCollection gc)
+                {
+                    for (int i = 0; i < gc.NumGeometries; i++)
+                    {
+                        var gi = gc.GetGeometryN(i);
+                        if (gi is LineString gls) DrawLineStringSegment(tr, btr, gls);
+                        else if (gi is MultiLineString gmls)
+                        {
+                            for (int j = 0; j < gmls.NumGeometries; j++)
+                                DrawLineStringSegment(tr, btr, gmls.GetGeometryN(j) as LineString);
+                        }
+                    }
+                }
+            }
+            catch { }
+        }
+
+        private void DrawLineStringSegment(Transaction tr, BlockTableRecord btr, LineString ls)
+        {
+            if (ls == null || ls.IsEmpty || ls.NumPoints < 2) return;
+            var s = ls.GetCoordinateN(0);
+            var e = ls.GetCoordinateN(ls.NumPoints - 1);
+            if (s == null || e == null) return;
+            if (Math.Abs(s.X - e.X) < 1e-6 && Math.Abs(s.Y - e.Y) < 1e-6) return;
+            AppendEntity(tr, btr, new Line(new Point3d(s.X, s.Y, 0), new Point3d(e.X, e.Y, 0)) { Layer = LayerKesitSiniri });
+        }
+
+        private List<List<(Geometry wall, int fixedAxisId, BeamInfo beam, List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, Point2d center, int polygonSectionId)> columns)>> BuildAlignedWallGroups(
+            List<(Geometry wall, int fixedAxisId, BeamInfo beam, List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, Point2d center, int polygonSectionId)> columns)> items,
+            double tolCm)
+        {
+            var result = new List<List<(Geometry wall, int fixedAxisId, BeamInfo beam, List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, Point2d center, int polygonSectionId)> columns)>>();
+            foreach (var axisBucket in items.GroupBy(i => i.fixedAxisId))
+            {
+                var list = axisBucket.ToList();
+                var bands = new List<(double key, List<(Geometry wall, int fixedAxisId, BeamInfo beam, List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, Point2d center, int polygonSectionId)> columns)> members)>();
+                foreach (var it in list)
+                {
+                    double coord = GetWallAlignmentCoordinate(it);
+                    bool added = false;
+                    for (int i = 0; i < bands.Count; i++)
+                    {
+                        if (Math.Abs(bands[i].key - coord) <= tolCm)
+                        {
+                            bands[i].members.Add(it);
+                            added = true;
+                            break;
+                        }
+                    }
+                    if (!added)
+                        bands.Add((coord, new List<(Geometry wall, int fixedAxisId, BeamInfo beam, List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, Point2d center, int polygonSectionId)> columns)> { it }));
+                }
+                foreach (var b in bands)
+                {
+                    foreach (var comp in SplitAlignedBandByContiguity(b.members))
+                        result.Add(comp);
+                }
+            }
+            return result;
+        }
+
+        private List<List<(Geometry wall, int fixedAxisId, BeamInfo beam, List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, Point2d center, int polygonSectionId)> columns)>> SplitAlignedBandByContiguity(
+            List<(Geometry wall, int fixedAxisId, BeamInfo beam, List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, Point2d center, int polygonSectionId)> columns)> members)
+        {
+            var res = new List<List<(Geometry wall, int fixedAxisId, BeamInfo beam, List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, Point2d center, int polygonSectionId)> columns)>>();
+            if (members == null || members.Count == 0) return res;
+            var visited = new bool[members.Count];
+
+            for (int i = 0; i < members.Count; i++)
+            {
+                if (visited[i]) continue;
+                visited[i] = true;
+                var q = new Queue<int>();
+                q.Enqueue(i);
+                var comp = new List<(Geometry wall, int fixedAxisId, BeamInfo beam, List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, Point2d center, int polygonSectionId)> columns)>();
+
+                while (q.Count > 0)
+                {
+                    int k = q.Dequeue();
+                    comp.Add(members[k]);
+                    for (int j = 0; j < members.Count; j++)
+                    {
+                        if (visited[j]) continue;
+                        bool connected =
+                            AreItemsContiguousOnPlan(members[k], members[j]) ||
+                            AreWallsConnectedForCopyGrouping(members[k].wall, members[j].wall) ||
+                            AreWallsBeamConnectedOnAxis(members[k].beam, members[j].beam) ||
+                            ShareEndpointColumnByAxis(members[k].beam, members[j].beam);
+                        if (!connected) continue;
+                        visited[j] = true;
+                        q.Enqueue(j);
+                    }
+                }
+                res.Add(comp);
+            }
+
+            return res;
+        }
+
+        private double GetWallAlignmentCoordinate(
+            (Geometry wall, int fixedAxisId, BeamInfo beam, List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, Point2d center, int polygonSectionId)> columns) item)
+        {
+            if (item.wall == null || item.wall.IsEmpty) return 0.0;
+            var env = item.wall.EnvelopeInternal;
+            var c = new Point2d((env.MinX + env.MaxX) * 0.5, (env.MinY + env.MaxY) * 0.5);
+            var axis = _model.AxisX.Concat(_model.AxisY).FirstOrDefault(a => a.Id == item.fixedAxisId);
+            if (axis == null) return 0.0;
+            Vector2d d = axis.Kind == AxisKind.X ? new Vector2d(axis.Slope, 1.0) : new Vector2d(-1.0, axis.Slope);
+            if (d.Length <= 1e-9) d = Vector2d.XAxis;
+            d = d.GetNormal();
+            Vector2d n = new Vector2d(-d.Y, d.X).GetNormal();
+            return (c.X * n.X) + (c.Y * n.Y);
+        }
+
+        private void DrawPerdeKolonCopiesStackedByFloors(
+            Transaction tr,
+            BlockTableRecord btr,
+            List<(FloorInfo floor, double offsetX, double offsetY, (double Xmin, double Xmax, double Ymin, double Ymax) axisExt)> layouts)
+        {
+            if (!_isKolon50Mode || layouts == null || layouts.Count == 0) return;
+            const double groupGapX = 340.0;
+            const double rowGapY = 340.0;
+
+            double topY = layouts.Max(x => x.axisExt.Ymax + x.offsetY) + 1000.0;
+            double baseX = layouts.Min(x => x.axisExt.Xmin + x.offsetX);
+            var wallNoToX = new Dictionary<int, double>();
+            var seenWallBeamIds = new HashSet<int>();
+            var groupedEntries = new List<(int floorIndexNo, FloorInfo labelFloor, string katEtiketi, int wallPad,
+                List<(Geometry wall, int fixedAxisId, BeamInfo beam, List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, Point2d center, int polygonSectionId)> columns)> group)>();
+
+            // Ayni kat indisi birden fazla FloorInfo satiriyla geliyorsa kopya uretimini tek temsille yap.
+            foreach (var l in layouts.GroupBy(x => x.floor.FloorNo).Select(g => g.First()))
+            {
+                var wallItems = BuildPerdeWallItemsForCopy(l.floor, l.offsetX, l.offsetY);
+                if (wallItems.Count == 0) continue;
+                var groups = BuildPerdeCopyGroups(wallItems);
+                if (groups.Count == 0) continue;
+                int wallPad = GetLabelPadWidth(wallItems.Max(w => GetBeamNumero(w.beam.BeamId)));
+                string katEtiketi = !string.IsNullOrWhiteSpace(l.floor.ShortName) ? l.floor.ShortName : l.floor.FloorNo.ToString(CultureInfo.InvariantCulture);
+                foreach (var g in groups)
+                {
+                    if (g == null || g.Count == 0) continue;
+                    var filteredGroup = g.Where(x => x.beam != null && seenWallBeamIds.Add(x.beam.BeamId)).ToList();
+                    if (filteredGroup.Count == 0) continue;
+                    int floorIndexNo = l.floor.FloorNo > 0 ? l.floor.FloorNo : 1;
+                    groupedEntries.Add((floorIndexNo, l.floor, katEtiketi, wallPad, filteredGroup));
+                }
+            }
+
+            var rowBuckets = groupedEntries
+                .GroupBy(e => e.floorIndexNo)
+                .OrderBy(g => g.Key)
+                .Select(g => g.ToList())
+                .ToList();
+
+            for (int row = 0; row < rowBuckets.Count; row++)
+            {
+                var bucket = rowBuckets[row];
+                if (bucket.Count == 0) continue;
+                var mergedBucket = MergeRowGroupEntries(bucket);
+                var groups = mergedBucket.Select(x => x.group).ToList();
+
+                double rowTopY = topY - row * (rowGapY + groups.Max(g => g.Where(i => i.wall != null && !i.wall.IsEmpty).Select(i => i.wall.EnvelopeInternal.Height).DefaultIfEmpty(0.0).Max()));
+                double cursorX = baseX;
+
+                foreach (var entry in mergedBucket)
+                {
+                    var group = entry.group;
+                    if (group.Count == 0) continue;
+                    int fixedAxisId = group[0].fixedAxisId;
+                    double axisAngle = GetAxisLineAngleRad(fixedAxisId);
+                    var rotatedWalls = new List<(Geometry geom, BeamInfo beam)>();
+                    var rotatedCols = new List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, int polygonSectionId)>();
+                    var wallNos = new HashSet<int>();
+                    Envelope groupEnv = null;
+                    Envelope wallOnlyEnv = null;
+
+                    foreach (var item in group)
+                    {
+                        if (item.wall == null || item.wall.IsEmpty) continue;
+                        wallNos.Add(GetBeamNumero(item.beam.BeamId));
+                        var env0 = item.wall.EnvelopeInternal;
+                        double cx = (env0.MinX + env0.MaxX) * 0.5;
+                        double cy = (env0.MinY + env0.MaxY) * 0.5;
+                        var rot = NetTopologySuite.Geometries.Utilities.AffineTransformation.RotationInstance(-axisAngle, cx, cy);
+                        var wallRot = rot.Transform(item.wall);
+                        if (wallRot != null && !wallRot.IsEmpty)
+                        {
+                            rotatedWalls.Add((wallRot, item.beam));
+                            groupEnv = groupEnv == null ? new Envelope(wallRot.EnvelopeInternal) : EnvelopeUtil.ExpandToInclude(groupEnv, wallRot.EnvelopeInternal);
+                            wallOnlyEnv = wallOnlyEnv == null ? new Envelope(wallRot.EnvelopeInternal) : EnvelopeUtil.ExpandToInclude(wallOnlyEnv, wallRot.EnvelopeInternal);
+                        }
+                        foreach (var col in item.columns)
+                        {
+                            var colRot = rot.Transform(col.geom);
+                            if (colRot == null || colRot.IsEmpty) continue;
+                            rotatedCols.Add((colRot, col.col, col.dim, col.polygonSectionId));
+                            groupEnv = groupEnv == null ? new Envelope(colRot.EnvelopeInternal) : EnvelopeUtil.ExpandToInclude(groupEnv, colRot.EnvelopeInternal);
+                        }
+                    }
+                    if (groupEnv == null) continue;
+
+                    double targetX = cursorX;
+                    if (row == 0)
+                    {
+                        foreach (int no in wallNos) if (!wallNoToX.ContainsKey(no)) wallNoToX[no] = targetX;
+                    }
+                    else
+                    {
+                        var mapped = wallNos.Where(no => wallNoToX.ContainsKey(no)).Select(no => wallNoToX[no]).DefaultIfEmpty(double.NaN).First();
+                        if (!double.IsNaN(mapped)) targetX = mapped;
+                    }
+
+                    double dx = targetX - groupEnv.MinX;
+                    // Ayni kattaki tum perde gruplari, perde ust cizgisine gore tek hatta hizalansin.
+                    double alignTopY = wallOnlyEnv != null ? wallOnlyEnv.MaxY : groupEnv.MaxY;
+                    double dy = rowTopY - alignTopY;
+                    var trf = NetTopologySuite.Geometries.Utilities.AffineTransformation.TranslationInstance(dx, dy);
+
+                    foreach (var rw in rotatedWalls)
+                    {
+                        var wallMoved = trf.Transform(rw.geom);
+                        if (wallMoved == null || wallMoved.IsEmpty) continue;
+                        DrawGeometryRingsAsPolylines(tr, btr, wallMoved, LayerPerde, addHatch: true, hatchAngleRad: 0.0, applySmallTriangleTrim: false);
+                        int wallNumero = GetBeamNumero(rw.beam.BeamId);
+                        string wallNo = wallNumero.ToString("D" + entry.wallPad, CultureInfo.InvariantCulture);
+                        string wallText = string.Format(CultureInfo.InvariantCulture, "P{0}{1}", entry.katEtiketi, wallNo);
+                        var movedEnv = wallMoved.EnvelopeInternal;
+                        double tx = (movedEnv.MinX + movedEnv.MaxX) * 0.5;
+                        double ty = (movedEnv.MinY + movedEnv.MaxY) * 0.5;
+                        DrawBeamLabel(tr, btr, btr.Database, new Point3d(tx, ty, 0), wallText, 12.0, 0.0, LayerPerdeYazisi, useMiddleCenter: true);
+                    }
+                    foreach (var rc in rotatedCols)
+                    {
+                        var colMoved = trf.Transform(rc.geom);
+                        if (colMoved == null || colMoved.IsEmpty) continue;
+                        DrawGeometryRingsAsPolylines(tr, btr, colMoved, LayerKolon, addHatch: true, hatchAngleRad: 0.0, applySmallTriangleTrim: false);
+                        var cEnv = colMoved.EnvelopeInternal;
+                        var cCenter = new Point2d((cEnv.MinX + cEnv.MaxX) * 0.5, (cEnv.MinY + cEnv.MaxY) * 0.5);
+                        Point2d labelRef = GetColumnLabelReferencePoint(cCenter, 0.0, rc.col.ColumnType, rc.dim.W / 2.0, rc.dim.H / 2.0, rc.polygonSectionId);
+                        AppendColumnLabel(tr, btr, labelRef, 0.0, rc.col.ColumnNo, rc.col.ColumnType, rc.dim, entry.labelFloor);
+                    }
+
+                    cursorX = Math.Max(cursorX, targetX + groupEnv.Width + groupGapX);
+                }
+            }
+        }
+
+        private List<(FloorInfo labelFloor, string katEtiketi, int wallPad,
+            List<(Geometry wall, int fixedAxisId, BeamInfo beam, List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, Point2d center, int polygonSectionId)> columns)> group)>
+            MergeRowGroupEntries(List<(int floorIndexNo, FloorInfo labelFloor, string katEtiketi, int wallPad,
+                List<(Geometry wall, int fixedAxisId, BeamInfo beam, List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, Point2d center, int polygonSectionId)> columns)> group)> bucket)
+        {
+            var result = new List<(FloorInfo, string, int, List<(Geometry wall, int fixedAxisId, BeamInfo beam, List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, Point2d center, int polygonSectionId)> columns)>)>();
+            if (bucket == null || bucket.Count == 0) return result;
+
+            var visited = new bool[bucket.Count];
+            for (int i = 0; i < bucket.Count; i++)
+            {
+                if (visited[i]) continue;
+                visited[i] = true;
+                var q = new Queue<int>();
+                q.Enqueue(i);
+
+                var mergedGroup = new List<(Geometry wall, int fixedAxisId, BeamInfo beam, List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, Point2d center, int polygonSectionId)> columns)>();
+                FloorInfo labelFloor = bucket[i].labelFloor;
+                string katEtiketi = bucket[i].katEtiketi;
+                int wallPad = bucket[i].wallPad;
+
+                while (q.Count > 0)
+                {
+                    int k = q.Dequeue();
+                    mergedGroup.AddRange(bucket[k].group);
+                    if (bucket[k].wallPad > wallPad) wallPad = bucket[k].wallPad;
+
+                    for (int j = 0; j < bucket.Count; j++)
+                    {
+                        if (visited[j]) continue;
+                        if (!ArePerdeGroupsConnected(bucket[k].group, bucket[j].group)) continue;
+                        visited[j] = true;
+                        q.Enqueue(j);
+                    }
+                }
+
+                result.Add((labelFloor, katEtiketi, wallPad, mergedGroup));
+            }
+
+            return result;
+        }
+
+        private bool ArePerdeGroupsConnected(
+            List<(Geometry wall, int fixedAxisId, BeamInfo beam, List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, Point2d center, int polygonSectionId)> columns)> a,
+            List<(Geometry wall, int fixedAxisId, BeamInfo beam, List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, Point2d center, int polygonSectionId)> columns)> b)
+        {
+            if (a == null || b == null || a.Count == 0 || b.Count == 0) return false;
+            foreach (var wa in a)
+            {
+                var colsA = new HashSet<int>(wa.columns.Select(c => c.col.ColumnNo));
+                foreach (var wb in b)
+                {
+                    if (wa.fixedAxisId != wb.fixedAxisId) continue;
+                    // Kullanici kurali: X aksina fixli ayni fixed aks perdeleri birlikte ciz.
+                    if (wa.fixedAxisId >= 1001 && wa.fixedAxisId <= 1999) return true;
+                    bool sharedColumn = wb.columns.Any(c => colsA.Contains(c.col.ColumnNo));
+                    bool sharedEndpointColumn = ShareEndpointColumnByAxis(wa.beam, wb.beam);
+                    bool wallConnected = AreWallsConnectedForCopyGrouping(wa.wall, wb.wall);
+                    bool beamNodeConnected = AreWallsBeamConnectedOnAxis(wa.beam, wb.beam);
+                    bool beamSpanConnected = AreWallsBeamSpanConnectedOnPlan(wa.beam, wb.beam);
+                    bool planContiguous = AreItemsContiguousOnPlan(wa, wb);
+                    if (sharedColumn || sharedEndpointColumn || wallConnected || beamNodeConnected || beamSpanConnected || planContiguous) return true;
+                }
+            }
+            return false;
+        }
+
+        private List<(Geometry wall, int fixedAxisId, BeamInfo beam, List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, Point2d center, int polygonSectionId)> columns)> BuildPerdeWallItemsForCopy(
+            FloorInfo floor, double offsetX, double offsetY, bool onlyXAxisWalls = false)
+        {
+            var factory = _ntsDrawFactory;
+            var beams = MergeSameIdBeamsOnFloor(floor.FloorNo);
+            var wallItems = new List<(Geometry wall, int fixedAxisId, BeamInfo beam, List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, Point2d center, int polygonSectionId)> columns)>();
+            if (beams == null || beams.Count == 0) return wallItems;
+            Geometry kolonUnion = BuildKolonUnionSameFloorOnly(floor, offsetX, offsetY);
+            foreach (var beam in beams)
+            {
+                if (beam.IsWallFlag != 1) continue;
+                if (onlyXAxisWalls && !(beam.FixedAxisId >= 1001 && beam.FixedAxisId <= 1999)) continue;
+                if (!_axisService.TryIntersect(beam.FixedAxisId, beam.StartAxisId, out Point2d p1) || !_axisService.TryIntersect(beam.FixedAxisId, beam.EndAxisId, out Point2d p2)) continue;
+                var a = new Point2d(p1.X + offsetX, p1.Y + offsetY);
+                var b = new Point2d(p2.X + offsetX, p2.Y + offsetY);
+                NormalizeBeamDirection(beam.FixedAxisId, ref a, ref b);
+                Vector2d dir = b - a; if (dir.Length <= 1e-9) continue;
+                Vector2d u = dir.GetNormal(); Vector2d perp = new Vector2d(-u.Y, u.X);
+                double hw = beam.WidthCm / 2.0;
+                ComputeBeamEdgeOffsets(beam.OffsetRaw, hw, out double upperEdge, out double lowerEdge);
+                Point2d q1 = a + perp.MultiplyBy(upperEdge), q2 = b + perp.MultiplyBy(upperEdge), q3 = b + perp.MultiplyBy(lowerEdge), q4 = a + perp.MultiplyBy(lowerEdge);
+                var wallPoly = factory.CreatePolygon(factory.CreateLinearRing(new[] { new Coordinate(q1.X, q1.Y), new Coordinate(q2.X, q2.Y), new Coordinate(q3.X, q3.Y), new Coordinate(q4.X, q4.Y), new Coordinate(q1.X, q1.Y) }));
+                if (wallPoly == null || wallPoly.IsEmpty) continue;
+                Geometry wallToDraw = wallPoly;
+                if (kolonUnion != null && !kolonUnion.IsEmpty)
+                {
+                    var diff = wallPoly.Difference(kolonUnion);
+                    if (diff != null && !diff.IsEmpty) { wallToDraw = ReducePrecisionSafe(diff, 100); if (wallToDraw == null || wallToDraw.IsEmpty) wallToDraw = diff; }
+                }
+                var cols = new List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, Point2d center, int polygonSectionId)>();
+                foreach (var col in _model.Columns)
+                {
+                    if (!HasColumnOnFloor(floor, col)) continue;
+                    var colGeom = GetColumnPolygonForTable(floor, col, offsetX, offsetY, factory);
+                    if (colGeom == null || colGeom.IsEmpty) continue;
+                    bool includeCol = false;
+                    try
+                    {
+                        includeCol = wallPoly.Intersects(colGeom) || wallPoly.Distance(colGeom) <= 0.1; // 1 mm tolerans (cm biriminde 0.1)
+                    }
+                    catch
+                    {
+                        includeCol = wallPoly.Intersects(colGeom);
+                    }
+                    if (!includeCol) continue;
+                    int sectionId = ResolveColumnSectionId(floor.FloorNo, col.ColumnNo);
+                    int polygonSectionId = ResolvePolygonPositionSectionId(floor.FloorNo, col.ColumnNo);
+                    var dim = sectionId > 0 && _model.ColumnDimsBySectionId.ContainsKey(sectionId) ? _model.ColumnDimsBySectionId[sectionId] : (W: 40.0, H: 40.0);
+                    Point2d centerPt = new Point2d((colGeom.EnvelopeInternal.MinX + colGeom.EnvelopeInternal.MaxX) * 0.5, (colGeom.EnvelopeInternal.MinY + colGeom.EnvelopeInternal.MaxY) * 0.5);
+                    cols.Add((colGeom, col, dim, centerPt, polygonSectionId));
+                }
+                wallItems.Add((wallToDraw, beam.FixedAxisId, beam, cols));
+            }
+            return wallItems;
+        }
+
+        /// <summary>
+        /// KOLON50ST4: Aynı aksa tanımlı perde parçalarını, kesişen kolonlarıyla birlikte
+        /// planın üstüne yan yana kopya olarak yerleştirir.
+        /// </summary>
+        private void DrawPerdeKolonCopiesAbovePlan(
+            Transaction tr,
+            BlockTableRecord btr,
+            FloorInfo floor,
+            double offsetX,
+            double offsetY,
+            (double Xmin, double Xmax, double Ymin, double Ymax) floorAxisExt)
+        {
+            if (!_isKolon50Mode) return;
+            var factory = _ntsDrawFactory;
+            var beams = MergeSameIdBeamsOnFloor(floor.FloorNo);
+            if (beams == null || beams.Count == 0) return;
+            Geometry kolonUnion = BuildKolonUnionSameFloorOnly(floor, offsetX, offsetY);
+            var wallItems = new List<(Geometry wall, int fixedAxisId, BeamInfo beam, List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, Point2d center, int polygonSectionId)> columns)>();
+            foreach (var beam in beams)
+            {
+                if (beam.IsWallFlag != 1) continue;
+                if (!_axisService.TryIntersect(beam.FixedAxisId, beam.StartAxisId, out Point2d p1) ||
+                    !_axisService.TryIntersect(beam.FixedAxisId, beam.EndAxisId, out Point2d p2))
+                    continue;
+
+                var a = new Point2d(p1.X + offsetX, p1.Y + offsetY);
+                var b = new Point2d(p2.X + offsetX, p2.Y + offsetY);
+                NormalizeBeamDirection(beam.FixedAxisId, ref a, ref b);
+                Vector2d dir = b - a;
+                if (dir.Length <= 1e-9) continue;
+                Vector2d u = dir.GetNormal();
+                Vector2d perp = new Vector2d(-u.Y, u.X);
+                double hw = beam.WidthCm / 2.0;
+                ComputeBeamEdgeOffsets(beam.OffsetRaw, hw, out double upperEdge, out double lowerEdge);
+                Point2d q1 = a + perp.MultiplyBy(upperEdge);
+                Point2d q2 = b + perp.MultiplyBy(upperEdge);
+                Point2d q3 = b + perp.MultiplyBy(lowerEdge);
+                Point2d q4 = a + perp.MultiplyBy(lowerEdge);
+                var wallCoords = new[]
+                {
+                    new Coordinate(q1.X, q1.Y),
+                    new Coordinate(q2.X, q2.Y),
+                    new Coordinate(q3.X, q3.Y),
+                    new Coordinate(q4.X, q4.Y),
+                    new Coordinate(q1.X, q1.Y)
+                };
+                var wallPoly = factory.CreatePolygon(factory.CreateLinearRing(wallCoords));
+                if (wallPoly == null || wallPoly.IsEmpty) continue;
+                Geometry wallToDraw = wallPoly;
+                if (kolonUnion != null && !kolonUnion.IsEmpty)
+                {
+                    var diff = wallPoly.Difference(kolonUnion);
+                    if (diff != null && !diff.IsEmpty)
+                    {
+                        wallToDraw = ReducePrecisionSafe(diff, 100);
+                        if (wallToDraw == null || wallToDraw.IsEmpty) wallToDraw = diff;
+                    }
+                }
+
+                var cols = new List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, Point2d center, int polygonSectionId)>();
+                foreach (var col in _model.Columns)
+                {
+                    if (!HasColumnOnFloor(floor, col)) continue;
+                    var colGeom = GetColumnPolygonForTable(floor, col, offsetX, offsetY, factory);
+                    if (colGeom == null || colGeom.IsEmpty) continue;
+                    if (!wallPoly.Intersects(colGeom)) continue;
+
+                    int sectionId = ResolveColumnSectionId(floor.FloorNo, col.ColumnNo);
+                    int polygonSectionId = ResolvePolygonPositionSectionId(floor.FloorNo, col.ColumnNo);
+                    var dim = sectionId > 0 && _model.ColumnDimsBySectionId.ContainsKey(sectionId)
+                        ? _model.ColumnDimsBySectionId[sectionId]
+                        : (W: 40.0, H: 40.0);
+                    Point2d centerPt = new Point2d((colGeom.EnvelopeInternal.MinX + colGeom.EnvelopeInternal.MaxX) * 0.5, (colGeom.EnvelopeInternal.MinY + colGeom.EnvelopeInternal.MaxY) * 0.5);
+                    cols.Add((colGeom, col, dim, centerPt, polygonSectionId));
+                }
+
+                wallItems.Add((wallToDraw, beam.FixedAxisId, beam, cols));
+            }
+
+            if (wallItems.Count == 0) return;
+
+            double placeTopY = floorAxisExt.Ymax + offsetY + 1000.0;
+            double cursorX = floorAxisExt.Xmin + offsetX;
+            const double copyGapCm = 340.0;
+            int wallPad = GetLabelPadWidth(wallItems.Max(w => GetBeamNumero(w.beam.BeamId)));
+            string katEtiketi = !string.IsNullOrWhiteSpace(floor.ShortName) ? floor.ShortName : floor.FloorNo.ToString(CultureInfo.InvariantCulture);
+
+            foreach (var group in BuildPerdeCopyGroups(wallItems))
+            {
+                if (group.Count == 0) continue;
+                int fixedAxisId = group[0].fixedAxisId;
+                double axisAngle = GetAxisLineAngleRad(fixedAxisId);
+                var rotatedWalls = new List<(Geometry geom, BeamInfo beam)>();
+                var rotatedCols = new List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, int polygonSectionId)>();
+                Envelope groupEnv = null;
+
+                foreach (var item in group)
+                {
+                    if (item.wall == null || item.wall.IsEmpty) continue;
+                    var env0 = item.wall.EnvelopeInternal;
+                    double cx = (env0.MinX + env0.MaxX) * 0.5;
+                    double cy = (env0.MinY + env0.MaxY) * 0.5;
+                    var rot = NetTopologySuite.Geometries.Utilities.AffineTransformation.RotationInstance(-axisAngle, cx, cy);
+                    var wallRot = rot.Transform(item.wall);
+                    if (wallRot != null && !wallRot.IsEmpty)
+                    {
+                        rotatedWalls.Add((wallRot, item.beam));
+                        groupEnv = groupEnv == null ? new Envelope(wallRot.EnvelopeInternal) : EnvelopeUtil.ExpandToInclude(groupEnv, wallRot.EnvelopeInternal);
+                    }
+
+                    foreach (var col in item.columns)
+                    {
+                        var colRot = rot.Transform(col.geom);
+                        if (colRot == null || colRot.IsEmpty) continue;
+                        rotatedCols.Add((colRot, col.col, col.dim, col.polygonSectionId));
+                        groupEnv = groupEnv == null ? new Envelope(colRot.EnvelopeInternal) : EnvelopeUtil.ExpandToInclude(groupEnv, colRot.EnvelopeInternal);
+                    }
+                }
+
+                if (groupEnv == null) continue;
+                double dx = cursorX - groupEnv.MinX;
+                double dy = placeTopY - groupEnv.MaxY;
+                var trf = NetTopologySuite.Geometries.Utilities.AffineTransformation.TranslationInstance(dx, dy);
+
+                foreach (var rw in rotatedWalls)
+                {
+                    var wallMoved = trf.Transform(rw.geom);
+                    if (wallMoved == null || wallMoved.IsEmpty) continue;
+                    DrawGeometryRingsAsPolylines(tr, btr, wallMoved, LayerPerde, addHatch: true, hatchAngleRad: 0.0, applySmallTriangleTrim: false);
+                    int wallNumero = GetBeamNumero(rw.beam.BeamId);
+                    string wallNo = wallNumero.ToString("D" + wallPad, CultureInfo.InvariantCulture);
+                    string wallText = string.Format(CultureInfo.InvariantCulture, "P{0}{1}", katEtiketi, wallNo);
+                    var movedEnv = wallMoved.EnvelopeInternal;
+                    double tx = movedEnv.MaxX + 8.0;
+                    double ty = movedEnv.MinY - 8.0;
+                    DrawBeamLabel(tr, btr, btr.Database, new Point3d(tx, ty, 0), wallText, 12.0, 0.0, LayerPerdeYazisi, bottomLeftAligned: true);
+                }
+
+                foreach (var rc in rotatedCols)
+                {
+                    var colMoved = trf.Transform(rc.geom);
+                    if (colMoved == null || colMoved.IsEmpty) continue;
+                    DrawGeometryRingsAsPolylines(tr, btr, colMoved, LayerKolon, addHatch: true, hatchAngleRad: 0.0, applySmallTriangleTrim: false);
+
+                    var cEnv = colMoved.EnvelopeInternal;
+                    var cCenter = new Point2d((cEnv.MinX + cEnv.MaxX) * 0.5, (cEnv.MinY + cEnv.MaxY) * 0.5);
+                    Point2d labelRef = GetColumnLabelReferencePoint(cCenter, 0.0, rc.col.ColumnType, rc.dim.W / 2.0, rc.dim.H / 2.0, rc.polygonSectionId);
+                    AppendColumnLabel(tr, btr, labelRef, 0.0, rc.col.ColumnNo, rc.col.ColumnType, rc.dim, floor);
+                }
+
+                cursorX += groupEnv.Width + copyGapCm;
+            }
+        }
+
+        private static class EnvelopeUtil
+        {
+            public static Envelope ExpandToInclude(Envelope current, Envelope add)
+            {
+                if (current == null) return add == null ? null : new Envelope(add);
+                if (add == null) return current;
+                current.ExpandToInclude(add);
+                return current;
+            }
+        }
+
+        private List<List<(Geometry wall, int fixedAxisId, BeamInfo beam, List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, Point2d center, int polygonSectionId)> columns)>> BuildPerdeCopyGroups(
+            List<(Geometry wall, int fixedAxisId, BeamInfo beam, List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, Point2d center, int polygonSectionId)> columns)> items)
+        {
+            var groups = new List<List<(Geometry wall, int fixedAxisId, BeamInfo beam, List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, Point2d center, int polygonSectionId)> columns)>>();
+            if (items == null || items.Count == 0) return groups;
+
+            foreach (var axisBucket in items.GroupBy(i => i.fixedAxisId))
+            {
+                var list = axisBucket.ToList();
+                var visited = new bool[list.Count];
+                for (int i = 0; i < list.Count; i++)
+                {
+                    if (visited[i]) continue;
+                    var g = new List<(Geometry wall, int fixedAxisId, BeamInfo beam, List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, Point2d center, int polygonSectionId)> columns)>();
+                    var q = new Queue<int>();
+                    q.Enqueue(i);
+                    visited[i] = true;
+                    while (q.Count > 0)
+                    {
+                        int k = q.Dequeue();
+                        g.Add(list[k]);
+                        var colsK = new HashSet<int>(list[k].columns.Select(c => c.col.ColumnNo));
+                        for (int j = 0; j < list.Count; j++)
+                        {
+                            if (visited[j]) continue;
+                            bool sharedColumn = list[j].columns.Any(c => colsK.Contains(c.col.ColumnNo));
+                            bool sharedEndpointColumn = ShareEndpointColumnByAxis(list[k].beam, list[j].beam);
+                            bool wallConnected = AreWallsConnectedForCopyGrouping(list[k].wall, list[j].wall);
+                            bool beamNodeConnected = AreWallsBeamConnectedOnAxis(list[k].beam, list[j].beam);
+                            bool beamSpanConnected = AreWallsBeamSpanConnectedOnPlan(list[k].beam, list[j].beam);
+                            bool planContiguous = AreItemsContiguousOnPlan(list[k], list[j]);
+                            if (!sharedColumn && !sharedEndpointColumn && !wallConnected && !beamNodeConnected && !beamSpanConnected && !planContiguous) continue;
+                            visited[j] = true;
+                            q.Enqueue(j);
+                        }
+                    }
+                    groups.Add(g);
+                }
+            }
+
+            return groups;
+        }
+
+        private static bool AreWallsConnectedForCopyGrouping(Geometry a, Geometry b)
+        {
+            if (a == null || b == null || a.IsEmpty || b.IsEmpty) return false;
+            try
+            {
+                if (a.Intersects(b) || a.Touches(b) || b.Touches(a))
+                    return true;
+                // Aynı aks üzerinde çok küçük boşlukla kopuk gelen perdeleri tek grup kabul et.
+                return a.Distance(b) <= 2.0; // cm
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool AreWallsBeamConnectedOnAxis(BeamInfo a, BeamInfo b)
+        {
+            if (a == null || b == null) return false;
+            if (a.FixedAxisId != b.FixedAxisId) return false;
+            return a.StartAxisId == b.StartAxisId
+                || a.StartAxisId == b.EndAxisId
+                || a.EndAxisId == b.StartAxisId
+                || a.EndAxisId == b.EndAxisId;
+        }
+
+        private bool AreWallsBeamSpanConnectedOnPlan(BeamInfo a, BeamInfo b)
+        {
+            if (a == null || b == null) return false;
+            if (a.FixedAxisId != b.FixedAxisId) return false;
+            if (!_axisService.TryIntersect(a.FixedAxisId, a.StartAxisId, out Point2d a1) ||
+                !_axisService.TryIntersect(a.FixedAxisId, a.EndAxisId, out Point2d a2) ||
+                !_axisService.TryIntersect(b.FixedAxisId, b.StartAxisId, out Point2d b1) ||
+                !_axisService.TryIntersect(b.FixedAxisId, b.EndAxisId, out Point2d b2))
+                return false;
+
+            Vector2d u = (a2 - a1);
+            if (u.Length <= 1e-9) return false;
+            u = u.GetNormal();
+            double aMin = Math.Min(a1.X * u.X + a1.Y * u.Y, a2.X * u.X + a2.Y * u.Y);
+            double aMax = Math.Max(a1.X * u.X + a1.Y * u.Y, a2.X * u.X + a2.Y * u.Y);
+            double bMin = Math.Min(b1.X * u.X + b1.Y * u.Y, b2.X * u.X + b2.Y * u.Y);
+            double bMax = Math.Max(b1.X * u.X + b1.Y * u.Y, b2.X * u.X + b2.Y * u.Y);
+
+            // Ayni aks uzerinde araliklar temas/ortusuyorsa (kolonla bitis dahil) bagli say.
+            const double tol = 1e-3;
+            double gap = Math.Max(bMin - aMax, aMin - bMax);
+            return gap <= tol;
+        }
+
+        private bool ShareEndpointColumnByAxis(BeamInfo a, BeamInfo b)
+        {
+            if (a == null || b == null) return false;
+            if (a.FixedAxisId != b.FixedAxisId) return false;
+            var ca = GetEndpointColumnNosForBeam(a);
+            var cb = GetEndpointColumnNosForBeam(b);
+            if (ca.Count == 0 || cb.Count == 0) return false;
+            return ca.Overlaps(cb);
+        }
+
+        private HashSet<int> GetEndpointColumnNosForBeam(BeamInfo beam)
+        {
+            var set = new HashSet<int>();
+            if (beam == null) return set;
+            bool fixedIsX = beam.FixedAxisId >= 1001 && beam.FixedAxisId <= 1999;
+            bool fixedIsY = beam.FixedAxisId >= 2001 && beam.FixedAxisId <= 2999;
+            if (!fixedIsX && !fixedIsY) return set;
+
+            foreach (var c in _model.Columns)
+            {
+                if (fixedIsX)
+                {
+                    if (c.AxisXId != beam.FixedAxisId) continue;
+                    if (c.AxisYId == beam.StartAxisId || c.AxisYId == beam.EndAxisId)
+                        set.Add(c.ColumnNo);
+                }
+                else
+                {
+                    if (c.AxisYId != beam.FixedAxisId) continue;
+                    if (c.AxisXId == beam.StartAxisId || c.AxisXId == beam.EndAxisId)
+                        set.Add(c.ColumnNo);
+                }
+            }
+            return set;
+        }
+
+        private bool AreItemsContiguousOnPlan(
+            (Geometry wall, int fixedAxisId, BeamInfo beam, List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, Point2d center, int polygonSectionId)> columns) a,
+            (Geometry wall, int fixedAxisId, BeamInfo beam, List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, Point2d center, int polygonSectionId)> columns) b)
+        {
+            if (a.beam == null || b.beam == null) return false;
+            if (a.fixedAxisId != b.fixedAxisId) return false;
+
+            // Aynı doğrultu: mevcut plan görünümünde açı farkı çok küçük olmalı.
+            double angA = GetAxisLineAngleRad(a.fixedAxisId);
+            double angB = GetAxisLineAngleRad(b.fixedAxisId);
+            if (Math.Abs(NormalizeAngleRad(angA - angB)) > (Math.PI / 180.0)) return false; // 1 deg
+
+            Geometry ga = BuildGroupingCompositeGeometry(a);
+            Geometry gb = BuildGroupingCompositeGeometry(b);
+            if (ga == null || gb == null || ga.IsEmpty || gb.IsEmpty) return false;
+            try
+            {
+                if (ga.Intersects(gb) || ga.Touches(gb) || gb.Touches(ga)) return true;
+                return ga.Distance(gb) <= 1.0; // 1 cm ve alti bosluk "bosluksuz" kabul edilir
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static double NormalizeAngleRad(double a)
+        {
+            while (a > Math.PI) a -= (2.0 * Math.PI);
+            while (a <= -Math.PI) a += (2.0 * Math.PI);
+            return a;
+        }
+
+        private static Geometry BuildGroupingCompositeGeometry(
+            (Geometry wall, int fixedAxisId, BeamInfo beam, List<(Geometry geom, ColumnAxisInfo col, (double W, double H) dim, Point2d center, int polygonSectionId)> columns) item)
+        {
+            if (item.wall == null || item.wall.IsEmpty) return null;
+            var geoms = new List<Geometry> { item.wall };
+            if (item.columns != null)
+            {
+                foreach (var c in item.columns)
+                {
+                    if (c.geom != null && !c.geom.IsEmpty) geoms.Add(c.geom);
+                }
+            }
+            if (geoms.Count == 1) return geoms[0];
+            try { return CascadedPolygonUnion.Union(geoms); } catch { return geoms[0]; }
         }
 
         /// <summary>
@@ -1592,6 +2810,207 @@ namespace ST4PlanIdCiz
             }
         }
 
+        private void DrawColumnPlanDimensionsForFloor(Transaction tr, BlockTableRecord btr, Database db, FloorInfo floor, double offsetX, double offsetY)
+        {
+            if (!_isKolon50Mode) return;
+            const double dimTextHeightCm = 12.0;
+            ObjectId dimStyleId = GetOrCreatePlanOlcuDimStyle(tr, db, dimTextHeightCm);
+            const double rowGapCm = 20.0;
+            const double firstOffsetCm = 20.0;
+
+            foreach (var col in _model.Columns)
+            {
+                if (!_axisService.TryIntersect(col.AxisXId, col.AxisYId, out Point2d axisNode)) continue;
+                int sectionId = ResolveColumnSectionId(floor.FloorNo, col.ColumnNo);
+                int polygonSectionId = ResolvePolygonPositionSectionId(floor.FloorNo, col.ColumnNo);
+                if (col.ColumnType == 2) continue; // sadece dikdörtgen + poligon
+                if (col.ColumnType == 3)
+                {
+                    if (polygonSectionId <= 0 || !_model.PolygonColumnSectionByPositionSectionId.ContainsKey(polygonSectionId)) continue;
+                }
+                else if (sectionId <= 0 || !_model.ColumnDimsBySectionId.ContainsKey(sectionId))
+                {
+                    continue;
+                }
+
+                var dim = sectionId > 0 && _model.ColumnDimsBySectionId.ContainsKey(sectionId)
+                    ? _model.ColumnDimsBySectionId[sectionId]
+                    : (W: 40.0, H: 40.0);
+                double hw = dim.W / 2.0;
+                double hh = dim.H / 2.0;
+                var offsetLocal = ComputeColumnOffset(col.OffsetXRaw, col.OffsetYRaw, hw, hh);
+                var offsetGlobal = Rotate(offsetLocal, col.AngleDeg);
+                var center = new Point2d(axisNode.X + offsetGlobal.X + offsetX, axisNode.Y + offsetGlobal.Y + offsetY);
+                var axisAtColumn = new Point2d(axisNode.X + offsetX, axisNode.Y + offsetY);
+
+                if (col.ColumnType == 3 && TryGetPolygonColumn(polygonSectionId, center, col.AngleDeg, out var polyPoints))
+                {
+                    DrawPolygonColumnDimension2Tier(tr, btr, dimStyleId, polyPoints, axisAtColumn, col.AngleDeg, firstOffsetCm, rowGapCm);
+                }
+                else
+                {
+                    DrawRectColumnDimensionWithAxisSplit(tr, btr, dimStyleId, center, hw, hh, col.AngleDeg, axisAtColumn, firstOffsetCm, rowGapCm);
+                }
+            }
+        }
+
+        private void DrawRectColumnDimensionWithAxisSplit(
+            Transaction tr, BlockTableRecord btr, ObjectId dimStyleId,
+            Point2d center, double hw, double hh, double angleDeg, Point2d axisPointWorld,
+            double firstOffsetCm, double rowGapCm)
+        {
+            var rect = BuildRect(center, hw, hh, angleDeg);
+            // rect order: LB, RB, RT, LT in local system
+            DrawOneRectSideDimension(tr, btr, dimStyleId, rect[0], rect[1], new Vector2d(0, -1), axisPointWorld, angleDeg, center, firstOffsetCm, rowGapCm, useLocalX: true);
+            DrawOneRectSideDimension(tr, btr, dimStyleId, rect[1], rect[2], new Vector2d(1, 0), axisPointWorld, angleDeg, center, firstOffsetCm, rowGapCm, useLocalX: false);
+        }
+
+        private void DrawOneRectSideDimension(
+            Transaction tr, BlockTableRecord btr, ObjectId dimStyleId,
+            Point2d p1, Point2d p2, Vector2d localOutwardNormal, Point2d axisPointWorld, double angleDeg, Point2d center,
+            double firstOffsetCm, double rowGapCm, bool useLocalX)
+        {
+            Vector2d worldOut = Rotate(localOutwardNormal, angleDeg).GetNormal();
+            Point2d mid = new Point2d((p1.X + p2.X) * 0.5, (p1.Y + p2.Y) * 0.5);
+
+            // Aks kolonu kesiyorsa ikinci ölçü çizgisi: (parça ölçüler)
+            Point2d axisLocal = ToLocal(axisPointWorld, center, angleDeg);
+            Point2d a = ToLocal(p1, center, angleDeg);
+            Point2d b = ToLocal(p2, center, angleDeg);
+            double tSplit = useLocalX
+                ? (Math.Abs(b.X - a.X) > 1e-9 ? (axisLocal.X - a.X) / (b.X - a.X) : -1.0)
+                : (Math.Abs(b.Y - a.Y) > 1e-9 ? (axisLocal.Y - a.Y) / (b.Y - a.Y) : -1.0);
+            bool hasSplit = tSplit > 1e-6 && tSplit < 1.0 - 1e-6;
+            Point2d dimLinePtTotal = mid + worldOut.MultiplyBy(hasSplit ? (firstOffsetCm + rowGapCm) : firstOffsetCm);
+            if (tSplit > 1e-6 && tSplit < 1.0 - 1e-6)
+            {
+                Point2d split = new Point2d(
+                    p1.X + (p2.X - p1.X) * tSplit,
+                    p1.Y + (p2.Y - p1.Y) * tSplit);
+                Point2d dimLinePtSplit = mid + worldOut.MultiplyBy(firstOffsetCm);
+                AppendEntity(tr, btr, new AlignedDimension(
+                    new Point3d(p1.X, p1.Y, 0),
+                    new Point3d(split.X, split.Y, 0),
+                    new Point3d(dimLinePtSplit.X, dimLinePtSplit.Y, 0),
+                    "",
+                    dimStyleId) { Layer = LayerOlcu });
+                AppendEntity(tr, btr, new AlignedDimension(
+                    new Point3d(split.X, split.Y, 0),
+                    new Point3d(p2.X, p2.Y, 0),
+                    new Point3d(dimLinePtSplit.X, dimLinePtSplit.Y, 0),
+                    "",
+                    dimStyleId) { Layer = LayerOlcu });
+            }
+
+            AppendEntity(tr, btr, new AlignedDimension(
+                new Point3d(p1.X, p1.Y, 0),
+                new Point3d(p2.X, p2.Y, 0),
+                new Point3d(dimLinePtTotal.X, dimLinePtTotal.Y, 0),
+                "",
+                dimStyleId) { Layer = LayerOlcu });
+        }
+
+        private void DrawPolygonColumnDimension2Tier(
+            Transaction tr, BlockTableRecord btr, ObjectId dimStyleId, Point2d[] polyPoints, Point2d axisPointWorld, double angleDeg,
+            double firstOffsetCm, double rowGapCm)
+        {
+            if (polyPoints == null || polyPoints.Length < 3) return;
+            Point2d center = GetPolygonCenter(polyPoints);
+            var local = polyPoints.Select(p => ToLocal(p, center, angleDeg)).ToList();
+            double minX = local.Min(p => p.X), maxX = local.Max(p => p.X), minY = local.Min(p => p.Y), maxY = local.Max(p => p.Y);
+            Point2d axisLocal = ToLocal(axisPointWorld, center, angleDeg);
+            const double tol = 1e-3;
+
+            DrawPolygonFace2Tier(tr, btr, dimStyleId, local, center, angleDeg, isHorizontal: true, faceValue: minY, outwardLocal: new Vector2d(0, -1), axisCoordOnFace: axisLocal.X, firstOffsetCm, rowGapCm, tol);
+            DrawPolygonFace2Tier(tr, btr, dimStyleId, local, center, angleDeg, isHorizontal: false, faceValue: maxX, outwardLocal: new Vector2d(1, 0), axisCoordOnFace: axisLocal.Y, firstOffsetCm, rowGapCm, tol);
+            DrawPolygonFace2Tier(tr, btr, dimStyleId, local, center, angleDeg, isHorizontal: true, faceValue: maxY, outwardLocal: new Vector2d(0, 1), axisCoordOnFace: axisLocal.X, firstOffsetCm, rowGapCm, tol);
+            DrawPolygonFace2Tier(tr, btr, dimStyleId, local, center, angleDeg, isHorizontal: false, faceValue: minX, outwardLocal: new Vector2d(-1, 0), axisCoordOnFace: axisLocal.Y, firstOffsetCm, rowGapCm, tol);
+        }
+
+        private void DrawPolygonFace2Tier(
+            Transaction tr, BlockTableRecord btr, ObjectId dimStyleId, List<Point2d> localPoints, Point2d center, double angleDeg,
+            bool isHorizontal, double faceValue, Vector2d outwardLocal, double axisCoordOnFace,
+            double firstOffsetCm, double rowGapCm, double tol)
+        {
+            if (localPoints == null || localPoints.Count < 2) return;
+            double minT = isHorizontal ? localPoints.Min(p => p.X) : localPoints.Min(p => p.Y);
+            double maxT = isHorizontal ? localPoints.Max(p => p.X) : localPoints.Max(p => p.Y);
+            if (maxT - minT <= 1e-6) return;
+
+            Point2d startLocal = isHorizontal ? new Point2d(minT, faceValue) : new Point2d(faceValue, minT);
+            Point2d endLocal = isHorizontal ? new Point2d(maxT, faceValue) : new Point2d(faceValue, maxT);
+            Point2d startWorld = ToWorld(startLocal, center, angleDeg);
+            Point2d endWorld = ToWorld(endLocal, center, angleDeg);
+
+            Vector2d worldOut = Rotate(outwardLocal, angleDeg).GetNormal();
+            Point2d midWorld = new Point2d((startWorld.X + endWorld.X) * 0.5, (startWorld.Y + endWorld.Y) * 0.5);
+
+            // 2. katman: toplam
+            Point2d totalLinePt = midWorld + worldOut.MultiplyBy(firstOffsetCm + rowGapCm);
+            AppendEntity(tr, btr, new AlignedDimension(
+                new Point3d(startWorld.X, startWorld.Y, 0),
+                new Point3d(endWorld.X, endWorld.Y, 0),
+                new Point3d(totalLinePt.X, totalLinePt.Y, 0),
+                "",
+                dimStyleId) { Layer = LayerOlcu });
+
+            // 1. katman: verteks segmentleri + kolon aksi ile bolumler
+            var cutCoords = new List<double>();
+            foreach (var pt in localPoints)
+            {
+                cutCoords.Add(isHorizontal ? pt.X : pt.Y);
+            }
+            cutCoords.Add(axisCoordOnFace);
+            var orderedCuts = cutCoords
+                .Where(v => v >= minT - 1e-6 && v <= maxT + 1e-6)
+                .OrderBy(v => v)
+                .ToList();
+            var uniq = new List<double>();
+            foreach (double v in orderedCuts)
+            {
+                if (uniq.Count == 0 || Math.Abs(uniq[uniq.Count - 1] - v) > 1e-3) uniq.Add(v);
+            }
+            if (uniq.Count < 2) return;
+
+            Point2d detailedLinePt = midWorld + worldOut.MultiplyBy(firstOffsetCm);
+            for (int i = 0; i < uniq.Count - 1; i++)
+            {
+                Point2d aL = isHorizontal ? new Point2d(uniq[i], faceValue) : new Point2d(faceValue, uniq[i]);
+                Point2d bL = isHorizontal ? new Point2d(uniq[i + 1], faceValue) : new Point2d(faceValue, uniq[i + 1]);
+                Point2d aW = ToWorld(aL, center, angleDeg);
+                Point2d bW = ToWorld(bL, center, angleDeg);
+                if (aW.GetDistanceTo(bW) <= 1e-6) continue;
+                AppendEntity(tr, btr, new AlignedDimension(
+                    new Point3d(aW.X, aW.Y, 0),
+                    new Point3d(bW.X, bW.Y, 0),
+                    new Point3d(detailedLinePt.X, detailedLinePt.Y, 0),
+                    "",
+                    dimStyleId) { Layer = LayerOlcu });
+            }
+        }
+
+        private static Point2d GetPolygonCenter(Point2d[] pts)
+        {
+            double sx = 0.0, sy = 0.0;
+            for (int i = 0; i < pts.Length; i++) { sx += pts[i].X; sy += pts[i].Y; }
+            return new Point2d(sx / pts.Length, sy / pts.Length);
+        }
+
+        private static Point2d ToLocal(Point2d world, Point2d origin, double angleDeg)
+        {
+            double a = -angleDeg * (Math.PI / 180.0);
+            double c = Math.Cos(a), s = Math.Sin(a);
+            double dx = world.X - origin.X;
+            double dy = world.Y - origin.Y;
+            return new Point2d(dx * c - dy * s, dx * s + dy * c);
+        }
+
+        private static Point2d ToWorld(Point2d local, Point2d origin, double angleDeg)
+        {
+            var r = Rotate(new Vector2d(local.X, local.Y), angleDeg);
+            return new Point2d(origin.X + r.X, origin.Y + r.Y);
+        }
+
         /// <summary>Kolonun sağ alt köşesi: kolon açısına göre (dünya Y değil). Dikdörtgen: rect[1]; daire: merkez + r*(sağ-alt yönü); poligon: kolon yerelinde sağ-alt köşe.</summary>
         private Point2d GetColumnLabelReferencePoint(Point2d center, double angleDeg, int columnType, double hw, double hh, int polygonSectionId)
         {
@@ -1694,6 +3113,90 @@ namespace ST4PlanIdCiz
                 VerticalMode = vertMode,
                 AlignmentPoint = new Point3d(dimPos.X, dimPos.Y, 0),
                 Rotation = rotationRad
+            };
+            AppendEntity(tr, btr, txt2);
+        }
+
+        /// <summary>
+        /// KOLON50 perde kopyalarında: etiket solundan hizalı — kolonun en sağ noktasının 10 cm sağında (TextLeft);
+        /// düşeyde önceki hizaya göre 10 cm aşağı; üst satır tepesi hâlâ perde alt çizgisine göre hesaplanır.
+        /// </summary>
+        private void AppendColumnLabelCenteredBelowWallBottom(
+            Transaction tr,
+            BlockTableRecord btr,
+            double columnRightEdgeX,
+            double wallBottomY,
+            int columnNo,
+            int columnType,
+            (double W, double H) dim,
+            FloorInfo floor,
+            int columnNoPadWidth = 2)
+        {
+            const double labelHeightCm = 12.0;
+            const double gapNameToDimCm = 18.0;
+            // Perde alt çizgisi (Y) ile üst yazı satırının üst kenarı arası (cm) — hemen alt.
+            const double gapBelowWallTopOfTextCm = 3.0;
+            const double extraDownCm = 10.0;
+            const double offsetRightFromColumnCm = 10.0;
+            double anchorX = columnRightEdgeX + offsetRightFromColumnCm;
+            Database db = btr.Database;
+            ObjectId styleId = GetOrCreateYaziBeykentTextStyle(tr, db);
+            string storyId = floor != null && !string.IsNullOrEmpty(floor.ShortName)
+                ? floor.ShortName
+                : (floor != null ? floor.FloorNo.ToString(CultureInfo.InvariantCulture) : "B");
+            int pad = columnNoPadWidth < 1 ? 1 : columnNoPadWidth;
+            string nameLine = "S" + storyId + columnNo.ToString("D" + pad, CultureInfo.InvariantCulture);
+            string dimLine = columnType == 2
+                ? "R= " + dim.W.ToString("F0", CultureInfo.InvariantCulture)
+                : string.Format(CultureInfo.InvariantCulture, "({0:F0}/{1:F0})", dim.W, dim.H);
+            var vertMode = TextVerticalMode.TextBottom;
+            // TextBottom: hizalama noktası satırın tabanı; üst kenar = taban + yükseklik.
+            // Üst satırın üstü = wallBottomY - gap - extraDownCm (bir miktar daha aşağı).
+            double nameBaselineY = wallBottomY - gapBelowWallTopOfTextCm - labelHeightCm - extraDownCm;
+
+            if (columnType == 3)
+            {
+                var txt = new DBText
+                {
+                    Layer = LayerKolonIsmi,
+                    Height = labelHeightCm,
+                    TextStyleId = styleId,
+                    TextString = KolonDonatiTableDrawer.NormalizeDiameterSymbol(nameLine),
+                    HorizontalMode = TextHorizontalMode.TextLeft,
+                    VerticalMode = vertMode,
+                    AlignmentPoint = new Point3d(anchorX, nameBaselineY, 0),
+                    Position = new Point3d(anchorX, nameBaselineY, 0),
+                    Rotation = 0.0
+                };
+                AppendEntity(tr, btr, txt);
+                return;
+            }
+
+            var txt1 = new DBText
+            {
+                Layer = LayerKolonIsmi,
+                Height = labelHeightCm,
+                TextStyleId = styleId,
+                TextString = KolonDonatiTableDrawer.NormalizeDiameterSymbol(nameLine),
+                HorizontalMode = TextHorizontalMode.TextLeft,
+                VerticalMode = vertMode,
+                AlignmentPoint = new Point3d(anchorX, nameBaselineY, 0),
+                Position = new Point3d(anchorX, nameBaselineY, 0),
+                Rotation = 0.0
+            };
+            AppendEntity(tr, btr, txt1);
+            double dimBaselineY = nameBaselineY - gapNameToDimCm;
+            var txt2 = new DBText
+            {
+                Layer = LayerKolonIsmi,
+                Height = labelHeightCm,
+                TextStyleId = styleId,
+                TextString = KolonDonatiTableDrawer.NormalizeDiameterSymbol(dimLine),
+                HorizontalMode = TextHorizontalMode.TextLeft,
+                VerticalMode = vertMode,
+                AlignmentPoint = new Point3d(anchorX, dimBaselineY, 0),
+                Position = new Point3d(anchorX, dimBaselineY, 0),
+                Rotation = 0.0
             };
             AppendEntity(tr, btr, txt2);
         }
