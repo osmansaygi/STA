@@ -72,6 +72,44 @@ namespace ST4PlanIdCiz
         private const int SectionOrderTieBeam = 14;
         private const int SectionOrderHatilStrip = 15;
         private const string LayerTemelHatiliKesit = "TEMEL HATILI (BEYKENT)";
+        /// <summary>Temel kesiti altında grobeton bandı yüksekliği (cm).</summary>
+        private const double GrobetonUnderFoundationKesitHeightCm = 10.0;
+        /// <summary>Temel parçaları arası (kesitte) boşlukta üst kottan aşağı grobeton şeridi kalınlığı (cm).</summary>
+        private const double GrobetonBetweenFoundationsGapStripHeightCm = 15.0;
+        /// <summary>Ara boşluğa grobeton çizmek için minimum boşluk genişliği (cm).</summary>
+        private const double GrobetonBetweenFoundationsMinGapWidthCm = 3.0;
+        /// <summary>Temel A dilimleri birleştirmede bitişik kabul eşiği (cm).</summary>
+        private const double GrobetonFoundationAIntervalJoinEpsCm = 2.0;
+        /// <summary>Zemin çizgisi, temel/grobeton hattı boyunca her uçtan uzatma (cm).</summary>
+        private const double KesitZeminCizgiTemelHatUzantisiCm = 50.0;
+        /// <summary>Kesit kotları: yakın kotları tek satırda birleştir (cm).</summary>
+        private const double KesitKotMergeTolCm = 1.5;
+        /// <summary>A-A kesitte kot üçgeni tepe noktası — yapı sağ kenarından (cm).</summary>
+        private const double KesitKotDatumGapFromSectionCm = 22.0;
+        /// <summary>B-B kesitte kot üçgeni tepe noktası — kesit üst (boyuna) kenarından (cm).</summary>
+        private const double KesitKotBbDatumGapFromSectionCm = 22.0;
+        /// <summary>Klasik kot üçgeni: yükseklik (cm) — referans çizim.</summary>
+        private const double KesitKotTriHeightCm = 12.0;
+        /// <summary>Klasik kot üçgeni: üst taban yarım genişlik (cm); tam taban 24.</summary>
+        private const double KesitKotTriHalfWidthCm = 12.0;
+        /// <summary>Klasik kot: tepe noktasından kesite doğru uzantı (cm).</summary>
+        private const double KesitKotExtTowardSectionCm = 20.0;
+        /// <summary>Klasik kot: sağ üst köşeden yatay uzantı (cm).</summary>
+        private const double KesitKotExtTopRightCm = 26.0;
+        /// <summary>26 cm kot uzantı çizgisi ile DBText tabanı arası (cm); 0 = tam çizgi hizası.</summary>
+        private const double KesitKotTextAboveExtensionCm = 0.0;
+        /// <summary>İki kot kot farkı bundan küçükse alttaki (düşük Z) işaret + yazı kayar.</summary>
+        private const double KesitKotCrowdedSeparationMinCm = 13.0;
+        /// <summary>Kotlar çok yakınsa alttaki: A-A’da +X (sağa), sol kesitte +Y (üste) (cm).</summary>
+        private const double KesitKotCrowdedShiftLowerCm = 30.0;
+        /// <summary>Kesit kot metin yüksekliği (cm).</summary>
+        private const double KesitKotTextHeightCm = 10.0;
+        /// <summary>Yalnızca kalıp planı kesiti (temel planı değil): A-A kot işareti + yazı −X (cm).</summary>
+        private const double KesitKotKalipPlanAaShiftLeftCm = 82.0;
+        /// <summary>Yalnızca kalıp planı sol kesiti: B-B kot işareti + yazı −Y (cm) — aşağı (sola kaydırma yok).</summary>
+        private const double KesitKotKalipPlanBbShiftDownCm = 82.0;
+        /// <summary>Kesit kot işareti SOLID tarama rengi (ACI); çizgiler <see cref="LayerKotCizgisi"/> katman rengini kullanır.</summary>
+        private const short KesitKotWedgeSolidHatchColorIndex = 250;
         /// <summary>A-A: ölçü çizgisi eleman sağ kenarından bu kadar sağda (cm).</summary>
         private const double KesitOlcuAaDimLineOffsetCm = 20.0;
         /// <summary>B-B: ölçü çizgisi referans kenarının bu kadar altında (cm).</summary>
@@ -84,6 +122,8 @@ namespace ST4PlanIdCiz
         /// <summary>Hatıl–temel Z birleşiminde alt/üst hizaya cm tolerans.</summary>
         private const double KesitOlcuZFlushEpsCm = 4.0;
         private const double KesitOlcuRadyeAralikCm = 2000.0;
+        /// <summary>Radye ölçü istasyonu, kesitte dar kalan temel hatılı A bandının dışında kalmasın diye ± genişletme (cm).</summary>
+        private const double KesitRadyeOlcuHatilSkipMarginCm = 650.0;
         private const double KesitOlcuStaggerCm = 16.0;
 
         private sealed class SectionSlice
@@ -777,6 +817,10 @@ namespace ST4PlanIdCiz
             DrawKesitSiniriFromBeams(tr, btr, slicesTop, contentTopX, contentTopY, aminT, minZT, spanZT, horizontalAlongX: true, mirrorElevationX: false, isFoundationPlan);
             DrawKesitSchematicDimensions(tr, btr, slicesTop, contentTopX, contentTopY, aminT, minZT, spanZT, horizontalAlongX: true, mirrorElevationX: false, isFoundationPlan, planOlcuDimId);
             DrawKesitSchematicElementLabels(tr, btr, db, slicesTop, floor, contentTopX, contentTopY, aminT, minZT, spanZT, true, false, isFoundationPlan);
+            if (isFoundationPlan)
+                DrawGrobetonUnderFoundationKesit(tr, btr, slicesTop, contentTopX, contentTopY, aminT, minZT, spanZT, horizontalAlongX: true, mirrorElevationX: false);
+            try { DrawKesitSchematicElevationKots(tr, btr, db, slicesTop, contentTopX, contentTopY, aminT, minZT, spanZT, horizontalAlongX: true, mirrorElevationX: false, isFoundationPlan); }
+            catch { /* kesit kotları — planın geri kalanı çizilsin */ }
             // A-A başlık: üst aks balon üst yüzeyinden 60 cm yukarıda (metin alt kenarı); TextTop için üst hizası = alt + yükseklik
             double yAaBaslikUstHizasi = yAksBalonUstDisYuzey + KesitIsmiUstAksBalonUstuBoslukCm + KesitBaslikMetinYukseklikCm;
             DrawKesitTitleBelowSchematic(tr, btr, db, "A-A KESİTİ", contentTopX + spanAT * 0.5, yAaBaslikUstHizasi);
@@ -803,9 +847,709 @@ namespace ST4PlanIdCiz
             DrawKesitSiniriFromBeams(tr, btr, slicesLeft, contentLeftX, contentLeftY, aminL, minZL, spanZL, horizontalAlongX: false, mirrorElevationX: true, isFoundationPlan);
             DrawKesitSchematicDimensions(tr, btr, slicesLeft, contentLeftX, contentLeftY, aminL, minZL, spanZL, horizontalAlongX: false, mirrorElevationX: true, isFoundationPlan, planOlcuDimId);
             DrawKesitSchematicElementLabels(tr, btr, db, slicesLeft, floor, contentLeftX, contentLeftY, aminL, minZL, spanZL, false, true, isFoundationPlan);
+            if (isFoundationPlan)
+                DrawGrobetonUnderFoundationKesit(tr, btr, slicesLeft, contentLeftX, contentLeftY, aminL, minZL, spanZL, horizontalAlongX: false, mirrorElevationX: true);
+            try { DrawKesitSchematicElevationKots(tr, btr, db, slicesLeft, contentLeftX, contentLeftY, aminL, minZL, spanZL, horizontalAlongX: false, mirrorElevationX: true, isFoundationPlan); }
+            catch { /* kesit kotları */ }
             // B-B başlık: sol aks balon sol dış yüzeyinden 60 cm sola; dikey metnin plana bakan sağ kenarı ≈ merkez + yükseklik/2
             double xBbBaslikMerkez = xAksBalonSolDisYuzey - KesitIsmiSolAksBalonSolBoslukCm - KesitBaslikMetinYukseklikCm * 0.5;
             DrawKesitTitleVerticalRightOfSection(tr, btr, db, "B-B KESİTİ", xBbBaslikMerkez, contentLeftY + spanAL * 0.5);
+        }
+
+        /// <summary>Temel planı kesitlerinde her TEMEL (BEYKENT) parçası (sürekli / tekil / döşeme temeli) altına 10 cm grobeton — bitişik parçalar NTS <c>Union</c> ile birleştirilerek tek kapalı polyline olarak çizilir (<see cref="LayerGrobeton"/>).</summary>
+        private void DrawGrobetonUnderFoundationKesit(Transaction tr, BlockTableRecord btr, List<SectionSlice> slices,
+            double originX, double originY, double amin, double minZ, double spanZ,
+            bool horizontalAlongX, bool mirrorElevationX)
+        {
+            if (slices == null || slices.Count == 0) return;
+            const string layerTemel = "TEMEL (BEYKENT)";
+            double h = GrobetonUnderFoundationKesitHeightCm;
+            var grobetonRects = new List<Geometry>();
+            var factory = StaticGeomFactory;
+            foreach (var s in slices)
+            {
+                if (s.Layer != layerTemel) continue;
+                if (s.Order != SectionOrderContinuousFoundation && s.Order != SectionOrderSingleFooting && s.Order != SectionOrderSlabFoundation)
+                    continue;
+                double aLo = Math.Min(s.A0, s.A1);
+                double aHi = Math.Max(s.A0, s.A1);
+                if (aHi - aLo < 1e-3) continue;
+                double zLo = s.Z0;
+                double xl, xr, yb, yt;
+                if (horizontalAlongX)
+                {
+                    xl = originX + (aLo - amin);
+                    xr = originX + (aHi - amin);
+                    yt = originY + (zLo - minZ);
+                    yb = yt - h;
+                }
+                else
+                {
+                    yb = originY + (aLo - amin);
+                    yt = originY + (aHi - amin);
+                    if (mirrorElevationX)
+                    {
+                        double xFace = originX + spanZ - (zLo - minZ);
+                        double xOut = xFace + h;
+                        xl = Math.Min(xFace, xOut);
+                        xr = Math.Max(xFace, xOut);
+                    }
+                    else
+                    {
+                        double xFace = originX + (zLo - minZ);
+                        double xOut = xFace - h;
+                        xl = Math.Min(xFace, xOut);
+                        xr = Math.Max(xFace, xOut);
+                    }
+                }
+                if (xr - xl < 1e-6 || yt - yb < 1e-6) continue;
+                var ring = factory.CreateLinearRing(new[]
+                {
+                    new Coordinate(xl, yb),
+                    new Coordinate(xr, yb),
+                    new Coordinate(xr, yt),
+                    new Coordinate(xl, yt),
+                    new Coordinate(xl, yb)
+                });
+                grobetonRects.Add(factory.CreatePolygon(ring));
+            }
+            if (grobetonRects.Count == 0) return;
+            Geometry merged;
+            try
+            {
+                merged = grobetonRects.Count == 1 ? grobetonRects[0] : CascadedPolygonUnion.Union(grobetonRects);
+            }
+            catch
+            {
+                foreach (var g in grobetonRects)
+                {
+                    if (g is Polygon p)
+                    {
+                        var c = p.ExteriorRing.Coordinates;
+                        if (c.Length >= 4)
+                            AppendClosedRectanglePolyline(tr, btr, c[0].X, c[0].Y, c[2].X, c[2].Y, LayerGrobeton, addGrobetonArConcHatch: true);
+                    }
+                }
+                if (TryCombineGrobetonRectEnvelopes(grobetonRects, out double zx0, out double zx1, out double zy0, out double zy1))
+                    DrawZeminSingleLineAlongFoundationSection(tr, btr, zx0, zx1, zy0, zy1, horizontalAlongX, mirrorElevationX);
+                DrawGrobetonGapStripsBetweenFoundationPartsKesit(tr, btr, slices, originX, originY, amin, minZ, spanZ, horizontalAlongX, mirrorElevationX);
+                return;
+            }
+            if (merged == null || merged.IsEmpty) return;
+            DrawGeometryRingsAsPolylines(tr, btr, merged, LayerGrobeton, addHatch: true, hatchAngleRad: 0, exteriorRingsOnly: false, applySmallTriangleTrim: true, hatchPatternName: GrobetonHatchPatternName, hatchPatternScale: GrobetonHatchPatternScale, hatchLayerOverride: LayerTarama);
+            DrawZeminLinesUnderGrobetonMerged(tr, btr, merged, horizontalAlongX, mirrorElevationX);
+            DrawGrobetonGapStripsBetweenFoundationPartsKesit(tr, btr, slices, originX, originY, amin, minZ, spanZ, horizontalAlongX, mirrorElevationX);
+        }
+
+        /// <summary>Temel kesitinde ara boşluk şeritleri: temel hatılı <b>yoksa</b> sürekli/tekil/radye temeller arası; <b>varsa</b> temel hatılı + perde + kolon birleşim boşlukları (hatıl–hatıl / hatıl–perde / hatıl–kolon). Üst kot, komşu taraflardaki temel hatılların üst kotunun <b>en düşüğü</b> ile sınırlı (hiçbiri üstünde kalmaz).</summary>
+        private static void DrawGrobetonGapStripsBetweenFoundationPartsKesit(Transaction tr, BlockTableRecord btr, List<SectionSlice> slices,
+            double originX, double originY, double amin, double minZ, double spanZ,
+            bool horizontalAlongX, bool mirrorElevationX)
+        {
+            if (slices == null || slices.Count == 0) return;
+            const string layerTemel = "TEMEL (BEYKENT)";
+            double zZeminGro = double.PositiveInfinity;
+            foreach (var s in slices)
+            {
+                if (s.Layer != layerTemel) continue;
+                if (s.Order != SectionOrderContinuousFoundation && s.Order != SectionOrderSingleFooting && s.Order != SectionOrderSlabFoundation)
+                    continue;
+                zZeminGro = Math.Min(zZeminGro, s.Z0 - GrobetonUnderFoundationKesitHeightCm);
+            }
+
+            bool sectionHasTemelHatili = slices.Any(s => s.Layer == LayerTemelHatiliKesit);
+            double joinE = GrobetonFoundationAIntervalJoinEpsCm;
+            double minGap = GrobetonBetweenFoundationsMinGapWidthCm;
+            double hStrip = GrobetonBetweenFoundationsGapStripHeightCm;
+
+            if (sectionHasTemelHatili)
+            {
+                double zTemelUst = double.NegativeInfinity;
+                foreach (var s in slices)
+                {
+                    if (s.Layer != layerTemel) continue;
+                    if (s.Order != SectionOrderContinuousFoundation && s.Order != SectionOrderSingleFooting && s.Order != SectionOrderSlabFoundation)
+                        continue;
+                    zTemelUst = Math.Max(zTemelUst, s.Z1);
+                }
+                double? zBlokajAltTemelUstu = double.IsNegativeInfinity(zTemelUst) ? (double?)null : zTemelUst;
+
+                var rawHp = new List<(double lo, double hi, double zHat, bool isHat)>();
+                foreach (var s in slices)
+                {
+                    double aLo = Math.Min(s.A0, s.A1);
+                    double aHi = Math.Max(s.A0, s.A1);
+                    if (aHi - aLo < 1e-3) continue;
+                    if (s.Layer == LayerTemelHatiliKesit)
+                        rawHp.Add((aLo, aHi, s.Z1, true));
+                    else if (s.Layer == LayerPerde || s.Layer == LayerKolon)
+                        rawHp.Add((aLo, aHi, double.PositiveInfinity, false));
+                }
+                if (rawHp.Count == 0) return;
+                rawHp.Sort((a, b) => a.lo.CompareTo(b.lo));
+                var mergedHp = new List<(double lo, double hi, double minHatZ1, bool anyHat)>();
+                foreach (var seg in rawHp)
+                {
+                    if (mergedHp.Count == 0)
+                    {
+                        mergedHp.Add((seg.lo, seg.hi, seg.isHat ? seg.zHat : double.PositiveInfinity, seg.isHat));
+                        continue;
+                    }
+                    var last = mergedHp[mergedHp.Count - 1];
+                    if (seg.lo <= last.hi + joinE)
+                    {
+                        double mhz = last.minHatZ1;
+                        if (seg.isHat) mhz = Math.Min(mhz, seg.zHat);
+                        mergedHp[mergedHp.Count - 1] = (last.lo, Math.Max(last.hi, seg.hi), mhz, last.anyHat || seg.isHat);
+                    }
+                    else
+                        mergedHp.Add((seg.lo, seg.hi, seg.isHat ? seg.zHat : double.PositiveInfinity, seg.isHat));
+                }
+                if (mergedHp.Count < 2) return;
+                for (int i = 0; i < mergedHp.Count - 1; i++)
+                {
+                    if (!mergedHp[i].anyHat && !mergedHp[i + 1].anyHat) continue;
+                    double gapLo = mergedHp[i].hi;
+                    double gapHi = mergedHp[i + 1].lo;
+                    if (gapHi - gapLo < minGap) continue;
+                    double zTop = double.PositiveInfinity;
+                    if (mergedHp[i].anyHat) zTop = Math.Min(zTop, mergedHp[i].minHatZ1);
+                    if (mergedHp[i + 1].anyHat) zTop = Math.Min(zTop, mergedHp[i + 1].minHatZ1);
+                    if (double.IsInfinity(zTop)) continue;
+                    DrawGrobetonBlokajEarthGapStripsAt(tr, btr, gapLo, gapHi, zTop, zZeminGro, hStrip, minGap,
+                        originX, originY, amin, minZ, spanZ, horizontalAlongX, mirrorElevationX,
+                        drawEarthFillBelowBlokaj: false, zBlokBottomWorldOverride: zBlokajAltTemelUstu);
+                }
+                return;
+            }
+
+            var raw = new List<(double lo, double hi, double z1)>();
+            foreach (var s in slices)
+            {
+                if (s.Layer != layerTemel) continue;
+                if (s.Order != SectionOrderContinuousFoundation && s.Order != SectionOrderSingleFooting && s.Order != SectionOrderSlabFoundation)
+                    continue;
+                double aLo = Math.Min(s.A0, s.A1);
+                double aHi = Math.Max(s.A0, s.A1);
+                if (aHi - aLo < 1e-3) continue;
+                raw.Add((aLo, aHi, s.Z1));
+            }
+            if (raw.Count == 0) return;
+            raw.Sort((a, b) => a.lo.CompareTo(b.lo));
+            var merged = new List<(double lo, double hi, double z1)>();
+            foreach (var seg in raw)
+            {
+                if (merged.Count == 0)
+                {
+                    merged.Add(seg);
+                    continue;
+                }
+                var last = merged[merged.Count - 1];
+                if (seg.lo <= last.hi + joinE)
+                {
+                    last.hi = Math.Max(last.hi, seg.hi);
+                    last.z1 = Math.Max(last.z1, seg.z1);
+                    merged[merged.Count - 1] = last;
+                }
+                else
+                    merged.Add(seg);
+            }
+            if (merged.Count < 2) return;
+            for (int i = 0; i < merged.Count - 1; i++)
+            {
+                double gapLo = merged[i].hi;
+                double gapHi = merged[i + 1].lo;
+                if (gapHi - gapLo < minGap) continue;
+                double zGroTop = Math.Max(merged[i].z1, merged[i + 1].z1);
+                DrawGrobetonBlokajEarthGapStripsAt(tr, btr, gapLo, gapHi, zGroTop, zZeminGro, hStrip, minGap,
+                    originX, originY, amin, minZ, spanZ, horizontalAlongX, mirrorElevationX,
+                    drawEarthFillBelowBlokaj: true, zBlokBottomWorldOverride: null);
+            }
+        }
+
+        /// <param name="drawEarthFillBelowBlokaj">Temel hatılı kesitte false: EARTH dikdörtgeni çizilmez.</param>
+        /// <param name="zBlokBottomWorldOverride">Doluysa blokaj alt kotu (dünya Z, cm) = temel üst; null ise sabit 15 cm şerit.</param>
+        private static void DrawGrobetonBlokajEarthGapStripsAt(Transaction tr, BlockTableRecord btr,
+            double gapLo, double gapHi, double zGroTop, double zZeminGro, double hStrip, double minGap,
+            double originX, double originY, double amin, double minZ, double spanZ,
+            bool horizontalAlongX, bool mirrorElevationX,
+            bool drawEarthFillBelowBlokaj, double? zBlokBottomWorldOverride)
+        {
+            if (gapHi - gapLo < minGap) return;
+            double zGroBot = zGroTop - hStrip;
+            double zBlokBot = zBlokBottomWorldOverride ?? (zGroBot - hStrip);
+            if (zBlokBottomWorldOverride.HasValue && zBlokBot >= zGroBot - 1e-3)
+                zBlokBot = zGroBot - hStrip;
+            if (horizontalAlongX)
+            {
+                double xl = originX + (gapLo - amin);
+                double xr = originX + (gapHi - amin);
+                double ytGro = originY + (zGroTop - minZ);
+                double ybGro = originY + (zGroBot - minZ);
+                AppendGrobetonGapStripRectangleAnsi33Hatch(tr, btr, xl, ybGro, xr, ytGro);
+                if (zGroBot - zBlokBot > 1e-3)
+                {
+                    double ytBl = originY + (zGroBot - minZ);
+                    double ybBl = originY + (zBlokBot - minZ);
+                    AppendBlokajGapStripRectangleArConcHatch(tr, btr, xl, ybBl, xr, ytBl);
+                }
+                if (drawEarthFillBelowBlokaj && zGroBot - zBlokBot > 1e-3 && !double.IsInfinity(zZeminGro) && zBlokBot - zZeminGro > 1e-3)
+                {
+                    double ytEz = originY + (zBlokBot - minZ);
+                    double ybEz = originY + (zZeminGro - minZ);
+                    AppendBlokajBelowStripRectangleEarthHatch(tr, btr, xl, ybEz, xr, ytEz);
+                }
+            }
+            else
+            {
+                double yb = originY + (gapLo - amin);
+                double yt = originY + (gapHi - amin);
+                double xlGro, xrGro;
+                if (mirrorElevationX)
+                {
+                    double xGroHi = originX + spanZ - (zGroTop - minZ);
+                    double xGroLo = originX + spanZ - (zGroBot - minZ);
+                    xlGro = Math.Min(xGroHi, xGroLo);
+                    xrGro = Math.Max(xGroHi, xGroLo);
+                }
+                else
+                {
+                    double xGroHi = originX + (zGroTop - minZ);
+                    double xGroLo = originX + (zGroBot - minZ);
+                    xlGro = Math.Min(xGroHi, xGroLo);
+                    xrGro = Math.Max(xGroHi, xGroLo);
+                }
+                AppendGrobetonGapStripRectangleAnsi33Hatch(tr, btr, xlGro, yb, xrGro, yt);
+                if (zGroBot - zBlokBot > 1e-3)
+                {
+                    double xlBl, xrBl;
+                    if (mirrorElevationX)
+                    {
+                        double xBlHi = originX + spanZ - (zGroBot - minZ);
+                        double xBlLo = originX + spanZ - (zBlokBot - minZ);
+                        xlBl = Math.Min(xBlHi, xBlLo);
+                        xrBl = Math.Max(xBlHi, xBlLo);
+                    }
+                    else
+                    {
+                        double xBlHi = originX + (zGroBot - minZ);
+                        double xBlLo = originX + (zBlokBot - minZ);
+                        xlBl = Math.Min(xBlHi, xBlLo);
+                        xrBl = Math.Max(xBlHi, xBlLo);
+                    }
+                    AppendBlokajGapStripRectangleArConcHatch(tr, btr, xlBl, yb, xrBl, yt);
+                }
+                if (drawEarthFillBelowBlokaj && zGroBot - zBlokBot > 1e-3 && !double.IsInfinity(zZeminGro) && zBlokBot - zZeminGro > 1e-3)
+                {
+                    double xlEz, xrEz;
+                    if (mirrorElevationX)
+                    {
+                        double xTop = originX + spanZ - (zBlokBot - minZ);
+                        double xBot = originX + spanZ - (zZeminGro - minZ);
+                        xlEz = Math.Min(xTop, xBot);
+                        xrEz = Math.Max(xTop, xBot);
+                    }
+                    else
+                    {
+                        double xTop = originX + (zBlokBot - minZ);
+                        double xBot = originX + (zZeminGro - minZ);
+                        xlEz = Math.Min(xTop, xBot);
+                        xrEz = Math.Max(xTop, xBot);
+                    }
+                    AppendBlokajBelowStripRectangleEarthHatch(tr, btr, xlEz, yb, xrEz, yt);
+                }
+            }
+        }
+
+        /// <summary>Ara boşluk üst grobeton: kesitte ANSI33 tarama (<see cref="LayerTarama"/>), çizgi <see cref="LayerGrobeton"/>.</summary>
+        private static void AppendGrobetonGapStripRectangleAnsi33Hatch(Transaction tr, BlockTableRecord btr, double xLo, double yLo, double xHi, double yHi)
+        {
+            double xl = Math.Min(xLo, xHi), xr = Math.Max(xLo, xHi);
+            double yb = Math.Min(yLo, yHi), yt = Math.Max(yLo, yHi);
+            if (xr - xl < 1e-6 || yt - yb < 1e-6) return;
+            var pl = new Polyline(4);
+            pl.AddVertexAt(0, new Point2d(xl, yb), 0, 0, 0);
+            pl.AddVertexAt(1, new Point2d(xr, yb), 0, 0, 0);
+            pl.AddVertexAt(2, new Point2d(xr, yt), 0, 0, 0);
+            pl.AddVertexAt(3, new Point2d(xl, yt), 0, 0, 0);
+            pl.Closed = true;
+            pl.Layer = LayerGrobeton;
+            pl.LineWeight = LineWeight.LineWeight050;
+            pl.ConstantWidth = 0;
+            ObjectId plId = AppendEntityReturnId(tr, btr, pl);
+            AppendHatchAnsi33(tr, btr, plId, 0);
+        }
+
+        /// <summary>Ara boşluk alt blokaj: <see cref="LayerBlokaj"/> çizgi ve tarama (AR-CONC ölçek <see cref="BlokajGapStripArConcHatchScale"/>); katman şeffaflığı <see cref="LayerBlokajTransparencyPercent"/>.</summary>
+        private static void AppendBlokajGapStripRectangleArConcHatch(Transaction tr, BlockTableRecord btr, double xLo, double yLo, double xHi, double yHi)
+        {
+            double xl = Math.Min(xLo, xHi), xr = Math.Max(xLo, xHi);
+            double yb = Math.Min(yLo, yHi), yt = Math.Max(yLo, yHi);
+            if (xr - xl < 1e-6 || yt - yb < 1e-6) return;
+            var pl = new Polyline(4);
+            pl.AddVertexAt(0, new Point2d(xl, yb), 0, 0, 0);
+            pl.AddVertexAt(1, new Point2d(xr, yb), 0, 0, 0);
+            pl.AddVertexAt(2, new Point2d(xr, yt), 0, 0, 0);
+            pl.AddVertexAt(3, new Point2d(xl, yt), 0, 0, 0);
+            pl.Closed = true;
+            pl.Layer = LayerBlokaj;
+            pl.LineWeight = LineWeight.LineWeight015;
+            pl.ConstantWidth = 0;
+            ObjectId plId = AppendEntityReturnId(tr, btr, pl);
+            AppendHatchPredefined(tr, btr, plId, GrobetonHatchPatternName, BlokajGapStripArConcHatchScale, 0, LayerBlokaj);
+        }
+
+        /// <summary>Blokaj şeridinin altından kesitte grobeton altı (zemin çizgisi kotu) seviyesine: <see cref="LayerBlokaj"/>, EARTH ölçek <see cref="BlokajEarthHatchScale"/>, açı <see cref="BlokajEarthHatchAngleDeg"/>°.</summary>
+        private static void AppendBlokajBelowStripRectangleEarthHatch(Transaction tr, BlockTableRecord btr, double xLo, double yLo, double xHi, double yHi)
+        {
+            double xl = Math.Min(xLo, xHi), xr = Math.Max(xLo, xHi);
+            double yb = Math.Min(yLo, yHi), yt = Math.Max(yLo, yHi);
+            if (xr - xl < 1e-6 || yt - yb < 1e-6) return;
+            var pl = new Polyline(4);
+            pl.AddVertexAt(0, new Point2d(xl, yb), 0, 0, 0);
+            pl.AddVertexAt(1, new Point2d(xr, yb), 0, 0, 0);
+            pl.AddVertexAt(2, new Point2d(xr, yt), 0, 0, 0);
+            pl.AddVertexAt(3, new Point2d(xl, yt), 0, 0, 0);
+            pl.Closed = true;
+            pl.Layer = LayerBlokaj;
+            pl.LineWeight = LineWeight.LineWeight015;
+            pl.ConstantWidth = 0;
+            ObjectId plId = AppendEntityReturnId(tr, btr, pl);
+            double angleRad = BlokajEarthHatchAngleDeg * Math.PI / 180.0;
+            AppendHatchPredefined(tr, btr, plId, BlokajEarthHatchPatternName, BlokajEarthHatchScale, angleRad, LayerBlokaj);
+        }
+
+        /// <summary>Tüm grobeton birleşiminin kesit zarfı boyunca <b>tek</b> zemin çizgisi: A-A alt yatay; B-B dış dikey (<paramref name="mirrorElevationX"/> true → max X). Uçlarda <see cref="KesitZeminCizgiTemelHatUzantisiCm"/>.</summary>
+        private static void DrawZeminLinesUnderGrobetonMerged(Transaction tr, BlockTableRecord btr, Geometry merged, bool horizontalAlongX, bool mirrorElevationX)
+        {
+            if (merged == null || merged.IsEmpty) return;
+            var env = merged.EnvelopeInternal;
+            DrawZeminSingleLineAlongFoundationSection(tr, btr, env.MinX, env.MaxX, env.MinY, env.MaxY, horizontalAlongX, mirrorElevationX);
+        }
+
+        /// <summary>Grobeton dikdörtgen listesinin birleşik zarfı (union hata yolunda tek zemin için).</summary>
+        private static bool TryCombineGrobetonRectEnvelopes(List<Geometry> rects, out double minX, out double maxX, out double minY, out double maxY)
+        {
+            minX = double.PositiveInfinity;
+            maxX = double.NegativeInfinity;
+            minY = double.PositiveInfinity;
+            maxY = double.NegativeInfinity;
+            foreach (var g in rects)
+            {
+                if (g == null || g.IsEmpty) continue;
+                var e = g.EnvelopeInternal;
+                if (e.IsNull) continue;
+                minX = Math.Min(minX, e.MinX);
+                maxX = Math.Max(maxX, e.MaxX);
+                minY = Math.Min(minY, e.MinY);
+                maxY = Math.Max(maxY, e.MaxY);
+            }
+            return minX <= maxX && minY <= maxY && maxX - minX >= 1e-9 && maxY - minY >= 1e-9;
+        }
+
+        private static void DrawZeminSingleLineAlongFoundationSection(Transaction tr, BlockTableRecord btr, double minX, double maxX, double minY, double maxY, bool horizontalAlongX, bool mirrorElevationX)
+        {
+            if (maxX - minX < 1e-9 || maxY - minY < 1e-9) return;
+            if (horizontalAlongX)
+                AppendZeminSegment(tr, btr, new Point2d(minX, minY), new Point2d(maxX, minY));
+            else
+            {
+                double xLine = mirrorElevationX ? maxX : minX;
+                AppendZeminSegment(tr, btr, new Point2d(xLine, minY), new Point2d(xLine, maxY));
+            }
+        }
+
+        private static void AppendZeminSegment(Transaction tr, BlockTableRecord btr, Point2d p0, Point2d p1)
+        {
+            double ext = KesitZeminCizgiTemelHatUzantisiCm;
+            if (Math.Abs(p1.Y - p0.Y) < 1e-6)
+            {
+                double y = p0.Y;
+                double xa = Math.Min(p0.X, p1.X) - ext;
+                double xb = Math.Max(p0.X, p1.X) + ext;
+                p0 = new Point2d(xa, y);
+                p1 = new Point2d(xb, y);
+            }
+            else if (Math.Abs(p1.X - p0.X) < 1e-6)
+            {
+                double x = p0.X;
+                double ya = Math.Min(p0.Y, p1.Y) - ext;
+                double yb = Math.Max(p0.Y, p1.Y) + ext;
+                p0 = new Point2d(x, ya);
+                p1 = new Point2d(x, yb);
+            }
+            if (Math.Abs(p0.X - p1.X) < 1e-9 && Math.Abs(p0.Y - p1.Y) < 1e-9) return;
+            var pl = new Polyline(2);
+            pl.AddVertexAt(0, p0, 0, 0, 0);
+            pl.AddVertexAt(1, p1, 0, 0, 0);
+            pl.Layer = LayerZemin;
+            pl.LineWeight = LineWeight.LineWeight050;
+            pl.ConstantWidth = 0;
+            AppendEntity(tr, btr, pl);
+        }
+
+        /// <summary>
+        /// Kalıp planı kesiti: kesitte görünen <b>perde, döşeme, kiriş</b> dilimlerinin yalnızca <b>üst</b> kotu (<see cref="SectionSlice.Z1"/>);
+        /// <see cref="MergeKesitElevationZsAscending"/> ile yakın kotlar birleşir.
+        /// Yedek: bu katmanlarda dilim yoksa önceki mantık (kiriş üstü veya döşeme üstü).
+        /// Temel planı kesiti: temel üst/alt, grobeton alt, temel hatılı üst.
+        /// </summary>
+        private static List<double> CollectKesitKotElevationZs(List<SectionSlice> slices, bool isFoundationPlan)
+        {
+            var raw = new List<double>();
+            if (slices == null || slices.Count == 0) return raw;
+            const string layerTemel = "TEMEL (BEYKENT)";
+            if (isFoundationPlan)
+            {
+                foreach (var s in slices)
+                {
+                    if (s.Layer != layerTemel) continue;
+                    if (s.Order != SectionOrderContinuousFoundation && s.Order != SectionOrderSingleFooting && s.Order != SectionOrderSlabFoundation)
+                        continue;
+                    raw.Add(s.Z1);
+                    raw.Add(s.Z0);
+                    raw.Add(s.Z0 - GrobetonUnderFoundationKesitHeightCm);
+                }
+                foreach (var s in slices.Where(x => x.Layer == LayerTemelHatiliKesit))
+                    raw.Add(s.Z1);
+                return raw;
+            }
+            foreach (var s in slices.Where(s => s.Layer == LayerKiris || s.Layer == LayerDoseme || s.Layer == LayerPerde))
+                raw.Add(s.Z1);
+            if (raw.Count > 0) return raw;
+            var beams = slices.Where(s => s.Layer == LayerKiris).ToList();
+            if (beams.Count > 0)
+            {
+                foreach (var s in beams)
+                    raw.Add(s.Z1);
+            }
+            else
+            {
+                foreach (var s in slices.Where(s => s.Layer == LayerDoseme))
+                    raw.Add(s.Z1);
+            }
+            return raw;
+        }
+
+        private static void AppendKesitKotLineEntity(Transaction tr, BlockTableRecord btr, double x1, double y1, double x2, double y2)
+        {
+            var ln = new Line(new Point3d(x1, y1, 0), new Point3d(x2, y2, 0));
+            ln.SetDatabaseDefaults();
+            ln.Layer = LayerKotCizgisi;
+            AppendEntity(tr, btr, ln);
+        }
+
+        /// <summary>Sol yarı üçgen: kapalı polyline sınır + SOLID tarama (entity rengi <see cref="KesitKotWedgeSolidHatchColorIndex"/>).</summary>
+        private static void AppendKesitKotLeftWedgeSolidHatch(Transaction tr, BlockTableRecord btr, Point3d pA, Point3d pTL, Point3d pTM)
+        {
+            var pl = new Polyline(3);
+            pl.AddVertexAt(0, new Point2d(pA.X, pA.Y), 0, 0, 0);
+            pl.AddVertexAt(1, new Point2d(pTL.X, pTL.Y), 0, 0, 0);
+            pl.AddVertexAt(2, new Point2d(pTM.X, pTM.Y), 0, 0, 0);
+            pl.Closed = true;
+            pl.SetDatabaseDefaults();
+            pl.Layer = LayerKotCizgisi;
+            AppendEntity(tr, btr, pl);
+
+            var hatch = new Hatch();
+            hatch.SetDatabaseDefaults();
+            hatch.Layer = LayerKotCizgisi;
+            hatch.Color = Color.FromColorIndex(ColorMethod.ByAci, KesitKotWedgeSolidHatchColorIndex);
+            btr.AppendEntity(hatch);
+            tr.AddNewlyCreatedDBObject(hatch, true);
+            hatch.SetHatchPattern(HatchPatternType.PreDefined, "SOLID");
+            hatch.Associative = true;
+            hatch.AppendLoop(HatchLoopTypes.Outermost, new ObjectIdCollection { pl.ObjectId });
+            try { hatch.EvaluateHatch(true); }
+            catch { try { hatch.EvaluateHatch(false); } catch { } }
+        }
+
+        /// <summary>
+        /// Yerel kot geometrisi (üst kesit A-A): tepe apex (0,0), kesite uzantı −X, üçgen +Y, 26 cm uzantı +X üst sağda.
+        /// <paramref name="rotationRad"/> ile dünya koordinatına döndürülür; B-B için <c>π/2</c> (üst kesit ile aynı şekil, 90° dönmüş).
+        /// </summary>
+        private static void DrawKesitKotClassicSymbol(Transaction tr, BlockTableRecord btr, double apexX, double apexY, double rotationRad)
+        {
+            double h = KesitKotTriHeightCm;
+            double w = KesitKotTriHalfWidthCm;
+            double eSec = KesitKotExtTowardSectionCm;
+            double eR = KesitKotExtTopRightCm;
+            double c = Math.Cos(rotationRad);
+            double s = Math.Sin(rotationRad);
+            void Lw(double lx, double ly, out double wx, out double wy)
+            {
+                wx = apexX + c * lx - s * ly;
+                wy = apexY + s * lx + c * ly;
+            }
+            Point3d P(double lx, double ly)
+            {
+                Lw(lx, ly, out double wx, out double wy);
+                return new Point3d(wx, wy, 0);
+            }
+            Lw(-eSec, 0, out double x1, out double y1);
+            Lw(0, 0, out double x2, out double y2);
+            AppendKesitKotLineEntity(tr, btr, x1, y1, x2, y2);
+            var pA = P(0, 0);
+            var pTL = P(-w, h);
+            var pTM = P(0, h);
+            var pTR = P(w, h);
+            AppendKesitKotLeftWedgeSolidHatch(tr, btr, pA, pTL, pTM);
+            AppendKesitKotLineEntity(tr, btr, pTL.X, pTL.Y, pTR.X, pTR.Y);
+            AppendKesitKotLineEntity(tr, btr, pA.X, pA.Y, pTR.X, pTR.Y);
+            AppendKesitKotLineEntity(tr, btr, pTR.X, pTR.Y, pTM.X, pTM.Y);
+            var pExt = P(w + eR, h);
+            AppendKesitKotLineEntity(tr, btr, pTR.X, pTR.Y, pExt.X, pExt.Y);
+        }
+
+        /// <summary>Kesit kotu: <see cref="DBText"/> (MText değil); plan kotlarıyla aynı LEFT + BOTTOM + <c>AdjustAlignment(db)</c>.</summary>
+        private static void AppendKesitKotElevationDbText(Transaction tr, BlockTableRecord btr, Database db, ObjectId textStyleId, string text, double x, double y, double rotationRad)
+        {
+            var txt = new DBText();
+            txt.SetDatabaseDefaults();
+            txt.Layer = LayerKotYazi;
+            txt.Height = KesitKotTextHeightCm;
+            txt.TextStyleId = textStyleId;
+            txt.TextString = text ?? string.Empty;
+            txt.HorizontalMode = TextHorizontalMode.TextLeft;
+            txt.VerticalMode = TextVerticalMode.TextBottom;
+            txt.Position = new Point3d(x, y, 0);
+            txt.AlignmentPoint = new Point3d(x, y, 0);
+            txt.Rotation = rotationRad;
+            try { txt.AdjustAlignment(db); } catch { /* sürüm farkı */ }
+            AppendEntity(tr, btr, txt);
+        }
+
+        /// <summary>Kesit şemasında kotlar: referans üçgen + metin (<see cref="LayerKotCizgisi"/>, <see cref="LayerKotYazi"/>).</summary>
+        private void DrawKesitSchematicElevationKots(Transaction tr, BlockTableRecord btr, Database db, List<SectionSlice> slices,
+            double originX, double originY, double amin, double minZ, double spanZ,
+            bool horizontalAlongX, bool mirrorElevationX, bool isFoundationPlan)
+        {
+            if (slices == null || slices.Count == 0) return;
+            if (!TryGetKesitSiniriBounds(slices, isFoundationPlan, out double aLo, out double aHi, out _, out _))
+                return;
+            var rawZ = CollectKesitKotElevationZs(slices, isFoundationPlan);
+            var zsAsc = MergeKesitElevationZsAscending(rawZ, KesitKotMergeTolCm);
+            if (zsAsc.Count == 0) return;
+            double[] crowdedShiftLower = BuildKesitKotCrowdedShiftForLowerElevation(zsAsc, KesitKotCrowdedSeparationMinCm, KesitKotCrowdedShiftLowerCm);
+            ObjectId styleId = GetOrCreateYaziBeykentTextStyle(tr, db);
+            const double rotAa = 0.0;
+            const double rotBb = Math.PI / 2.0;
+
+            if (horizontalAlongX)
+            {
+                double xRight = originX + (aHi - amin);
+                double xDatum = xRight + KesitKotDatumGapFromSectionCm;
+                foreach (double zElev in zsAsc.OrderByDescending(v => v))
+                {
+                    int zi = IndexOfKesitMergedZ(zsAsc, zElev);
+                    double extra = zi >= 0 && zi < crowdedShiftLower.Length ? crowdedShiftLower[zi] : 0.0;
+                    double apexX = xDatum + extra;
+                    double apexY = originY + (zElev - minZ);
+                    if (!isFoundationPlan)
+                        apexX -= KesitKotKalipPlanAaShiftLeftCm;
+                    DrawKesitKotClassicSymbol(tr, btr, apexX, apexY, rotAa);
+                    double lxText = KesitKotTriHalfWidthCm;
+                    double lyText = KesitKotTriHeightCm + KesitKotTextAboveExtensionCm;
+                    double c = Math.Cos(rotAa), si = Math.Sin(rotAa);
+                    double textX = apexX + c * lxText - si * lyText;
+                    double textY = apexY + si * lxText + c * lyText;
+                    AppendKesitKotElevationDbText(tr, btr, db, styleId, FormatKesitKotElevationString(zElev), textX, textY, rotAa);
+                }
+            }
+            else
+            {
+                double yTop = originY + (aHi - amin);
+                double apexYRow = yTop + KesitKotBbDatumGapFromSectionCm;
+                foreach (double zElev in zsAsc.OrderBy(v => v))
+                {
+                    int zi = IndexOfKesitMergedZ(zsAsc, zElev);
+                    double extraUp = zi >= 0 && zi < crowdedShiftLower.Length ? crowdedShiftLower[zi] : 0.0;
+                    double apexX = mirrorElevationX ? originX + spanZ - (zElev - minZ) : originX + (zElev - minZ);
+                    double apexY = apexYRow + extraUp;
+                    if (!isFoundationPlan)
+                        apexY -= KesitKotKalipPlanBbShiftDownCm;
+                    DrawKesitKotClassicSymbol(tr, btr, apexX, apexY, rotBb);
+                    double lxText = KesitKotTriHalfWidthCm;
+                    double lyText = KesitKotTriHeightCm + KesitKotTextAboveExtensionCm;
+                    double c = Math.Cos(rotBb), si = Math.Sin(rotBb);
+                    double textX = apexX + c * lxText - si * lyText;
+                    double textY = apexY + si * lxText + c * lyText;
+                    AppendKesitKotElevationDbText(tr, btr, db, styleId, FormatKesitKotElevationString(zElev), textX, textY, rotBb);
+                }
+            }
+        }
+
+        private static List<double> MergeKesitElevationZsAscending(List<double> raw, double tolCm)
+        {
+            var sorted = raw.Where(z => !double.IsNaN(z) && !double.IsInfinity(z)).OrderBy(z => z).ToList();
+            if (sorted.Count == 0) return sorted;
+            var merged = new List<double> { sorted[0] };
+            for (int i = 1; i < sorted.Count; i++)
+            {
+                if (sorted[i] - merged[merged.Count - 1] > tolCm)
+                    merged.Add(sorted[i]);
+            }
+            return merged;
+        }
+
+        /// <summary>
+        /// <paramref name="zsAsc"/> artan Z; komşu kot farkı &lt; <paramref name="minSepCm"/> ise <b>düşük</b> kot (indeks i) için ofset <paramref name="shiftCm"/> —
+        /// A-A’da +X, sol kesitte +Y uygulanır.
+        /// </summary>
+        private static double[] BuildKesitKotCrowdedShiftForLowerElevation(List<double> zsAsc, double minSepCm, double shiftCm)
+        {
+            var extra = new double[zsAsc != null ? zsAsc.Count : 0];
+            if (zsAsc == null || zsAsc.Count < 2) return extra;
+            for (int i = 0; i < zsAsc.Count - 1; i++)
+            {
+                if (zsAsc[i + 1] - zsAsc[i] < minSepCm - 1e-6)
+                    extra[i] = shiftCm;
+            }
+            return extra;
+        }
+
+        private static int IndexOfKesitMergedZ(List<double> zsAsc, double zElev)
+        {
+            if (zsAsc == null) return -1;
+            for (int i = 0; i < zsAsc.Count; i++)
+            {
+                if (Math.Abs(zsAsc[i] - zElev) < 1e-3)
+                    return i;
+            }
+            return -1;
+        }
+
+        private static string FormatKesitKotElevationString(double zCm)
+        {
+            double m = zCm / 100.0;
+            string s = string.Format(CultureInfo.InvariantCulture, "{0:+0.00;-0.00;0.00}", m);
+            if (Math.Abs(m) < 1e-9)
+                s = "±" + s.TrimStart('+');
+            return KolonDonatiTableDrawer.NormalizeDiameterSymbol(s);
+        }
+
+        private static void AppendClosedRectanglePolyline(Transaction tr, BlockTableRecord btr, double xLo, double yLo, double xHi, double yHi, string layer, bool addGrobetonArConcHatch = false)
+        {
+            double xl = Math.Min(xLo, xHi), xr = Math.Max(xLo, xHi);
+            double yb = Math.Min(yLo, yHi), yt = Math.Max(yLo, yHi);
+            if (xr - xl < 1e-6 || yt - yb < 1e-6) return;
+            var pl = new Polyline(4);
+            pl.AddVertexAt(0, new Point2d(xl, yb), 0, 0, 0);
+            pl.AddVertexAt(1, new Point2d(xr, yb), 0, 0, 0);
+            pl.AddVertexAt(2, new Point2d(xr, yt), 0, 0, 0);
+            pl.AddVertexAt(3, new Point2d(xl, yt), 0, 0, 0);
+            pl.Closed = true;
+            pl.Layer = layer;
+            pl.ConstantWidth = 0;
+            if (layer == LayerGrobeton)
+                pl.LineWeight = LineWeight.LineWeight050;
+            if (addGrobetonArConcHatch && layer == LayerGrobeton)
+            {
+                ObjectId plId = AppendEntityReturnId(tr, btr, pl);
+                AppendHatchPredefined(tr, btr, plId, GrobetonHatchPatternName, GrobetonHatchPatternScale, 0, LayerTarama);
+            }
+            else
+                AppendEntity(tr, btr, pl);
         }
 
         /// <summary>A-A yatay kesit başlığı; <see cref="TextVerticalMode.TextTop"/> — <paramref name="yTopAnchor"/> metin üst kenarı.</summary>
@@ -1955,6 +2699,32 @@ namespace ST4PlanIdCiz
             return Math.Max(u0, v0) < Math.Min(u1, v1) - 1e-6;
         }
 
+        private static bool KesitSliceZOverlap(SectionSlice u, SectionSlice v)
+        {
+            double u0 = Math.Min(u.Z0, u.Z1), u1 = Math.Max(u.Z0, u.Z1);
+            double v0 = Math.Min(v.Z0, v.Z1), v1 = Math.Max(v.Z0, v.Z1);
+            return Math.Max(u0, v0) < Math.Min(u1, v1) - 1e-6;
+        }
+
+        /// <summary>Radye bu A istasyonunda temel hatılı (TEMEL HATILI) sütunu altında mı — ölçü atılmaz. Kesitte dar A + geniş margin; Z de örtüşmeli.</summary>
+        private static bool KesitRadyeIstasyonuTemelHatiliAltinda(double aSta, SectionSlice radyeSlice, List<SectionSlice> temelHatiliSlices)
+        {
+            if (temelHatiliSlices == null || temelHatiliSlices.Count == 0 || radyeSlice == null) return false;
+            const double eps = 1e-3;
+            foreach (var h in temelHatiliSlices)
+            {
+                if (!KesitSliceZOverlap(radyeSlice, h)) continue;
+                double h0 = Math.Min(h.A0, h.A1), h1 = Math.Max(h.A0, h.A1);
+                double span = h1 - h0;
+                double m = Math.Max(KesitRadyeOlcuHatilSkipMarginCm, span * 2.5);
+                double cap = KesitOlcuRadyeAralikCm * 0.48;
+                if (m > cap) m = cap;
+                if (aSta >= h0 - m - eps && aSta <= h1 + m + eps)
+                    return true;
+            }
+            return false;
+        }
+
         /// <summary>Hedef dilimin Z bandında, A örtüşen diğer dilimlerle en uzun kesişim aralığı.</summary>
         private static (bool ok, double z0, double z1) KesitEnBuyukZKesisim(SectionSlice hedef, IEnumerable<SectionSlice> digerleri)
         {
@@ -2040,6 +2810,7 @@ namespace ST4PlanIdCiz
             {
                 if (isFoundationPlan)
                 {
+                    var temelHatiliRadyeAtlama = slices.Where(x => x.Layer == LayerTemelHatiliKesit).ToList();
                     foreach (var s in slices.Where(x =>
                                  x.Order == SectionOrderContinuousFoundation ||
                                  x.Order == SectionOrderSingleFooting))
@@ -2052,6 +2823,9 @@ namespace ST4PlanIdCiz
                         int st = NextStaggerAa(aMax);
                         double dimX = xR + KesitOlcuAaDimLineOffsetCm + st * KesitOlcuStaggerCm;
                         AddAligned(new Point3d(xR, y0, 0), new Point3d(xR, y1, 0), new Point3d(dimX, (y0 + y1) * 0.5, 0));
+                        // Grobeton 10 cm: temel kalınlık ölçüsü ile aynı dikey ölçü çizgisi (dimX).
+                        double yGro = y0 - GrobetonUnderFoundationKesitHeightCm;
+                        AddAligned(new Point3d(xR, yGro, 0), new Point3d(xR, y0, 0), new Point3d(dimX, (yGro + y0) * 0.5, 0));
                     }
                     var temelGovdeKesisim = slices.Where(x => x.Layer == "TEMEL (BEYKENT)" &&
                         (x.Order == SectionOrderContinuousFoundation || x.Order == SectionOrderSingleFooting || x.Order == SectionOrderSlabFoundation)).ToList();
@@ -2096,6 +2870,14 @@ namespace ST4PlanIdCiz
                         }
                         if (!stacked)
                             AddAligned(new Point3d(xW, yBot, 0), new Point3d(xW, yTop, 0), new Point3d(dimInner, (yBot + yTop) * 0.5, 0));
+                        // Grobeton: iç zincir (108/70/10); dış toplam (178) hattında da — 2. resim.
+                        double yGroHat = yBot - GrobetonUnderFoundationKesitHeightCm;
+                        AddAligned(new Point3d(xW, yGroHat, 0), new Point3d(xW, yBot, 0), new Point3d(dimInner, (yGroHat + yBot) * 0.5, 0));
+                        if (stacked)
+                        {
+                            double dimOuterX = dimInner + dimOuterOfset;
+                            AddAligned(new Point3d(xW, yGroHat, 0), new Point3d(xW, yBot, 0), new Point3d(dimOuterX, (yGroHat + yBot) * 0.5, 0));
+                        }
                     }
                     int radyeIx = 0;
                     foreach (var s in slices.Where(x => x.Order == SectionOrderSlabFoundation))
@@ -2105,9 +2887,13 @@ namespace ST4PlanIdCiz
                         if (y1 - y0 < 2.0) y1 = y0 + 2.0;
                         foreach (double aSta in KesitRadyeOlcuIstasyonlari(s.A0, s.A1, KesitOlcuRadyeAralikCm))
                         {
+                            if (KesitRadyeIstasyonuTemelHatiliAltinda(aSta, s, temelHatiliRadyeAtlama))
+                                continue;
                             double xm = originX + (aSta - amin);
                             double dimX = xm + KesitOlcuAaDimLineOffsetCm + (radyeIx++ % 5) * (KesitOlcuStaggerCm * 0.45);
                             AddAligned(new Point3d(xm, y0, 0), new Point3d(xm, y1, 0), new Point3d(dimX, (y0 + y1) * 0.5, 0));
+                            double yGro = y0 - GrobetonUnderFoundationKesitHeightCm;
+                            AddAligned(new Point3d(xm, yGro, 0), new Point3d(xm, y0, 0), new Point3d(dimX, (yGro + y0) * 0.5, 0));
                         }
                     }
                 }
@@ -2194,6 +2980,7 @@ namespace ST4PlanIdCiz
 
                 if (isFoundationPlan)
                 {
+                    var temelHatiliRadyeAtlama = slices.Where(x => x.Layer == LayerTemelHatiliKesit).ToList();
                     foreach (var s in slices.Where(x =>
                                  x.Order == SectionOrderContinuousFoundation ||
                                  x.Order == SectionOrderSingleFooting))
@@ -2203,6 +2990,11 @@ namespace ST4PlanIdCiz
                         int st = NextStaggerBb(yRef);
                         double yDimLine = yRef - KesitOlcuBbDimLineBelowRefCm - st * KesitOlcuStaggerCm;
                         AddAligned(new Point3d(xL, yRef, 0), new Point3d(xR, yRef, 0), new Point3d((xL + xR) * 0.5, yDimLine, 0));
+                        // Grobeton 10 cm: temel genişlik ölçüsü ile aynı yatay ölçü çizgisi (yDimLine).
+                        double hG = GrobetonUnderFoundationKesitHeightCm;
+                        double xGroA = mirrorElevationX ? xR : xL - hG;
+                        double xGroB = mirrorElevationX ? xR + hG : xL;
+                        AddAligned(new Point3d(xGroA, yRef, 0), new Point3d(xGroB, yRef, 0), new Point3d((xGroA + xGroB) * 0.5, yDimLine, 0));
                     }
                     var temelGovdeBb = slices.Where(x => x.Layer == "TEMEL (BEYKENT)" &&
                         (x.Order == SectionOrderContinuousFoundation || x.Order == SectionOrderSingleFooting || x.Order == SectionOrderSlabFoundation)).ToList();
@@ -2264,6 +3056,14 @@ namespace ST4PlanIdCiz
                         }
                         if (!stacked)
                             AddAligned(new Point3d(xL, yRef, 0), new Point3d(xR, yRef, 0), new Point3d((xL + xR) * 0.5, yDimInner, 0));
+                        // Grobeton: iç (yDimInner); dış toplam hattı (yDimDis) — A-A ile aynı mantık.
+                        double hGh = GrobetonUnderFoundationKesitHeightCm;
+                        double xGroHa = mirrorElevationX ? xR : xL - hGh;
+                        double xGroHb = mirrorElevationX ? xR + hGh : xL;
+                        double xGroMid = (xGroHa + xGroHb) * 0.5;
+                        AddAligned(new Point3d(xGroHa, yRef, 0), new Point3d(xGroHb, yRef, 0), new Point3d(xGroMid, yDimInner, 0));
+                        if (stacked)
+                            AddAligned(new Point3d(xGroHa, yRef, 0), new Point3d(xGroHb, yRef, 0), new Point3d(xGroMid, yDimDis, 0));
                     }
                     foreach (var s in slices.Where(x => x.Order == SectionOrderSlabFoundation))
                     {
@@ -2271,9 +3071,15 @@ namespace ST4PlanIdCiz
                         int ri = 0;
                         foreach (double aSta in KesitRadyeOlcuIstasyonlari(s.A0, s.A1, KesitOlcuRadyeAralikCm))
                         {
+                            if (KesitRadyeIstasyonuTemelHatiliAltinda(aSta, s, temelHatiliRadyeAtlama))
+                                continue;
                             double yRef = originY + (aSta - amin);
                             double yDimLine = yRef - KesitOlcuBbDimLineBelowRefCm - (ri++ % 4) * 8.0;
                             AddAligned(new Point3d(xL, yRef, 0), new Point3d(xR, yRef, 0), new Point3d((xL + xR) * 0.5, yDimLine, 0));
+                            double hGr = GrobetonUnderFoundationKesitHeightCm;
+                            double xGroA = mirrorElevationX ? xR : xL - hGr;
+                            double xGroB = mirrorElevationX ? xR + hGr : xL;
+                            AddAligned(new Point3d(xGroA, yRef, 0), new Point3d(xGroB, yRef, 0), new Point3d((xGroA + xGroB) * 0.5, yDimLine, 0));
                         }
                     }
                 }

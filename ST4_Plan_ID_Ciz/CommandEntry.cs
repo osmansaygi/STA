@@ -6,6 +6,7 @@ using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Geometry;
 using Autodesk.AutoCAD.Runtime;
+using AcRxException = Autodesk.AutoCAD.Runtime.Exception;
 using NetTopologySuite;
 using NetTopologySuite.Geometries;
 using NetTopologySuite.Geometries.Implementation;
@@ -62,9 +63,15 @@ namespace ST4PlanIdCiz
                 manager.Draw(db, ed);
                 doc.SendStringToExecute("_.ZOOM _E ", true, false, false);
             }
+            catch (AcRxException aex)
+            {
+                ed.WriteMessage("\nST4PLANID hata: {0} ({1})", aex.Message, aex.ErrorStatus);
+            }
             catch (System.Exception ex)
             {
                 ed.WriteMessage("\nST4PLANID hata: {0}", ex.Message);
+                if (ex.InnerException != null)
+                    ed.WriteMessage("  Inner: {0}", ex.InnerException.Message);
             }
         }
 

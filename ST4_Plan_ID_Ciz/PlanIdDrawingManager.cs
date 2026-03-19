@@ -406,6 +406,23 @@ namespace ST4PlanIdCiz
         private const string LayerKesitCizgisi = "KESIT CIZGISI (BEYKENT)";
         private const string LayerKesitIsmi = "KESIT ISMI (BEYKENT)";
         private const string LayerKesitSiniri = "KESIT SINIRI (BEYKENT)";
+        /// <summary>Temel kesitlerinde zemin altı grobeton şeridi (kapalı polyline).</summary>
+        private const string LayerGrobeton = "GROBETON (BEYKENT)";
+        /// <summary>Grobeton kesit taraması: AutoCAD önceden tanımlı desen adı.</summary>
+        private const string GrobetonHatchPatternName = "AR-CONC";
+        private const double GrobetonHatchPatternScale = 0.05;
+        /// <summary>Temel parçaları arası BLOKAJ şeridi AR-CONC ölçeği (alt grobeton 0,05; blokaj 0,1).</summary>
+        private const double BlokajGapStripArConcHatchScale = 0.1;
+        /// <summary>Blokaj altı zemin dolgusu: önceden tanımlı desen.</summary>
+        private const string BlokajEarthHatchPatternName = "EARTH";
+        private const double BlokajEarthHatchScale = 2.0;
+        private const double BlokajEarthHatchAngleDeg = 45.0;
+        /// <summary>Temel kesitinde ara boşluk altı blokaj dikdörtgeni.</summary>
+        private const string LayerBlokaj = "BLOKAJ (BEYKENT)";
+        /// <summary>BLOKAJ katmanı şeffaflık (AutoCAD 0=opak … 90=en şeffaf).</summary>
+        private const int LayerBlokajTransparencyPercent = 90;
+        /// <summary>Temel kesitlerinde grobeton altı zemin temas çizgisi (A-A: alt kenar; B-B: dış yüzey).</summary>
+        private const string LayerZemin = "ZEMIN (BEYKENT)";
         /// <summary>DASHED katmanlarda (AKS, KESIT SINIRI) entity çizgi tipi ölçeği; LTSCALE=1 iken kesikli okunaklı olsun.</summary>
         private const double DashedLayerEntityLinetypeScale = 25.0;
         private const string YaziBeykentTextStyleName = "YAZI (BEYKENT)";
@@ -415,6 +432,8 @@ namespace ST4PlanIdCiz
         private const int BeamLabelRefCharCount = 13;
         private const string AksOlcuDimStyleName = "AKS_OLCU";
         private const string PlanOlcuDimStyleName = "PLAN_OLCU";
+        /// <summary>Symbols and Arrows → Arrow size = 3 (cm). <see cref="DimStyleTableRecord.Dimasz"/>; First/Second tik için <see cref="DimStyleTableRecord.Dimtsz"/>.</summary>
+        private const double OlcuDimArrowTickSizeCm = 3.0;
 
         private static void EnsureLayers(Transaction tr, Database db)
         {
@@ -448,6 +467,7 @@ namespace ST4PlanIdCiz
             EnsurePlanLayer(tr, db, LayerDosemePafta, 3, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, LayerYukYazisi, 140, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, LayerKotYazi, 7, LineWeight.LineWeight020, useDashed: false);
+            // Kesit/plan kot işaretleri: cyan (klasik kot çizgisi).
             EnsurePlanLayer(tr, db, LayerKotCizgisi, 7, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, "KIRIS UZATMA ISARET (BEYKENT)", 1, LineWeight.LineWeight025, useDashed: false);
             EnsurePlanLayer(tr, db, "KIRIS UZATMA ISARET MAVI (BEYKENT)", 5, LineWeight.LineWeight025, useDashed: false);
@@ -455,6 +475,9 @@ namespace ST4PlanIdCiz
             EnsurePlanLayer(tr, db, LayerKesitCizgisi, 3, LineWeight.LineWeight050, useDashed: false);
             EnsurePlanLayer(tr, db, LayerKesitIsmi, 6, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, LayerKesitSiniri, 241, LineWeight.LineWeight020, useDashed: true);
+            EnsurePlanLayer(tr, db, LayerGrobeton, 70, LineWeight.LineWeight050, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerZemin, 43, LineWeight.LineWeight050, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerBlokaj, 8, LineWeight.LineWeight015, useDashed: false, layerTransparencyPercent: LayerBlokajTransparencyPercent);
         }
 
         private static void SetPlanLayerLinetypeContinuous(Transaction tr, Database db, string layerName)
@@ -486,7 +509,7 @@ namespace ST4PlanIdCiz
             }
         }
 
-        private static void EnsurePlanLayer(Transaction tr, Database db, string layerName, int colorIndex, LineWeight lineWeight, bool useDashed = false)
+        private static void EnsurePlanLayer(Transaction tr, Database db, string layerName, int colorIndex, LineWeight lineWeight, bool useDashed = false, int? layerTransparencyPercent = null)
         {
             var lt = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
             var rec = lt.Has(layerName)
@@ -508,6 +531,13 @@ namespace ST4PlanIdCiz
             {
                 rec.Color = Color.FromColorIndex(ColorMethod.ByAci, (short)colorIndex);
                 rec.LineWeight = lineWeight;
+            }
+            if (layerTransparencyPercent.HasValue)
+            {
+                int tp = layerTransparencyPercent.Value;
+                if (tp < 0) tp = 0;
+                if (tp > 90) tp = 90;
+                rec.Transparency = new Transparency((byte)tp);
             }
             if (useDashed)
             {
@@ -1217,6 +1247,28 @@ namespace ST4PlanIdCiz
             }
         }
 
+        /// <summary>
+        /// AKS_OLCU / PLAN_OLCU: Arrow size = <see cref="OlcuDimArrowTickSizeCm"/> (<see cref="DimStyleTableRecord.Dimasz"/>, <see cref="DimStyleTableRecord.Dimtsz"/>).
+        /// First/Second — Oblique tik (Dimtsz + boş ok blokları).
+        /// Leader — diyalogda &quot;Oblique&quot; görünsün diye özel blok atanmaz: <see cref="DimStyleTableRecord.Dimldrblk"/> = Null, First/Second ile aynı Dimtsz tik mantığı.
+        /// </summary>
+        private static void ApplyAksPlanOlcuDimStyleArrowsAndSize(DimStyleTableRecord rec, double dimTextHeightCm)
+        {
+            const double arrowSize = OlcuDimArrowTickSizeCm;
+            try { rec.Dimscale = 1.0; } catch { }
+            try { rec.Dimlfac = 1.0; } catch { }
+            try { rec.Dimtxt = dimTextHeightCm; } catch { }
+            try { rec.Dimblk = ObjectId.Null; } catch { }
+            try { rec.Dimblk1 = ObjectId.Null; } catch { }
+            try { rec.Dimblk2 = ObjectId.Null; } catch { }
+            try { rec.Dimldrblk = ObjectId.Null; } catch { }
+            try { rec.Dimasz = arrowSize; } catch { }
+            try { rec.Dimtsz = arrowSize; } catch { }
+            try { rec.Dimasz = arrowSize; } catch { }
+            try { rec.Dimtsz = arrowSize; } catch { }
+            try { rec.Dimtix = true; } catch { }
+        }
+
         /// <summary>Aks ölçüleri için özel dim style "AKS_OLCU": metin stili YAZI (BEYKENT), yükseklik çağrıda; oklar vb. AKS_OLCU ayarları.</summary>
         private static ObjectId GetOrCreateAksOlcuDimStyle(Transaction tr, Database db, double dimTextHeightCm)
         {
@@ -1229,6 +1281,7 @@ namespace ST4PlanIdCiz
                 {
                     var existing = (DimStyleTableRecord)tr.GetObject(id, OpenMode.ForWrite);
                     if (!yaziId.IsNull) existing.Dimtxsty = yaziId;
+                    ApplyAksPlanOlcuDimStyleArrowsAndSize(existing, dimTextHeightCm);
                 }
                 catch { }
                 return id;
@@ -1237,15 +1290,11 @@ namespace ST4PlanIdCiz
             var newRec = new DimStyleTableRecord();
             newRec.Name = AksOlcuDimStyleName;
             try { if (!yaziId.IsNull) newRec.Dimtxsty = yaziId; } catch { }
-
-            try { newRec.Dimtxt = dimTextHeightCm; } catch { }
             try { newRec.Dimclrt = Color.FromColorIndex(ColorMethod.ByAci, 7); } catch { }
             try { newRec.Dimgap = 2.0; } catch { }
             try { newRec.Dimtad = 1; } catch { }
             try { newRec.Dimtih = false; } catch { }
             try { newRec.Dimtoh = false; } catch { }
-
-            try { newRec.Dimasz = 5.0; } catch { }
 
             try { newRec.Dimdec = 0; } catch { }
             try { newRec.Dimrnd = 0.5; } catch { }
@@ -1256,7 +1305,7 @@ namespace ST4PlanIdCiz
 
             try { newRec.Dimtofl = true; } catch { }
             try { newRec.Dimscale = 1.0; } catch { }
-
+            ApplyAksPlanOlcuDimStyleArrowsAndSize(newRec, dimTextHeightCm);
 
             dst.UpgradeOpen();
             ObjectId newDimId = dst.Add(newRec);
@@ -1277,6 +1326,7 @@ namespace ST4PlanIdCiz
                 {
                     var existing = (DimStyleTableRecord)tr.GetObject(id, OpenMode.ForWrite);
                     if (!yaziId.IsNull) existing.Dimtxsty = yaziId;
+                    ApplyAksPlanOlcuDimStyleArrowsAndSize(existing, dimTextHeightCm);
                 }
                 catch { }
                 return id;
@@ -1285,13 +1335,11 @@ namespace ST4PlanIdCiz
             var newRec = new DimStyleTableRecord();
             newRec.Name = PlanOlcuDimStyleName;
             try { if (!yaziId.IsNull) newRec.Dimtxsty = yaziId; } catch { }
-            try { newRec.Dimtxt = dimTextHeightCm; } catch { }
             try { newRec.Dimclrt = Color.FromColorIndex(ColorMethod.ByAci, 7); } catch { }
             try { newRec.Dimgap = 2.0; } catch { }
             try { newRec.Dimtad = 1; } catch { }
             try { newRec.Dimtih = false; } catch { }
             try { newRec.Dimtoh = false; } catch { }
-            try { newRec.Dimasz = 5.0; } catch { }
             try { newRec.Dimdec = 0; } catch { }
             try { newRec.Dimrnd = 0.5; } catch { }
             try { newRec.Dimlfac = 1.0; } catch { }
@@ -1300,6 +1348,7 @@ namespace ST4PlanIdCiz
             try { newRec.Dimadec = 0; } catch { }
             try { newRec.Dimtofl = true; } catch { }
             try { newRec.Dimscale = 1.0; } catch { }
+            ApplyAksPlanOlcuDimStyleArrowsAndSize(newRec, dimTextHeightCm);
             dst.UpgradeOpen();
             ObjectId newPlanDimId = dst.Add(newRec);
             tr.AddNewlyCreatedDBObject(newRec, true);
@@ -4795,8 +4844,8 @@ namespace ST4PlanIdCiz
             return result;
         }
 
-        /// <summary>NTS Geometry (Polygon/MultiPolygon) dış ve iç halkalarını verilen katmanda polyline olarak çizer; 4 mm'den kısa segmentleri atlar. addHatch true ise her halka için ANSI33 tarama eklenir. hatchAngleRad verilirse tarama açısı olarak kullanılır (perde: aks eğimi). exteriorRingsOnly true ise sadece dış halkalar çizilir (iç halkalar/delik sınırları çizilmez; kolona yapışık çizgi olmaz).</summary>
-        private static void DrawGeometryRingsAsPolylines(Transaction tr, BlockTableRecord btr, Geometry geom, string layer, bool addHatch = false, double? hatchAngleRad = null, bool exteriorRingsOnly = false, bool applySmallTriangleTrim = false, double vertexAngleTolDeg = 1.0, double minVertexDistCm = 0.4, double collinearTolCm = 0)
+        /// <summary>NTS Geometry (Polygon/MultiPolygon) dış ve iç halkalarını verilen katmanda polyline olarak çizer; 4 mm'den kısa segmentleri atlar. addHatch true ise her halka için tarama eklenir: <paramref name="hatchPatternName"/> doluysa o desen + ölçek + <paramref name="hatchLayerOverride"/> (varsayılan <see cref="LayerTarama"/>), değilse ANSI33. hatchAngleRad verilirse tarama açısı olarak kullanılır (perde: aks eğimi). exteriorRingsOnly true ise sadece dış halkalar çizilir (iç halkalar/delik sınırları çizilmez; kolona yapışık çizgi olmaz).</summary>
+        private static void DrawGeometryRingsAsPolylines(Transaction tr, BlockTableRecord btr, Geometry geom, string layer, bool addHatch = false, double? hatchAngleRad = null, bool exteriorRingsOnly = false, bool applySmallTriangleTrim = false, double vertexAngleTolDeg = 1.0, double minVertexDistCm = 0.4, double collinearTolCm = 0, string hatchPatternName = null, double hatchPatternScale = 1.0, string hatchLayerOverride = null)
         {
             if (geom == null || geom.IsEmpty) return;
             double minSegmentLen = minVertexDistCm; // ardışık vertex arası min mesafe (varsayılan 4 mm)
@@ -5050,11 +5099,16 @@ namespace ST4PlanIdCiz
                 bool useCircleArcs = (layer == LayerKiris || layer == LayerPerde || layer == "TEMEL HATILI (BEYKENT)");
                 var pl = useCircleArcs ? ToPolylineCircleArcsOnly(filtered, true) : ToPolyline(filtered.ToArray(), true);
                 pl.Layer = layer;
+                if (layer == LayerGrobeton)
+                    pl.LineWeight = LineWeight.LineWeight050;
                 if (addHatch)
                 {
                     ObjectId plId = AppendEntityReturnId(tr, btr, pl);
                     double angleRad = hatchAngleRad ?? Math.Atan2(filtered[1].Y - filtered[0].Y, filtered[1].X - filtered[0].X);
-                    AppendHatchAnsi33(tr, btr, plId, angleRad);
+                    if (!string.IsNullOrEmpty(hatchPatternName))
+                        AppendHatchPredefined(tr, btr, plId, hatchPatternName, hatchPatternScale, hatchAngleRad ?? 0.0, string.IsNullOrEmpty(hatchLayerOverride) ? LayerTarama : hatchLayerOverride);
+                    else
+                        AppendHatchAnsi33(tr, btr, plId, angleRad);
                 }
                 else
                     AppendEntity(tr, btr, pl);
@@ -6577,6 +6631,23 @@ namespace ST4PlanIdCiz
             var ids = new ObjectIdCollection { boundaryId };
             hatch.AppendLoop(HatchLoopTypes.Outermost, ids);
             hatch.EvaluateHatch(true);
+        }
+
+        /// <summary>Önceden tanımlı desen (ör. grobeton AR-CONC); tarama ayrı katmanda (genelde <see cref="LayerTarama"/>).</summary>
+        private static void AppendHatchPredefined(Transaction tr, BlockTableRecord btr, ObjectId boundaryId, string patternName, double patternScale, double patternAngleRad, string hatchLayer)
+        {
+            var hatch = new Hatch();
+            btr.AppendEntity(hatch);
+            tr.AddNewlyCreatedDBObject(hatch, true);
+            hatch.SetHatchPattern(HatchPatternType.PreDefined, patternName);
+            hatch.PatternScale = patternScale;
+            hatch.PatternAngle = patternAngleRad;
+            hatch.Layer = hatchLayer;
+            hatch.Associative = true;
+            var ids = new ObjectIdCollection { boundaryId };
+            hatch.AppendLoop(HatchLoopTypes.Outermost, ids);
+            try { hatch.EvaluateHatch(true); }
+            catch { try { hatch.EvaluateHatch(false); } catch { } }
         }
 
         private List<BeamInfo> MergeSameIdBeamsOnFloor(int floorNo)
