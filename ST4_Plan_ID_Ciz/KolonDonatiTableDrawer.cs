@@ -883,7 +883,8 @@ namespace ST4PlanIdCiz
             Dictionary<int, (double? temelCm, double? hatilCm)> columnFoundationHeights = null,
             List<Dictionary<int, (int columnType, double W, double H)>> columnDimsByFloor = null,
             List<Dictionary<int, (double altKotCm, double yukseklikCm, double? kirisUstAltFarkCm)>> columnTableExtraByFloor = null,
-            HashSet<(int floorIndex, int columnNo)> columnActiveCells = null)
+            HashSet<(int floorIndex, int columnNo)> columnActiveCells = null,
+            bool echoCompletionMessage = true)
         {
             if (model == null || model.Floors == null || model.Floors.Count == 0)
             {
@@ -919,8 +920,9 @@ namespace ST4PlanIdCiz
             DrawHeaderRow(tr, btr, db, x0, yTop, floorNames);
             DrawDataRows(tr, btr, db, x0, yTop - RowHeightHeader, numFloors, floorNames, rowColumnNumbers, columnData ?? new Dictionary<string, (string, string, string)>(StringComparer.OrdinalIgnoreCase), columnFoundationHeights, columnDimsByFloor, columnTableExtraByFloor, columnActiveCells, floorKeyFmt);
             int gprKeys = columnData?.Count ?? 0;
-            ed.WriteMessage("\nKOLONDATA tamam: {0} kat sutunu, {1} kolon satiri, veri dosyasinda {2} kolon kodu (SB-01, S1-02, SC-39, ...).",
-                numFloors, rowColumnNumbers.Count, gprKeys);
+            if (echoCompletionMessage)
+                ed.WriteMessage("\nKOLONDATA tamam: {0} kat sutunu, {1} kolon satiri, veri dosyasinda {2} kolon kodu (SB-01, S1-02, SC-39, ...).",
+                    numFloors, rowColumnNumbers.Count, gprKeys);
             return true;
         }
 

@@ -36,6 +36,8 @@ namespace ST4PlanIdCiz
         private bool _isTemel50Mode;
         /// <summary>KOLON50ST4 için kolon aplikasyon ölçü modu.</summary>
         private bool _isKolon50Mode;
+        /// <summary>KOLON50ST4 perde+kolon kopyalarının dünya sınırları (GPR tablosu yerleşimi için).</summary>
+        private Envelope _kolon50PerdeCopyExtent;
         private const double Temel50BaslikAltAksBalonBoslukCm = 50.0;
         /// <summary>Statik kesit örnekleme / şerit buffer için tek örnek.</summary>
         private static readonly GeometryFactory StaticGeomFactory = new GeometryFactory();
@@ -384,10 +386,11 @@ namespace ST4PlanIdCiz
         /// 1/50 kolon aplikasyon planı için tüm katlarda sadece
         /// akslar (+aks ölçüleri), kolonlar (poligon dahil) ve perdeleri çizer.
         /// </summary>
-        public void DrawColumnApplicationPlan50(Database db, Editor ed, Point3d baseInsertPoint)
+        public void DrawColumnApplicationPlan50(Database db, Editor ed, Point3d baseInsertPoint, string st4SourcePath = null)
         {
             _ntsDrawFactory = NtsGeometryServices.Instance.CreateGeometryFactory();
             _isKolon50Mode = true;
+            _kolon50PerdeCopyExtent = null;
             try
             {
                 using (var tr = db.TransactionManager.StartTransaction())
@@ -427,6 +430,8 @@ namespace ST4PlanIdCiz
 
                     DrawSimplePerdeKolonCopiesByFloorId(tr, btr, copyLayouts);
 
+                    TryDrawKolonDonatiTableAboveKolon50PerdeCopies(tr, btr, db, ed, baseInsertPoint, st4SourcePath);
+
                     tr.Commit();
                     ed.WriteMessage(
                         "\nKOLON50ST4: {0} kat icin 1/50 kolon aplikasyon plani cizildi (aks, aks olculeri, kolonlar/poligon kolonlar, perdeler).",
@@ -436,8 +441,91 @@ namespace ST4PlanIdCiz
             finally
             {
                 _isKolon50Mode = false;
+                _kolon50PerdeCopyExtent = null;
                 _ntsDrawFactory = null;
             }
+        }
+
+        private void Kolon50AccumulatePerdeCopyExtent(Geometry g)
+        {
+            if (!_isKolon50Mode || g == null || g.IsEmpty) return;
+            Kolon50AccumulatePerdeCopyExtent(g.EnvelopeInternal);
+        }
+
+        private void Kolon50AccumulatePerdeCopyExtent(Envelope env)
+        {
+            if (!_isKolon50Mode || env == null) return;
+            _kolon50PerdeCopyExtent = _kolon50PerdeCopyExtent == null
+                ? new Envelope(env)
+                : EnvelopeUtil.ExpandToInclude(_kolon50PerdeCopyExtent, env);
+        }
+
+        /// <summary>ST4 yanında .GPR varsa KOLONDATA ile aynı kolon donatı tablosunu kopya perdelerin üstüne çizer.</summary>
+        private void TryDrawKolonDonatiTableAboveKolon50PerdeCopies(
+            Transaction tr,
+            BlockTableRecord btr,
+            Database db,
+            Editor ed,
+            Point3d baseInsertPoint,
+            string st4SourcePath)
+        {
+            if (!_isKolon50Mode || string.IsNullOrWhiteSpace(st4SourcePath) || _kolon50PerdeCopyExtent == null)
+                return;
+            string dir = Path.GetDirectoryName(st4SourcePath);
+            string baseName = Path.GetFileNameWithoutExtension(st4SourcePath);
+            if (string.IsNullOrEmpty(dir) || string.IsNullOrEmpty(baseName)) return;
+            string gprPath = Path.Combine(dir, baseName + ".GPR");
+            if (!File.Exists(gprPath)) return;
+
+            var columnData = KolonDonatiTableDrawer.ParseKolonBetonarmeFromFile(gprPath, out string parseError);
+            if (parseError != null)
+            {
+                ed.WriteMessage("\nKOLON50ST4: GPR kolon tablosu atlandi — {0}", parseError);
+                return;
+            }
+
+            var firstFloor = _model.Floors.Count > 0 ? _model.Floors[0] : null;
+            var columnFoundationHeights = firstFloor != null ? GetColumnFoundationHeights(firstFloor) : null;
+            var columnDimsByFloor = new List<Dictionary<int, (int columnType, double W, double H)>>();
+            var columnTableExtraByFloor = new List<Dictionary<int, (double altKotCm, double yukseklikCm, double? kirisUstAltFarkCm)>>();
+            for (int i = 0; i < _model.Floors.Count; i++)
+            {
+                var f = _model.Floors[i];
+                columnDimsByFloor.Add(GetColumnDimensionsForFloor(f));
+                columnTableExtraByFloor.Add(GetColumnTableExtraData(f));
+            }
+
+            var columnActiveCells = new HashSet<(int floorIndex, int columnNo)>();
+            for (int fi = 0; fi < _model.Floors.Count; fi++)
+            {
+                var fl = _model.Floors[fi];
+                foreach (var col in _model.Columns)
+                {
+                    if (HasColumnOnFloor(fl, col))
+                        columnActiveCells.Add((fi, col.ColumnNo));
+                }
+            }
+
+            const double tableGapAboveCopiesCm = 80.0;
+            double tableX = baseInsertPoint.X;
+            double tableY = _kolon50PerdeCopyExtent.MaxY + tableGapAboveCopiesCm;
+            var insertPoint = new Point3d(tableX, tableY, 0);
+
+            bool ok = KolonDonatiTableDrawer.Draw(
+                _model,
+                columnData,
+                insertPoint,
+                db,
+                ed,
+                tr,
+                btr,
+                columnFoundationHeights,
+                columnDimsByFloor,
+                columnTableExtraByFloor,
+                columnActiveCells,
+                echoCompletionMessage: false);
+            if (ok)
+                ed.WriteMessage("\nKOLON50ST4: GPR kolon donati tablosu kopya perdelerin ustune cizildi ({0}).", Path.GetFileName(gprPath));
         }
 
         private void DrawSimplePerdeKolonCopiesByFloorId(
@@ -751,6 +839,7 @@ namespace ST4PlanIdCiz
                     if (w != null && !w.IsEmpty)
                     {
                         DrawGeometryRingsAsPolylines(tr, btr, w, LayerPerde, addHatch: true, hatchAngleRad: 0.0, applySmallTriangleTrim: false);
+                        Kolon50AccumulatePerdeCopyExtent(w);
                         int wallNumero = GetBeamNumero(it.beam.BeamId);
                         string wallNo = wallNumero.ToString("D" + wallPad, CultureInfo.InvariantCulture);
                         string wallText = string.Format(CultureInfo.InvariantCulture, "P{0}{1}", katEtiketi, wallNo);
@@ -765,6 +854,7 @@ namespace ST4PlanIdCiz
                         if (clipped == null || clipped.IsEmpty) continue;
                         clippedColumnGeoms.Add(clipped);
                         DrawGeometryRingsAsPolylines(tr, btr, clipped, LayerKolon, addHatch: true, hatchAngleRad: 0.0, applySmallTriangleTrim: false);
+                        Kolon50AccumulatePerdeCopyExtent(clipped);
                         var cEnv = clipped.EnvelopeInternal;
                         AppendColumnLabelCenteredBelowWallBottom(tr, btr, cEnv.MaxX, placedWallBottomY, c.col.ColumnNo, c.col.ColumnType, c.dim, floor);
                     }
@@ -780,6 +870,12 @@ namespace ST4PlanIdCiz
                 {
                     DrawHorizontalSectionBoundaryOnColumns(tr, btr, topCutY, colUnion, srcLeftX + dx - 50.0, srcRightX + dx + 50.0);
                     DrawHorizontalSectionBoundaryOnColumns(tr, btr, bottomCutY, colUnion, srcLeftX + dx - 50.0, srcRightX + dx + 50.0);
+                    if (_isKolon50Mode)
+                    {
+                        var u = colUnion.EnvelopeInternal;
+                        Kolon50AccumulatePerdeCopyExtent(new Envelope(u.MinX, u.MaxX, topCutY, topCutY));
+                        Kolon50AccumulatePerdeCopyExtent(new Envelope(u.MinX, u.MaxX, bottomCutY, bottomCutY));
+                    }
                 }
 
                 if (recordAnchors)
