@@ -4,7 +4,9 @@ using System.Globalization;
 using System.Linq;
 using Autodesk.AutoCAD.Colors;
 using Autodesk.AutoCAD.DatabaseServices;
+using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Geometry;
+using NetTopologySuite;
 using NetTopologySuite.Geometries;
 using NetTopologySuite.Operation.Union;
 using ST4AksCizCSharp;
@@ -854,6 +856,217 @@ namespace ST4PlanIdCiz
             // B-B başlık: sol aks balon sol dış yüzeyinden 60 cm sola; dikey metnin plana bakan sağ kenarı ≈ merkez + yükseklik/2
             double xBbBaslikMerkez = xAksBalonSolDisYuzey - KesitIsmiSolAksBalonSolBoslukCm - KesitBaslikMetinYukseklikCm * 0.5;
             DrawKesitTitleVerticalRightOfSection(tr, btr, db, "B-B KESİTİ", xBbBaslikMerkez, contentLeftY + spanAL * 0.5);
+        }
+
+        public bool DrawSectionFromUserCut(Database db, Editor ed, Point3d worldA, Point3d worldB, Point3d sectionInsertBase, string sectionLetterRaw)
+        {
+            if (db == null || ed == null) return false;
+            if (_model == null || _model.Floors == null || _model.Floors.Count == 0)
+            {
+                ed.WriteMessage("\nST4KESIT: Modelde kat bulunamadi.");
+                return false;
+            }
+
+            string letter = string.IsNullOrWhiteSpace(sectionLetterRaw) ? "C" : sectionLetterRaw.Trim();
+            letter = letter.Length > 0 ? letter.Substring(0, 1).ToUpperInvariant() : "C";
+
+            _ntsDrawFactory = NtsGeometryServices.Instance.CreateGeometryFactory();
+            try
+            {
+                using (var tr = db.TransactionManager.StartTransaction())
+                {
+                    EnsureLayers(tr, db);
+                    var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
+                    var btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
+
+                    var extBase = CalculateBaseExtents();
+                    double floorWidth = (extBase.Xmax - extBase.Xmin) + 80.0;
+                    double floorGap = 1000.0;
+                    bool hasFoundations = _model.ContinuousFoundations.Count > 0 || _model.SlabFoundations.Count > 0 || _model.TieBeams.Count > 0 || _model.SingleFootings.Count > 0;
+                    int planStartIndex = hasFoundations ? 1 : 0;
+
+                    var candidates = new List<(FloorInfo floor, bool isFoundationPlan, double offsetX, double offsetY, (double Xmin, double Xmax, double Ymin, double Ymax) ext, Geometry structuralUnion)>();
+                    if (hasFoundations && _model.Floors.Count > 0)
+                    {
+                        var firstFloor = _model.Floors[0];
+                        Geometry firstFloorUnion = BuildFloorElementUnion(firstFloor);
+                        var firstFloorAxisExt = GetAksSiniriEnvelope(firstFloorUnion);
+                        candidates.Add((firstFloor, true, 0.0, 0.0, firstFloorAxisExt, firstFloorUnion));
+                    }
+                    for (int floorIdx = 0; floorIdx < _model.Floors.Count; floorIdx++)
+                    {
+                        var floor = _model.Floors[floorIdx];
+                        double offsetX = (floorIdx + planStartIndex) * (floorWidth + floorGap);
+                        double offsetY = 0.0;
+                        Geometry elemUnion = BuildFloorElementUnion(floor);
+                        var floorAxisExt = GetAksSiniriEnvelope(elemUnion);
+                        candidates.Add((floor, false, offsetX, offsetY, floorAxisExt, elemUnion));
+                    }
+                    if (candidates.Count == 0)
+                    {
+                        ed.WriteMessage("\nST4KESIT: Kesit alinacak plan adayi bulunamadi.");
+                        return false;
+                    }
+
+                    Point2d midWorld = new Point2d((worldA.X + worldB.X) * 0.5, (worldA.Y + worldB.Y) * 0.5);
+                    const double pickTol = 120.0;
+                    bool ContainsPick((double Xmin, double Xmax, double Ymin, double Ymax) ex, double ox, double oy, Point2d p)
+                    {
+                        return p.X >= ox + ex.Xmin - pickTol && p.X <= ox + ex.Xmax + pickTol &&
+                               p.Y >= oy + ex.Ymin - pickTol && p.Y <= oy + ex.Ymax + pickTol;
+                    }
+
+                    int bestIdx = -1;
+                    double bestDist2 = double.PositiveInfinity;
+                    for (int i = 0; i < candidates.Count; i++)
+                    {
+                        var c = candidates[i];
+                        if (!ContainsPick(c.ext, c.offsetX, c.offsetY, midWorld)) continue;
+                        double cx = c.offsetX + (c.ext.Xmin + c.ext.Xmax) * 0.5;
+                        double cy = c.offsetY + (c.ext.Ymin + c.ext.Ymax) * 0.5;
+                        double dx = midWorld.X - cx;
+                        double dy = midWorld.Y - cy;
+                        double d2 = dx * dx + dy * dy;
+                        if (d2 < bestDist2)
+                        {
+                            bestDist2 = d2;
+                            bestIdx = i;
+                        }
+                    }
+
+                    if (bestIdx < 0)
+                    {
+                        for (int i = 0; i < candidates.Count; i++)
+                        {
+                            var c = candidates[i];
+                            double cx = c.offsetX + (c.ext.Xmin + c.ext.Xmax) * 0.5;
+                            double cy = c.offsetY + (c.ext.Ymin + c.ext.Ymax) * 0.5;
+                            double dx = midWorld.X - cx;
+                            double dy = midWorld.Y - cy;
+                            double d2 = dx * dx + dy * dy;
+                            if (d2 < bestDist2)
+                            {
+                                bestDist2 = d2;
+                                bestIdx = i;
+                            }
+                        }
+                    }
+                    if (bestIdx < 0)
+                    {
+                        ed.WriteMessage("\nST4KESIT: Kesit icin uygun plan secilemedi.");
+                        return false;
+                    }
+
+                    var pick = candidates[bestIdx];
+                    Point2d aModel = new Point2d(worldA.X - pick.offsetX, worldA.Y - pick.offsetY);
+                    Point2d bModel = new Point2d(worldB.X - pick.offsetX, worldB.Y - pick.offsetY);
+                    Vector2d cutDir = bModel - aModel;
+                    if (cutDir.Length < 1e-6)
+                    {
+                        ed.WriteMessage("\nST4KESIT: Kesit hatti icin iki farkli nokta secin.");
+                        return false;
+                    }
+                    Vector2d dirUnit = cutDir.GetNormal();
+                    Point2d pa = aModel - dirUnit.MultiplyBy(SectionLineExtendCm);
+                    Point2d pb = bModel + dirUnit.MultiplyBy(SectionLineExtendCm);
+                    var colExtra = GetColumnTableExtraData(pick.floor);
+                    var slices = CollectAllSectionSlices(pick.floor, pa, pb, aModel, dirUnit, pick.isFoundationPlan, colExtra);
+                    if (slices == null || slices.Count == 0)
+                    {
+                        ed.WriteMessage("\nST4KESIT: Secilen hattan kesit dilimi bulunamadi.");
+                        return false;
+                    }
+
+                    DrawUserDefinedSectionCutOnPlan(tr, btr, db, worldA, worldB, letter, pick.offsetX, pick.offsetY, pick.ext);
+
+                    double amin = slices.Min(s => s.A0) - 40.0;
+                    double amax = slices.Max(s => s.A1) + 40.0;
+                    double minZ = slices.Min(s => s.Z0) - 25.0;
+                    double maxZ = slices.Max(s => s.Z1) + 25.0;
+                    double spanA = Math.Max(180.0, amax - amin);
+                    double spanZ = Math.Max(SectionMinStoryHeightCm * 0.5, maxZ - minZ);
+
+                    ObjectId planOlcuDimId = GetOrCreatePlanOlcuDimStyle(tr, db, 12.0);
+                    double contentX = sectionInsertBase.X;
+                    double contentY = sectionInsertBase.Y;
+
+                    DrawSchematicFromSlicesOneToOne(tr, btr, slices, contentX, contentY, amin, minZ, spanA, spanZ, horizontalAlongX: true, mirrorElevationX: false, pick.isFoundationPlan, drawReferenceAxis: false);
+                    DrawKesitSiniriFromBeams(tr, btr, slices, contentX, contentY, amin, minZ, spanZ, horizontalAlongX: true, mirrorElevationX: false, pick.isFoundationPlan);
+                    DrawKesitSchematicDimensions(tr, btr, slices, contentX, contentY, amin, minZ, spanZ, horizontalAlongX: true, mirrorElevationX: false, pick.isFoundationPlan, planOlcuDimId);
+                    DrawKesitSchematicElementLabels(tr, btr, db, slices, pick.floor, contentX, contentY, amin, minZ, spanZ, true, false, pick.isFoundationPlan);
+                    if (pick.isFoundationPlan)
+                        DrawGrobetonUnderFoundationKesit(tr, btr, slices, contentX, contentY, amin, minZ, spanZ, horizontalAlongX: true, mirrorElevationX: false);
+                    try { DrawKesitSchematicElevationKots(tr, btr, db, slices, contentX, contentY, amin, minZ, spanZ, horizontalAlongX: true, mirrorElevationX: false, pick.isFoundationPlan); }
+                    catch { }
+
+                    double titleTopY = contentY - 24.0;
+                    DrawKesitTitleBelowSchematic(tr, btr, db, letter + "-" + letter + " KESİTİ", contentX + spanA * 0.5, titleTopY);
+
+                    tr.Commit();
+                    ed.WriteMessage("\nST4KESIT: {0}-{0} kesiti cizildi. Kat: {1} ({2}).",
+                        letter,
+                        pick.floor.FloorNo,
+                        pick.isFoundationPlan ? "temel" : "kalip");
+                    return true;
+                }
+            }
+            finally { _ntsDrawFactory = null; }
+        }
+
+        private void DrawUserDefinedSectionCutOnPlan(Transaction tr, BlockTableRecord btr, Database db, Point3d worldA, Point3d worldB, string letter,
+            double offsetX, double offsetY, (double Xmin, double Xmax, double Ymin, double Ymax) ext)
+        {
+            Vector2d dir = new Vector2d(worldB.X - worldA.X, worldB.Y - worldA.Y);
+            if (dir.Length < 1e-6) return;
+            Vector2d u = dir.GetNormal();
+            Vector2d n = new Vector2d(-u.Y, u.X);
+            double midX = (worldA.X + worldB.X) * 0.5;
+            double midY = (worldA.Y + worldB.Y) * 0.5;
+            double rx0 = offsetX + ext.Xmin + SectionCutGapFromFloorBoundaryCm;
+            double rx1 = offsetX + ext.Xmax - SectionCutGapFromFloorBoundaryCm;
+            double ry0 = offsetY + ext.Ymin + SectionCutGapFromFloorBoundaryCm;
+            double ry1 = offsetY + ext.Ymax - SectionCutGapFromFloorBoundaryCm;
+            if (rx1 <= rx0 || ry1 <= ry0) return;
+
+            var ts = new List<double>();
+            void addIfInsideY(double xEdge)
+            {
+                if (Math.Abs(u.X) < 1e-9) return;
+                double t = (xEdge - midX) / u.X;
+                double y = midY + t * u.Y;
+                if (y >= ry0 - 1e-6 && y <= ry1 + 1e-6) ts.Add(t);
+            }
+            void addIfInsideX(double yEdge)
+            {
+                if (Math.Abs(u.Y) < 1e-9) return;
+                double t = (yEdge - midY) / u.Y;
+                double x = midX + t * u.X;
+                if (x >= rx0 - 1e-6 && x <= rx1 + 1e-6) ts.Add(t);
+            }
+            addIfInsideY(rx0);
+            addIfInsideY(rx1);
+            addIfInsideX(ry0);
+            addIfInsideX(ry1);
+            if (ts.Count < 2) return;
+            ts.Sort();
+            double tA = ts.First();
+            double tB = ts.Last();
+            if (tB - tA < 1e-3) return;
+
+            Point3d pA = new Point3d(midX + tA * u.X, midY + tA * u.Y, 0);
+            Point3d pB = new Point3d(midX + tB * u.X, midY + tB * u.Y, 0);
+
+            var lt = (LinetypeTable)tr.GetObject(db.LinetypeTableId, OpenMode.ForRead);
+            ObjectId dashId = lt.Has("DASHED") ? lt["DASHED"] : (lt.Has("Dashed") ? lt["Dashed"] : ObjectId.Null);
+            double r = KesitEtiketRadiusCm;
+            double segX0 = pA.X + u.X * r;
+            double segY0 = pA.Y + u.Y * r;
+            double segX1 = pB.X - u.X * r;
+            double segY1 = pB.Y - u.Y * r;
+            AppendDashedCutSegment(tr, btr, dashId, segX0, segY0, segX1, segY1);
+
+            DrawKesitEtiketDxfStyle(tr, btr, db, pA, u, n, false, letter);
+            DrawKesitEtiketDxfStyle(tr, btr, db, pB, u, n, true, letter);
         }
 
         /// <summary>Temel planı kesitlerinde her TEMEL (BEYKENT) parçası (sürekli / tekil / döşeme temeli) altına 10 cm grobeton — bitişik parçalar NTS <c>Union</c> ile birleştirilerek tek kapalı polyline olarak çizilir (<see cref="LayerGrobeton"/>).</summary>

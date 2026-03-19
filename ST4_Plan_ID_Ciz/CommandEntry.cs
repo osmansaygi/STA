@@ -182,5 +182,70 @@ namespace ST4PlanIdCiz
                 ed.WriteMessage("\nKOLONDATA cizim hatasi: {0}", ex.Message);
             }
         }
+
+        [CommandMethod("ST4KESIT")]
+        public void St4Kesit()
+        {
+            var doc = Application.DocumentManager.MdiActiveDocument;
+            if (doc == null) return;
+
+            var ed = doc.Editor;
+            var db = doc.Database;
+
+            var opts = new PromptOpenFileOptions("\nST4KESIT icin ST4 Dosyasi Secin")
+            {
+                Filter = "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*"
+            };
+            var fileRes = ed.GetFileNameForOpen(opts);
+            if (fileRes.Status != PromptStatus.OK) return;
+
+            try
+            {
+                NtsGeometryServices.Instance = new NtsGeometryServices(
+                    CoordinateArraySequenceFactory.Instance,
+                    new PrecisionModel(),
+                    0,
+                    GeometryOverlay.NG,
+                    new CoordinateEqualityComparer());
+
+                var parser = new St4Parser();
+                var model = parser.Parse(fileRes.StringResult);
+                GprYapiAksLabels.TryMergeFromGprBesideSt4(fileRes.StringResult, model);
+                var manager = new PlanIdDrawingManager(model);
+
+                var p1Res = ed.GetPoint(new PromptPointOptions("\nKesit hatti 1. nokta: ") { AllowNone = false });
+                if (p1Res.Status != PromptStatus.OK) return;
+                var p2Opts = new PromptPointOptions("\nKesit hatti 2. nokta: ") { AllowNone = false, UseBasePoint = true, BasePoint = p1Res.Value };
+                var p2Res = ed.GetPoint(p2Opts);
+                if (p2Res.Status != PromptStatus.OK) return;
+
+                var insRes = ed.GetPoint(new PromptPointOptions("\nKesitin cizilecegi sol-alt yerlestirme noktasi: ") { AllowNone = false });
+                if (insRes.Status != PromptStatus.OK) return;
+
+                var letterOpts = new PromptStringOptions("\nKesit harfi [varsayilan C]: ")
+                {
+                    AllowSpaces = false,
+                    DefaultValue = "C",
+                    UseDefaultValue = true
+                };
+                var letterRes = ed.GetString(letterOpts);
+                if (letterRes.Status != PromptStatus.OK && letterRes.Status != PromptStatus.None) return;
+                string letter = string.IsNullOrWhiteSpace(letterRes.StringResult) ? "C" : letterRes.StringResult.Trim();
+
+                bool ok = manager.DrawSectionFromUserCut(db, ed, p1Res.Value, p2Res.Value, insRes.Value, letter);
+                if (ok)
+                    doc.SendStringToExecute("_.REGEN ", true, false, false);
+            }
+            catch (AcRxException aex)
+            {
+                ed.WriteMessage("\nST4KESIT hata: {0} ({1})", aex.Message, aex.ErrorStatus);
+            }
+            catch (System.Exception ex)
+            {
+                ed.WriteMessage("\nST4KESIT hata: {0}", ex.Message);
+                if (ex.InnerException != null)
+                    ed.WriteMessage("  Inner: {0}", ex.InnerException.Message);
+            }
+        }
     }
 }
