@@ -280,7 +280,7 @@ namespace ST4PlanIdCiz
                 var manager = new PlanIdDrawingManager(model);
                 var insRes = ed.GetPoint(new PromptPointOptions("\nTEMEL50ST4 yerlestirme noktasi (sol-alt): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
-                manager.DrawFoundationPlanWithSections(db, ed, insRes.Value);
+                manager.DrawFoundationPlanWithSections(db, ed, insRes.Value, fileRes.StringResult);
                 doc.SendStringToExecute("_.ZOOM _E ", true, false, false);
             }
             catch (AcRxException aex)

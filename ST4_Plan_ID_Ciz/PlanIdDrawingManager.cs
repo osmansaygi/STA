@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Reflection;
 using Autodesk.AutoCAD.Colors;
 using Autodesk.AutoCAD.DatabaseServices;
@@ -42,8 +43,25 @@ namespace ST4PlanIdCiz
         /// <summary>antet_02 SHEETVIEW sol-alt (cizim birimi); bire bir yerlesimde bu köse layout sol-alt ile hizalanir.</summary>
         private const double AntetDxfSheetViewXmin = -2854.616393644967;
         private const double AntetDxfSheetViewYmin = 1658.94236737828;
+        private const double AntetDxfSheetViewOutYmin = 1608.94236737828;
+        private const double AntetDxfSheetViewOutYmax = 5808.942367378282;
+        private const double TemelAntetBaslangicYukseklikCm = 5000.0;
+        private const double TemelAntetEkStretchAdimCm = 500.0;
         // Ileride: antet sablon degiskenleri — klon sonrasi DBText/ATTRIBUTE (sablon: antet_02.dwg + projede antet_02.dxf referans)
         private const string TemelAntetEmbeddedResourceName = "ST4PlanIdCiz.TemelAntet.antet_02.dwg";
+        private const string LayerAntetBaslik1 = "ANTET BASLIK 1 (BEYKENT)";
+        private const string LayerAntetBaslik2 = "ANTET BASLIK 2 (BEYKENT)";
+        private const string LayerAntetCizgi = "ANTET CIZGI (BEYKENT)";
+        private const string LayerAntetYazi = "ANTET YAZI (BEYKENT)";
+        private static readonly Regex AntetKoordinatRegex = new Regex(@"^\s*[-+]?\d+(?:[.,]\d+)?\s*°\s*/\s*[-+]?\d+(?:[.,]\d+)?\s*°\s*$", RegexOptions.Compiled);
+        private static readonly Regex AntetBksRegex = new Regex(@"^\s*BKS\s*=\s*\d+\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex AntetIRegex = new Regex(@"^\s*I\s*=\s*[-+]?\d+(?:[.,]\d+)?\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex AntetDtsRegex = new Regex(@"^\s*DTS\s*=\s*\d+\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex AntetBysRegex = new Regex(@"^\s*BYS\s*=\s*\d+\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex AntetA31Regex = new Regex(@"^\s*A\d+\s*\(\s*R\s*=\s*[-+]?\d+(?:[.,]\d+)?\s*,\s*D\s*=\s*[-+]?\d+(?:[.,]\d+)?\s*\)\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex AntetZeminRegex = new Regex(@"^\s*Z[A-E]\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex AntetCRegex = new Regex(@"^\s*C\d+\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex AntetBRegex = new Regex(@"^\s*B\d+C\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         /// <summary>Statik kesit örnekleme / şerit buffer için tek örnek.</summary>
         private static readonly GeometryFactory StaticGeomFactory = new GeometryFactory();
 
@@ -355,7 +373,7 @@ namespace ST4PlanIdCiz
                     DrawPerdeLabelsForFloor(tr, btr, firstFloor, offsetX, offsetY, kolonPerdeUnion);
                     DrawFloorTitle(tr, btr, firstFloor, offsetX, offsetY, firstFloorAxisExt, isFoundationPlan: true);
                     DrawPlanSections(tr, btr, db, firstFloor, offsetX, offsetY, firstFloorAxisExt, isFoundationPlan: true, firstFloorUnion,
-                        out _, out _, out _, out _);
+                        out _, out _, out _, out _, out _);
                 }
 
                 // Benzer kat birleştirme şimdilik kapalı; açmak için GetFormworkFloorGroups() ile döngüyü gruplar üzerinden çalıştır, labelFloor = en alt kat, DrawSimilarFloorsNote ile not yaz.
@@ -375,7 +393,7 @@ namespace ST4PlanIdCiz
                     DrawUnifiedLayer(tr, btr, floor, offsetX, offsetY, elemUnion);
                     DrawFloorTitle(tr, btr, floor, offsetX, offsetY, floorAxisExt, isFoundationPlan: false);
                     DrawPlanSections(tr, btr, db, floor, offsetX, offsetY, floorAxisExt, isFoundationPlan: false, elemUnion,
-                        out _, out _, out _, out _);
+                        out _, out _, out _, out _, out _);
                 }
 
                 tr.Commit();
@@ -1703,7 +1721,7 @@ namespace ST4PlanIdCiz
         /// Sadece temel planını (ilk kat) ve ona ait plan kesitlerini çizer.
         /// 1/50 projeler için TEMEL50ST4 komutundan çağrılır.
         /// </summary>
-        public void DrawFoundationPlanWithSections(Database db, Editor ed, Point3d baseInsertPoint)
+        public void DrawFoundationPlanWithSections(Database db, Editor ed, Point3d baseInsertPoint, string st4SourcePath = null)
         {
             _ntsDrawFactory = NtsGeometryServices.Instance.CreateGeometryFactory();
             _isTemel50Mode = true;
@@ -1742,13 +1760,14 @@ namespace ST4PlanIdCiz
                     DrawPerdeLabelsForFloor(tr, btr, firstFloor, offsetX, offsetY, kolonPerdeUnion);
                     DrawFloorTitle(tr, btr, firstFloor, offsetX, offsetY, firstFloorAxisExt, isFoundationPlan: true);
                     DrawPlanSections(tr, btr, db, firstFloor, offsetX, offsetY, firstFloorAxisExt, isFoundationPlan: true, firstFloorUnion,
-                        out double antetLayMinX, out double antetLayMaxX, out double antetLayMinY, out double antetLayMaxY);
+                        out double antetLayMinX, out double antetLayMaxX, out double antetLayMinY, out double antetLayMaxY, out double leftSectionMinX);
                     GetSectionCutBalloonExtents(offsetX, offsetY, firstFloorAxisExt,
-                        out _, out _, out double yBottomBalloonTemel, out _,
+                        out _, out double xRightBalloonTemel, out double yBottomBalloonTemel, out _,
                         out _, out _, out _, out _);
                     double temelBaslikYTop = yBottomBalloonTemel - Temel50BaslikAltAksBalonBoslukCm;
                     antetLayMinY = Math.Min(antetLayMinY, temelBaslikYTop - 30.0 - 100.0);
-                    TryDrawTemelAntetFromDxf(tr, btr, antetLayMinX, antetLayMinY, antetLayMaxX, antetLayMaxY, ed);
+                    double yLowestHorizontalAxis = GetLowestHorizontalColumnAxisY(offsetY, firstFloorAxisExt);
+                    TryDrawTemelAntetFromDxf(tr, btr, antetLayMinX, antetLayMinY, antetLayMaxX, antetLayMaxY, leftSectionMinX, xRightBalloonTemel, yLowestHorizontalAxis, st4SourcePath, ed);
 
                     tr.Commit();
 
@@ -2569,6 +2588,26 @@ namespace ST4PlanIdCiz
             xTopBalloons = xTopCenters;
             yLeftBalloons = yL;
             yRightBalloons = yR;
+        }
+
+        /// <summary>En alttaki yatay kolon aksının Y kotu (world cm). Antet SheetView alt hizasında kullanılır.</summary>
+        private double GetLowestHorizontalColumnAxisY(double offsetY, (double Xmin, double Xmax, double Ymin, double Ymax) ext)
+        {
+            try
+            {
+                var yKolonAks = BuildColumnAxisIds(c => c.AxisYId, _model.AxisY.Select(a => a.Id));
+                double minY = double.PositiveInfinity;
+                foreach (var ay in _model.AxisY)
+                {
+                    if (!yKolonAks.Contains(ay.Id)) continue;
+                    if (Math.Abs(ay.Slope) > 1e-9) continue; // yatay akslar
+                    double y = -ay.ValueCm + offsetY;
+                    if (y < minY) minY = y;
+                }
+                if (!double.IsInfinity(minY)) return minY;
+            }
+            catch { }
+            return offsetY + ext.Ymin;
         }
 
         /// <summary>X aksları için 4 tarafta (üst + alt) çift sıra ölçü; balondan içeri doğru 55 cm ve 75 cm.</summary>
@@ -6134,8 +6173,8 @@ namespace ST4PlanIdCiz
             }
         }
 
-        /// <summary>Yalnizca TEMEL50ST4: gömülü antet_02.dwg bire bir (ölçeksiz öteleme). SHEETVIEW sol-alt, plan+kesit layout sol-altina oturur. TransformBy yalnizca Model Space kök Entity.</summary>
-        private void TryDrawTemelAntetFromDxf(Transaction tr, BlockTableRecord btr, double layoutMinX, double layoutMinY, double layoutMaxX, double layoutMaxY, Editor ed)
+        /// <summary>Yalnizca TEMEL50ST4: gömülü antet_02.dwg, SheetView alt cizgisi en alt yatay kolon aksindan 500 cm asagida olacak sekilde yerlestirilir.</summary>
+        private void TryDrawTemelAntetFromDxf(Transaction tr, BlockTableRecord btr, double layoutMinX, double layoutMinY, double layoutMaxX, double layoutMaxY, double leftSectionMinX, double xRightBalloonTemel, double yLowestHorizontalAxis, string st4SourcePath, Editor ed)
         {
             double contentW = layoutMaxX - layoutMinX;
             double contentH = layoutMaxY - layoutMinY;
@@ -6145,8 +6184,10 @@ namespace ST4PlanIdCiz
                 return;
             }
 
+            double targetSheetViewLeft = leftSectionMinX - 140.0;
+            double targetSheetViewBottom = yLowestHorizontalAxis - 600.0;
             var srcLL = new Point3d(AntetDxfSheetViewXmin, AntetDxfSheetViewYmin, 0);
-            var xf = Matrix3d.Displacement(new Vector3d(layoutMinX - srcLL.X, layoutMinY - srcLL.Y, 0));
+            var xf = Matrix3d.Displacement(new Vector3d(targetSheetViewLeft - srcLL.X, targetSheetViewBottom - srcLL.Y, 0));
 
             Database sourceDb = null;
             try
@@ -6173,8 +6214,15 @@ namespace ST4PlanIdCiz
                     return;
                 }
 
+                EnsureLayerForAntet(tr, btr.Database, LayerAntetBaslik1, 1);
+                EnsureLayerForAntet(tr, btr.Database, LayerAntetBaslik2, 1);
+                EnsureLayerForAntet(tr, btr.Database, LayerAntetCizgi, 163);
+                EnsureLayerForAntet(tr, btr.Database, LayerAntetYazi, 253);
+
                 var mapping = new IdMapping();
                 btr.Database.WblockCloneObjects(ids, btr.ObjectId, mapping, DuplicateRecordCloning.Ignore, false);
+                var rootEntityIds = new List<ObjectId>();
+                AntetValueSet antetValues = BuildAntetValues(st4SourcePath);
                 using (Transaction trSrc = sourceDb.TransactionManager.StartTransaction())
                 {
                     var sourceMs = (BlockTableRecord)trSrc.GetObject(sourceMsId, OpenMode.ForRead);
@@ -6183,13 +6231,38 @@ namespace ST4PlanIdCiz
                         if (!pair.Key.IsValid || !pair.Value.IsValid) continue;
                         var entSrc = trSrc.GetObject(pair.Key, OpenMode.ForRead) as Entity;
                         if (entSrc == null) continue;
-                        if (!entSrc.BlockId.Equals(sourceMs.ObjectId)) continue;
                         var entDst = tr.GetObject(pair.Value, OpenMode.ForWrite) as Entity;
                         if (entDst == null) continue;
-                        entDst.TransformBy(xf);
+                        RemapAntetLayer(entDst);
+                        ReplaceAntetDynamicTexts(entDst, antetValues);
+                        if (entSrc.BlockId.Equals(sourceMs.ObjectId))
+                        {
+                            entDst.TransformBy(xf);
+                            rootEntityIds.Add(entDst.ObjectId);
+                        }
                     }
                     trSrc.Commit();
                 }
+
+                double placedSheetViewRight = targetSheetViewLeft + (4857.138603748386 - AntetDxfSheetViewXmin);
+                double placedSheetViewTop = targetSheetViewBottom + (5758.942367378282 - AntetDxfSheetViewYmin);
+                double placedSheetViewOutBottom = targetSheetViewBottom + (AntetDxfSheetViewOutYmin - AntetDxfSheetViewYmin);
+                double placedSheetViewOutTop = targetSheetViewBottom + (AntetDxfSheetViewOutYmax - AntetDxfSheetViewYmin);
+                double targetSheetViewRight = xRightBalloonTemel + 160.0;
+                double deltaRight = targetSheetViewRight - placedSheetViewRight;
+                if (Math.Abs(deltaRight) > 1e-6)
+                    StretchAntetRightBandWithoutScaling(tr, rootEntityIds, placedSheetViewRight, deltaRight);
+
+                // Yukseklik kurali sadece SheetViewOut katmanina gore uygulanir.
+                double targetSheetViewOutTop = placedSheetViewOutBottom + TemelAntetBaslangicYukseklikCm;
+                if (layoutMaxY > targetSheetViewOutTop + 1e-6)
+                {
+                    double overflow = layoutMaxY - targetSheetViewOutTop;
+                    targetSheetViewOutTop += Math.Ceiling(overflow / TemelAntetEkStretchAdimCm) * TemelAntetEkStretchAdimCm;
+                }
+                double deltaTop = targetSheetViewOutTop - placedSheetViewOutTop;
+                if (Math.Abs(deltaTop) > 1e-6)
+                    StretchAntetTopBandWithoutScaling(tr, rootEntityIds, placedSheetViewTop, deltaTop);
             }
             catch (Exception ex)
             {
@@ -6198,6 +6271,388 @@ namespace ST4PlanIdCiz
             finally
             {
                 sourceDb?.Dispose();
+            }
+        }
+
+        private static void EnsureLayerForAntet(Transaction tr, Database db, string layerName, short colorIndex)
+        {
+            var lt = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
+            if (lt.Has(layerName))
+            {
+                var ltrExisting = (LayerTableRecord)tr.GetObject(lt[layerName], OpenMode.ForWrite);
+                ltrExisting.Color = Color.FromColorIndex(ColorMethod.ByAci, colorIndex);
+                ltrExisting.LineWeight = LineWeight.LineWeight020;
+                return;
+            }
+
+            lt.UpgradeOpen();
+            var ltr = new LayerTableRecord
+            {
+                Name = layerName,
+                Color = Color.FromColorIndex(ColorMethod.ByAci, colorIndex),
+                LineWeight = LineWeight.LineWeight020
+            };
+            lt.Add(ltr);
+            tr.AddNewlyCreatedDBObject(ltr, true);
+        }
+
+        private static void RemapAntetLayer(Entity ent)
+        {
+            string l = ent.Layer ?? string.Empty;
+            if (string.Equals(l, "Metraj Tablosu Ana Başlık", StringComparison.OrdinalIgnoreCase))
+                ent.Layer = LayerAntetBaslik1;
+            else if (string.Equals(l, "Metraj Tablosu Başlık", StringComparison.OrdinalIgnoreCase))
+                ent.Layer = LayerAntetBaslik2;
+            else if (string.Equals(l, "Metraj Tablosu Çizgi", StringComparison.OrdinalIgnoreCase))
+                ent.Layer = LayerAntetCizgi;
+            else if (string.Equals(l, "Metraj Tablosu Yazı", StringComparison.OrdinalIgnoreCase))
+                ent.Layer = LayerAntetYazi;
+        }
+
+        private sealed class AntetValueSet
+        {
+            public string Koordinat;
+            public string Pair45;
+            public string Pair23;
+            public string Bks;
+            public string IValue;
+            public string Dts;
+            public string Bys;
+            public string AClass;
+            public string RValue;
+            public string DValue;
+            public string Zemin;
+            public string ZeminYatak;
+            public string ZeminTasima;
+            public string CClass;
+            public string BClass;
+            public string YapiSahibi;
+            public bool GprMissing;
+        }
+
+        private static AntetValueSet BuildAntetValues(string st4SourcePath)
+        {
+            var v = new AntetValueSet();
+            if (string.IsNullOrWhiteSpace(st4SourcePath) || !File.Exists(st4SourcePath))
+                return v;
+            try
+            {
+                string line4 = null, line14 = null, line15 = null;
+                int ln = 0;
+                foreach (string raw in File.ReadLines(st4SourcePath))
+                {
+                    ln++;
+                    if (ln == 4) line4 = raw;
+                    else if (ln == 14) line14 = raw;
+                    else if (ln == 15) { line15 = raw; break; }
+                }
+
+                if (TryGetSt4ColumnDouble(line14, 7, out double c14_7) && TryGetSt4ColumnDouble(line14, 8, out double c14_8))
+                    v.Koordinat = c14_7.ToString("0.0000", CultureInfo.InvariantCulture) + "° / " + c14_8.ToString("0.0000", CultureInfo.InvariantCulture) + "°";
+                if (TryGetSt4ColumnDouble(line14, 4, out double c14_4) && TryGetSt4ColumnDouble(line14, 5, out double c14_5))
+                    v.Pair45 = c14_4.ToString("0.000", CultureInfo.InvariantCulture) + " / " + c14_5.ToString("0.000", CultureInfo.InvariantCulture);
+                if (TryGetSt4ColumnDouble(line14, 2, out double c14_2) && TryGetSt4ColumnDouble(line14, 3, out double c14_3))
+                    v.Pair23 = c14_2.ToString("0.000", CultureInfo.InvariantCulture) + " / " + c14_3.ToString("0.000", CultureInfo.InvariantCulture);
+
+                if (TryGetSt4ColumnDouble(line4, 6, out double iVal))
+                {
+                    v.IValue = iVal.ToString("0.###", CultureInfo.InvariantCulture);
+                    if (Math.Abs(iVal - 1.0) < 1e-6) v.Bks = "3";
+                    else if (Math.Abs(iVal - 1.2) < 1e-6) v.Bks = "2";
+                    else if (Math.Abs(iVal - 1.5) < 1e-6) v.Bks = "1";
+                }
+                string line7 = GetSt4Line(st4SourcePath, 7);
+                if (TryGetSt4ColumnDouble(line7, 2, out double st4Yatak))
+                    v.ZeminYatak = st4Yatak.ToString("0.00", CultureInfo.InvariantCulture);
+                if (TryGetSt4ColumnDouble(line7, 3, out double st4Tasima))
+                    v.ZeminTasima = st4Tasima.ToString("0.00", CultureInfo.InvariantCulture);
+                if (TryGetSt4ColumnDouble(GetSt4Line(st4SourcePath, 18), 1, out double cRaw))
+                    v.CClass = Math.Round(cRaw / 10.0, 0).ToString("0", CultureInfo.InvariantCulture);
+
+                string gprPath = ResolveGprPathBesideSt4(st4SourcePath);
+                if (!string.IsNullOrEmpty(gprPath))
+                    FillAntetValuesFromGpr(gprPath, v);
+                else
+                    v.GprMissing = true;
+
+                FillAntetValuesFromAakdD1(st4SourcePath, v);
+                if (string.IsNullOrWhiteSpace(v.YapiSahibi))
+                {
+                    string st4Line3 = GetSt4Line(st4SourcePath, 3);
+                    if (!string.IsNullOrWhiteSpace(st4Line3))
+                        v.YapiSahibi = st4Line3.Trim();
+                }
+            }
+            catch { }
+            return v;
+        }
+
+        private static string GetSt4Line(string st4Path, int oneBasedLineNo)
+        {
+            if (string.IsNullOrWhiteSpace(st4Path) || !File.Exists(st4Path) || oneBasedLineNo <= 0) return null;
+            int i = 0;
+            foreach (var raw in File.ReadLines(st4Path))
+            {
+                i++;
+                if (i == oneBasedLineNo) return raw;
+            }
+            return null;
+        }
+
+        private static bool TryGetSt4ColumnDouble(string line, int oneBasedColumn, out double value)
+        {
+            value = 0;
+            if (string.IsNullOrWhiteSpace(line) || oneBasedColumn <= 0) return false;
+            string[] cols = line.Split(',');
+            if (cols.Length < oneBasedColumn) return false;
+            string token = (cols[oneBasedColumn - 1] ?? string.Empty).Trim().Replace(',', '.');
+            if (token.StartsWith(".", StringComparison.Ordinal)) token = "0" + token;
+            if (token.StartsWith("-.", StringComparison.Ordinal)) token = token.Replace("-.", "-0.");
+            return double.TryParse(token, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
+        }
+
+        private static string ResolveGprPathBesideSt4(string st4Path)
+        {
+            try
+            {
+                string dir = Path.GetDirectoryName(st4Path);
+                string baseName = Path.GetFileNameWithoutExtension(st4Path);
+                if (string.IsNullOrEmpty(dir) || string.IsNullOrEmpty(baseName)) return null;
+                string p1 = Path.Combine(dir, baseName + ".GPR");
+                if (File.Exists(p1)) return p1;
+                string p2 = Path.Combine(dir, baseName + ".gpr");
+                if (File.Exists(p2)) return p2;
+            }
+            catch { }
+            return null;
+        }
+
+        private static void FillAntetValuesFromGpr(string gprPath, AntetValueSet v)
+        {
+            try
+            {
+                foreach (string raw in File.ReadLines(gprPath))
+                {
+                    string line = raw ?? string.Empty;
+                    if (string.IsNullOrEmpty(v.Dts) && line.Contains("DTS"))
+                    {
+                        var m = Regex.Match(line, @"DTS\s*:\s*([0-9]+[A-Za-z]?)");
+                        if (m.Success)
+                        {
+                            v.Dts = m.Groups[1].Value;
+                        }
+                    }
+                    if (string.IsNullOrEmpty(v.Bys) && line.Contains("BYS"))
+                    {
+                        var m = Regex.Match(line, @"BYS\s*:\s*(\d+)");
+                        if (m.Success) v.Bys = m.Groups[1].Value;
+                    }
+                    if (string.IsNullOrEmpty(v.DValue) && line.Contains("D"))
+                    {
+                        var m = Regex.Match(line, @"D\s*:\s*([0-9]+(?:[.,][0-9]+)?)");
+                        if (m.Success && double.TryParse(m.Groups[1].Value.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out double dVal))
+                            v.DValue = dVal.ToString("0.###", CultureInfo.InvariantCulture);
+                    }
+                    if (string.IsNullOrEmpty(v.AClass))
+                    {
+                        var m = Regex.Match(line, @"\bA\d+\b");
+                        if (m.Success) v.AClass = m.Value;
+                    }
+                    if (string.IsNullOrEmpty(v.RValue) && line.Contains("R"))
+                    {
+                        var m = Regex.Match(line, @"R\s*:\s*([0-9]+(?:[.,][0-9]+)?)");
+                        if (m.Success && double.TryParse(m.Groups[1].Value.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out double rVal))
+                            v.RValue = rVal.ToString("0.###", CultureInfo.InvariantCulture);
+                    }
+                    if (string.IsNullOrEmpty(v.Zemin))
+                    {
+                        var m = Regex.Match(line, @"\bZ[A-E]\b", RegexOptions.IgnoreCase);
+                        if (m.Success) v.Zemin = m.Value.ToUpperInvariant();
+                    }
+                    if (string.IsNullOrEmpty(v.ZeminYatak) && line.IndexOf("YATAK", StringComparison.OrdinalIgnoreCase) >= 0 && line.IndexOf("KATSAYISI", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        var m = Regex.Match(line, @":\s*([0-9]+(?:[.,][0-9]+)?)\s*$");
+                        if (m.Success && double.TryParse(m.Groups[1].Value.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out double yatak))
+                            v.ZeminYatak = yatak.ToString("0.00", CultureInfo.InvariantCulture);
+                    }
+                    if (string.IsNullOrEmpty(v.ZeminTasima) && line.IndexOf("ZEM", StringComparison.OrdinalIgnoreCase) >= 0 && line.IndexOf("GER", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        var m = Regex.Match(line, @":\s*([0-9]+(?:[.,][0-9]+)?)\s*$");
+                        if (m.Success && double.TryParse(m.Groups[1].Value.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out double tasima))
+                            v.ZeminTasima = tasima.ToString("0.00", CultureInfo.InvariantCulture);
+                    }
+                }
+            }
+            catch { }
+        }
+
+        private static void FillAntetValuesFromAakdD1(string st4SourcePath, AntetValueSet v)
+        {
+            try
+            {
+                string dir = Path.GetDirectoryName(st4SourcePath ?? string.Empty);
+                if (string.IsNullOrWhiteSpace(dir)) return;
+                string aakd = Path.Combine(dir, "A_AKD_D1.ST4");
+                if (!File.Exists(aakd)) return;
+                string line18 = GetSt4Line(aakd, 18);
+                if (TryGetSt4ColumnDouble(line18, 2, out double bRaw))
+                    v.BClass = Math.Round(bRaw / 10.0, 0).ToString("0", CultureInfo.InvariantCulture);
+            }
+            catch { }
+        }
+
+        private static void ReplaceAntetDynamicTexts(Entity ent, AntetValueSet v)
+        {
+            if (v == null) return;
+
+            if (ent is DBText t)
+            {
+                t.TextString = ReplaceAntetTextCore(t.TextString, v);
+                return;
+            }
+            if (ent is MText mt)
+            {
+                mt.Contents = ReplaceAntetTextCore(mt.Contents, v);
+            }
+        }
+
+        private static string ReplaceAntetTextCore(string text, AntetValueSet v)
+        {
+            string s = text ?? string.Empty;
+            if (AntetKoordinatRegex.IsMatch(s) && !string.IsNullOrWhiteSpace(v.Koordinat)) return v.Koordinat;
+            if (string.Equals(s.Trim(), "0.312 / 0.074", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(v.Pair45)) return v.Pair45;
+            if ((string.Equals(s.Trim(), "0.484 / 0.178", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(s.Trim(), "0.482 / 0.345", StringComparison.OrdinalIgnoreCase)) &&
+                !string.IsNullOrWhiteSpace(v.Pair23)) return v.Pair23;
+            if (AntetBksRegex.IsMatch(s) && !string.IsNullOrWhiteSpace(v.Bks)) return "BKS = " + v.Bks;
+            if (AntetIRegex.IsMatch(s) && !string.IsNullOrWhiteSpace(v.IValue)) return "I=" + v.IValue;
+            if (AntetDtsRegex.IsMatch(s))
+                return !string.IsNullOrWhiteSpace(v.Dts) ? ("DTS = " + v.Dts) : AppendGprMissingWarning(s, v.GprMissing);
+            if (AntetBysRegex.IsMatch(s))
+                return !string.IsNullOrWhiteSpace(v.Bys) ? ("BYS = " + v.Bys) : AppendGprMissingWarning(s, v.GprMissing);
+            if (AntetA31Regex.IsMatch(s) && !string.IsNullOrWhiteSpace(v.AClass) && !string.IsNullOrWhiteSpace(v.RValue) && !string.IsNullOrWhiteSpace(v.DValue))
+                return v.AClass + " (R=" + v.RValue + ", D=" + v.DValue + ")";
+            if (AntetA31Regex.IsMatch(s))
+                return AppendGprMissingWarning(s, v.GprMissing);
+            if (AntetZeminRegex.IsMatch(s))
+                return !string.IsNullOrWhiteSpace(v.Zemin) ? v.Zemin : AppendGprMissingWarning(s, v.GprMissing);
+            if (string.Equals(s.Trim(), "1960.00", StringComparison.OrdinalIgnoreCase))
+                return !string.IsNullOrWhiteSpace(v.ZeminYatak) ? v.ZeminYatak : AppendGprMissingWarning(s, v.GprMissing);
+            if (string.Equals(s.Trim(), "35.00", StringComparison.OrdinalIgnoreCase))
+                return !string.IsNullOrWhiteSpace(v.ZeminTasima) ? v.ZeminTasima : AppendGprMissingWarning(s, v.GprMissing);
+            if (AntetCRegex.IsMatch(s) && !string.IsNullOrWhiteSpace(v.CClass)) return "C" + v.CClass;
+            if (AntetBRegex.IsMatch(s) && !string.IsNullOrWhiteSpace(v.BClass)) return "B" + v.BClass + "C";
+            if (string.Equals(s.Trim(), "YAPI SAHIBI", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(v.YapiSahibi)) return v.YapiSahibi;
+            return text;
+        }
+
+        private static string AppendGprMissingWarning(string original, bool gprMissing)
+        {
+            if (!gprMissing) return original;
+            if (string.IsNullOrWhiteSpace(original)) return "GPR dosyasi bulunamadi";
+            if (original.IndexOf("GPR dosyasi bulunamadi", StringComparison.OrdinalIgnoreCase) >= 0) return original;
+            return original + " (GPR dosyasi bulunamadi)";
+        }
+
+        private static void StretchAntetRightBandWithoutScaling(Transaction tr, List<ObjectId> rootEntityIds, double sheetViewRightX, double deltaX)
+        {
+            if (rootEntityIds == null || rootEntityIds.Count == 0 || Math.Abs(deltaX) <= 1e-9) return;
+            const double tol = 1e-6;
+            var move = Matrix3d.Displacement(new Vector3d(deltaX, 0, 0));
+
+            foreach (ObjectId id in rootEntityIds)
+            {
+                var ent = tr.GetObject(id, OpenMode.ForWrite) as Entity;
+                if (ent == null) continue;
+
+                if (ent is Polyline pl)
+                {
+                    for (int i = 0; i < pl.NumberOfVertices; i++)
+                    {
+                        var p = pl.GetPoint2dAt(i);
+                        if (p.X >= sheetViewRightX - tol)
+                            pl.SetPointAt(i, new Point2d(p.X + deltaX, p.Y));
+                    }
+                    continue;
+                }
+                if (ent is Line ln)
+                {
+                    if (ln.StartPoint.X >= sheetViewRightX - tol)
+                        ln.StartPoint = new Point3d(ln.StartPoint.X + deltaX, ln.StartPoint.Y, ln.StartPoint.Z);
+                    if (ln.EndPoint.X >= sheetViewRightX - tol)
+                        ln.EndPoint = new Point3d(ln.EndPoint.X + deltaX, ln.EndPoint.Y, ln.EndPoint.Z);
+                    continue;
+                }
+                if (ent is Circle c)
+                {
+                    if (c.Center.X >= sheetViewRightX - tol) c.TransformBy(move);
+                    continue;
+                }
+                if (ent is Arc a)
+                {
+                    if (a.Center.X >= sheetViewRightX - tol) a.TransformBy(move);
+                    continue;
+                }
+
+                bool moveWhole = false;
+                try
+                {
+                    Extents3d ex = ent.GeometricExtents;
+                    moveWhole = ex.MinPoint.X >= sheetViewRightX - tol || (ex.MinPoint.X + ex.MaxPoint.X) * 0.5 >= sheetViewRightX;
+                }
+                catch { }
+                if (moveWhole) ent.TransformBy(move);
+            }
+        }
+
+        private static void StretchAntetTopBandWithoutScaling(Transaction tr, List<ObjectId> rootEntityIds, double sheetViewTopY, double deltaY)
+        {
+            if (rootEntityIds == null || rootEntityIds.Count == 0 || Math.Abs(deltaY) <= 1e-9) return;
+            const double tol = 1e-6;
+            var move = Matrix3d.Displacement(new Vector3d(0, deltaY, 0));
+
+            foreach (ObjectId id in rootEntityIds)
+            {
+                var ent = tr.GetObject(id, OpenMode.ForWrite) as Entity;
+                if (ent == null) continue;
+
+                if (ent is Polyline pl)
+                {
+                    for (int i = 0; i < pl.NumberOfVertices; i++)
+                    {
+                        var p = pl.GetPoint2dAt(i);
+                        if (p.Y >= sheetViewTopY - tol)
+                            pl.SetPointAt(i, new Point2d(p.X, p.Y + deltaY));
+                    }
+                    continue;
+                }
+                if (ent is Line ln)
+                {
+                    if (ln.StartPoint.Y >= sheetViewTopY - tol)
+                        ln.StartPoint = new Point3d(ln.StartPoint.X, ln.StartPoint.Y + deltaY, ln.StartPoint.Z);
+                    if (ln.EndPoint.Y >= sheetViewTopY - tol)
+                        ln.EndPoint = new Point3d(ln.EndPoint.X, ln.EndPoint.Y + deltaY, ln.EndPoint.Z);
+                    continue;
+                }
+                if (ent is Circle c)
+                {
+                    if (c.Center.Y >= sheetViewTopY - tol) c.TransformBy(move);
+                    continue;
+                }
+                if (ent is Arc a)
+                {
+                    if (a.Center.Y >= sheetViewTopY - tol) a.TransformBy(move);
+                    continue;
+                }
+
+                bool moveWhole = false;
+                try
+                {
+                    Extents3d ex = ent.GeometricExtents;
+                    moveWhole = ex.MinPoint.Y >= sheetViewTopY - tol || (ex.MinPoint.Y + ex.MaxPoint.Y) * 0.5 >= sheetViewTopY;
+                }
+                catch { }
+                if (moveWhole) ent.TransformBy(move);
             }
         }
 

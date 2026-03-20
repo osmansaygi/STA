@@ -761,7 +761,8 @@ namespace ST4PlanIdCiz
         private void DrawPlanSections(Transaction tr, BlockTableRecord btr, Database db, FloorInfo floor,
             double offsetX, double offsetY, (double Xmin, double Xmax, double Ymin, double Ymax) ext,
             bool isFoundationPlan, Geometry floorStructuralUnion,
-            out double layoutMinX, out double layoutMaxX, out double layoutMinY, out double layoutMaxY)
+            out double layoutMinX, out double layoutMaxX, out double layoutMinY, out double layoutMaxY,
+            out double leftSectionMinX)
         {
             double xmin = ext.Xmin, xmax = ext.Xmax, ymin = ext.Ymin, ymax = ext.Ymax;
             double e = SectionLineExtendCm;
@@ -793,6 +794,7 @@ namespace ST4PlanIdCiz
             // Aks balonu AxisBalonCenterAtEnd ile çerçeve köşesinden R dışarıda; kesite bakan dış yüzey çerçeveden 2R
             double yAksBalonUstDisYuzey = offsetY + ymax + extC + 2.0 * Rbal;
             double xAksBalonSolDisYuzey = offsetX + xmin - extC - 2.0 * Rbal;
+            leftSectionMinX = offsetX + xmin;
 
             var slicesTop = CollectAllSectionSlices(floor, topA, topB, alongOrigTop, dirTop, isFoundationPlan, colExtra);
             var slicesLeft = CollectAllSectionSlices(floor, leftA, leftB, alongOrigLeft, dirLeft, isFoundationPlan, colExtra);
@@ -873,6 +875,17 @@ namespace ST4PlanIdCiz
             double xBbBaslikMerkez = xAksBalonSolDisYuzey - KesitIsmiSolAksBalonSolBoslukCm - bbTitleHeight * 0.5;
             string bbTitle = (isFoundationPlan && _isTemel50Mode) ? "B-B KESİTİ (1:50)" : "B-B KESİTİ";
             DrawKesitTitleVerticalRightOfSection(tr, btr, db, bbTitle, xBbBaslikMerkez, contentLeftY + spanAL * 0.5);
+            // Antet sol hizasi icin referans: soldaki kesitin kirpilmis NET geometri sinirinin en solu.
+            // (kolon/perde/temel/temel hatili cizimi; baslik/metinler dahil degil)
+            if (TryGetKesitSiniriBounds(slicesLeft, isFoundationPlan, out _, out _, out double zLoLeftNet, out double zHiLeftNet))
+            {
+                leftSectionMinX = contentLeftX + spanZL - (zHiLeftNet - minZL);
+            }
+            else
+            {
+                // Fallback: sol kesit kutusunun solu
+                leftSectionMinX = contentLeftX;
+            }
             layoutMinX = Math.Min(layoutMinX, contentLeftX - sectionLayoutPadCm);
             layoutMaxX = Math.Max(layoutMaxX, contentLeftX + spanZL + sectionLayoutPadCm);
             layoutMinY = Math.Min(layoutMinY, contentLeftY - sectionLayoutPadCm);

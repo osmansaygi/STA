@@ -22,7 +22,8 @@ Bu projede **temel plan anteti** yalnızca **`TEMEL50ST4`** komutu üzerinden ç
 
 - **Hizalama:** DXF/DWG’deki ana **`SHEETVIEW`** dikdörtgeninin **sol-alt** köşesi, plan+kesit layout’un **sol-alt** köşesine oturur.
 - **Sabitlar:** `AntetDxfSheetViewXmin`, `AntetDxfSheetViewYmin` (`PlanIdDrawingManager.cs`) — şablon değişince güncellenmeli.
-- **Ölçek:** Antet **bire bir** (yalnızca öteleme); uniform scale yok.
+- **Yükseklik başlangıcı:** `SheetView` yüksekliği başlangıçta **5000 cm** kabul edilir (`TemelAntetBaslangicYukseklikCm`).
+- **Üst stretch adımı:** Çizim yüksekliği yetmezse üst taraf **500 cm adımlarla** yukarı uzatılır (`TemelAntetEkStretchAdimCm`).
 - **Klon:** `WblockCloneObjects`; **`TransformBy` yalnızca Model Space kök entity** için (`BlockId == ModelSpace`). Blok tanımı içi geometry’ye uygulanmaz (INSERT’ler bozulmasın diye).
 
 ## Çağrı zinciri
