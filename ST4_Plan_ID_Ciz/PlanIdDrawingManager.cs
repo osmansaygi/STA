@@ -370,7 +370,7 @@ namespace ST4PlanIdCiz
                     DrawSlabFoundations(tr, btr, offsetX, offsetY, drawTemelOutline: false);
                     DrawTieBeams(tr, btr, firstFloor, offsetX, offsetY, kolonPerdeUnion, temelHatiliRaws);
                     DrawSingleFootings(tr, btr, firstFloor, offsetX, offsetY, drawTemelOutline: false);
-                    DrawPerdeLabelsForFloor(tr, btr, firstFloor, offsetX, offsetY, kolonPerdeUnion);
+                    DrawPerdeLabelsForFloor(tr, btr, firstFloor, offsetX, offsetY, kolonPerdeUnion, drawPerdeKot: false);
                     DrawFloorTitle(tr, btr, firstFloor, offsetX, offsetY, firstFloorAxisExt, isFoundationPlan: true);
                     DrawPlanSections(tr, btr, db, firstFloor, offsetX, offsetY, firstFloorAxisExt, isFoundationPlan: true, firstFloorUnion,
                         out _, out _, out _, out _, out _);
@@ -1758,7 +1758,7 @@ namespace ST4PlanIdCiz
                     DrawTieBeams(tr, btr, firstFloor, offsetX, offsetY, kolonPerdeUnion, temelHatiliRaws);
                     DrawSingleFootings(tr, btr, firstFloor, offsetX, offsetY, drawTemelOutline: false);
                     DrawPerdeLabelsForFloor(tr, btr, firstFloor, offsetX, offsetY, kolonPerdeUnion);
-                    DrawFloorTitle(tr, btr, firstFloor, offsetX, offsetY, firstFloorAxisExt, isFoundationPlan: true);
+                    // TEMEL50ST4: temel plan basligi istenmiyor.
                     DrawPlanSections(tr, btr, db, firstFloor, offsetX, offsetY, firstFloorAxisExt, isFoundationPlan: true, firstFloorUnion,
                         out double antetLayMinX, out double antetLayMaxX, out double antetLayMinY, out double antetLayMaxY, out double leftSectionMinX);
                     GetSectionCutBalloonExtents(offsetX, offsetY, firstFloorAxisExt,
@@ -2436,6 +2436,7 @@ namespace ST4PlanIdCiz
 
         /// <summary>Kat sınırı (çizim sınırı) dışına aksların taşabileceği mesafe (cm) — aks çizgisi bu kadar uzakta biter.</summary>
         private const double AxisExtensionBeyondBoundaryCm = 200.0;
+        private const double AxisBalloonCollisionStepCm = 40.0;
 
         private void DrawAxes(Transaction tr, BlockTableRecord btr, double offsetX, double offsetY,
             (double Xmin, double Xmax, double Ymin, double Ymax) ext)
@@ -2461,6 +2462,10 @@ namespace ST4PlanIdCiz
             var xAxisBottomPositions = new List<Point3d>();
             var yAxisLeftPositions = new List<Point3d>();
             var yAxisRightPositions = new List<Point3d>();
+            var placedTopCenters = new List<Point3d>();
+            var placedBottomCenters = new List<Point3d>();
+            var placedLeftCenters = new List<Point3d>();
+            var placedRightCenters = new List<Point3d>();
 
             // Bütün akslar her zaman gösterilir (kolon filtresi yok)
             for (int i = 0; i < _model.AxisX.Count; i++)
@@ -2474,17 +2479,25 @@ namespace ST4PlanIdCiz
                 var p1 = new Point3d(xBot, yBot, 0);
                 var p2 = new Point3d(xTop, yTop, 0);
                 if (!ClipSegmentToRectangle(p1, p2, xLo, xHi, yLo, yHi, out Point3d q1, out Point3d q2)) continue;
-                AppendEntity(tr, btr, new Line(q1, q2) { Layer = LayerAks });
                 bool inclinedX = Math.Abs(ax.Slope) > 1e-9;
                 if (!inclinedX)
                 {
                     string xLabel = (_model.GprAxisXLabelByRow.TryGetValue(i + 1, out var gx) && !string.IsNullOrWhiteSpace(gx))
                         ? gx.Trim()
                         : (i + 1).ToString(CultureInfo.InvariantCulture);
-                    Point3d centerTop = AxisBalonCenterAtEnd(q2, q1, axisBalonRadiusCm);
-                    Point3d centerBot = AxisBalonCenterAtEnd(q1, q2, axisBalonRadiusCm);
-                    xAxisTopPositions.Add(centerTop);
-                    xAxisBottomPositions.Add(centerBot);
+                    Point3d centerTopRaw = AxisBalonCenterAtEnd(q2, q1, axisBalonRadiusCm);
+                    Point3d centerBotRaw = AxisBalonCenterAtEnd(q1, q2, axisBalonRadiusCm);
+                    Point3d centerTop = PushBalloonOutwardIfOverlapping(centerTopRaw, placedTopCenters, axisBalonRadiusCm, new Vector2d(0, 1));
+                    Point3d centerBot = PushBalloonOutwardIfOverlapping(centerBotRaw, placedBottomCenters, axisBalonRadiusCm, new Vector2d(0, -1));
+                    placedTopCenters.Add(centerTop);
+                    placedBottomCenters.Add(centerBot);
+
+                    // Balon dışa taşındıysa aks çizgisi de aynı miktarda uzasın.
+                    q2 = new Point3d(q2.X + (centerTop.X - centerTopRaw.X), q2.Y + (centerTop.Y - centerTopRaw.Y), 0);
+                    q1 = new Point3d(q1.X + (centerBot.X - centerBotRaw.X), q1.Y + (centerBot.Y - centerBotRaw.Y), 0);
+                    // Aks olculeri sabit kalsin: balon disa tasinsa da olcu referansi orijinal merkezde kalsin.
+                    xAxisTopPositions.Add(centerTopRaw);
+                    xAxisBottomPositions.Add(centerBotRaw);
                     var circleTop = new Circle(centerTop, Vector3d.ZAxis, axisBalonRadiusCm) { Layer = LayerAksBalonu };
                     AppendEntity(tr, btr, circleTop);
                     AppendEntity(tr, btr, MakeCenteredAxisLabelText(tr, db, axisLabelHeightCm, xLabel, centerTop));
@@ -2492,6 +2505,7 @@ namespace ST4PlanIdCiz
                     AppendEntity(tr, btr, circleBot);
                     AppendEntity(tr, btr, MakeCenteredAxisLabelText(tr, db, axisLabelHeightCm, xLabel, centerBot));
                 }
+                AppendEntity(tr, btr, new Line(q1, q2) { Layer = LayerAks });
             }
 
             for (int j = 0; j < _model.AxisY.Count; j++)
@@ -2505,17 +2519,24 @@ namespace ST4PlanIdCiz
                 var p1 = new Point3d(xLeft, yLeft, 0);
                 var p2 = new Point3d(xRight, yRight, 0);
                 if (!ClipSegmentToRectangle(p1, p2, xLo, xHi, yLo, yHi, out Point3d q1, out Point3d q2)) continue;
-                AppendEntity(tr, btr, new Line(q1, q2) { Layer = LayerAks });
                 bool inclinedY = Math.Abs(ay.Slope) > 1e-9;
                 if (!inclinedY)
                 {
                     string yLabel = (_model.GprAxisYLabelByRow.TryGetValue(j + 1, out var gy) && !string.IsNullOrWhiteSpace(gy))
                         ? gy.Trim()
                         : (j < 26 ? ((char)('A' + j)).ToString() : "A" + (j - 25).ToString(CultureInfo.InvariantCulture));
-                    Point3d centerRight = AxisBalonCenterAtEnd(q2, q1, axisBalonRadiusCm);
-                    Point3d centerLeft = AxisBalonCenterAtEnd(q1, q2, axisBalonRadiusCm);
-                    yAxisLeftPositions.Add(centerLeft);
-                    yAxisRightPositions.Add(centerRight);
+                    Point3d centerRightRaw = AxisBalonCenterAtEnd(q2, q1, axisBalonRadiusCm);
+                    Point3d centerLeftRaw = AxisBalonCenterAtEnd(q1, q2, axisBalonRadiusCm);
+                    Point3d centerRight = PushBalloonOutwardIfOverlapping(centerRightRaw, placedRightCenters, axisBalonRadiusCm, new Vector2d(1, 0));
+                    Point3d centerLeft = PushBalloonOutwardIfOverlapping(centerLeftRaw, placedLeftCenters, axisBalonRadiusCm, new Vector2d(-1, 0));
+                    placedRightCenters.Add(centerRight);
+                    placedLeftCenters.Add(centerLeft);
+
+                    q2 = new Point3d(q2.X + (centerRight.X - centerRightRaw.X), q2.Y + (centerRight.Y - centerRightRaw.Y), 0);
+                    q1 = new Point3d(q1.X + (centerLeft.X - centerLeftRaw.X), q1.Y + (centerLeft.Y - centerLeftRaw.Y), 0);
+                    // Aks olculeri sabit kalsin: balon disa tasinsa da olcu referansi orijinal merkezde kalsin.
+                    yAxisLeftPositions.Add(centerLeftRaw);
+                    yAxisRightPositions.Add(centerRightRaw);
                     var circleRight = new Circle(centerRight, Vector3d.ZAxis, axisBalonRadiusCm) { Layer = LayerAksBalonu };
                     AppendEntity(tr, btr, circleRight);
                     AppendEntity(tr, btr, MakeCenteredAxisLabelText(tr, db, axisLabelHeightCm, yLabel, centerRight));
@@ -2523,6 +2544,7 @@ namespace ST4PlanIdCiz
                     AppendEntity(tr, btr, circleLeft);
                     AppendEntity(tr, btr, MakeCenteredAxisLabelText(tr, db, axisLabelHeightCm, yLabel, centerLeft));
                 }
+                AppendEntity(tr, btr, new Line(q1, q2) { Layer = LayerAks });
             }
 
             ObjectId aksOlcuDimStyleId = GetOrCreateAksOlcuDimStyle(tr, db, dimTextHeightCm);
@@ -2530,6 +2552,29 @@ namespace ST4PlanIdCiz
                 DrawAxisDimensionsXFourSides(tr, btr, xAxisTopPositions, xAxisBottomPositions, dimOffsetFromBalonCm, dimRowGapCm, aksOlcuDimStyleId);
             if (yAxisLeftPositions.Count >= 2)
                 DrawAxisDimensionsYFourSides(tr, btr, yAxisLeftPositions, yAxisRightPositions, dimOffsetFromBalonCm, dimRowGapCm, aksOlcuDimStyleId);
+        }
+
+        private static Point3d PushBalloonOutwardIfOverlapping(Point3d center, List<Point3d> existingCenters, double radiusCm, Vector2d outwardDir)
+        {
+            if (existingCenters == null || existingCenters.Count == 0) return center;
+            if (outwardDir.Length <= 1e-9) return center;
+            outwardDir = outwardDir.GetNormal();
+            double minDist = 2.0 * radiusCm - 1e-6;
+            var c = center;
+            int guard = 0;
+            bool overlaps()
+            {
+                foreach (var e in existingCenters)
+                {
+                    if (c.DistanceTo(e) < minDist) return true;
+                }
+                return false;
+            }
+            while (overlaps() && guard++ < 100)
+            {
+                c = new Point3d(c.X + outwardDir.X * AxisBalloonCollisionStepCm, c.Y + outwardDir.Y * AxisBalloonCollisionStepCm, 0);
+            }
+            return c;
         }
 
         /// <summary>Kesit çizgisini aks balon merkezlerine uzatmak için sınır X/Y (world cm) + balon merkez listeleri.</summary>
@@ -2697,6 +2742,7 @@ namespace ST4PlanIdCiz
             try { rec.Dimtsz = arrowSize; } catch { }
             try { rec.Dimasz = arrowSize; } catch { }
             try { rec.Dimtsz = arrowSize; } catch { }
+            try { rec.Dimexo = 3.0; } catch { } // Lines tab: Offset from origin
             try { rec.Dimtix = true; } catch { }
         }
 
@@ -5029,7 +5075,7 @@ namespace ST4PlanIdCiz
                 DrawBeamLabel(tr, btr, db, labelInsert, labelText, labelHeightCm, beamAngleRad, bottomLeftAligned: !useBottomRight);
 
                 // Kot takımı: sadece kiriş üst kotu kat kotundan farklıysa; birleştirilmeden önceki poligon (drawnGeometry) merkezine ortalı; kirişin fixlendiği aksa göre döndürülür
-                if (firstBeam.Point1KotCm != 0 || firstBeam.Point2KotCm != 0)
+                if (!_isTemel50Mode && (firstBeam.Point1KotCm != 0 || firstBeam.Point2KotCm != 0))
                 {
                     double floorElevM = floorInfo != null ? floorInfo.ElevationM : 0.0;
                     double topElevM = _model.BuildingBaseKotu + floorElevM + (Math.Max(firstBeam.Point1KotCm, firstBeam.Point2KotCm) / 100.0);
@@ -5147,7 +5193,7 @@ namespace ST4PlanIdCiz
                 DrawBeamLabel(tr, btr, db, labelInsert, labelText, wallLabelHeightCm, angleRad, LayerPerdeYazisi, bottomLeftAligned: !isFixedX);
 
                 // Kot takımı: sadece perde üst kotu kat kotundan farklıysa; poligon merkezine ortalı; perdenin fixlendiği aksa göre döndürülür
-                if (beam.Point1KotCm != 0 || beam.Point2KotCm != 0)
+                if (!_isTemel50Mode && (beam.Point1KotCm != 0 || beam.Point2KotCm != 0))
                 {
                     var floorInfoPerde = _model.Floors.FirstOrDefault(f => f.FloorNo == beamFloor);
                     double floorElevM = floorInfoPerde != null ? floorInfoPerde.ElevationM : 0.0;
@@ -5165,7 +5211,7 @@ namespace ST4PlanIdCiz
 
         /// <summary>Verilen kattaki perde isimlerini (P{kat}{no} eni/uzunluk) çizer. Temel planında ilk kat perdeleri için kullanılır.</summary>
         /// <param name="kolonPerdeUnionForObstacles">Temel planında engel alanı için (kiriş yok); null ise BuildKolonPerdeUnion ile hesaplanır.</param>
-        private void DrawPerdeLabelsForFloor(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY, Geometry kolonPerdeUnionForObstacles = null)
+        private void DrawPerdeLabelsForFloor(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY, Geometry kolonPerdeUnionForObstacles = null, bool drawPerdeKot = true)
         {
             var factory = _ntsDrawFactory;
             Geometry kolonPerdeUnion = kolonPerdeUnionForObstacles ?? BuildKolonPerdeUnion(floor, offsetX, offsetY);
@@ -5336,7 +5382,7 @@ namespace ST4PlanIdCiz
                 DrawBeamLabel(tr, btr, db, labelInsert, labelText, wallLabelHeightCm, angleRad, LayerPerdeYazisi, bottomLeftAligned: !isFixedX);
 
                 // Kot takımı: sadece perde üst kotu kat kotundan farklıysa; poligon merkezine ortalı; perdenin fixlendiği aksa göre döndürülür
-                if (beam.Point1KotCm != 0 || beam.Point2KotCm != 0)
+                if (drawPerdeKot && (beam.Point1KotCm != 0 || beam.Point2KotCm != 0))
                 {
                     double floorElevM = floor != null ? floor.ElevationM : 0.0;
                     double topElevM = _model.BuildingBaseKotu + floorElevM + (Math.Max(beam.Point1KotCm, beam.Point2KotCm) / 100.0);
@@ -6020,6 +6066,7 @@ namespace ST4PlanIdCiz
         /// <summary>Üst kot, yatay kot işareti ve alt kot takımını verilen merkeze ortalı çizer. Kiriş/perde kot etiketi için kullanılır. rotationRad: kiriş/perdenin fixlendiği aksa göre dönüş (radyan); 0 ise yatay.</summary>
         private void DrawKotBlockAtCenter(Transaction tr, BlockTableRecord btr, Database db, double centerX, double centerY, double topElevM, double bottomElevM, double rotationRad = 0)
         {
+            if (_isTemel50Mode) return;
             const double kotArasiMesafeCm = 10.0;
             const double kotTextHeightCm = 8.0;
             const double blockHalfWidthCm = 21.75;
@@ -6337,14 +6384,17 @@ namespace ST4PlanIdCiz
                 return v;
             try
             {
-                string line4 = null, line14 = null, line15 = null;
+                string line3 = null, line4 = null, line7 = null, line14 = null, line15 = null, line18 = null;
                 int ln = 0;
                 foreach (string raw in File.ReadLines(st4SourcePath))
                 {
                     ln++;
-                    if (ln == 4) line4 = raw;
+                    if (ln == 3) line3 = raw;
+                    else if (ln == 4) line4 = raw;
+                    else if (ln == 7) line7 = raw;
                     else if (ln == 14) line14 = raw;
                     else if (ln == 15) { line15 = raw; break; }
+                    else if (ln == 18) line18 = raw;
                 }
 
                 if (TryGetSt4ColumnDouble(line14, 7, out double c14_7) && TryGetSt4ColumnDouble(line14, 8, out double c14_8))
@@ -6361,12 +6411,11 @@ namespace ST4PlanIdCiz
                     else if (Math.Abs(iVal - 1.2) < 1e-6) v.Bks = "2";
                     else if (Math.Abs(iVal - 1.5) < 1e-6) v.Bks = "1";
                 }
-                string line7 = GetSt4Line(st4SourcePath, 7);
                 if (TryGetSt4ColumnDouble(line7, 2, out double st4Yatak))
                     v.ZeminYatak = st4Yatak.ToString("0.00", CultureInfo.InvariantCulture);
                 if (TryGetSt4ColumnDouble(line7, 3, out double st4Tasima))
                     v.ZeminTasima = st4Tasima.ToString("0.00", CultureInfo.InvariantCulture);
-                if (TryGetSt4ColumnDouble(GetSt4Line(st4SourcePath, 18), 1, out double cRaw))
+                if (TryGetSt4ColumnDouble(line18, 1, out double cRaw))
                     v.CClass = Math.Round(cRaw / 10.0, 0).ToString("0", CultureInfo.InvariantCulture);
 
                 string gprPath = ResolveGprPathBesideSt4(st4SourcePath);
@@ -6378,9 +6427,8 @@ namespace ST4PlanIdCiz
                 FillAntetValuesFromAakdD1(st4SourcePath, v);
                 if (string.IsNullOrWhiteSpace(v.YapiSahibi))
                 {
-                    string st4Line3 = GetSt4Line(st4SourcePath, 3);
-                    if (!string.IsNullOrWhiteSpace(st4Line3))
-                        v.YapiSahibi = st4Line3.Trim();
+                    if (!string.IsNullOrWhiteSpace(line3))
+                        v.YapiSahibi = line3.Trim();
                 }
             }
             catch { }
@@ -6480,6 +6528,18 @@ namespace ST4PlanIdCiz
                         var m = Regex.Match(line, @":\s*([0-9]+(?:[.,][0-9]+)?)\s*$");
                         if (m.Success && double.TryParse(m.Groups[1].Value.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out double tasima))
                             v.ZeminTasima = tasima.ToString("0.00", CultureInfo.InvariantCulture);
+                    }
+
+                    if (!string.IsNullOrEmpty(v.Dts) &&
+                        !string.IsNullOrEmpty(v.Bys) &&
+                        !string.IsNullOrEmpty(v.AClass) &&
+                        !string.IsNullOrEmpty(v.RValue) &&
+                        !string.IsNullOrEmpty(v.DValue) &&
+                        !string.IsNullOrEmpty(v.Zemin) &&
+                        !string.IsNullOrEmpty(v.ZeminYatak) &&
+                        !string.IsNullOrEmpty(v.ZeminTasima))
+                    {
+                        break;
                     }
                 }
             }
