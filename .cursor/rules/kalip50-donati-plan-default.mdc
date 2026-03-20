@@ -1,0 +1,14 @@
+---
+description: KALIP50 GPR/donatı çizimi varsayılanı — donatı planı (sağ kopya)
+alwaysApply: true
+---
+
+# KALIP50: Varsayılan hedef = donatı planı
+
+Kullanıcı **aksini açıkça söylemediği sürece**:
+
+- **GPR döşeme donatı metinleri**, **ölçü planı (sol kopya)** üzerine **yazdırılmaz**; yalnızca **donatı planı (sağ kopya, `copyIndex == 1`)** üzerinde çizilir.
+- `PlanIdDrawingManager.DrawFormworkPlan50` içinde donatı ile ilgili **yeni** çizim / düzenleme / hata ayıklama yapılırken varsayılan yerleşim **sağ kopyanın `offsetX` / `offsetY`** ile aynı mantıktır.
+- Ölçü planına veya her iki kopyaya dokunulması gerekiyorsa önce kullanıcıdan **açık onay** veya talimat beklenir.
+
+Kod referansı: `DrawKalipDonatiPlanGprSlabNotes` yalnızca `copyIndex == 1` iken çağrılır.

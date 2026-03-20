@@ -897,6 +897,61 @@ namespace ST4PlanIdCiz
             layoutMaxX = Math.Max(layoutMaxX, xBbBaslikMerkez + bbTitleHeight * 0.5 + sectionLayoutPadCm);
         }
 
+        /// <summary>
+        /// KALIP50 yerleşimi: çizim yapmadan soldaki kesit referansı <see cref="leftSectionMinX"/> (antet SheetView solu ≈ bu − 140 cm).
+        /// offsetX=0 iken değer L0 olur; genelde leftSectionMinX = offsetX + L0.
+        /// </summary>
+        private bool TryComputeKalipLeftSectionMinXForAntetAnchor(
+            FloorInfo floor,
+            Geometry floorStructuralUnion,
+            (double Xmin, double Xmax, double Ymin, double Ymax) ext,
+            double offsetX,
+            out double leftSectionMinX)
+        {
+            leftSectionMinX = 0;
+            try
+            {
+                double xmin = ext.Xmin, xmax = ext.Xmax, ymin = ext.Ymin, ymax = ext.Ymax;
+                double e = SectionLineExtendCm;
+                Geometry occ = BuildCutOccupancyUnion(floor, isFoundationPlan: false);
+                double xvCut = FindBestVerticalCutX(floor, xmin, xmax, ymin, ymax, e, occ, isFoundationPlan: false, floorStructuralUnion);
+                Point2d leftA = new Point2d(xvCut, ymin - e);
+                Point2d leftB = new Point2d(xvCut, ymax + e);
+                Point2d alongOrigLeft = new Point2d(xvCut, ymin);
+                Vector2d dirLeft = new Vector2d(0, 1);
+                var colExtra = GetColumnTableExtraData(floor);
+                double extC = AxisExtensionBeyondBoundaryCm;
+                double Rbal = KesitEtiketRadiusCm;
+                double xAksBalonSolDisYuzey = offsetX + xmin - extC - 2.0 * Rbal;
+                var slicesLeft = CollectAllSectionSlices(floor, leftA, leftB, alongOrigLeft, dirLeft, isFoundationPlan: false, colExtra);
+
+                double GetZmin(List<SectionSlice> sl) => sl == null || sl.Count == 0 ? 0 : sl.Min(s => s.Z0) - 25;
+                double GetZmax(List<SectionSlice> sl) => sl == null || sl.Count == 0 ? SectionMinStoryHeightCm : sl.Max(s => s.Z1) + 25;
+
+                double minZL = GetZmin(slicesLeft), maxZL = GetZmax(slicesLeft);
+                double spanZL = Math.Max(SectionMinStoryHeightCm * 0.5, maxZL - minZL);
+                double contentLeftX;
+                if (TryGetKesitSiniriPlacementZBounds(slicesLeft, isFoundationPlan: false, out double zLoKesitL))
+                {
+                    double xKesitSiniriSagOfset = spanZL - (zLoKesitL - minZL);
+                    double xKesitSiniriSagHedef = xAksBalonSolDisYuzey - SectionMinLeftOfAxisLeftLabelsCm;
+                    contentLeftX = xKesitSiniriSagHedef - xKesitSiniriSagOfset;
+                }
+                else
+                    contentLeftX = xAksBalonSolDisYuzey - SectionMinLeftOfAxisLeftLabelsCm - spanZL - 28.0;
+
+                if (TryGetKesitSiniriBounds(slicesLeft, isFoundationPlan: false, out _, out _, out _, out double zHiLeftNet))
+                    leftSectionMinX = contentLeftX + spanZL - (zHiLeftNet - minZL);
+                else
+                    leftSectionMinX = contentLeftX;
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         public bool DrawSectionFromUserCut(Database db, Editor ed, Point3d worldA, Point3d worldB, Point3d sectionInsertBase, string sectionLetterRaw)
         {
             if (db == null || ed == null) return false;

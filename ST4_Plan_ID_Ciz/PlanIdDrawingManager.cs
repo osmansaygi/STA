@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Reflection;
+using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.Colors;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
@@ -551,9 +553,20 @@ namespace ST4PlanIdCiz
                     var firstFloor = _model.Floors[firstGroup.Min()];
                     Geometry firstUnion = BuildFloorElementUnion(firstFloor);
                     var firstExt = GetAksSiniriEnvelope(firstUnion);
-                    double baseDy = baseInsertPoint.Y - firstExt.Ymin;
-
-                    double cursorX = baseInsertPoint.X;
+                    // Yerleşim referansı: en soldaki antet SHEETVIEW sol-alt = kullanıcı noktası (KALIP50 şablonunda SheetView, kesit solundan 140 cm içerde).
+                    double baseDy;
+                    double cursorX;
+                    if (TryComputeKalipLeftSectionMinXForAntetAnchor(firstFloor, firstUnion, firstExt, 0, out double L0))
+                    {
+                        double yRefAntetBottom = GetLowestHorizontalColumnAxisY(0, firstExt);
+                        cursorX = baseInsertPoint.X + firstExt.Xmin - L0 + 140.0;
+                        baseDy = baseInsertPoint.Y - yRefAntetBottom + 600.0;
+                    }
+                    else
+                    {
+                        baseDy = baseInsertPoint.Y - firstExt.Ymin;
+                        cursorX = baseInsertPoint.X;
+                    }
                     const double minPlanGapSameFloorCopiesCm = 150.0;
                     const double minPlanGapBetweenFloorsCm = 400.0;
                     int drawnPlanCount = 0;
@@ -561,6 +574,14 @@ namespace ST4PlanIdCiz
                     double? nextKatAntetOuterLeftTarget = null;
                     bool hasAntetOutDx = TryGetEmbeddedAntetSheetViewOutOffsets(out double antetOutDxConst, out _, ed);
 
+                    Dictionary<string, GprDosemeDonatiXy> gprKalipDosemeDonati = null;
+                    string gprPathDoseme = ResolveGprPathNextToSt4(st4SourcePath);
+                    // Yalnizca ST4 ile ayni adli .GPR/.gpr; yoksa veya okunamazsa donati yazisi eklenmez (dosya secmesi yok).
+                    if (!string.IsNullOrEmpty(gprPathDoseme) && File.Exists(gprPathDoseme) &&
+                        GprDosemeDonatiParser.TryParse(gprPathDoseme, out var dosemeMap, out _))
+                        gprKalipDosemeDonati = dosemeMap;
+
+                    int gprDonatiSlabMatchCountTotal = 0;
                     foreach (var group in groups)
                     {
                         if (group == null || group.Count == 0) continue;
@@ -587,7 +608,7 @@ namespace ST4PlanIdCiz
                             DrawAxes(tr, btr, offsetX, offsetY, floorAxisExt);
                             DrawColumns(tr, btr, floor, offsetX, offsetY);
                             DrawBeamsAndWalls(tr, btr, floor, offsetX, offsetY);
-                            DrawSlabs(tr, btr, floor, offsetX, offsetY);
+                            DrawSlabs(tr, btr, floor, offsetX, offsetY, drawSlabAltCizgi: copyIndex == 1);
                             DrawSlabVoids(tr, btr, elemUnion, offsetX, offsetY);
                             DrawUnifiedLayer(tr, btr, floor, offsetX, offsetY, elemUnion);
                             bool hasSimilarFloors = otherFloors.Count > 0;
@@ -596,6 +617,10 @@ namespace ST4PlanIdCiz
                                 DrawKalipSimilarFloorNamesNote(tr, btr, otherFloors, offsetX, offsetY, floorAxisExt, yAboveTopCm: 35.0);
                             DrawPlanSections(tr, btr, db, floor, offsetX, offsetY, floorAxisExt, isFoundationPlan: false, elemUnion,
                                 out double layMinX, out double layMaxX, out double layMinY, out double layMaxY, out double leftSectionMinX, otherFloors);
+                            // Yalnızca sağ kopya (donatı planı); sol kopya (ölçü planı) GPR yazısı yok.
+                            if (copyIndex == 1 && gprKalipDosemeDonati != null && gprKalipDosemeDonati.Count > 0)
+                                gprDonatiSlabMatchCountTotal += DrawKalipDonatiPlanGprSlabNotes(
+                                    tr, btr, db, floor, offsetX, offsetY, gprKalipDosemeDonati, countMatchedSlabs: true);
                             if (copyIndex == 0)
                             {
                                 // Antet tek olacak; sol yerleşim için ilk (soldaki) kopya kesit referansı tutulur.
@@ -671,11 +696,23 @@ namespace ST4PlanIdCiz
                     }
 
                     tr.Commit();
+                    string gprSummary = string.Empty;
+                    if (gprKalipDosemeDonati != null && gprKalipDosemeDonati.Count > 0)
+                    {
+                        gprSummary = string.Format(
+                            CultureInfo.InvariantCulture,
+                            " GPR sozluk {0} anahtar; ST4 ile eslesen donatili döşeme: {1}.",
+                            gprKalipDosemeDonati.Count,
+                            gprDonatiSlabMatchCountTotal);
+                        if (gprDonatiSlabMatchCountTotal == 0)
+                            gprSummary += " UYARI: Hic donati yazisi yazilmadi (anahtar eslesmesi veya geometri).";
+                    }
                     ed.WriteMessage(
-                        "\nKALIP50ST4: {0} benzersiz kat icin {1} plan cizildi (toplam kat: {2}, temel plani cizilmedi).",
+                        "\nKALIP50ST4: {0} benzersiz kat icin {1} plan cizildi (toplam kat: {2}, temel plani cizilmedi).{3}",
                         drawnPlanCount,
                         drawnCopyCount,
-                        _model.Floors.Count);
+                        _model.Floors.Count,
+                        gprSummary);
                 }
             }
             finally
@@ -683,6 +720,710 @@ namespace ST4PlanIdCiz
                 _isKalip50Mode = false;
                 _ntsDrawFactory = null;
             }
+        }
+
+        /// <summary>ST4 ile aynı klasördeki .GPR / .gpr dosyası (ST4 adıyla).</summary>
+        private static string ResolveGprPathNextToSt4(string st4SourcePath)
+        {
+            if (string.IsNullOrEmpty(st4SourcePath)) return null;
+            string dir = Path.GetDirectoryName(st4SourcePath);
+            if (string.IsNullOrEmpty(dir)) return null;
+            string baseName = Path.GetFileNameWithoutExtension(st4SourcePath);
+            string p1 = Path.Combine(dir, baseName + ".GPR");
+            if (File.Exists(p1)) return p1;
+            string p2 = Path.Combine(dir, baseName + ".gpr");
+            if (File.Exists(p2)) return p2;
+            return null;
+        }
+
+        /// <summary>ST4 /Story/ satırı (ör. B-, Z-): Unicode tireleri ASCII '-' yapar; boşsa kat numarası.</summary>
+        private static string GetKalipGprStoryRawForDosemeKey(FloorInfo floor)
+        {
+            string s = floor != null && !string.IsNullOrEmpty(floor.ShortName)
+                ? floor.ShortName.Trim()
+                : string.Empty;
+            s = NormalizeGprHyphenLikeChars(s);
+            if (string.IsNullOrEmpty(s))
+                return floor != null && floor.FloorNo > 0
+                    ? floor.FloorNo.ToString(CultureInfo.InvariantCulture)
+                    : "B";
+            return s;
+        }
+
+        private static string NormalizeGprHyphenLikeChars(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return s;
+            var sb = new StringBuilder(s.Length);
+            foreach (char ch in s)
+            {
+                if (ch == '\u2013' || ch == '\u2014' || ch == '\u2212') sb.Append('-');
+                else sb.Append(ch);
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// GPR anahtarı: D + (ST4 kat kısaltması, örn. B-) + döşeme no.
+        /// Olası biçimler: D+B-+12→DB-12, D+B+-+12→DB-12, pad/Tiresiz, Unicode tire.
+        /// </summary>
+        private bool TryGetGprDonatiXyForSlab(
+            Dictionary<string, GprDosemeDonatiXy> map,
+            FloorInfo floor,
+            SlabInfo slab,
+            int slabPad,
+            out GprDosemeDonatiXy xy)
+        {
+            xy = default;
+            if (map == null || map.Count == 0) return false;
+            string raw = GetKalipGprStoryRawForDosemeKey(floor);
+            string core = raw.TrimEnd('-');
+            int n = GetSlabNumero(slab.SlabId);
+            var ci = CultureInfo.InvariantCulture;
+            string slabPadStr = n.ToString("D" + slabPad, ci);
+            string slabNat = n.ToString(ci);
+            var tried = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            string[] candidates =
+            {
+                "D" + core + "-" + slabPadStr,
+                "D" + core + "-" + slabNat,
+                "D" + raw + slabPadStr,
+                "D" + raw + slabNat,
+                "D" + core + slabPadStr,
+                "D" + core + slabNat,
+            };
+            foreach (string k in candidates)
+            {
+                if (string.IsNullOrEmpty(k)) continue;
+                string u = k.ToUpperInvariant();
+                if (!tried.Add(u)) continue;
+                if (map.TryGetValue(u, out xy)) return true;
+            }
+            return false;
+        }
+
+        /// <summary>Orta kenar çifti b1–b2 ve ofset ile GPR üst/sol + alt/sağ referans uçları (+X tercihi).</summary>
+        private static bool TryFinalizeSlabDonatiReferansFromMidEdgePair(Point2d b1, Point2d b2, out Point2d ust1, out Point2d ust2, out Point2d alt1, out Point2d alt2)
+        {
+            ust1 = ust2 = alt1 = alt2 = default;
+            Point2d Mid(Point2d a, Point2d b) => new Point2d((a.X + b.X) * 0.5, (a.Y + b.Y) * 0.5);
+            Vector2d seg = b2 - b1;
+            if (seg.DotProduct(new Vector2d(1, 0)) < 0)
+            {
+                var t = b1;
+                b1 = b2;
+                b2 = t;
+            }
+            GetDikOfsetParalelUcNokta(b1, b2, DosemeAltCizgiDikOfsetCm, out Point2d o1, out Point2d o2);
+            Point2d midMid = Mid(b1, b2);
+            Point2d midOff = Mid(o1, o2);
+            Vector2d u0 = (b2 - b1);
+            if (u0.Length < 1e-12) return false;
+            u0 = u0.GetNormal();
+            Vector2d solaNormal = new Vector2d(-u0.Y, u0.X);
+            if (solaNormal.Length < 1e-12) return false;
+            solaNormal = solaNormal.GetNormal();
+            double offDahaSol =
+                (midOff.X - midMid.X) * solaNormal.X + (midOff.Y - midMid.Y) * solaNormal.Y;
+            if (offDahaSol > 0)
+            {
+                ust1 = o1; ust2 = o2;
+                alt1 = b1; alt2 = b2;
+            }
+            else
+            {
+                ust1 = b1; ust2 = b2;
+                alt1 = o1; alt2 = o2;
+            }
+            Vector2d useg = ust2 - ust1;
+            if (useg.DotProduct(new Vector2d(1, 0)) < 0)
+            {
+                var tu = ust1;
+                ust1 = ust2;
+                ust2 = tu;
+                var ta = alt1;
+                alt1 = alt2;
+                alt2 = ta;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Döşemedeki iki mavi referans doğrusu (KALIP50 mavi çiftiyle aynı oluşturma).
+        /// <b>Kabul:</b> Çizgi yönünde (b1→b2, +X tercihi sonrası) sol taraftaki doğru = <b>üst</b> referans,
+        /// sağdaki = <b>alt</b> referans. Yerel &quot;alt taraf&quot; (özellikle sağ/alt çizgi) çizgiye göre <b>sağ yan</b> (ileri × Z).
+        /// </summary>
+        private bool TryGetSlabMaviDonatiReferansCizgileri(
+            SlabInfo slab,
+            double offsetX,
+            double offsetY,
+            out Point2d ust1,
+            out Point2d ust2,
+            out Point2d alt1,
+            out Point2d alt2)
+        {
+            ust1 = ust2 = alt1 = alt2 = default;
+            int a1 = slab.Axis1, a2 = slab.Axis2, a3 = slab.Axis3, a4 = slab.Axis4;
+            if (a1 == 0 || a2 == 0 || a3 == 0 || a4 == 0) return false;
+            if (!_axisService.TryIntersect(a1, a3, out Point2d p11) ||
+                !_axisService.TryIntersect(a1, a4, out Point2d p12) ||
+                !_axisService.TryIntersect(a2, a3, out Point2d p21) ||
+                !_axisService.TryIntersect(a2, a4, out Point2d p22)) return false;
+            Point2d Mid(Point2d a, Point2d b) => new Point2d((a.X + b.X) * 0.5, (a.Y + b.Y) * 0.5);
+            double HorizN(double dx, double dy)
+            {
+                double adx = Math.Abs(dx), ady = Math.Abs(dy);
+                return adx / (adx + ady + 1e-15);
+            }
+            var q11 = new Point2d(p11.X + offsetX, p11.Y + offsetY);
+            var q12 = new Point2d(p12.X + offsetX, p12.Y + offsetY);
+            var q22 = new Point2d(p22.X + offsetX, p22.Y + offsetY);
+            var q21 = new Point2d(p21.X + offsetX, p21.Y + offsetY);
+            Point2d aMidLo = Mid(q11, q12), aMidHi = Mid(q22, q21);
+            Point2d bMidLo = Mid(q12, q22), bMidHi = Mid(q21, q11);
+            double hA = HorizN(aMidHi.X - aMidLo.X, aMidHi.Y - aMidLo.Y);
+            double hB = HorizN(bMidHi.X - bMidLo.X, bMidHi.Y - bMidLo.Y);
+            Point2d b1, b2;
+            // Mavi = dikeye yakın orta doğru; kırmızı çift yataydır.
+            if (hA >= hB)
+            {
+                b1 = bMidLo;
+                b2 = bMidHi;
+            }
+            else
+            {
+                b1 = aMidLo;
+                b2 = aMidHi;
+            }
+            return TryFinalizeSlabDonatiReferansFromMidEdgePair(b1, b2, out ust1, out ust2, out alt1, out alt2);
+        }
+
+        /// <summary>KALIP50 kırmızı çift: yataya yakın orta doğrular (GPR X).</summary>
+        private bool TryGetSlabKirmiziDonatiReferansCizgileri(
+            SlabInfo slab,
+            double offsetX,
+            double offsetY,
+            out Point2d ust1,
+            out Point2d ust2,
+            out Point2d alt1,
+            out Point2d alt2)
+        {
+            ust1 = ust2 = alt1 = alt2 = default;
+            int a1 = slab.Axis1, a2 = slab.Axis2, a3 = slab.Axis3, a4 = slab.Axis4;
+            if (a1 == 0 || a2 == 0 || a3 == 0 || a4 == 0) return false;
+            if (!_axisService.TryIntersect(a1, a3, out Point2d p11) ||
+                !_axisService.TryIntersect(a1, a4, out Point2d p12) ||
+                !_axisService.TryIntersect(a2, a3, out Point2d p21) ||
+                !_axisService.TryIntersect(a2, a4, out Point2d p22)) return false;
+            Point2d Mid(Point2d a, Point2d b) => new Point2d((a.X + b.X) * 0.5, (a.Y + b.Y) * 0.5);
+            double HorizN(double dx, double dy)
+            {
+                double adx = Math.Abs(dx), ady = Math.Abs(dy);
+                return adx / (adx + ady + 1e-15);
+            }
+            var q11 = new Point2d(p11.X + offsetX, p11.Y + offsetY);
+            var q12 = new Point2d(p12.X + offsetX, p12.Y + offsetY);
+            var q22 = new Point2d(p22.X + offsetX, p22.Y + offsetY);
+            var q21 = new Point2d(p21.X + offsetX, p21.Y + offsetY);
+            Point2d aMidLo = Mid(q11, q12), aMidHi = Mid(q22, q21);
+            Point2d bMidLo = Mid(q12, q22), bMidHi = Mid(q21, q11);
+            double hA = HorizN(aMidHi.X - aMidLo.X, aMidHi.Y - aMidLo.Y);
+            double hB = HorizN(bMidHi.X - bMidLo.X, bMidHi.Y - bMidLo.Y);
+            Point2d b1, b2;
+            if (hA >= hB)
+            {
+                b1 = aMidLo;
+                b2 = aMidHi;
+            }
+            else
+            {
+                b1 = bMidLo;
+                b2 = bMidHi;
+            }
+            return TryFinalizeSlabDonatiReferansFromMidEdgePair(b1, b2, out ust1, out ust2, out alt1, out alt2);
+        }
+
+        /// <summary>Döşeme eksen dörtgeni köşeleri (ST4 aks + ofset); GPR mavi/kırmızı çift uzunlukları.</summary>
+        private bool TryGetSlabAxisQuadCornersWorld(
+            SlabInfo slab,
+            double offsetX,
+            double offsetY,
+            out Point2d q11,
+            out Point2d q12,
+            out Point2d q22,
+            out Point2d q21)
+        {
+            q11 = q12 = q22 = q21 = default;
+            int a1 = slab.Axis1, a2 = slab.Axis2, a3 = slab.Axis3, a4 = slab.Axis4;
+            if (a1 == 0 || a2 == 0 || a3 == 0 || a4 == 0) return false;
+            if (!_axisService.TryIntersect(a1, a3, out Point2d p11) ||
+                !_axisService.TryIntersect(a1, a4, out Point2d p12) ||
+                !_axisService.TryIntersect(a2, a3, out Point2d p21) ||
+                !_axisService.TryIntersect(a2, a4, out Point2d p22)) return false;
+            q11 = new Point2d(p11.X + offsetX, p11.Y + offsetY);
+            q12 = new Point2d(p12.X + offsetX, p12.Y + offsetY);
+            q22 = new Point2d(p22.X + offsetX, p22.Y + offsetY);
+            q21 = new Point2d(p21.X + offsetX, p21.Y + offsetY);
+            return true;
+        }
+
+        /// <summary><see cref="DrawSlabs"/> ile aynı kiriş birleşimi; döşeme referans çizgisi kırpması.</summary>
+        private Geometry BuildBeamUnionForDosemeGprLineClip()
+        {
+            if (_drawnBeamGeometriesForSlabCut == null || _drawnBeamGeometriesForSlabCut.Count == 0)
+                return null;
+            try
+            {
+                Geometry beamsUnion = _drawnBeamGeometriesForSlabCut.Count == 1
+                    ? _drawnBeamGeometriesForSlabCut[0]
+                    : CascadedPolygonUnion.Union(_drawnBeamGeometriesForSlabCut);
+                if (beamsUnion == null || beamsUnion.IsEmpty) return null;
+                return ReducePrecisionSafe(beamsUnion, 100);
+            }
+            catch { return null; }
+        }
+
+        private static double GetGeometryLinealLengthCm(Geometry g)
+        {
+            if (g == null || g.IsEmpty) return 0;
+            switch (g)
+            {
+                case LineString ls:
+                    return ls.Length;
+                case MultiLineString mls:
+                    double s = 0;
+                    for (int i = 0; i < mls.NumGeometries; i++)
+                        s += GetGeometryLinealLengthCm(mls.GetGeometryN(i));
+                    return s;
+                case GeometryCollection gc:
+                    double t = 0;
+                    for (int i = 0; i < gc.NumGeometries; i++)
+                        t += GetGeometryLinealLengthCm(gc.GetGeometryN(i));
+                    return t;
+                default:
+                    return 0;
+            }
+        }
+
+        /// <summary>Kesilmiş döşeme + kiriş farkı sonrası mavi veya kırmızı çiftte iki paralelin uzunluklarından büyüğü (cm).</summary>
+        private static double GetLongestGprRenkCiftClipCm(
+            GeometryFactory factory,
+            Geometry kesilmisDoseme,
+            Geometry beamUnionClip,
+            Point2d p11,
+            Point2d p12,
+            Point2d p22,
+            Point2d p21,
+            bool wantMavi)
+        {
+            if (factory == null) return 0;
+            double mx2(double a, double b) => (a + b) * 0.5;
+            Point2d Mid(Point2d a, Point2d b) => new Point2d(mx2(a.X, b.X), mx2(a.Y, b.Y));
+            Point2d a1 = Mid(p11, p12), a2 = Mid(p22, p21);
+            Point2d b1 = Mid(p12, p22), b2 = Mid(p21, p11);
+            double horizness(double dx, double dy)
+            {
+                double adx = Math.Abs(dx), ady = Math.Abs(dy);
+                return adx / (adx + ady + 1e-15);
+            }
+            double hA = horizness(a2.X - a1.X, a2.Y - a1.Y);
+            double hB = horizness(b2.X - b1.X, b2.Y - b1.Y);
+            Point2d e1, e2;
+            if (wantMavi)
+            {
+                if (hA >= hB) { e1 = b1; e2 = b2; }
+                else { e1 = a1; e2 = a2; }
+            }
+            else
+            {
+                if (hA >= hB) { e1 = a1; e2 = a2; }
+                else { e1 = b1; e2 = b2; }
+            }
+            GetDikOfsetParalelUcNokta(e1, e2, DosemeAltCizgiDikOfsetCm, out Point2d alt1, out Point2d alt2);
+            var ustLine = factory.CreateLineString(new[] { new Coordinate(e1.X, e1.Y), new Coordinate(e2.X, e2.Y) });
+            var altLine = factory.CreateLineString(new[] { new Coordinate(alt1.X, alt1.Y), new Coordinate(alt2.X, alt2.Y) });
+            Geometry ustDraw = ClipLineToKesilmisDosemeThenSubtractBeams(ustLine, kesilmisDoseme, beamUnionClip, factory);
+            Geometry altDraw = ClipLineToKesilmisDosemeThenSubtractBeams(altLine, kesilmisDoseme, beamUnionClip, factory);
+            return Math.Max(GetGeometryLinealLengthCm(ustDraw), GetGeometryLinealLengthCm(altDraw));
+        }
+
+        /// <summary>DrawSlabs ile aynı kaynak: çizimde kolon + perde + kiriş birleşimi (döşeme kesimi ve GPR mavi yazı sınırı).</summary>
+        private Geometry BuildDrawnKolonPerdeKirisUnionForSlabCut(FloorInfo floor, double offsetX, double offsetY)
+        {
+            Geometry drawnKolonPerdeKirisUnion = BuildKolonUnionSameFloorOnly(floor, offsetX, offsetY);
+            if (_drawnWallGeometriesForSlabCut != null && _drawnWallGeometriesForSlabCut.Count > 0)
+            {
+                Geometry wallsUnion = _drawnWallGeometriesForSlabCut.Count == 1
+                    ? _drawnWallGeometriesForSlabCut[0]
+                    : CascadedPolygonUnion.Union(_drawnWallGeometriesForSlabCut);
+                if (wallsUnion != null && !wallsUnion.IsEmpty)
+                    drawnKolonPerdeKirisUnion = drawnKolonPerdeKirisUnion != null && !drawnKolonPerdeKirisUnion.IsEmpty
+                        ? drawnKolonPerdeKirisUnion.Union(wallsUnion)
+                        : wallsUnion;
+            }
+            if (_drawnBeamGeometriesForSlabCut != null && _drawnBeamGeometriesForSlabCut.Count > 0)
+            {
+                Geometry beamsUnion = _drawnBeamGeometriesForSlabCut.Count == 1
+                    ? _drawnBeamGeometriesForSlabCut[0]
+                    : CascadedPolygonUnion.Union(_drawnBeamGeometriesForSlabCut);
+                if (beamsUnion != null && !beamsUnion.IsEmpty)
+                    drawnKolonPerdeKirisUnion = drawnKolonPerdeKirisUnion != null && !drawnKolonPerdeKirisUnion.IsEmpty
+                        ? drawnKolonPerdeKirisUnion.Union(beamsUnion)
+                        : beamsUnion;
+            }
+            return drawnKolonPerdeKirisUnion;
+        }
+
+        private static bool KalipGprDonatiTextObbFullyInside(Geometry slab, GeometryFactory factory, Point2d c, Vector2d uAlong, double halfW, double halfH)
+        {
+            if (slab == null || slab.IsEmpty) return true;
+            if (factory == null || uAlong.Length < 1e-12) return true;
+            Vector2d ux = uAlong.GetNormal();
+            Vector2d uPerp = new Vector2d(-ux.Y, ux.X);
+            foreach (double sx in new double[] { -1, 1 })
+            {
+                foreach (double sy in new double[] { -1, 1 })
+                {
+                    double x = c.X + ux.X * sx * halfW + uPerp.X * sy * halfH;
+                    double y = c.Y + ux.Y * sx * halfW + uPerp.Y * sy * halfH;
+                    var pt = factory.CreatePoint(new Coordinate(x, y));
+                    if (!slab.Covers(pt))
+                        return false;
+                }
+            }
+            return true;
+        }
+
+        /// <summary>İlave yazı merkezi; sınırlayıcı kutu tamamen döşeme içinde olana kadar itilir.</summary>
+        private static Point2d NudgeKalipGprDonatiIlaveIntoSlab(
+            Geometry kesilmisDoseme,
+            GeometryFactory factory,
+            Point2d pos,
+            Vector2d uAlong,
+            string text,
+            double textH,
+            Vector2d dirAlongInterior,
+            Vector2d dirTowardSlabInteriorAlt)
+        {
+            if (kesilmisDoseme == null || kesilmisDoseme.IsEmpty || factory == null)
+                return pos;
+            double halfW = Math.Max(textH * 1.6, (text?.Length ?? 0) * textH * 0.42 * 0.5);
+            double halfH = textH * 0.42;
+            Vector2d ux = uAlong.Length > 1e-12 ? uAlong.GetNormal() : new Vector2d(1, 0);
+            Vector2d d1 = dirAlongInterior.Length > 1e-12 ? dirAlongInterior.GetNormal() : ux;
+            Vector2d d2 = dirTowardSlabInteriorAlt.Length > 1e-12 ? dirTowardSlabInteriorAlt.GetNormal() : new Vector2d(0, 1);
+            const double step = 1.5;
+            const int maxSteps = 60;
+            Point2d cur = pos;
+            for (int s = 0; s < maxSteps; s++)
+            {
+                if (KalipGprDonatiTextObbFullyInside(kesilmisDoseme, factory, cur, ux, halfW, halfH))
+                    return cur;
+                cur = new Point2d(cur.X + d1.X * step, cur.Y + d1.Y * step);
+            }
+            cur = pos;
+            for (int s = 0; s < maxSteps; s++)
+            {
+                if (KalipGprDonatiTextObbFullyInside(kesilmisDoseme, factory, cur, ux, halfW, halfH))
+                    return cur;
+                cur = new Point2d(cur.X + d2.X * step, cur.Y + d2.Y * step);
+            }
+            return pos;
+        }
+
+        /// <summary>
+        /// GPR hücresini (X kırmızı / Y mavi) <c>+</c> parçalarına böler;
+        /// <see cref="TryGetSlabKirmiziDonatiReferansCizgileri"/> / <see cref="TryGetSlabMaviDonatiReferansCizgileri"/> ile aynı üst-sol / alt-sağ kuralı.
+        /// </summary>
+        private static void DrawKalipGprDonatiCellAlongReferansCizgileri(
+            Transaction tr,
+            BlockTableRecord btr,
+            Database db,
+            ObjectId textStyleId,
+            string donatiCell,
+            Point2d ust1,
+            Point2d ust2,
+            Point2d alt1,
+            Point2d alt2,
+            Point2d fallbackCenter,
+            double textH,
+            Geometry kesilmisDoseme,
+            GeometryFactory dosemeFactory,
+            short aciColor,
+            string gprTextLayerName,
+            double referansDigerRenkCizgiUzunlukCm)
+        {
+            if (string.IsNullOrWhiteSpace(donatiCell)) return;
+            var parts = DosemeDonatiParcalari.SplitDonatiCell(donatiCell);
+            if (parts == null || parts.Count == 0)
+            {
+                AppendKalipGprDonatiColoredLine(tr, btr, db, textStyleId, gprTextLayerName, DosemeDonatiParcalari.FormatKalipPlanCellDisplay(donatiCell, referansDigerRenkCizgiUzunlukCm), fallbackCenter.X, fallbackCenter.Y, aciColor, textH);
+                return;
+            }
+            Vector2d du = ust2 - ust1;
+            double len = du.Length;
+            if (len < 1e-9)
+            {
+                AppendKalipGprDonatiColoredLine(tr, btr, db, textStyleId, gprTextLayerName, DosemeDonatiParcalari.FormatKalipPlanCellDisplay(donatiCell, referansDigerRenkCizgiUzunlukCm), fallbackCenter.X, fallbackCenter.Y, aciColor, textH);
+                return;
+            }
+            Vector2d uAlong = du.GetNormal();
+            double rotAlong = Math.Atan2(uAlong.Y, uAlong.X);
+            Point2d midUst = new Point2d((ust1.X + ust2.X) * 0.5, (ust1.Y + ust2.Y) * 0.5);
+            Point2d midAlt = new Point2d((alt1.X + alt2.X) * 0.5, (alt1.Y + alt2.Y) * 0.5);
+            Vector2d vUstTenAltCizgiye = new Vector2d(midAlt.X - midUst.X, midAlt.Y - midUst.Y);
+            Vector2d nTowardStrip = vUstTenAltCizgiye.Length > 1e-9
+                ? vUstTenAltCizgiye.GetNormal()
+                : new Vector2d(uAlong.Y, -uAlong.X).GetNormal();
+            Vector2d nAwayFromStripUst = new Vector2d(-nTowardStrip.X, -nTowardStrip.Y);
+            Point2d OffN(Point2d p, Vector2d n, double t) => new Point2d(p.X + n.X * t, p.Y + n.Y * t);
+            var duk = new List<string>();
+            var pil = new List<string>();
+            var mon = new List<string>();
+            var sol = new List<string>();
+            var sag = new List<string>();
+            foreach (var p in parts)
+            {
+                DosemeDonatiKind k = p.Kind == DosemeDonatiKind.Unknown ? DosemeDonatiKind.Duz : p.Kind;
+                string disp = DosemeDonatiParcalari.ToKalipPlanLengthLabel(p.Raw, k, referansDigerRenkCizgiUzunlukCm);
+                switch (k)
+                {
+                    case DosemeDonatiKind.Duz: duk.Add(disp); break;
+                    case DosemeDonatiKind.Pilye: pil.Add(disp); break;
+                    case DosemeDonatiKind.Montaj: mon.Add(disp); break;
+                    case DosemeDonatiKind.SolIlave: sol.Add(disp); break;
+                    case DosemeDonatiKind.SagIlave: sag.Add(disp); break;
+                    default: duk.Add(disp); break;
+                }
+            }
+            double rowStep = textH + KalipGprDonatiYaziMaviSatirGapCm;
+            for (int i = 0; i < pil.Count; i++)
+            {
+                double off = KalipGprDonatiYaziMaviPilyeUstCizgiGapCm + i * rowStep;
+                Point2d pos = OffN(midUst, nTowardStrip, off);
+                AppendKalipGprDonatiColoredLine(tr, btr, db, textStyleId, gprTextLayerName, pil[i], pos.X, pos.Y, aciColor, textH, rotAlong);
+            }
+            for (int i = 0; i < duk.Count; i++)
+            {
+                double off = KalipGprDonatiYaziMaviDuzAltCizgiGapCm + i * rowStep;
+                Point2d pos = OffN(midAlt, nTowardStrip, off);
+                AppendKalipGprDonatiColoredLine(tr, btr, db, textStyleId, gprTextLayerName, duk[i], pos.X, pos.Y, aciColor, textH, rotAlong);
+            }
+            for (int i = 0; i < sag.Count; i++)
+            {
+                Point2d basePos = new Point2d(
+                    ust2.X + uAlong.X * KalipGprDonatiYaziMaviIlaveKoseCm + nAwayFromStripUst.X * KalipGprDonatiYaziMaviIlaveKoseCm,
+                    ust2.Y + uAlong.Y * KalipGprDonatiYaziMaviIlaveKoseCm + nAwayFromStripUst.Y * KalipGprDonatiYaziMaviIlaveKoseCm);
+                Point2d pos = new Point2d(
+                    basePos.X + uAlong.X * i * rowStep * 0.35,
+                    basePos.Y + uAlong.Y * i * rowStep * 0.35);
+                pos = NudgeKalipGprDonatiIlaveIntoSlab(kesilmisDoseme, dosemeFactory, pos, uAlong, sag[i], textH,
+                    dirAlongInterior: new Vector2d(-uAlong.X, -uAlong.Y), dirTowardSlabInteriorAlt: nTowardStrip);
+                AppendKalipGprDonatiColoredLine(tr, btr, db, textStyleId, gprTextLayerName, sag[i], pos.X, pos.Y, aciColor, textH, rotAlong);
+            }
+            for (int i = 0; i < sol.Count; i++)
+            {
+                Point2d basePos = new Point2d(
+                    ust1.X - uAlong.X * KalipGprDonatiYaziMaviIlaveKoseCm + nAwayFromStripUst.X * KalipGprDonatiYaziMaviIlaveKoseCm,
+                    ust1.Y - uAlong.Y * KalipGprDonatiYaziMaviIlaveKoseCm + nAwayFromStripUst.Y * KalipGprDonatiYaziMaviIlaveKoseCm);
+                Point2d pos = new Point2d(
+                    basePos.X - uAlong.X * i * rowStep * 0.35,
+                    basePos.Y - uAlong.Y * i * rowStep * 0.35);
+                pos = NudgeKalipGprDonatiIlaveIntoSlab(kesilmisDoseme, dosemeFactory, pos, uAlong, sol[i], textH,
+                    dirAlongInterior: uAlong, dirTowardSlabInteriorAlt: nTowardStrip);
+                AppendKalipGprDonatiColoredLine(tr, btr, db, textStyleId, gprTextLayerName, sol[i], pos.X, pos.Y, aciColor, textH, rotAlong);
+            }
+            if (mon.Count > 0)
+            {
+                double rot = rotAlong;
+                Point2d baseMont = OffN(midUst, nAwayFromStripUst, KalipGprDonatiYaziMaviMontajUstCm + textH * 0.35);
+                double span = (mon.Count <= 1) ? 0 : (mon.Count - 1) * KalipGprDonatiYaziMaviMontajAlongSpacingCm;
+                double start = -0.5 * span;
+                for (int i = 0; i < mon.Count; i++)
+                {
+                    double along = start + i * KalipGprDonatiYaziMaviMontajAlongSpacingCm;
+                    Point2d pos = new Point2d(
+                        baseMont.X + uAlong.X * along,
+                        baseMont.Y + uAlong.Y * along);
+                    AppendKalipGprDonatiColoredLine(tr, btr, db, textStyleId, gprTextLayerName, mon[i], pos.X, pos.Y, aciColor, textH, rot);
+                }
+            }
+        }
+
+        private static void DrawKalipGprDonatiYCellAlongMaviCizgi(
+            Transaction tr,
+            BlockTableRecord btr,
+            Database db,
+            ObjectId textStyleId,
+            string yCell,
+            Point2d ust1,
+            Point2d ust2,
+            Point2d alt1,
+            Point2d alt2,
+            Point2d fallbackCenter,
+            double textH,
+            Geometry kesilmisDoseme,
+            GeometryFactory dosemeFactory,
+            double enUzunKirmiziCizgiCm)
+        {
+            DrawKalipGprDonatiCellAlongReferansCizgileri(tr, btr, db, textStyleId, yCell, ust1, ust2, alt1, alt2, fallbackCenter, textH,
+                kesilmisDoseme, dosemeFactory, 5, LayerDonatiYazisiKalipGprMavi, enUzunKirmiziCizgiCm);
+        }
+
+        /// <summary>
+        /// KALIP50: GPR X (kırmızı) ve Y (mavi) <c>+</c> parçaları ilgili renk referans çizgilerine göre yerleşir
+        /// (<see cref="DrawKalipGprDonatiCellAlongReferansCizgileri"/>; düz/pilye/montaj/sol-sağ ilave).
+        /// </summary>
+        /// <returns><paramref name="countMatchedSlabs"/> true ise eşleşen döşeme sayısı; aksi halde 0.</returns>
+        private int DrawKalipDonatiPlanGprSlabNotes(
+            Transaction tr,
+            BlockTableRecord btr,
+            Database db,
+            FloorInfo floor,
+            double offsetX,
+            double offsetY,
+            Dictionary<string, GprDosemeDonatiXy> gprDonatiBySlabKey,
+            bool countMatchedSlabs)
+        {
+            if (gprDonatiBySlabKey == null || gprDonatiBySlabKey.Count == 0 || floor == null || _ntsDrawFactory == null) return 0;
+            int floorNo = floor.FloorNo;
+            var slabsOnFloor = _model.Slabs.Where(s => GetSlabFloorNo(s.SlabId) == floorNo).ToList();
+            int maxSlabNumero = slabsOnFloor.Count > 0 ? slabsOnFloor.Max(s => GetSlabNumero(s.SlabId)) : 0;
+            int slabPad = GetLabelPadWidth(maxSlabNumero);
+            ObjectId textStyleId = GetOrCreateYaziBeykentTextStyle(tr, db);
+            const double textH = 10.0;
+            const double lineGapCm = 5.0;
+            const short aciRed = 1;
+            const short aciBlue = 5;
+            int matched = 0;
+            int skippedNoGeom = 0;
+            int skippedEmptyXy = 0;
+            Geometry slabCutObstacles = BuildDrawnKolonPerdeKirisUnionForSlabCut(floor, offsetX, offsetY);
+            Geometry beamClipGpr = BuildBeamUnionForDosemeGprLineClip();
+
+            foreach (var slab in _model.Slabs)
+            {
+                if (GetSlabFloorNo(slab.SlabId) != floorNo) continue;
+                if (_model.StairSlabIds.Contains(slab.SlabId)) continue;
+                if (!TryGetGprDonatiXyForSlab(gprDonatiBySlabKey, floor, slab, slabPad, out GprDosemeDonatiXy xy)) continue;
+                bool hasX = !string.IsNullOrWhiteSpace(xy.X);
+                bool hasY = !string.IsNullOrWhiteSpace(xy.Y);
+                if (!hasX && !hasY) { skippedEmptyXy++; continue; }
+                if (!TryGetSlabGeometry(slab, floorNo, offsetX, offsetY, _ntsDrawFactory, slabCutObstacles, out Geometry kesilmisDoseme, out Point2d center))
+                {
+                    skippedNoGeom++;
+                    continue;
+                }
+
+                double uzunMaviRefCm = 0;
+                double uzunKirmiziRefCm = 0;
+                if (kesilmisDoseme != null && !kesilmisDoseme.IsEmpty &&
+                    TryGetSlabAxisQuadCornersWorld(slab, offsetX, offsetY, out Point2d g11, out Point2d g12, out Point2d g22, out Point2d g21))
+                {
+                    uzunMaviRefCm = GetLongestGprRenkCiftClipCm(_ntsDrawFactory, kesilmisDoseme, beamClipGpr, g11, g12, g22, g21, wantMavi: true);
+                    uzunKirmiziRefCm = GetLongestGprRenkCiftClipCm(_ntsDrawFactory, kesilmisDoseme, beamClipGpr, g11, g12, g22, g21, wantMavi: false);
+                }
+
+                if (countMatchedSlabs && (hasX || hasY))
+                    matched++;
+
+                double yX;
+                double yY;
+                if (hasX && hasY)
+                {
+                    double half = 0.5 * (textH + lineGapCm);
+                    yX = center.Y + half;
+                    yY = center.Y - half;
+                }
+                else if (hasX)
+                {
+                    yX = center.Y;
+                    yY = 0;
+                }
+                else
+                {
+                    yX = 0;
+                    yY = center.Y;
+                }
+
+                if (hasX)
+                {
+                    string xHam = xy.X != null ? xy.X.Trim() : string.Empty;
+                    if (TryGetSlabKirmiziDonatiReferansCizgileri(slab, offsetX, offsetY, out Point2d ru1, out Point2d ru2, out Point2d ra1, out Point2d ra2))
+                        DrawKalipGprDonatiCellAlongReferansCizgileri(tr, btr, db, textStyleId, xHam, ru1, ru2, ra1, ra2, center, textH, kesilmisDoseme, _ntsDrawFactory, aciRed, LayerDonatiYazisiKalipGprKirmizi, uzunMaviRefCm);
+                    else
+                        AppendKalipGprDonatiColoredLine(tr, btr, db, textStyleId, LayerDonatiYazisiKalipGprKirmizi, DosemeDonatiParcalari.FormatKalipPlanCellDisplay(xy.X, uzunMaviRefCm), center.X, yX, aciRed, textH);
+                }
+                if (hasY)
+                {
+                    string yHam = xy.Y != null ? xy.Y.Trim() : string.Empty;
+                    if (TryGetSlabMaviDonatiReferansCizgileri(slab, offsetX, offsetY, out Point2d mu1, out Point2d mu2, out Point2d ma1, out Point2d ma2))
+                        DrawKalipGprDonatiYCellAlongMaviCizgi(tr, btr, db, textStyleId, yHam, mu1, mu2, ma1, ma2, center, textH, kesilmisDoseme, _ntsDrawFactory, uzunKirmiziRefCm);
+                    else
+                        AppendKalipGprDonatiColoredLine(tr, btr, db, textStyleId, LayerDonatiYazisiKalipGprMavi, DosemeDonatiParcalari.FormatKalipPlanCellDisplay(xy.Y, uzunKirmiziRefCm), center.X, hasX ? yY : center.Y, aciBlue, textH);
+                }
+            }
+            if (countMatchedSlabs && gprDonatiBySlabKey.Count > 0 && matched == 0 &&
+                (skippedNoGeom > 0 || skippedEmptyXy > 0))
+            {
+                try
+                {
+                    Application.DocumentManager.MdiActiveDocument?.Editor.WriteMessage(
+                        string.Format(
+                            CultureInfo.InvariantCulture,
+                            "\nKALIP50ST4 UYARI: GPR {0} anahtar var ama bu katta yazilan donati 0 (bos hucre:{1}, geometri yok:{2}). Katmanlar: {3}, {4}.",
+                            gprDonatiBySlabKey.Count,
+                            skippedEmptyXy,
+                            skippedNoGeom,
+                            LayerDonatiYazisiKalipGprKirmizi,
+                            LayerDonatiYazisiKalipGprMavi));
+                }
+                catch { /* yoksay */ }
+            }
+            return countMatchedSlabs ? matched : 0;
+        }
+
+        private static void AppendKalipGprDonatiColoredLine(
+            Transaction tr,
+            BlockTableRecord btr,
+            Database db,
+            ObjectId textStyleId,
+            string layerName,
+            string raw,
+            double centerX,
+            double baselineY,
+            short aciColor,
+            double textH = 10.0,
+            double rotationRad = 0)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return;
+            string layer = string.IsNullOrWhiteSpace(layerName) ? LayerDonatiYazisiKalipGprKirmizi : layerName;
+            string txt = KolonDonatiTableDrawer.NormalizeDiameterSymbol(raw.Trim());
+            if (txt.Length > 220)
+                txt = txt.Substring(0, 217) + "...";
+            // TextBottom + AdjustAlignment bazı ortamlarda metni görünmez/yanlış yere alıyor.
+            // Aks etiketleriyle aynı: merkez + dikey orta, AlignmentPoint = Position (AdjustAlignment yok).
+            var dt = new DBText
+            {
+                Layer = layer,
+                Height = textH,
+                TextStyleId = textStyleId,
+                TextString = txt,
+                HorizontalMode = TextHorizontalMode.TextCenter,
+                VerticalMode = TextVerticalMode.TextVerticalMid,
+                Position = new Point3d(centerX, baselineY, 0),
+                AlignmentPoint = new Point3d(centerX, baselineY, 0),
+                Rotation = rotationRad,
+                Color = Color.FromColorIndex(ColorMethod.ByAci, aciColor),
+                LineWeight = LineWeight.LineWeight035,
+            };
+            try
+            {
+                var lt = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
+                if (lt.Has(layer))
+                    dt.LayerId = lt[layer];
+            }
+            catch { /* katman adi ile devam */ }
+            AppendEntity(tr, btr, dt);
         }
 
         private static string BuildKalipPlanAntetTitle(FloorInfo floor)
@@ -2134,6 +2875,32 @@ namespace ST4PlanIdCiz
         private const string LayerKolonIsmi = "KOLON ISMI (BEYKENT)";
         private const string LayerDosemeIsmi = "DOSEME ISMI (BEYKENT)";
         private const string LayerDosemePafta = "DOSEME PAFTA (BEYKENT)";
+        /// <summary>KALIP50 GPR kırmızı çift: karşı kenar orta doğrusu (ana).</summary>
+        private const string LayerDosemeGprKirmiziUst = "DOSEME GPR KIRMIZI UST (BEYKENT)";
+        /// <summary>KALIP50 GPR kırmızı çift: ana doğruya dik ofset paralel.</summary>
+        private const string LayerDosemeGprKirmiziAlt = "DOSEME GPR KIRMIZI ALT (BEYKENT)";
+        /// <summary>KALIP50 GPR mavi çift: karşı kenar orta doğrusu (ana).</summary>
+        private const string LayerDosemeGprMaviUst = "DOSEME GPR MAVI UST (BEYKENT)";
+        /// <summary>KALIP50 GPR mavi çift: ana doğruya dik ofset paralel.</summary>
+        private const string LayerDosemeGprMaviAlt = "DOSEME GPR MAVI ALT (BEYKENT)";
+        /// <summary>Üst çizgiye dik mesafe; alt çizgi bu yönde paralel (cm).</summary>
+        private const double DosemeAltCizgiDikOfsetCm = 15.0;
+        /// <summary>KALIP50 GPR Y (mavi): pilye satırları <b>sol (üst)</b> mavi çizgiden şerit içi mesafe (cm).</summary>
+        private const double KalipGprDonatiYaziMaviPilyeUstCizgiGapCm = 7.0;
+        /// <summary>KALIP50 GPR Y (mavi): düz satırları <b>sağ (alt)</b> mavi çizginin sağ-yan (dış) mesafesi (cm).</summary>
+        private const double KalipGprDonatiYaziMaviDuzAltCizgiGapCm = 7.0;
+        /// <summary>KALIP50 GPR Y (mavi): sol/sağ ilave üst (sol) mavi köşe ofseti (cm).</summary>
+        private const double KalipGprDonatiYaziMaviIlaveKoseCm = 14.0;
+        /// <summary>KALIP50 GPR Y (mavi): montaj <b>sol (üst)</b> mavi ortadan çizgiye göre ters yana (cm).</summary>
+        private const double KalipGprDonatiYaziMaviMontajUstCm = 12.0;
+        /// <summary>KALIP50 GPR Y (mavi): montaj parçaları çizgi boyunca aralık (cm).</summary>
+        private const double KalipGprDonatiYaziMaviMontajAlongSpacingCm = 40.0;
+        /// <summary>KALIP50 GPR Y (mavi): aynı bölgede çoklu satır dikey boşluk (cm).</summary>
+        private const double KalipGprDonatiYaziMaviSatirGapCm = 5.0;
+        /// <summary>KALIP50 GPR X (kırmızı) donatı yazıları.</summary>
+        private const string LayerDonatiYazisiKalipGprKirmizi = "DONATI YAZISI KALIP GPR KIRMIZI (BEYKENT)";
+        /// <summary>KALIP50 GPR Y (mavi) donatı yazıları.</summary>
+        private const string LayerDonatiYazisiKalipGprMavi = "DONATI YAZISI KALIP GPR MAVI (BEYKENT)";
         private const string LayerYukYazisi = "YUK YAZISI (BEYKENT)";
         private const string LayerKotYazi = "KOT YAZI (BEYKENT)";
         private const string LayerKotCizgisi = "KOT CIZGISI (BEYKENT)";
@@ -2203,6 +2970,12 @@ namespace ST4PlanIdCiz
             EnsurePlanLayer(tr, db, LayerKolonIsmi, 91, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, LayerDosemeIsmi, 9, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, LayerDosemePafta, 3, LineWeight.LineWeight020, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerDosemeGprKirmiziUst, 1, LineWeight.LineWeight018, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerDosemeGprKirmiziAlt, 1, LineWeight.LineWeight018, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerDosemeGprMaviUst, 5, LineWeight.LineWeight018, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerDosemeGprMaviAlt, 5, LineWeight.LineWeight018, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerDonatiYazisiKalipGprKirmizi, 1, LineWeight.LineWeight018, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerDonatiYazisiKalipGprMavi, 5, LineWeight.LineWeight018, useDashed: false);
             EnsurePlanLayer(tr, db, LayerYukYazisi, 140, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, LayerKotYazi, 7, LineWeight.LineWeight020, useDashed: false);
             // Kesit/plan kot işaretleri: cyan (klasik kot çizgisi).
@@ -2285,6 +3058,8 @@ namespace ST4PlanIdCiz
                 else if (ltt.Has("Dashed"))
                     rec.LinetypeObjectId = ltt["Dashed"];
             }
+            // Cizimde gorunurluk: sablon / onceki oturumda kapatilmis olabilir.
+            try { rec.IsOff = false; } catch { /* eski surum */ }
         }
 
         private (double Xmin, double Xmax, double Ymin, double Ymax) CalculateBaseExtents()
@@ -2465,21 +3240,7 @@ namespace ST4PlanIdCiz
             }
 
             if (geoms.Count == 0) return null;
-            try
-            {
-                return geoms.Count == 1 ? geoms[0] : NetTopologySuite.Operation.Union.CascadedPolygonUnion.Union(geoms);
-            }
-            catch (Exception)
-            {
-                var reduced = new List<Geometry>();
-                foreach (var g in geoms)
-                {
-                    var r = ReducePrecisionSafe(g, 1);
-                    if (r != null && !r.IsEmpty) reduced.Add(r);
-                }
-                if (reduced.Count == 0) return null;
-                return reduced.Count == 1 ? reduced[0] : NetTopologySuite.Operation.Union.CascadedPolygonUnion.Union(reduced);
-            }
+            return TryCascadedPolygonUnionSafe(geoms);
         }
 
         /// <summary>Kalıp planında: kat sınırı içinde kalan ve hiçbir eleman (kolon, kiriş, perde, döşeme) tanımlanmayan boşlukları çizer (element union iç halkaları / delikler).</summary>
@@ -2602,7 +3363,7 @@ namespace ST4PlanIdCiz
             }
 
             if (allPolygons.Count == 0) return;
-            Geometry unionResult = allPolygons.Count == 1 ? allPolygons[0] : NetTopologySuite.Operation.Union.CascadedPolygonUnion.Union(allPolygons);
+            Geometry unionResult = TryCascadedPolygonUnionSafe(allPolygons);
             if (unionResult != null && !unionResult.IsEmpty)
                 DrawGeometryRingsAsPolylines(tr, btr, unionResult, LayerKatSiniri, addHatch: false, applySmallTriangleTrim: false, vertexAngleTolDeg: 0.3, minVertexDistCm: 0.1, collinearTolCm: 0.05);
         }
@@ -3892,6 +4653,43 @@ namespace ST4PlanIdCiz
             {
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Çoklu poligon birleşiminde NTS "side location conflict" için: ham deneme, sonra artan ölçek ile <see cref="ReducePrecisionSafe"/>.
+        /// </summary>
+        private static Geometry TryCascadedPolygonUnionSafe(IReadOnlyList<Geometry> geoms)
+        {
+            if (geoms == null || geoms.Count == 0) return null;
+            if (geoms.Count == 1) return geoms[0];
+            foreach (double? scale in new double?[] { null, 1.0, 100.0, 50.0, 20.0 })
+            {
+                try
+                {
+                    List<Geometry> work;
+                    if (scale == null)
+                    {
+                        work = new List<Geometry>(geoms);
+                    }
+                    else
+                    {
+                        work = new List<Geometry>();
+                        foreach (var g in geoms)
+                        {
+                            var r = ReducePrecisionSafe(g, scale.Value);
+                            if (r != null && !r.IsEmpty) work.Add(r);
+                        }
+                        if (work.Count == 0) continue;
+                    }
+                    if (work.Count == 1) return work[0];
+                    return NetTopologySuite.Operation.Union.CascadedPolygonUnion.Union(work);
+                }
+                catch
+                {
+                    // bir sonraki ölçek
+                }
+            }
+            return null;
         }
 
         /// <summary>Geometrinin sınırındaki köşe noktalarını döndürür (Polygon/MultiPolygon dış halkaları, kapalı halkanın son noktası hariç).</summary>
@@ -5742,32 +6540,28 @@ namespace ST4PlanIdCiz
         /// Bu kata ait döşemeler: kolon, perde ve kirişlerin çizimde görüldüğü geometrilerden kesilir; kesim sonucu 2+ poligon olursa sadece en büyük parça çizilir. Merdiven ayrıca MERDIVEN katmanında da çizilir.
         /// Köşeler sırayla: (axis1,axis3), (axis1,axis4), (axis2,axis4), (axis2,axis3).
         /// </summary>
-        private void DrawSlabs(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY)
+        /// <param name="drawSlabAltCizgi">true ise (KALIP50 donatı planı) döşeme alt çizgileri (karşı kenar ortaları + aşağı ofset) çizilir.</param>
+        private void DrawSlabs(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY, bool drawSlabAltCizgi = false)
         {
             int floorNo = floor.FloorNo;
             var factory = _ntsDrawFactory;
             _drawnSlabGeometriesForUnion = new List<Geometry>();
             // Çizimde görüldüğü haliyle kolon + perde + kiriş birleşimi (DrawBeamsAndWalls tarafından doldurulur)
-            Geometry drawnKolonPerdeKirisUnion = BuildKolonUnionSameFloorOnly(floor, offsetX, offsetY);
-            if (_drawnWallGeometriesForSlabCut != null && _drawnWallGeometriesForSlabCut.Count > 0)
-            {
-                Geometry wallsUnion = _drawnWallGeometriesForSlabCut.Count == 1
-                    ? _drawnWallGeometriesForSlabCut[0]
-                    : NetTopologySuite.Operation.Union.CascadedPolygonUnion.Union(_drawnWallGeometriesForSlabCut);
-                if (wallsUnion != null && !wallsUnion.IsEmpty)
-                    drawnKolonPerdeKirisUnion = drawnKolonPerdeKirisUnion != null && !drawnKolonPerdeKirisUnion.IsEmpty
-                        ? drawnKolonPerdeKirisUnion.Union(wallsUnion)
-                        : wallsUnion;
-            }
+            Geometry drawnKolonPerdeKirisUnion = BuildDrawnKolonPerdeKirisUnionForSlabCut(floor, offsetX, offsetY);
+
+            // Üst/alt döşeme çizgilerinde yalnızca kiriş poligonlarından kesim (kolon/perde değil).
+            Geometry beamUnionForDosemeLineClip = null;
             if (_drawnBeamGeometriesForSlabCut != null && _drawnBeamGeometriesForSlabCut.Count > 0)
             {
-                Geometry beamsUnion = _drawnBeamGeometriesForSlabCut.Count == 1
-                    ? _drawnBeamGeometriesForSlabCut[0]
-                    : NetTopologySuite.Operation.Union.CascadedPolygonUnion.Union(_drawnBeamGeometriesForSlabCut);
-                if (beamsUnion != null && !beamsUnion.IsEmpty)
-                    drawnKolonPerdeKirisUnion = drawnKolonPerdeKirisUnion != null && !drawnKolonPerdeKirisUnion.IsEmpty
-                        ? drawnKolonPerdeKirisUnion.Union(beamsUnion)
-                        : beamsUnion;
+                try
+                {
+                    beamUnionForDosemeLineClip = _drawnBeamGeometriesForSlabCut.Count == 1
+                        ? _drawnBeamGeometriesForSlabCut[0]
+                        : NetTopologySuite.Operation.Union.CascadedPolygonUnion.Union(_drawnBeamGeometriesForSlabCut);
+                    if (beamUnionForDosemeLineClip != null && !beamUnionForDosemeLineClip.IsEmpty)
+                        beamUnionForDosemeLineClip = ReducePrecisionSafe(beamUnionForDosemeLineClip, 100);
+                }
+                catch { beamUnionForDosemeLineClip = null; }
             }
 
             var slabsOnFloor = _model.Slabs.Where(s => GetSlabFloorNo(s.SlabId) == floorNo).ToList();
@@ -5871,11 +6665,226 @@ namespace ST4PlanIdCiz
                         DrawGeometryRingsAsPolylines(tr, btr, toDraw, LayerMerdiven, addHatch: false, applySmallTriangleTrim: false);
                 }
 
+                // KALIP50 donatı planı: üst+alt çizgiler eksen orta doğrultuda; önce kesilmiş döşeme (toDraw) ile, sonra kiriş ile kırpılır.
+                if (drawSlabAltCizgi && !isStair && pts.Length == 4
+                    && toDraw != null && !toDraw.IsEmpty)
+                {
+                    try
+                    {
+                        AppendSlabUstVeAltCizgiLines(tr, btr, factory, beamUnionForDosemeLineClip, toDraw, pts[0], pts[1], pts[2], pts[3]);
+                    }
+                    catch
+                    {
+                        // NTS topology (side location conflict vb.): bu döşeme için üst/alt çizgi atlanır; plan çizimi sürsün.
+                    }
+                }
+
                 double cx2 = 0, cy2 = 0;
                 for (int i = 0; i < pts.Length; i++) { cx2 += pts[i].X; cy2 += pts[i].Y; }
                 var center = new Point2d(cx2 / pts.Length, cy2 / pts.Length);
                 if (!isStair && slabIdsToLabel.Contains(slab.SlabId))
                     AppendSlabLabel(tr, btr, slab, floor, storyId, slabPad, center, slabLabelStyleId);
+            }
+        }
+
+        /// <summary>
+        /// <b>Üst çizgi:</b> eksen dörtgeninde karşı kenar ortaları. <b>Alt çizgi:</b> üst çizgiye dik <see cref="DosemeAltCizgiDikOfsetCm"/> paralel.
+        /// Her iki doğru önce <paramref name="kesilmisDoseme"/> (kolon/perde/kirişten kesilmiş döşeme) ile kesiştirilir, sonra kiriş birleşimi çıkarılır.
+        /// Yataya yakın çift kırmızı (1), dikeye yakın çift mavi (5).
+        /// Çizgiler renk bazlı katmanlara ayrılır: <see cref="LayerDosemeGprKirmiziUst"/>/<see cref="LayerDosemeGprKirmiziAlt"/>,
+        /// <see cref="LayerDosemeGprMaviUst"/>/<see cref="LayerDosemeGprMaviAlt"/>. GPR Y: <see cref="TryGetSlabMaviDonatiReferansCizgileri"/> (sol=üst, sağ=alt).
+        /// </summary>
+        private static void AppendSlabUstVeAltCizgiLines(
+            Transaction tr,
+            BlockTableRecord btr,
+            GeometryFactory factory,
+            Geometry beamUnionClip,
+            Geometry kesilmisDoseme,
+            Point2d p11,
+            Point2d p12,
+            Point2d p22,
+            Point2d p21)
+        {
+            const short aciRed = 1;
+            const short aciBlue = 5;
+            double mx2(double a, double b) => (a + b) * 0.5;
+            Point2d Mid(Point2d a, Point2d b) => new Point2d(mx2(a.X, b.X), mx2(a.Y, b.Y));
+            // Kenar (p11–p12) ↔ (p22–p21); (p12–p22) ↔ (p21–p11)
+            Point2d a1 = Mid(p11, p12), a2 = Mid(p22, p21);
+            Point2d b1 = Mid(p12, p22), b2 = Mid(p21, p11);
+            double dxA = a2.X - a1.X, dyA = a2.Y - a1.Y;
+            double dxB = b2.X - b1.X, dyB = b2.Y - b1.Y;
+            double horizness(double dx, double dy)
+            {
+                double adx = Math.Abs(dx), ady = Math.Abs(dy);
+                return adx / (adx + ady + 1e-15);
+            }
+            double hA = horizness(dxA, dyA);
+            double hB = horizness(dxB, dyB);
+            short colorA = hA >= hB ? aciRed : aciBlue;
+            short colorB = hA >= hB ? aciBlue : aciRed;
+            if (hA >= hB)
+            {
+                AppendUstAltDosemeCizgiPairClipped(tr, btr, factory, kesilmisDoseme, beamUnionClip, a1, a2,
+                    LayerDosemeGprKirmiziUst, LayerDosemeGprKirmiziAlt, colorA);
+                AppendUstAltDosemeCizgiPairClipped(tr, btr, factory, kesilmisDoseme, beamUnionClip, b1, b2,
+                    LayerDosemeGprMaviUst, LayerDosemeGprMaviAlt, colorB);
+            }
+            else
+            {
+                AppendUstAltDosemeCizgiPairClipped(tr, btr, factory, kesilmisDoseme, beamUnionClip, a1, a2,
+                    LayerDosemeGprMaviUst, LayerDosemeGprMaviAlt, colorA);
+                AppendUstAltDosemeCizgiPairClipped(tr, btr, factory, kesilmisDoseme, beamUnionClip, b1, b2,
+                    LayerDosemeGprKirmiziUst, LayerDosemeGprKirmiziAlt, colorB);
+            }
+        }
+
+        /// <summary>Üst + alt çizgiler: önce kesilmiş döşeme poligonu ile, sonra kiriş birleşimi ile kırpılır.</summary>
+        private static void AppendUstAltDosemeCizgiPairClipped(
+            Transaction tr,
+            BlockTableRecord btr,
+            GeometryFactory factory,
+            Geometry kesilmisDoseme,
+            Geometry beamUnionClip,
+            Point2d p1,
+            Point2d p2,
+            string layerUst,
+            string layerAlt,
+            short aciColor)
+        {
+            GetDikOfsetParalelUcNokta(p1, p2, DosemeAltCizgiDikOfsetCm, out Point2d alt1, out Point2d alt2);
+            var ustLine = factory.CreateLineString(new[] { new Coordinate(p1.X, p1.Y), new Coordinate(p2.X, p2.Y) });
+            var altLine = factory.CreateLineString(new[] { new Coordinate(alt1.X, alt1.Y), new Coordinate(alt2.X, alt2.Y) });
+            Geometry ustDraw = ClipLineToKesilmisDosemeThenSubtractBeams(ustLine, kesilmisDoseme, beamUnionClip, factory);
+            Geometry altDraw = ClipLineToKesilmisDosemeThenSubtractBeams(altLine, kesilmisDoseme, beamUnionClip, factory);
+            AppendColoredLineGeometryAsEntities(tr, btr, ustDraw, layerUst, aciColor);
+            AppendColoredLineGeometryAsEntities(tr, btr, altDraw, layerAlt, aciColor);
+        }
+
+        /// <summary>Çizgiye dik yönde <paramref name="offsetCm"/>; WCS −Y tarafına düşen normal seçilir (ny ≤ 0).</summary>
+        private static void GetDikOfsetParalelUcNokta(Point2d p1, Point2d p2, double offsetCm, out Point2d q1, out Point2d q2)
+        {
+            double dx = p2.X - p1.X, dy = p2.Y - p1.Y;
+            double len = Math.Sqrt(dx * dx + dy * dy);
+            if (len < 1e-12)
+            {
+                q1 = p1;
+                q2 = p2;
+                return;
+            }
+            double ux = dx / len, uy = dy / len;
+            double nx = -uy, ny = ux;
+            if (ny > 0)
+            {
+                nx = -nx;
+                ny = -ny;
+            }
+            q1 = new Point2d(p1.X + nx * offsetCm, p1.Y + ny * offsetCm);
+            q2 = new Point2d(p2.X + nx * offsetCm, p2.Y + ny * offsetCm);
+        }
+
+        /// <summary>
+        /// Eksen orta doğrusunu önce kesilmiş döşeme geometrisi ile kesiştirir (kolon/perde/kirişten kesilmiş alan),
+        /// ardından kiriş birleşiminin içinde kalan parçaları çıkarır (tolerans / sınır).
+        /// NTS "side location conflict" için ölçek indirgeme ile tekrar dener; kesişim yine olmazsa sadece kiriş farkı uygulanır.
+        /// </summary>
+        private static Geometry ClipLineToKesilmisDosemeThenSubtractBeams(
+            LineString line,
+            Geometry kesilmisDoseme,
+            Geometry beamUnionClip,
+            GeometryFactory factory)
+        {
+            if (line == null || line.IsEmpty || line.NumPoints < 2) return line;
+            Geometry g = line;
+            if (kesilmisDoseme != null && !kesilmisDoseme.IsEmpty)
+            {
+                bool slabInterOk = false;
+                foreach (double scale in new[] { 100.0, 50.0, 20.0 })
+                {
+                    var lineR = ReducePrecisionSafe(line, scale) as LineString ?? line;
+                    var dosemeR = ReducePrecisionSafe(kesilmisDoseme, scale) ?? kesilmisDoseme;
+                    if (dosemeR == null || dosemeR.IsEmpty) break;
+                    try
+                    {
+                        var inter = lineR.Intersection(dosemeR);
+                        if (inter == null || inter.IsEmpty)
+                        {
+                            g = factory.CreateLineString();
+                            slabInterOk = true;
+                            break;
+                        }
+                        g = inter;
+                        slabInterOk = true;
+                        break;
+                    }
+                    catch
+                    {
+                        // bir sonraki ölçek
+                    }
+                }
+                if (!slabInterOk)
+                {
+                    // Kesişim başarısız: çizgiyi kaybetme; yalnızca kiriş farkına bırak (eski davranışa yakın).
+                    g = line;
+                }
+            }
+            if (g == null || g.IsEmpty) return factory.CreateLineString();
+            if (beamUnionClip == null || beamUnionClip.IsEmpty) return g;
+            foreach (double scale in new[] { 100.0, 50.0, 20.0 })
+            {
+                var gR = ReducePrecisionSafe(g, scale) ?? g;
+                var beamR = ReducePrecisionSafe(beamUnionClip, scale) ?? beamUnionClip;
+                try
+                {
+                    var d = gR.Difference(beamR);
+                    return d != null && !d.IsEmpty ? d : factory.CreateLineString();
+                }
+                catch
+                {
+                    // bir sonraki ölçek
+                }
+            }
+            try
+            {
+                var d = g.Difference(beamUnionClip);
+                return d != null && !d.IsEmpty ? d : factory.CreateLineString();
+            }
+            catch
+            {
+                return g;
+            }
+        }
+
+        private static void AppendColoredLineGeometryAsEntities(Transaction tr, BlockTableRecord btr, Geometry geom, string layer, short aciColor)
+        {
+            if (geom == null || geom.IsEmpty) return;
+            var c = Color.FromColorIndex(ColorMethod.ByAci, aciColor);
+            if (geom is LineString ls)
+            {
+                var coords = ls.Coordinates;
+                for (int i = 0; i < coords.Length - 1; i++)
+                {
+                    var line = new Line(
+                        new Point3d(coords[i].X, coords[i].Y, 0),
+                        new Point3d(coords[i + 1].X, coords[i + 1].Y, 0))
+                    {
+                        Layer = layer,
+                        Color = c
+                    };
+                    AppendEntity(tr, btr, line);
+                }
+                return;
+            }
+            if (geom is MultiLineString mls)
+            {
+                for (int i = 0; i < mls.NumGeometries; i++)
+                    AppendColoredLineGeometryAsEntities(tr, btr, mls.GetGeometryN(i), layer, aciColor);
+                return;
+            }
+            if (geom is GeometryCollection gc)
+            {
+                for (int i = 0; i < gc.NumGeometries; i++)
+                    AppendColoredLineGeometryAsEntities(tr, btr, gc.GetGeometryN(i), layer, aciColor);
             }
         }
 
@@ -5909,6 +6918,7 @@ namespace ST4PlanIdCiz
                 coords[i] = new Coordinate(pts[i].X, pts[i].Y);
             coords[pts.Length] = coords[0];
             var slabPoly = factory.CreatePolygon(factory.CreateLinearRing(coords));
+            // Poligon oluşmasa bile köşe merkezi geçerlidir; DrawSlabs / GPR notu merkez kullanır.
             if (slabPoly == null || slabPoly.IsEmpty) return true;
             toDraw = slabPoly;
             if (drawnKolonPerdeKirisUnion != null && !drawnKolonPerdeKirisUnion.IsEmpty)

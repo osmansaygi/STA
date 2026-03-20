@@ -1,0 +1,21 @@
+---
+description: Bağ kirişi ve radye temel temel hatılı terminolojisi
+alwaysApply: true
+---
+
+# Bağ Kirişi / Radye Temel Temel Hatılı Tanımı
+
+- **Bağ kirişi** ve **radye temel temel hatılı** aynı ST4 verisinden (Tie beams) türetilir; çizimde **katmana göre** isimlendirilir.
+
+- **Radye temel temel hatılı:** Temel hatılı katmanında çizilenler.  
+  - Sürekli temel veya radye alanı **içinde** kalan bağ kirişi poligonları **TEMEL HATILI (BEYKENT)** katmanına çizilir; bunlara **radye temel temel hatılı** denir.  
+  - Sürekli temellerin 2. satır 12. sütun (TieBeamWidthCm) ile tanımlı hatıl şeritleri de bu katmanda birleştirilip çizilir.
+
+- **Bağ kirişi:** Temel katmanında atılanlar.  
+  - Sürekli temel veya radye alanı **dışında** kalan bağ kirişi poligonları **TEMEL (BEYKENT)** katmanına çizilir; bunlara **bağ kirişi** denir.
+
+- Kod ve yorumlarda bu terminoloji kullanılacak: TEMEL HATILI katmanı → "radye temel temel hatılı", TEMEL katmanındaki tie beam çizimi → "bağ kirişi".
+
+- **ST4 Tie beams satır formatı (örnek: `30,170,2004,1011,1012,-200,-.7,0`):**
+  - 1. sütun: genişlik (cm), 2.: yükseklik (cm), 3.–5.: sabit/başlangıç/bitiş aks, 6.: kaçıklık (mm).
+  - **7. sütun: radye temel hatılı alt kotu, bina tabanına göre (m).** İleride kot etiketi veya filtreleme için kullanılabilir.

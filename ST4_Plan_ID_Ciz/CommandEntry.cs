@@ -372,7 +372,7 @@ namespace ST4PlanIdCiz
                 var model = parser.Parse(fileRes.StringResult);
                 GprYapiAksLabels.TryMergeFromGprBesideSt4(fileRes.StringResult, model);
                 var manager = new PlanIdDrawingManager(model);
-                var insRes = ed.GetPoint(new PromptPointOptions("\nKALIP50ST4 yerlestirme noktasi (sol-alt): ") { AllowNone = false });
+                var insRes = ed.GetPoint(new PromptPointOptions("\nKALIP50ST4: En soldaki antet SHEETVIEW sol-alt kosesi (yerlesim referansi): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
                 manager.DrawFormworkPlan50(db, ed, insRes.Value, fileRes.StringResult);
                 doc.SendStringToExecute("_.ZOOM _E ", true, false, false);
@@ -383,9 +383,12 @@ namespace ST4PlanIdCiz
             }
             catch (System.Exception ex)
             {
-                ed.WriteMessage("\nKALIP50ST4 hata: {0}", ex.Message);
-                if (ex.InnerException != null)
-                    ed.WriteMessage("  Inner: {0}", ex.InnerException.Message);
+                var e = ex;
+                if (e is System.AggregateException agg && agg.InnerExceptions.Count > 0)
+                    e = agg.Flatten().InnerExceptions[0];
+                ed.WriteMessage("\nKALIP50ST4 hata: {0}", e.Message);
+                if (e.InnerException != null)
+                    ed.WriteMessage("  Inner: {0}", e.InnerException.Message);
             }
         }
     }

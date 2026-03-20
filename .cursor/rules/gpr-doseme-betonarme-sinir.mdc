@@ -1,0 +1,24 @@
+---
+description: GPR dosyasında döşeme betonarme hesap dökümü satır aralığı (başlangıç/bitiş metinleri)
+globs: "**/*.GPR,**/*.gpr"
+alwaysApply: false
+---
+
+# GPR: Döşeme betonarme hesap bölümü sınırı
+
+Statik **`.GPR`** çıktılarında **döşeme donatı / betonarme hesap tabloları** tek dosyada şu iki metinle sınırlanır (tüm projelerde aynı mantık):
+
+## Başlangıç
+- Dosyada **ilk** geçen satır: **`  DÖŞEME BETONARME HESAP SONUÇLARI`** (başta boşluklar olabilir).
+- Genelde bir üst satırda: `130,150,0,0,-10,1`
+
+## Bitiş
+- Yukarıdaki başlangıçtan **sonra** dosyada **ilk** geçen: **`KİRİŞ VE PANEL BİLGİLERİ`**
+- Bu satır bir sonraki bölümün başlığıdır; döşeme içeriği **bu satırdan önce** biter (bitiş satırı döşeme dilimine dahil edilmez).
+
+## Notlar
+- Encoding bozuksa metinler `DEME`, `SONULARI`, `KR VE PANEL` gibi görünebilir — parse’te **normalize** veya `BETONARME HESAP` / `PANEL BİLGİLERİ` alt dizgeleri kullanılabilir.
+- Aynı dosyada `DÖŞEME BETONARME…` başlığı **sayfa devamında** tekrarlanabilir; yine tek aralık § başlangıç–bitiş içindedir.
+- **`KİRİŞ BETONARME HESAP SONUÇLARI`** bu sınırın işareti **değildir**; kesit için **`KİRİŞ VE PANEL BİLGİLERİ`** kullanılmalıdır.
+
+Ayrıntı: `docs/gpr-doseme-betonarme-hesap.md` §0.

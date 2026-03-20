@@ -119,6 +119,12 @@ namespace ST4PlanIdCiz
             return StripGovdeSuffix(GetLastTableColumn(line).Trim());
         }
 
+        /// <summary>GPR döşeme / kolon tablo satırından donatı hücresi (¡ sütunları, kolon tablosu ile aynı mantık).</summary>
+        public static string ExtractGprDonatiCellFromLine(string line)
+        {
+            return GetGprDonatiCell(line ?? string.Empty, true);
+        }
+
         /// <summary>GPR tablo satırı: ¡ hem UTF-8 (C2 A1) hem tek bayt A1 olabilir; string bölme güvenilmez. Ham bayıttan hücreler ayrılır.</summary>
         private static int IndexAfterGprCoordinatePrefix(ReadOnlySpan<byte> line)
         {

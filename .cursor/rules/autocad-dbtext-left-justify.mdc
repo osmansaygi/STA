@@ -1,0 +1,9 @@
+---
+description: Kesit kot yazısı DBText (MText değil)
+globs: ST4_Plan_ID_Ciz/**/*.cs
+alwaysApply: false
+---
+
+# Kesit kot yazısı
+
+Kullanıcı **TEXT** / **DBText** ister; **MText kullanma**. Kesit kotları: `AppendKesitKotElevationDbText` — `TextLeft` + `TextBottom` + `AdjustAlignment(db)` (`PlanIdDrawingManager.Sections.cs`).
