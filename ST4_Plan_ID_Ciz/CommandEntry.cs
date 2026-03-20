@@ -341,5 +341,52 @@ namespace ST4PlanIdCiz
                     ed.WriteMessage("  Inner: {0}", ex.InnerException.Message);
             }
         }
+
+        [CommandMethod("KALIP50ST4")]
+        public void Kalip50St4()
+        {
+            var doc = Application.DocumentManager.MdiActiveDocument;
+            if (doc == null) return;
+
+            var ed = doc.Editor;
+            var db = doc.Database;
+
+            var opts = new PromptOpenFileOptions("\nKALIP50ST4 icin ST4 Dosyasi Secin")
+            {
+                Filter = "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*"
+            };
+
+            var fileRes = ed.GetFileNameForOpen(opts);
+            if (fileRes.Status != PromptStatus.OK) return;
+
+            try
+            {
+                NtsGeometryServices.Instance = new NtsGeometryServices(
+                    CoordinateArraySequenceFactory.Instance,
+                    new PrecisionModel(),
+                    0,
+                    GeometryOverlay.NG,
+                    new CoordinateEqualityComparer());
+
+                var parser = new St4Parser();
+                var model = parser.Parse(fileRes.StringResult);
+                GprYapiAksLabels.TryMergeFromGprBesideSt4(fileRes.StringResult, model);
+                var manager = new PlanIdDrawingManager(model);
+                var insRes = ed.GetPoint(new PromptPointOptions("\nKALIP50ST4 yerlestirme noktasi (sol-alt): ") { AllowNone = false });
+                if (insRes.Status != PromptStatus.OK) return;
+                manager.DrawFormworkPlan50(db, ed, insRes.Value, fileRes.StringResult);
+                doc.SendStringToExecute("_.ZOOM _E ", true, false, false);
+            }
+            catch (AcRxException aex)
+            {
+                ed.WriteMessage("\nKALIP50ST4 hata: {0} ({1})", aex.Message, aex.ErrorStatus);
+            }
+            catch (System.Exception ex)
+            {
+                ed.WriteMessage("\nKALIP50ST4 hata: {0}", ex.Message);
+                if (ex.InnerException != null)
+                    ed.WriteMessage("  Inner: {0}", ex.InnerException.Message);
+            }
+        }
     }
 }

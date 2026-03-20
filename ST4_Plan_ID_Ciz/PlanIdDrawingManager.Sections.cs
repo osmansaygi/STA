@@ -762,7 +762,8 @@ namespace ST4PlanIdCiz
             double offsetX, double offsetY, (double Xmin, double Xmax, double Ymin, double Ymax) ext,
             bool isFoundationPlan, Geometry floorStructuralUnion,
             out double layoutMinX, out double layoutMaxX, out double layoutMinY, out double layoutMaxY,
-            out double leftSectionMinX)
+            out double leftSectionMinX,
+            List<FloorInfo> similarFloorsForKot = null)
         {
             double xmin = ext.Xmin, xmax = ext.Xmax, ymin = ext.Ymin, ymax = ext.Ymax;
             double e = SectionLineExtendCm;
@@ -830,11 +831,13 @@ namespace ST4PlanIdCiz
             DrawKesitSchematicElementLabels(tr, btr, db, slicesTop, floor, contentTopX, contentTopY, aminT, minZT, spanZT, true, false, isFoundationPlan);
             if (isFoundationPlan)
                 DrawGrobetonUnderFoundationKesit(tr, btr, slicesTop, contentTopX, contentTopY, aminT, minZT, spanZT, horizontalAlongX: true, mirrorElevationX: false);
-            try { DrawKesitSchematicElevationKots(tr, btr, db, slicesTop, contentTopX, contentTopY, aminT, minZT, spanZT, horizontalAlongX: true, mirrorElevationX: false, isFoundationPlan); }
+            string similarKotSuffix = BuildSimilarFloorKotSuffix(similarFloorsForKot);
+            try { DrawKesitSchematicElevationKots(tr, btr, db, slicesTop, contentTopX, contentTopY, aminT, minZT, spanZT, horizontalAlongX: true, mirrorElevationX: false, isFoundationPlan, similarKotSuffix); }
             catch { /* kesit kotları — planın geri kalanı çizilsin */ }
             // A-A başlık: üst aks balon üst yüzeyinden 60 cm yukarıda (metin alt kenarı); TextTop için üst hizası = alt + yükseklik
             double yAaBaslikUstHizasi = yAksBalonUstDisYuzey + KesitIsmiUstAksBalonUstuBoslukCm + KesitBaslikMetinYukseklikCm;
-            string aaTitle = (isFoundationPlan && _isTemel50Mode) ? "A-A KESİTİ (1:50)" : "A-A KESİTİ";
+            bool useScaledKesitTitle = (isFoundationPlan && _isTemel50Mode) || (!isFoundationPlan && _isKalip50Mode);
+            string aaTitle = useScaledKesitTitle ? "A-A KESİTİ (1:50)" : "A-A KESİTİ";
             DrawKesitTitleBelowSchematic(tr, btr, db, aaTitle, contentTopX + spanAT * 0.5, yAaBaslikUstHizasi);
             layoutMinX = Math.Min(layoutMinX, contentTopX - sectionLayoutPadCm);
             layoutMaxX = Math.Max(layoutMaxX, contentTopX + spanAT + sectionLayoutPadCm);
@@ -868,12 +871,12 @@ namespace ST4PlanIdCiz
             DrawKesitSchematicElementLabels(tr, btr, db, slicesLeft, floor, contentLeftX, contentLeftY, aminL, minZL, spanZL, false, true, isFoundationPlan);
             if (isFoundationPlan)
                 DrawGrobetonUnderFoundationKesit(tr, btr, slicesLeft, contentLeftX, contentLeftY, aminL, minZL, spanZL, horizontalAlongX: false, mirrorElevationX: true);
-            try { DrawKesitSchematicElevationKots(tr, btr, db, slicesLeft, contentLeftX, contentLeftY, aminL, minZL, spanZL, horizontalAlongX: false, mirrorElevationX: true, isFoundationPlan); }
+            try { DrawKesitSchematicElevationKots(tr, btr, db, slicesLeft, contentLeftX, contentLeftY, aminL, minZL, spanZL, horizontalAlongX: false, mirrorElevationX: true, isFoundationPlan, similarKotSuffix); }
             catch { /* kesit kotları */ }
             // B-B başlık: sol aks balon sol dış yüzeyinden 60 cm sola; dikey metnin plana bakan sağ kenarı ≈ merkez + yükseklik/2
             double bbTitleHeight = _isTemel50Mode ? KesitBaslikMetinYukseklikTemel50Cm : KesitBaslikMetinYukseklikCm;
             double xBbBaslikMerkez = xAksBalonSolDisYuzey - KesitIsmiSolAksBalonSolBoslukCm - bbTitleHeight * 0.5;
-            string bbTitle = (isFoundationPlan && _isTemel50Mode) ? "B-B KESİTİ (1:50)" : "B-B KESİTİ";
+            string bbTitle = useScaledKesitTitle ? "B-B KESİTİ (1:50)" : "B-B KESİTİ";
             DrawKesitTitleVerticalRightOfSection(tr, btr, db, bbTitle, xBbBaslikMerkez, contentLeftY + spanAL * 0.5);
             // Antet sol hizasi icin referans: soldaki kesitin kirpilmis NET geometri sinirinin en solu.
             // (kolon/perde/temel/temel hatili cizimi; baslik/metinler dahil degil)
@@ -1671,7 +1674,8 @@ namespace ST4PlanIdCiz
         /// <summary>Kesit şemasında kotlar: referans üçgen + metin (<see cref="LayerKotCizgisi"/>, <see cref="LayerKotYazi"/>).</summary>
         private void DrawKesitSchematicElevationKots(Transaction tr, BlockTableRecord btr, Database db, List<SectionSlice> slices,
             double originX, double originY, double amin, double minZ, double spanZ,
-            bool horizontalAlongX, bool mirrorElevationX, bool isFoundationPlan)
+            bool horizontalAlongX, bool mirrorElevationX, bool isFoundationPlan,
+            string similarKotSuffix = null)
         {
             if (slices == null || slices.Count == 0) return;
             if (!TryGetKesitSiniriBounds(slices, isFoundationPlan, out double aLo, out double aHi, out _, out _))
@@ -1702,7 +1706,9 @@ namespace ST4PlanIdCiz
                     double c = Math.Cos(rotAa), si = Math.Sin(rotAa);
                     double textX = apexX + c * lxText - si * lyText;
                     double textY = apexY + si * lxText + c * lyText;
-                    AppendKesitKotElevationDbText(tr, btr, db, styleId, FormatKesitKotElevationString(zElev), textX, textY, rotAa);
+                    string kotText = FormatKesitKotElevationString(zElev);
+                    if (!string.IsNullOrWhiteSpace(similarKotSuffix)) kotText += similarKotSuffix;
+                    AppendKesitKotElevationDbText(tr, btr, db, styleId, kotText, textX, textY, rotAa);
                 }
             }
             else
@@ -1723,9 +1729,23 @@ namespace ST4PlanIdCiz
                     double c = Math.Cos(rotBb), si = Math.Sin(rotBb);
                     double textX = apexX + c * lxText - si * lyText;
                     double textY = apexY + si * lxText + c * lyText;
-                    AppendKesitKotElevationDbText(tr, btr, db, styleId, FormatKesitKotElevationString(zElev), textX, textY, rotBb);
+                    string kotText = FormatKesitKotElevationString(zElev);
+                    if (!string.IsNullOrWhiteSpace(similarKotSuffix)) kotText += similarKotSuffix;
+                    AppendKesitKotElevationDbText(tr, btr, db, styleId, kotText, textX, textY, rotBb);
                 }
             }
+        }
+
+        private static string BuildSimilarFloorKotSuffix(List<FloorInfo> similarFloors)
+        {
+            if (similarFloors == null || similarFloors.Count == 0) return null;
+            var parts = similarFloors
+                .Select(f => FormatKesitKotElevationString((f?.ElevationM ?? 0.0) * 100.0))
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+            if (parts.Count == 0) return null;
+            return " (" + string.Join(", ", parts) + ")";
         }
 
         private static List<double> MergeKesitElevationZsAscending(List<double> raw, double tolCm)

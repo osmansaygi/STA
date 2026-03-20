@@ -37,6 +37,8 @@ namespace ST4PlanIdCiz
         private bool _isTemel50Mode;
         /// <summary>KOLON50ST4 için kolon aplikasyon ölçü modu.</summary>
         private bool _isKolon50Mode;
+        /// <summary>KALIP50ST4 için 1:50 kalıp planı modu.</summary>
+        private bool _isKalip50Mode;
         /// <summary>KOLON50ST4 perde+kolon kopyalarının dünya sınırları (GPR tablosu yerleşimi için).</summary>
         private Envelope _kolon50PerdeCopyExtent;
         private const double Temel50BaslikAltAksBalonBoslukCm = 50.0;
@@ -487,7 +489,7 @@ namespace ST4PlanIdCiz
                         string kolonPlanAntetTitle = BuildKolonPlanAntetTitle(floor);
                         if (TryDrawAntetFromEmbeddedTemplate(
                             tr, btr, layoutMinX, layoutMinY, layoutMaxY, antetSheetViewLeft, antetSheetViewBottom, antetTargetRight, st4SourcePath, ed,
-                            kolonPlanAntetTitle, out double placedAntetOuterLeft, out double placedAntetOuterRight))
+                            kolonPlanAntetTitle, null, out double placedAntetOuterLeft, out double placedAntetOuterRight))
                         {
                             antetOuterLeftDeltaFromSheetViewLeft = placedAntetOuterLeft - antetSheetViewLeft;
                             nextAntetOuterLeftTarget = placedAntetOuterRight + Kolon50AntetGapBetweenSheetsCm;
@@ -514,6 +516,286 @@ namespace ST4PlanIdCiz
                 _kolon50PerdeCopyExtent = null;
                 _ntsDrawFactory = null;
             }
+        }
+
+        /// <summary>
+        /// 1/50 kalıp planı için temel planı çizmeden sadece kat planlarını çizer.
+        /// Benzer katlar gruplanır; her gruptan yalnızca bir plan çizilir.
+        /// </summary>
+        public void DrawFormworkPlan50(Database db, Editor ed, Point3d baseInsertPoint, string st4SourcePath = null)
+        {
+            _ntsDrawFactory = NtsGeometryServices.Instance.CreateGeometryFactory();
+            _isKalip50Mode = true;
+            try
+            {
+                using (var tr = db.TransactionManager.StartTransaction())
+                {
+                    EnsureLayers(tr, db);
+                    var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
+                    var btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
+
+                    if (_model.Floors.Count == 0)
+                    {
+                        ed.WriteMessage("\nKALIP50ST4: Cizilecek kat bulunamadi.");
+                        return;
+                    }
+
+                    var groups = GetFormworkFloorGroups();
+                    if (groups == null || groups.Count == 0)
+                    {
+                        ed.WriteMessage("\nKALIP50ST4: Benzer kat gruplari olusturulamadi.");
+                        return;
+                    }
+
+                    var firstGroup = groups[0];
+                    var firstFloor = _model.Floors[firstGroup.Min()];
+                    Geometry firstUnion = BuildFloorElementUnion(firstFloor);
+                    var firstExt = GetAksSiniriEnvelope(firstUnion);
+                    double baseDy = baseInsertPoint.Y - firstExt.Ymin;
+
+                    double cursorX = baseInsertPoint.X;
+                    const double minPlanGapSameFloorCopiesCm = 150.0;
+                    const double minPlanGapBetweenFloorsCm = 400.0;
+                    int drawnPlanCount = 0;
+                    int drawnCopyCount = 0;
+                    double? nextKatAntetOuterLeftTarget = null;
+                    bool hasAntetOutDx = TryGetEmbeddedAntetSheetViewOutOffsets(out double antetOutDxConst, out _, ed);
+
+                    foreach (var group in groups)
+                    {
+                        if (group == null || group.Count == 0) continue;
+                        int labelFloorIdx = group.Min();
+                        var floor = _model.Floors[labelFloorIdx];
+
+                        Geometry elemUnion = BuildFloorElementUnion(floor);
+                        var floorAxisExt = GetAksSiniriEnvelope(elemUnion);
+
+                        var otherFloors = group
+                            .Where(i => i != labelFloorIdx)
+                            .Select(i => _model.Floors[i])
+                            .ToList();
+                        bool hasFirstCopyAntetData = false;
+                        double antetLayMinX = 0.0, antetLayMinY = 0.0, antetLayMaxY = 0.0, antetLeftSectionMinX = 0.0, antetBottom = 0.0;
+                        double rightCopyRightVerticalAxisX = 0.0;
+                        double measurePlanRightBoundaryX = 0.0;
+                        double donatiLeftSectionFromAxisX = 0.0;
+                        for (int copyIndex = 0; copyIndex < 2; copyIndex++)
+                        {
+                            double offsetX = cursorX - floorAxisExt.Xmin;
+                            double offsetY = baseDy;
+
+                            DrawAxes(tr, btr, offsetX, offsetY, floorAxisExt);
+                            DrawColumns(tr, btr, floor, offsetX, offsetY);
+                            DrawBeamsAndWalls(tr, btr, floor, offsetX, offsetY);
+                            DrawSlabs(tr, btr, floor, offsetX, offsetY);
+                            DrawSlabVoids(tr, btr, elemUnion, offsetX, offsetY);
+                            DrawUnifiedLayer(tr, btr, floor, offsetX, offsetY, elemUnion);
+                            bool hasSimilarFloors = otherFloors.Count > 0;
+                            DrawFloorTitle(tr, btr, floor, offsetX, offsetY, floorAxisExt, isFoundationPlan: false, extraYOffsetCm: hasSimilarFloors ? 10.0 : 0.0);
+                            if (hasSimilarFloors)
+                                DrawKalipSimilarFloorNamesNote(tr, btr, otherFloors, offsetX, offsetY, floorAxisExt, yAboveTopCm: 35.0);
+                            DrawPlanSections(tr, btr, db, floor, offsetX, offsetY, floorAxisExt, isFoundationPlan: false, elemUnion,
+                                out double layMinX, out double layMaxX, out double layMinY, out double layMaxY, out double leftSectionMinX, otherFloors);
+                            if (copyIndex == 0)
+                            {
+                                // Antet tek olacak; sol yerleşim için ilk (soldaki) kopya kesit referansı tutulur.
+                                hasFirstCopyAntetData = true;
+                                antetLayMinX = layMinX;
+                                antetLayMinY = layMinY;
+                                antetLayMaxY = layMaxY;
+                                antetLeftSectionMinX = leftSectionMinX;
+                                antetBottom = GetLowestHorizontalColumnAxisY(offsetY, floorAxisExt) - 600.0;
+                                // Ölçü planı sağ sınırı: sağ aks balonunun sağ yüzeyi.
+                                GetSectionCutBalloonExtents(offsetX, offsetY, floorAxisExt,
+                                    out _, out double xRightBalloon, out _, out _,
+                                    out _, out _, out _, out _);
+                                measurePlanRightBoundaryX = xRightBalloon;
+                                // Donatı planı sol sınırı için (aynı kat, aynı geometri):
+                                // sol kesit en sol çizginin 1. aksa göre relatif mesafesi.
+                                donatiLeftSectionFromAxisX = leftSectionMinX - cursorX;
+                            }
+                            else
+                            {
+                                // Sağ hedef: aynı katın sağdaki kopyasının en sağ dikey aksı baz alınır.
+                                rightCopyRightVerticalAxisX = floorAxisExt.Xmax + offsetX;
+                            }
+
+                            double axisDelta;
+                            if (copyIndex == 0)
+                            {
+                                // Aynı kata ait ölçü/donatı:
+                                // Donatı sol sınırı, ölçü sağ sınırından min 200 cm sağda olmalı.
+                                // donatiLeft(next) = nextCursorX + donatiLeftSectionFromAxisX
+                                // donatiLeft(next) >= measureRight + 200
+                                double requiredNextCursorX = (measurePlanRightBoundaryX + minPlanGapSameFloorCopiesCm) - donatiLeftSectionFromAxisX;
+                                double requiredDelta = Math.Max(0.0, requiredNextCursorX - cursorX);
+                                axisDelta = Math.Ceiling(requiredDelta / 100.0) * 100.0;
+                            }
+                            else
+                            {
+                                // Sonraki kata geçiş: nihai sınırlar çakışmasın + min 400 cm.
+                                double layMinFromAxis = layMinX - cursorX;
+                                double requiredNextCursorX = (layMaxX + minPlanGapBetweenFloorsCm) - layMinFromAxis;
+                                double requiredDelta = Math.Max(0.0, requiredNextCursorX - cursorX);
+                                axisDelta = Math.Ceiling(requiredDelta / 100.0) * 100.0;
+                            }
+                            cursorX += axisDelta;
+                            drawnCopyCount++;
+                        }
+                        if (hasFirstCopyAntetData)
+                        {
+                            double antetSheetViewLeft = antetLeftSectionMinX - 140.0;
+                            if (nextKatAntetOuterLeftTarget.HasValue && hasAntetOutDx)
+                                antetSheetViewLeft = nextKatAntetOuterLeftTarget.Value - antetOutDxConst;
+                            double antetTargetRight = rightCopyRightVerticalAxisX + AntetTargetRightExtraCm;
+                            string kalipAntetTitle = BuildKalipPlanAntetTitle(floor);
+                            string benzerSatiri = BuildKalipBenzerKatSatiri(otherFloors);
+                            TryDrawAntetFromEmbeddedTemplate(
+                                tr,
+                                btr,
+                                antetLayMinX,
+                                antetLayMinY,
+                                antetLayMaxY,
+                                antetSheetViewLeft,
+                                antetBottom,
+                                antetTargetRight,
+                                st4SourcePath,
+                                ed,
+                                kalipAntetTitle,
+                                benzerSatiri,
+                                out double placedAntetOuterLeft,
+                                out double placedAntetOuterRight);
+                            nextKatAntetOuterLeftTarget = placedAntetOuterRight + 50.0;
+                        }
+                        drawnPlanCount++;
+                    }
+
+                    tr.Commit();
+                    ed.WriteMessage(
+                        "\nKALIP50ST4: {0} benzersiz kat icin {1} plan cizildi (toplam kat: {2}, temel plani cizilmedi).",
+                        drawnPlanCount,
+                        drawnCopyCount,
+                        _model.Floors.Count);
+                }
+            }
+            finally
+            {
+                _isKalip50Mode = false;
+                _ntsDrawFactory = null;
+            }
+        }
+
+        private static string BuildKalipPlanAntetTitle(FloorInfo floor)
+        {
+            string katAdi = floor == null ? string.Empty : (floor.Name ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(katAdi)) katAdi = "KAT";
+            katAdi = Regex.Replace(katAdi, @"\bNORMAL\b", string.Empty, RegexOptions.IgnoreCase).Trim();
+            katAdi = Regex.Replace(katAdi, @"(\d+)\.\s+", "$1.");
+            return katAdi + " KAT KALIP PLANI";
+        }
+
+        private static string BuildKalipBenzerKatSatiri(List<FloorInfo> otherFloors)
+        {
+            if (otherFloors == null || otherFloors.Count == 0) return null;
+            string names = string.Join(", ", otherFloors
+                .Select(f => FormatKalipBenzerKatFloorName(f?.Name))
+                .Where(s => !string.IsNullOrWhiteSpace(s)));
+            if (string.IsNullOrWhiteSpace(names)) return null;
+            return "(BENZER KATLAR: " + names + ")";
+        }
+
+        /// <summary>Antet plan başlığı yönünde "yukarı:" ölçü birimi cm (WCS, yatay metin için klasik rotasyon ekseni).</summary>
+        private static Vector3d GetAntetDbTextUnitUp(DBText t)
+        {
+            if (t == null) return Vector3d.YAxis;
+            Vector3d n = t.Normal;
+            if (n.Length < 1e-9) n = Vector3d.ZAxis;
+            n = n.GetNormal();
+            // Çoğu antet metni: Normal ≈ Z, Rotation ile dönmüş satır yönü.
+            if (Math.Abs(n.Z - 1.0) < 1e-4 && Math.Abs(n.X) < 1e-4 && Math.Abs(n.Y) < 1e-4)
+            {
+                double rot = t.Rotation;
+                var v = new Vector3d(-Math.Sin(rot), Math.Cos(rot), 0);
+                return v.Length > 1e-9 ? v.GetNormal() : Vector3d.YAxis;
+            }
+            Vector3d horizontalAxis = Vector3d.ZAxis.CrossProduct(n);
+            if (horizontalAxis.Length < 1e-9) horizontalAxis = Vector3d.XAxis;
+            horizontalAxis = horizontalAxis.GetNormal();
+            Vector3d up = n.CrossProduct(horizontalAxis);
+            if (up.Length < 1e-9) up = Vector3d.YAxis;
+            return up.GetNormal();
+        }
+
+        private static bool TryPlaceAntetSimilarKatCopyText(
+            Transaction tr,
+            BlockTableRecord btr,
+            Entity entDst,
+            string antetPlanTitle,
+            string antetSimilarKatText,
+            List<ObjectId> antetRootEntityIdsForStretch = null)
+        {
+            if (entDst == null || string.IsNullOrWhiteSpace(antetPlanTitle) || string.IsNullOrWhiteSpace(antetSimilarKatText))
+                return false;
+
+            if (entDst is DBText t)
+            {
+                string txt = t.TextString ?? string.Empty;
+                string plain = txt.Replace("%%u", string.Empty).Trim();
+                if (!string.Equals(plain, antetPlanTitle.Trim(), StringComparison.OrdinalIgnoreCase))
+                    return false;
+
+                Vector3d unitUp = GetAntetDbTextUnitUp(t);
+                Vector3d deltaUp10 = unitUp * 10.0;
+                Vector3d deltaDown20 = unitUp * (-20.0);
+
+                t.Position = t.Position + deltaUp10;
+                t.AlignmentPoint = t.AlignmentPoint + deltaUp10;
+
+                var copy = new DBText();
+                copy.SetDatabaseDefaults();
+                copy.Layer = t.Layer;
+                copy.TextStyleId = t.TextStyleId;
+                copy.Height = 10.0;
+                copy.TextString = antetSimilarKatText;
+                copy.HorizontalMode = t.HorizontalMode;
+                copy.VerticalMode = t.VerticalMode;
+                copy.Rotation = t.Rotation;
+                copy.Normal = t.Normal;
+                copy.Position = t.Position + deltaDown20;
+                copy.AlignmentPoint = t.AlignmentPoint + deltaDown20;
+                try { copy.AdjustAlignment(btr.Database); } catch { }
+                ObjectId copyId = AppendEntityReturnId(tr, btr, copy);
+                antetRootEntityIdsForStretch?.Add(copyId);
+                return true;
+            }
+
+            if (entDst is MText mt)
+            {
+                string plain = (mt.Contents ?? string.Empty).Replace("\\P", " ").Replace("{", string.Empty).Replace("}", string.Empty).Trim();
+                if (plain.IndexOf(antetPlanTitle, StringComparison.OrdinalIgnoreCase) < 0)
+                    return false;
+
+                double rot = mt.Rotation;
+                var unitUp = new Vector3d(-Math.Sin(rot), Math.Cos(rot), 0);
+                unitUp = unitUp.Length > 1e-9 ? unitUp.GetNormal() : Vector3d.YAxis;
+                mt.Location = mt.Location + unitUp * 10.0;
+
+                var copy = new MText();
+                copy.SetDatabaseDefaults();
+                copy.Layer = mt.Layer;
+                copy.TextStyleId = mt.TextStyleId;
+                copy.TextHeight = 10.0;
+                copy.Rotation = rot;
+                copy.Normal = mt.Normal;
+                copy.Location = mt.Location + unitUp * (-20.0);
+                copy.Attachment = mt.Attachment;
+                copy.Contents = antetSimilarKatText;
+                ObjectId copyId = AppendEntityReturnId(tr, btr, copy);
+                antetRootEntityIdsForStretch?.Add(copyId);
+                return true;
+            }
+
+            return false;
         }
 
         private void Kolon50AccumulatePerdeCopyExtent(Geometry g)
@@ -6378,6 +6660,7 @@ namespace ST4PlanIdCiz
             string st4SourcePath,
             Editor ed,
             string antetPlanTitle,
+            string antetSimilarKatText,
             out double placedAntetOuterLeftAfterStretch,
             out double placedAntetOuterRightAfterStretch)
         {
@@ -6437,6 +6720,11 @@ namespace ST4PlanIdCiz
                         {
                             entDst.TransformBy(xf);
                             rootEntityIds.Add(entDst.ObjectId);
+                            if (!string.IsNullOrWhiteSpace(antetSimilarKatText) && !string.IsNullOrWhiteSpace(antetPlanTitle))
+                            {
+                                Entity entSimilar = tr.GetObject(entDst.ObjectId, OpenMode.ForWrite) as Entity;
+                                TryPlaceAntetSimilarKatCopyText(tr, btr, entSimilar, antetPlanTitle, antetSimilarKatText, rootEntityIds);
+                            }
                         }
                     }
                     trSrc.Commit();
@@ -8615,7 +8903,7 @@ namespace ST4PlanIdCiz
         }
 
         private void DrawFloorTitle(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY,
-            (double Xmin, double Xmax, double Ymin, double Ymax) ext, bool isFoundationPlan = false)
+            (double Xmin, double Xmax, double Ymin, double Ymax) ext, bool isFoundationPlan = false, double extraYOffsetCm = 0.0)
         {
             if (isFoundationPlan && _isTemel50Mode)
             {
@@ -8640,11 +8928,60 @@ namespace ST4PlanIdCiz
                 return;
             }
 
-            var titlePos = new Point3d(offsetX + (ext.Xmin + ext.Xmax) / 2.0, offsetY + ext.Ymax + 45, 0);
+            var titlePos = new Point3d(offsetX + (ext.Xmin + ext.Xmax) / 2.0, offsetY + ext.Ymax + 45 + extraYOffsetCm, 0);
             string title = isFoundationPlan
                 ? "TEMEL PLANI (aks + 1. kat kolon + surekli/radye temel)"
                 : string.Format(CultureInfo.InvariantCulture, "{0} ({1}m)", floor.Name, floor.ElevationM.ToString("0", CultureInfo.InvariantCulture));
             AppendEntity(tr, btr, MakeCenteredText(tr, btr.Database, LayerBaslik, 12, title, titlePos));
+        }
+
+        private void DrawKalipSimilarFloorNamesNote(Transaction tr, BlockTableRecord btr, List<FloorInfo> otherFloors, double offsetX, double offsetY,
+            (double Xmin, double Xmax, double Ymin, double Ymax) ext, double yAboveTopCm)
+        {
+            if (otherFloors == null || otherFloors.Count == 0) return;
+            string names = string.Join(", ", otherFloors
+                .Select(f => FormatKalipBenzerKatFloorName(string.IsNullOrEmpty(f.ShortName) ? f.Name : f.ShortName))
+                .Where(s => !string.IsNullOrWhiteSpace(s)));
+            if (string.IsNullOrWhiteSpace(names)) return;
+            string note = "(" + names + ")";
+            var notePos = new Point3d(offsetX + (ext.Xmin + ext.Xmax) / 2.0, offsetY + ext.Ymax + yAboveTopCm, 0);
+            AppendEntity(tr, btr, MakeCenteredText(tr, btr.Database, LayerBaslik, 8, note, notePos));
+        }
+
+        private static string NormalizeFloorNameWithoutNormal(string value)
+        {
+            string s = (value ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(s)) return s;
+            s = Regex.Replace(s, @"\bNORMAL\b", string.Empty, RegexOptions.IgnoreCase).Trim();
+            s = Regex.Replace(s, @"\s{2,}", " ").Trim();
+            s = Regex.Replace(s, @"(\d+)\.\s+", "$1.");
+            return s;
+        }
+
+        /// <summary>Antet/plan "BENZER KATLAR" satırı: "2.KAT", "3.KAT", "ZEMIN KAT" gibi tutarlı etiket.</summary>
+        private static string FormatKalipBenzerKatFloorName(string rawName)
+        {
+            string n = NormalizeFloorNameWithoutNormal(rawName);
+            if (string.IsNullOrWhiteSpace(n)) return n;
+            return EnsureKalipBenzerKatLabel(n);
+        }
+
+        /// <summary>
+        /// Normalize edilmiş kat adına göre "KAT" ekler: sadece numara → "12.KAT"; zaten "…KAT" içeriyorsa dokunmaz; diğer → "ZEMIN KAT".
+        /// </summary>
+        private static string EnsureKalipBenzerKatLabel(string normalized)
+        {
+            string t = (normalized ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(t)) return t;
+            if (Regex.IsMatch(t, @"\bKAT\b", RegexOptions.IgnoreCase))
+                return t;
+            // Yalnızca kat numarası (ör. 2, 2., 12)
+            if (Regex.IsMatch(t, @"^\d+\.?\s*$"))
+            {
+                string digits = Regex.Match(t, @"^(\d+)").Groups[1].Value;
+                return digits + ".KAT";
+            }
+            return t + " KAT";
         }
 
         /// <summary>Çizilmeyen benzer katları planın üstüne not olarak yazar (kalıp planı gruplama).</summary>
