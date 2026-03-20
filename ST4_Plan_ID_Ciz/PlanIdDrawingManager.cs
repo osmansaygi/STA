@@ -40,11 +40,15 @@ namespace ST4PlanIdCiz
         /// <summary>KOLON50ST4 perde+kolon kopyalarının dünya sınırları (GPR tablosu yerleşimi için).</summary>
         private Envelope _kolon50PerdeCopyExtent;
         private const double Temel50BaslikAltAksBalonBoslukCm = 50.0;
+        private const double Kolon50AntetLeftOfLeftVerticalAxisCm = 400.0;
+        private const double Kolon50AntetGapBetweenSheetsCm = 50.0;
+        private const double AntetTargetRightExtraCm = 400.0;
         /// <summary>antet_02 SHEETVIEW sol-alt (cizim birimi); bire bir yerlesimde bu köse layout sol-alt ile hizalanir.</summary>
         private const double AntetDxfSheetViewXmin = -2854.616393644967;
         private const double AntetDxfSheetViewYmin = 1658.94236737828;
         private const double AntetDxfSheetViewOutYmin = 1608.94236737828;
         private const double AntetDxfSheetViewOutYmax = 5808.942367378282;
+        private const double AntetDxfSheetViewXmax = 4857.138603748386;
         private const double TemelAntetBaslangicYukseklikCm = 5000.0;
         private const double TemelAntetEkStretchAdimCm = 500.0;
         // Ileride: antet sablon degiskenleri — klon sonrasi DBText/ATTRIBUTE (sablon: antet_02.dwg + projede antet_02.dxf referans)
@@ -53,6 +57,7 @@ namespace ST4PlanIdCiz
         private const string LayerAntetBaslik2 = "ANTET BASLIK 2 (BEYKENT)";
         private const string LayerAntetCizgi = "ANTET CIZGI (BEYKENT)";
         private const string LayerAntetYazi = "ANTET YAZI (BEYKENT)";
+        private const string AntetSheetViewOutLayerName = "SheetViewOut";
         private static readonly Regex AntetKoordinatRegex = new Regex(@"^\s*[-+]?\d+(?:[.,]\d+)?\s*°\s*/\s*[-+]?\d+(?:[.,]\d+)?\s*°\s*$", RegexOptions.Compiled);
         private static readonly Regex AntetBksRegex = new Regex(@"^\s*BKS\s*=\s*\d+\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex AntetIRegex = new Regex(@"^\s*I\s*=\s*[-+]?\d+(?:[.,]\d+)?\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -424,19 +429,23 @@ namespace ST4PlanIdCiz
                     var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
                     var btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
 
-                    var ext = CalculateBaseExtents();
-                    double floorWidth = (ext.Xmax - ext.Xmin) + 80.0;
-                    double floorGap = 1000.0;
                     Geometry firstFloorUnion = _model.Floors.Count > 0 ? BuildFloorElementUnion(_model.Floors[0]) : null;
                     var firstFloorAxisExt = GetAksSiniriEnvelope(firstFloorUnion);
-                    double baseDx = baseInsertPoint.X - firstFloorAxisExt.Xmin;
-                    double baseDy = baseInsertPoint.Y - firstFloorAxisExt.Ymin;
+                    if (!TryGetEmbeddedAntetSheetViewOutOffsets(out double antetOutDx, out double antetOutDy, ed))
+                    {
+                        antetOutDx = 0.0;
+                        antetOutDy = (AntetDxfSheetViewOutYmin - AntetDxfSheetViewYmin);
+                    }
+                    double firstLowestHorizontalAxisAtZero = GetLowestHorizontalColumnAxisY(0.0, firstFloorAxisExt);
+                    double baseDy = baseInsertPoint.Y - antetOutDy + 600.0 - firstLowestHorizontalAxisAtZero;
 
                     var copyLayouts = new List<(FloorInfo floor, double offsetX, double offsetY, (double Xmin, double Xmax, double Ymin, double Ymax) floorAxisExt)>();
+                    double? nextAntetOuterLeftTarget = baseInsertPoint.X;
+                    double? antetOuterLeftDeltaFromSheetViewLeft = antetOutDx;
                     for (int floorIdx = 0; floorIdx < _model.Floors.Count; floorIdx++)
                     {
                         var floor = _model.Floors[floorIdx];
-                        double offsetX = baseDx + (floorIdx * (floorWidth + floorGap));
+                        double offsetX;
                         double offsetY = baseDy;
 
                         Geometry kolonPerdeUnion = BuildKolonPerdeUnion(floor, 0.0, 0.0);
@@ -444,6 +453,19 @@ namespace ST4PlanIdCiz
                             ? kolonPerdeUnion
                             : BuildFloorElementUnion(floor);
                         var floorAxisExt = GetAksSiniriEnvelope(axisExtGeom);
+                        double leftVerticalAxisX = floorAxisExt.Xmin;
+                        double targetAntetSheetViewLeft;
+                        if (!nextAntetOuterLeftTarget.HasValue)
+                        {
+                            targetAntetSheetViewLeft = (floorAxisExt.Xmin + Kolon50AntetLeftOfLeftVerticalAxisCm);
+                            offsetX = targetAntetSheetViewLeft - (leftVerticalAxisX - Kolon50AntetLeftOfLeftVerticalAxisCm);
+                        }
+                        else
+                        {
+                            double deltaLeft = antetOuterLeftDeltaFromSheetViewLeft ?? 0.0;
+                            targetAntetSheetViewLeft = nextAntetOuterLeftTarget.Value - deltaLeft;
+                            offsetX = targetAntetSheetViewLeft - (leftVerticalAxisX - Kolon50AntetLeftOfLeftVerticalAxisCm);
+                        }
 
                         DrawAxes(tr, btr, offsetX, offsetY, floorAxisExt);
                         DrawColumns(tr, btr, floor, offsetX, offsetY);
@@ -451,6 +473,29 @@ namespace ST4PlanIdCiz
                         DrawPerdeLabelsForFloor(tr, btr, floor, offsetX, offsetY, kolonPerdeUnion);
                         DrawColumnPlanDimensionsForFloor(tr, btr, db, floor, offsetX, offsetY);
                         copyLayouts.Add((floor, offsetX, offsetY, floorAxisExt));
+
+                        double layoutMinX = floorAxisExt.Xmin + offsetX;
+                        double layoutMaxX = floorAxisExt.Xmax + offsetX;
+                        double layoutMinY = floorAxisExt.Ymin + offsetY;
+                        double layoutMaxY = floorAxisExt.Ymax + offsetY;
+                        double antetSheetViewLeft = targetAntetSheetViewLeft;
+                        double yLowestHorizontalAxis = GetLowestHorizontalColumnAxisY(offsetY, floorAxisExt);
+                        double antetSheetViewBottom = yLowestHorizontalAxis - 600.0;
+                        double antetTargetRight = layoutMaxX + AntetTargetRightExtraCm;
+                        // Antet ölçümü başarısız olsa bile bir sonraki kat için güvenli ayrık yerleşim.
+                        double plannedNextAntetOuterLeftTarget = antetTargetRight + Kolon50AntetGapBetweenSheetsCm;
+                        string kolonPlanAntetTitle = BuildKolonPlanAntetTitle(floor);
+                        if (TryDrawAntetFromEmbeddedTemplate(
+                            tr, btr, layoutMinX, layoutMinY, layoutMaxY, antetSheetViewLeft, antetSheetViewBottom, antetTargetRight, st4SourcePath, ed,
+                            kolonPlanAntetTitle, out double placedAntetOuterLeft, out double placedAntetOuterRight))
+                        {
+                            antetOuterLeftDeltaFromSheetViewLeft = placedAntetOuterLeft - antetSheetViewLeft;
+                            nextAntetOuterLeftTarget = placedAntetOuterRight + Kolon50AntetGapBetweenSheetsCm;
+                        }
+                        else
+                        {
+                            nextAntetOuterLeftTarget = plannedNextAntetOuterLeftTarget;
+                        }
                     }
 
                     DrawSimplePerdeKolonCopiesByFloorId(tr, btr, copyLayouts);
@@ -6281,7 +6326,7 @@ namespace ST4PlanIdCiz
                         var entDst = tr.GetObject(pair.Value, OpenMode.ForWrite) as Entity;
                         if (entDst == null) continue;
                         RemapAntetLayer(entDst);
-                        ReplaceAntetDynamicTexts(entDst, antetValues);
+                        ReplaceAntetDynamicTexts(entDst, antetValues, null);
                         if (entSrc.BlockId.Equals(sourceMs.ObjectId))
                         {
                             entDst.TransformBy(xf);
@@ -6295,7 +6340,7 @@ namespace ST4PlanIdCiz
                 double placedSheetViewTop = targetSheetViewBottom + (5758.942367378282 - AntetDxfSheetViewYmin);
                 double placedSheetViewOutBottom = targetSheetViewBottom + (AntetDxfSheetViewOutYmin - AntetDxfSheetViewYmin);
                 double placedSheetViewOutTop = targetSheetViewBottom + (AntetDxfSheetViewOutYmax - AntetDxfSheetViewYmin);
-                double targetSheetViewRight = xRightBalloonTemel + 160.0;
+                double targetSheetViewRight = xRightBalloonTemel + AntetTargetRightExtraCm;
                 double deltaRight = targetSheetViewRight - placedSheetViewRight;
                 if (Math.Abs(deltaRight) > 1e-6)
                     StretchAntetRightBandWithoutScaling(tr, rootEntityIds, placedSheetViewRight, deltaRight);
@@ -6319,6 +6364,250 @@ namespace ST4PlanIdCiz
             {
                 sourceDb?.Dispose();
             }
+        }
+
+        private bool TryDrawAntetFromEmbeddedTemplate(
+            Transaction tr,
+            BlockTableRecord btr,
+            double layoutMinX,
+            double layoutMinY,
+            double layoutMaxY,
+            double targetSheetViewLeft,
+            double targetSheetViewBottom,
+            double targetSheetViewRight,
+            string st4SourcePath,
+            Editor ed,
+            string antetPlanTitle,
+            out double placedAntetOuterLeftAfterStretch,
+            out double placedAntetOuterRightAfterStretch)
+        {
+            placedAntetOuterLeftAfterStretch = targetSheetViewLeft;
+            placedAntetOuterRightAfterStretch = targetSheetViewLeft + (AntetDxfSheetViewXmax - AntetDxfSheetViewXmin);
+            if ((targetSheetViewRight - targetSheetViewLeft) < 10.0 || (layoutMaxY - layoutMinY) < 10.0)
+                return false;
+
+            var srcLL = new Point3d(AntetDxfSheetViewXmin, AntetDxfSheetViewYmin, 0);
+            var xf = Matrix3d.Displacement(new Vector3d(targetSheetViewLeft - srcLL.X, targetSheetViewBottom - srcLL.Y, 0));
+
+            Database sourceDb = null;
+            try
+            {
+                sourceDb = new Database(false, true);
+                if (!TryPopulateDatabaseFromEmbeddedTemelAntet(sourceDb, ed))
+                    return false;
+
+                var ids = new ObjectIdCollection();
+                ObjectId sourceMsId;
+                using (Transaction trSrc = sourceDb.TransactionManager.StartTransaction())
+                {
+                    var bt = (BlockTable)trSrc.GetObject(sourceDb.BlockTableId, OpenMode.ForRead);
+                    sourceMsId = bt[BlockTableRecord.ModelSpace];
+                    var ms = (BlockTableRecord)trSrc.GetObject(sourceMsId, OpenMode.ForRead);
+                    foreach (ObjectId id in ms)
+                    {
+                        if (id.IsValid && !id.IsErased) ids.Add(id);
+                    }
+                    trSrc.Commit();
+                }
+                if (ids.Count == 0)
+                    return false;
+
+                EnsureLayerForAntet(tr, btr.Database, LayerAntetBaslik1, 1);
+                EnsureLayerForAntet(tr, btr.Database, LayerAntetBaslik2, 1);
+                EnsureLayerForAntet(tr, btr.Database, LayerAntetCizgi, 163);
+                EnsureLayerForAntet(tr, btr.Database, LayerAntetYazi, 253);
+
+                var mapping = new IdMapping();
+                btr.Database.WblockCloneObjects(ids, btr.ObjectId, mapping, DuplicateRecordCloning.Ignore, false);
+                var rootEntityIds = new List<ObjectId>();
+                AntetValueSet antetValues = BuildAntetValues(st4SourcePath);
+                using (Transaction trSrc = sourceDb.TransactionManager.StartTransaction())
+                {
+                    var sourceMs = (BlockTableRecord)trSrc.GetObject(sourceMsId, OpenMode.ForRead);
+                    foreach (IdPair pair in mapping)
+                    {
+                        if (!pair.Key.IsValid || !pair.Value.IsValid) continue;
+                        var entSrc = trSrc.GetObject(pair.Key, OpenMode.ForRead) as Entity;
+                        if (entSrc == null) continue;
+                        var entDst = tr.GetObject(pair.Value, OpenMode.ForWrite) as Entity;
+                        if (entDst == null) continue;
+                        RemapAntetLayer(entDst);
+                        ReplaceAntetDynamicTexts(entDst, antetValues, antetPlanTitle);
+                        if (entSrc.BlockId.Equals(sourceMs.ObjectId))
+                        {
+                            entDst.TransformBy(xf);
+                            rootEntityIds.Add(entDst.ObjectId);
+                        }
+                    }
+                    trSrc.Commit();
+                }
+
+                double placedSheetViewRight = targetSheetViewLeft + (AntetDxfSheetViewXmax - AntetDxfSheetViewXmin);
+                double placedSheetViewTop = targetSheetViewBottom + (5758.942367378282 - AntetDxfSheetViewYmin);
+                double placedSheetViewOutBottom = targetSheetViewBottom + (AntetDxfSheetViewOutYmin - AntetDxfSheetViewYmin);
+                double placedSheetViewOutTop = targetSheetViewBottom + (AntetDxfSheetViewOutYmax - AntetDxfSheetViewYmin);
+                double deltaRight = targetSheetViewRight - placedSheetViewRight;
+                if (Math.Abs(deltaRight) > 1e-6)
+                    StretchAntetRightBandWithoutScaling(tr, rootEntityIds, placedSheetViewRight, deltaRight);
+
+                double targetSheetViewOutTop = placedSheetViewOutBottom + TemelAntetBaslangicYukseklikCm;
+                if (layoutMaxY > targetSheetViewOutTop + 1e-6)
+                {
+                    double overflow = layoutMaxY - targetSheetViewOutTop;
+                    targetSheetViewOutTop += Math.Ceiling(overflow / TemelAntetEkStretchAdimCm) * TemelAntetEkStretchAdimCm;
+                }
+                double deltaTop = targetSheetViewOutTop - placedSheetViewOutTop;
+                if (Math.Abs(deltaTop) > 1e-6)
+                    StretchAntetTopBandWithoutScaling(tr, rootEntityIds, placedSheetViewTop, deltaTop);
+
+                placedAntetOuterLeftAfterStretch = GetMinXOfEntitiesOnLayer(
+                    tr,
+                    rootEntityIds,
+                    AntetSheetViewOutLayerName,
+                    targetSheetViewLeft);
+                placedAntetOuterRightAfterStretch = GetMaxXOfEntitiesOnLayer(
+                    tr,
+                    rootEntityIds,
+                    AntetSheetViewOutLayerName,
+                    targetSheetViewRight);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+            finally
+            {
+                sourceDb?.Dispose();
+            }
+        }
+
+        private static string BuildKolonPlanAntetTitle(FloorInfo floor)
+        {
+            string katAdi = floor == null ? string.Empty : (floor.Name ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(katAdi)) katAdi = "KAT";
+            // "1. NORMAL" -> "1." ; "NORMAL" kelimesi kolon plan basliginda kullanilmaz.
+            katAdi = Regex.Replace(katAdi, @"\bNORMAL\b", string.Empty, RegexOptions.IgnoreCase).Trim();
+            // "1. KAT" bicimi icin nokta-sonrasi boslugu kaldir.
+            katAdi = Regex.Replace(katAdi, @"(\d+)\.\s+", "$1.");
+            return katAdi + " KAT KOLON APLIKASYON PLANI";
+        }
+
+        private static bool TryGetEmbeddedAntetSheetViewOutOffsets(out double dxFromSheetViewLeft, out double dyFromSheetViewBottom, Editor ed)
+        {
+            dxFromSheetViewLeft = 0.0;
+            dyFromSheetViewBottom = AntetDxfSheetViewOutYmin - AntetDxfSheetViewYmin;
+            Database sourceDb = null;
+            try
+            {
+                sourceDb = new Database(false, true);
+                if (!TryPopulateDatabaseFromEmbeddedTemelAntet(sourceDb, ed))
+                    return false;
+                using (Transaction trSrc = sourceDb.TransactionManager.StartTransaction())
+                {
+                    var bt = (BlockTable)trSrc.GetObject(sourceDb.BlockTableId, OpenMode.ForRead);
+                    var ms = (BlockTableRecord)trSrc.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForRead);
+                    double minX = double.MaxValue, minY = double.MaxValue;
+                    bool has = false;
+                    foreach (ObjectId id in ms)
+                    {
+                        if (!id.IsValid || id.IsErased) continue;
+                        var ent = trSrc.GetObject(id, OpenMode.ForRead) as Entity;
+                        if (ent == null) continue;
+                        if (!string.Equals(ent.Layer ?? string.Empty, AntetSheetViewOutLayerName, StringComparison.OrdinalIgnoreCase))
+                            continue;
+                        try
+                        {
+                            Extents3d ex = ent.GeometricExtents;
+                            if (!has)
+                            {
+                                minX = ex.MinPoint.X;
+                                minY = ex.MinPoint.Y;
+                                has = true;
+                            }
+                            else
+                            {
+                                if (ex.MinPoint.X < minX) minX = ex.MinPoint.X;
+                                if (ex.MinPoint.Y < minY) minY = ex.MinPoint.Y;
+                            }
+                        }
+                        catch { }
+                    }
+                    trSrc.Commit();
+                    if (!has) return false;
+                    dxFromSheetViewLeft = minX - AntetDxfSheetViewXmin;
+                    dyFromSheetViewBottom = minY - AntetDxfSheetViewYmin;
+                    return true;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+            finally
+            {
+                sourceDb?.Dispose();
+            }
+        }
+
+        private static double GetMaxXOfEntitiesOnLayer(
+            Transaction tr,
+            IEnumerable<ObjectId> entityIds,
+            string layerName,
+            double fallback)
+        {
+            if (entityIds == null) return fallback;
+            double maxX = double.MinValue;
+            bool hasAny = false;
+            foreach (ObjectId id in entityIds)
+            {
+                if (!id.IsValid || id.IsErased) continue;
+                var ent = tr.GetObject(id, OpenMode.ForRead) as Entity;
+                if (ent == null) continue;
+                if (!string.Equals(ent.Layer ?? string.Empty, layerName ?? string.Empty, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                try
+                {
+                    Extents3d ext = ent.GeometricExtents;
+                    if (!hasAny || ext.MaxPoint.X > maxX)
+                    {
+                        maxX = ext.MaxPoint.X;
+                        hasAny = true;
+                    }
+                }
+                catch { }
+            }
+            return hasAny ? maxX : fallback;
+        }
+
+        private static double GetMinXOfEntitiesOnLayer(
+            Transaction tr,
+            IEnumerable<ObjectId> entityIds,
+            string layerName,
+            double fallback)
+        {
+            if (entityIds == null) return fallback;
+            double minX = double.MaxValue;
+            bool hasAny = false;
+            foreach (ObjectId id in entityIds)
+            {
+                if (!id.IsValid || id.IsErased) continue;
+                var ent = tr.GetObject(id, OpenMode.ForRead) as Entity;
+                if (ent == null) continue;
+                if (!string.Equals(ent.Layer ?? string.Empty, layerName ?? string.Empty, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                try
+                {
+                    Extents3d ext = ent.GeometricExtents;
+                    if (!hasAny || ext.MinPoint.X < minX)
+                    {
+                        minX = ext.MinPoint.X;
+                        hasAny = true;
+                    }
+                }
+                catch { }
+            }
+            return hasAny ? minX : fallback;
         }
 
         private static void EnsureLayerForAntet(Transaction tr, Database db, string layerName, short colorIndex)
@@ -6561,24 +6850,35 @@ namespace ST4PlanIdCiz
             catch { }
         }
 
-        private static void ReplaceAntetDynamicTexts(Entity ent, AntetValueSet v)
+        private static void ReplaceAntetDynamicTexts(Entity ent, AntetValueSet v, string antetPlanTitle)
         {
             if (v == null) return;
 
             if (ent is DBText t)
             {
-                t.TextString = ReplaceAntetTextCore(t.TextString, v);
+                t.TextString = ReplaceAntetTextCore(t.TextString, v, antetPlanTitle);
                 return;
             }
             if (ent is MText mt)
             {
-                mt.Contents = ReplaceAntetTextCore(mt.Contents, v);
+                mt.Contents = ReplaceAntetTextCore(mt.Contents, v, antetPlanTitle);
             }
         }
 
-        private static string ReplaceAntetTextCore(string text, AntetValueSet v)
+        private static string ReplaceAntetTextCore(string text, AntetValueSet v, string antetPlanTitle)
         {
             string s = text ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(antetPlanTitle) &&
+                s.IndexOf("TEMEL APLIKASYON PLANI", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                bool isUnderlined = s.IndexOf("%%u", StringComparison.OrdinalIgnoreCase) >= 0;
+                return isUnderlined ? ("%%u" + antetPlanTitle + "%%u") : antetPlanTitle;
+            }
+            if (!string.IsNullOrWhiteSpace(antetPlanTitle) &&
+                string.Equals(s.Trim(), "1:50", StringComparison.OrdinalIgnoreCase))
+            {
+                return "1:50 - 1:25";
+            }
             if (AntetKoordinatRegex.IsMatch(s) && !string.IsNullOrWhiteSpace(v.Koordinat)) return v.Koordinat;
             if (string.Equals(s.Trim(), "0.312 / 0.074", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(v.Pair45)) return v.Pair45;
             if ((string.Equals(s.Trim(), "0.484 / 0.178", StringComparison.OrdinalIgnoreCase) ||
