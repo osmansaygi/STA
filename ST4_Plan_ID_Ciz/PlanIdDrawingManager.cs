@@ -5174,7 +5174,7 @@ namespace ST4PlanIdCiz
                     if (part != null && !part.IsEmpty)
                     {
                         _drawnBeamGeometriesForSlabCut.Add(part);
-                        DrawGeometryRingsAsPolylines(tr, btr, part, LayerKiris, addHatch: false, exteriorRingsOnly: false, applySmallTriangleTrim: false);
+                        DrawGeometryRingsAsPolylines(tr, btr, part, LayerKiris, addHatch: false, exteriorRingsOnly: false, applySmallTriangleTrim: false, drawRingEdgesAsLines: _isKalip50Mode);
                     }
                 }
             }
@@ -5533,6 +5533,20 @@ namespace ST4PlanIdCiz
                     double axisAngleRad = GetAxisAngleRad(beam.FixedAxisId);
                     DrawKotBlockAtCenter(tr, btr, db, kotCenter.X, kotCenter.Y, topElevM, bottomElevM, axisAngleRad);
                 }
+            }
+
+            // KALIP50: çizilen KIRIS (BEYKENT) Line'ları, KOLON (BEYKENT) polyline/circle segment şeridiyle çakışan kısımlardan budanır
+            if (_isKalip50Mode)
+            {
+                try
+                {
+                    Geometry elemUnion = BuildFloorElementUnion(floor);
+                    var ext = GetAksSiniriEnvelope(elemUnion);
+                    const double marginCm = 200.0;
+                    var env = new Envelope(ext.Xmin + offsetX - marginCm, ext.Xmax + offsetX + marginCm, ext.Ymin + offsetY - marginCm, ext.Ymax + offsetY + marginCm);
+                    CleanKalipKirisLinesOverlappingKolonPolylines(tr, btr, env);
+                }
+                catch { /* geometri/union hatası: kiriş çizgileri olduğu gibi */ }
             }
         }
 
@@ -7882,8 +7896,208 @@ namespace ST4PlanIdCiz
             return result;
         }
 
+        /// <summary>KALIP50: KIRIS (BEYKENT) Line'ları, KOLON polyline/circle kenar segmentleriyle kolinear üst üste binen parçalardan budanır (1B projeksiyon; tam çakışan kenarlar NTS Difference ile silinmez).</summary>
+        private void CleanKalipKirisLinesOverlappingKolonPolylines(Transaction tr, BlockTableRecord btr, Envelope planEnv)
+        {
+            var kolonSegs = CollectKolonFiniteSegmentsFromModelSpace(tr, btr, planEnv);
+            if (kolonSegs == null || kolonSegs.Count == 0) return;
+
+            var kirisLineIds = new List<ObjectId>();
+            foreach (ObjectId id in btr)
+            {
+                var ent = tr.GetObject(id, OpenMode.ForRead) as Entity;
+                if (ent == null) continue;
+                if (!string.Equals(ent.Layer ?? string.Empty, LayerKiris, StringComparison.OrdinalIgnoreCase)) continue;
+                if (!(ent is Line)) continue;
+                if (!EntityEnvelopeIntersectsPlan(ent, planEnv)) continue;
+                kirisLineIds.Add(id);
+            }
+
+            const double collinearDistTolCm = 0.25;
+            const double minSegCm = 0.4;
+            foreach (ObjectId id in kirisLineIds)
+            {
+                var line = tr.GetObject(id, OpenMode.ForWrite) as Line;
+                if (line == null) continue;
+                var a0 = new Point2d(line.StartPoint.X, line.StartPoint.Y);
+                var a1 = new Point2d(line.EndPoint.X, line.EndPoint.Y);
+                var parts = new List<(Point2d a, Point2d b)> { (a0, a1) };
+                foreach (var col in kolonSegs)
+                {
+                    var next = new List<(Point2d a, Point2d b)>();
+                    foreach (var part in parts)
+                        next.AddRange(SubtractBeamOverlapWithKolonSegment(part.a, part.b, col.a, col.b, collinearDistTolCm, minSegCm));
+                    parts = next;
+                    if (parts.Count == 0) break;
+                }
+                if (parts.Count == 0) { line.Erase(); continue; }
+                if (parts.Count == 1 && (parts[0].a.GetDistanceTo(a0) < 1e-6 && parts[0].b.GetDistanceTo(a1) < 1e-6))
+                    continue;
+                line.Erase();
+                foreach (var (pa, pb) in parts)
+                {
+                    if (pa.GetDistanceTo(pb) < minSegCm) continue;
+                    var ln = new Line(new Point3d(pa.X, pa.Y, 0), new Point3d(pb.X, pb.Y, 0));
+                    ln.SetDatabaseDefaults();
+                    ln.Layer = LayerKiris;
+                    AppendEntity(tr, btr, ln);
+                }
+            }
+        }
+
+        /// <summary>KOLON katmanındaki düz polyline kenarları ve daire/polygon yay kirişleri (kord segmentleri).</summary>
+        private static List<(Point2d a, Point2d b)> CollectKolonFiniteSegmentsFromModelSpace(Transaction tr, BlockTableRecord btr, Envelope planEnv)
+        {
+            var list = new List<(Point2d, Point2d)>();
+            foreach (ObjectId id in btr)
+            {
+                var ent = tr.GetObject(id, OpenMode.ForRead) as Entity;
+                if (ent == null) continue;
+                if (!string.Equals(ent.Layer ?? string.Empty, LayerKolon, StringComparison.OrdinalIgnoreCase)) continue;
+                if (!EntityEnvelopeIntersectsPlan(ent, planEnv)) continue;
+                if (ent is Polyline pl)
+                    AppendKolonPolylineFiniteSegments(pl, list);
+                else if (ent is Circle circ)
+                    AppendCircleFiniteSegments(circ, list);
+            }
+            return list;
+        }
+
+        private static void AppendKolonPolylineFiniteSegments(Polyline pl, List<(Point2d a, Point2d b)> list)
+        {
+            int n = pl.NumberOfVertices;
+            for (int i = 0; i < n; i++)
+            {
+                int j = pl.Closed ? (i + 1) % n : i + 1;
+                if (j >= n) break;
+                Point3d p0 = pl.GetPoint3dAt(i);
+                Point3d p1 = pl.GetPoint3dAt(j);
+                double bulge = pl.GetBulgeAt(i);
+                if (Math.Abs(bulge) < 1e-12)
+                {
+                    var q0 = new Point2d(p0.X, p0.Y);
+                    var q1 = new Point2d(p1.X, p1.Y);
+                    if (q0.GetDistanceTo(q1) > 1e-8) list.Add((q0, q1));
+                }
+                else
+                    AddBulgeArcFiniteSegments(new Point2d(p0.X, p0.Y), new Point2d(p1.X, p1.Y), bulge, list);
+            }
+        }
+
+        private static void AddBulgeArcFiniteSegments(Point2d p0, Point2d p1, double bulge, List<(Point2d a, Point2d b)> list)
+        {
+            double dx = p1.X - p0.X;
+            double dy = p1.Y - p0.Y;
+            double chord = Math.Sqrt(dx * dx + dy * dy);
+            if (chord < 1e-9) return;
+            double absB = Math.Abs(bulge);
+            if (absB < 1e-12) return;
+            double R = chord * (1 + absB * absB) / (4 * absB);
+            double halfC = chord * 0.5;
+            if (R < halfC - 1e-9) return;
+            double d = Math.Sqrt(R * R - halfC * halfC);
+            double mx = (p0.X + p1.X) * 0.5;
+            double my = (p0.Y + p1.Y) * 0.5;
+            double nx = -dy / chord;
+            double ny = dx / chord;
+            double sign = Math.Sign(bulge);
+            double cx = mx + sign * nx * d;
+            double cy = my + sign * ny * d;
+            double a0 = Math.Atan2(p0.Y - cy, p0.X - cx);
+            double a1 = Math.Atan2(p1.Y - cy, p1.X - cx);
+            double sweep = a1 - a0;
+            if (bulge > 0 && sweep < 0) sweep += 2 * Math.PI;
+            if (bulge < 0 && sweep > 0) sweep -= 2 * Math.PI;
+            const int nSeg = 16;
+            Point2d prev = p0;
+            for (int k = 1; k <= nSeg; k++)
+            {
+                double t = k / (double)nSeg;
+                double ang = a0 + sweep * t;
+                var cur = new Point2d(cx + R * Math.Cos(ang), cy + R * Math.Sin(ang));
+                if (prev.GetDistanceTo(cur) > 1e-8) list.Add((prev, cur));
+                prev = cur;
+            }
+        }
+
+        private static void AppendCircleFiniteSegments(Circle circ, List<(Point2d a, Point2d b)> list)
+        {
+            double cx = circ.Center.X;
+            double cy = circ.Center.Y;
+            double r = circ.Radius;
+            if (r < 1e-9) return;
+            const int nSeg = 48;
+            Point2d prev = new Point2d(cx + r, cy);
+            for (int k = 1; k <= nSeg; k++)
+            {
+                double ang = 2 * Math.PI * k / nSeg;
+                var cur = new Point2d(cx + r * Math.Cos(ang), cy + r * Math.Sin(ang));
+                list.Add((prev, cur));
+                prev = cur;
+            }
+        }
+
+        /// <summary>Kiriş segmenti ile kolon kenarı aynı doğru üzerinde üst üste binen aralığı çıkarır.</summary>
+        private static List<(Point2d a, Point2d b)> SubtractBeamOverlapWithKolonSegment(Point2d a0, Point2d a1, Point2d b0, Point2d b1, double tolDistCm, double minRemainCm)
+        {
+            var unchanged = new List<(Point2d, Point2d)> { (a0, a1) };
+            Vector2d dirA = a1 - a0;
+            double lenA = dirA.Length;
+            if (lenA < 1e-9) return unchanged;
+            Vector2d dirB = b1 - b0;
+            double lenB = dirB.Length;
+            if (lenB < 1e-9) return unchanged;
+            double cross = Math.Abs(dirA.X * dirB.Y - dirA.Y * dirB.X);
+            if (cross > 1e-5 * (lenA + lenB))
+                return unchanged;
+            if (PointToInfiniteLineDistCm(a0, b0, b1) > tolDistCm || PointToInfiniteLineDistCm(a1, b0, b1) > tolDistCm)
+                return unchanged;
+            if (PointToInfiniteLineDistCm(b0, a0, a1) > tolDistCm || PointToInfiniteLineDistCm(b1, a0, a1) > tolDistCm)
+                return unchanged;
+            Vector2d uA = dirA.MultiplyBy(1.0 / lenA);
+            double t_b0 = (b0 - a0).DotProduct(uA);
+            double t_b1 = (b1 - a0).DotProduct(uA);
+            double colMin = Math.Min(t_b0, t_b1);
+            double colMax = Math.Max(t_b0, t_b1);
+            double ovLo = Math.Max(0, colMin);
+            double ovHi = Math.Min(lenA, colMax);
+            if (ovHi <= ovLo + 1e-6)
+                return unchanged;
+            var res = new List<(Point2d, Point2d)>();
+            if (ovLo > minRemainCm)
+                res.Add((a0, PointOffsetAlongUnit(a0, uA, ovLo)));
+            if (lenA - ovHi > minRemainCm)
+                res.Add((PointOffsetAlongUnit(a0, uA, ovHi), a1));
+            return res;
+        }
+
+        private static Point2d PointOffsetAlongUnit(Point2d a0, Vector2d uA, double t)
+        {
+            return new Point2d(a0.X + uA.X * t, a0.Y + uA.Y * t);
+        }
+
+        private static double PointToInfiniteLineDistCm(Point2d p, Point2d l0, Point2d l1)
+        {
+            double dx = l1.X - l0.X;
+            double dy = l1.Y - l0.Y;
+            double L = Math.Sqrt(dx * dx + dy * dy);
+            if (L < 1e-9) return p.GetDistanceTo(l0);
+            return Math.Abs((p.X - l0.X) * dy - (p.Y - l0.Y) * dx) / L;
+        }
+
+        private static bool EntityEnvelopeIntersectsPlan(Entity ent, Envelope env)
+        {
+            try
+            {
+                Extents3d ex = ent.GeometricExtents;
+                return !(ex.MaxPoint.X < env.MinX || ex.MinPoint.X > env.MaxX || ex.MaxPoint.Y < env.MinY || ex.MinPoint.Y > env.MaxY);
+            }
+            catch { return false; }
+        }
+
         /// <summary>NTS Geometry (Polygon/MultiPolygon) dış ve iç halkalarını verilen katmanda polyline olarak çizer; 4 mm'den kısa segmentleri atlar. addHatch true ise her halka için tarama eklenir: <paramref name="hatchPatternName"/> doluysa o desen + ölçek + <paramref name="hatchLayerOverride"/> (varsayılan <see cref="LayerTarama"/>), değilse ANSI33. hatchAngleRad verilirse tarama açısı olarak kullanılır (perde: aks eğimi). exteriorRingsOnly true ise sadece dış halkalar çizilir (iç halkalar/delik sınırları çizilmez; kolona yapışık çizgi olmaz).</summary>
-        private static void DrawGeometryRingsAsPolylines(Transaction tr, BlockTableRecord btr, Geometry geom, string layer, bool addHatch = false, double? hatchAngleRad = null, bool exteriorRingsOnly = false, bool applySmallTriangleTrim = false, double vertexAngleTolDeg = 1.0, double minVertexDistCm = 0.4, double collinearTolCm = 0, string hatchPatternName = null, double hatchPatternScale = 1.0, string hatchLayerOverride = null)
+        /// <param name="drawRingEdgesAsLines">true ise kapalı halka polyline yerine her kenar ayrı <see cref="Line"/> (KALIP50ST4 kiriş çizimi).</param>
+        private static void DrawGeometryRingsAsPolylines(Transaction tr, BlockTableRecord btr, Geometry geom, string layer, bool addHatch = false, double? hatchAngleRad = null, bool exteriorRingsOnly = false, bool applySmallTriangleTrim = false, double vertexAngleTolDeg = 1.0, double minVertexDistCm = 0.4, double collinearTolCm = 0, string hatchPatternName = null, double hatchPatternScale = 1.0, string hatchLayerOverride = null, bool drawRingEdgesAsLines = false)
         {
             if (geom == null || geom.IsEmpty) return;
             double minSegmentLen = minVertexDistCm; // ardışık vertex arası min mesafe (varsayılan 4 mm)
@@ -8132,6 +8346,23 @@ namespace ST4PlanIdCiz
                     }
                 }
                 if (filtered.Count < 3) continue; // Kapalı halka için en az 3 nokta; 2'ye inen saç kılı çizilmez
+
+                // KALIP50ST4: kiriş konturları polyline yerine EXPLODE benzeri ayrı Line nesneleri (kolon üst üste binmesi DrawBeamsAndWalls sonunda temizlenir)
+                if (drawRingEdgesAsLines && !addHatch)
+                {
+                    for (int ei = 0; ei < filtered.Count; ei++)
+                    {
+                        int ej = (ei + 1) % filtered.Count;
+                        var p0 = filtered[ei];
+                        var p1 = filtered[ej];
+                        if (p0.GetDistanceTo(p1) < minSegmentLen) continue;
+                        var ln = new Line(new Point3d(p0.X, p0.Y, 0), new Point3d(p1.X, p1.Y, 0));
+                        ln.SetDatabaseDefaults();
+                        ln.Layer = layer;
+                        AppendEntity(tr, btr, ln);
+                    }
+                    continue;
+                }
 
                 // Kiriş, perde ve temel hatılında yuvarlak kolon kesimini yay yap (LS daire uydurması + bulge)
                 bool useCircleArcs = (layer == LayerKiris || layer == LayerPerde || layer == "TEMEL HATILI (BEYKENT)");
