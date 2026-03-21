@@ -1656,6 +1656,29 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>
+        /// KOLON50ST4 kopya perde blokları: ana plandaki <see cref="DrawPerdeLabelsForFloor"/> kot değerleriyle aynı.
+        /// Kopyada perde yatay hizalandığı için kot yazı/simgesi yatay (P etiketiyle uyumlu).
+        /// </summary>
+        private void DrawKolon50CopyPerdeKotIfNeeded(Transaction tr, BlockTableRecord btr, FloorInfo floor, Geometry placedWallGeom, BeamInfo beam)
+        {
+            if (!_isKolon50Mode || beam == null || placedWallGeom == null || placedWallGeom.IsEmpty) return;
+            if (beam.Point1KotCm == 0 && beam.Point2KotCm == 0) return;
+            double floorElevM = floor.ElevationM;
+            double topElevM = _model.BuildingBaseKotu + floorElevM + (Math.Max(beam.Point1KotCm, beam.Point2KotCm) / 100.0);
+            double heightCm = beam.HeightCm > 0 ? beam.HeightCm : 30.0;
+            double bottomElevM = topElevM - heightCm / 100.0;
+            Point2d kotCenter;
+            if (placedWallGeom.Centroid != null && !placedWallGeom.Centroid.IsEmpty)
+                kotCenter = new Point2d(placedWallGeom.Centroid.X, placedWallGeom.Centroid.Y);
+            else
+            {
+                var e = placedWallGeom.EnvelopeInternal;
+                kotCenter = new Point2d((e.MinX + e.MaxX) * 0.5, (e.MinY + e.MaxY) * 0.5);
+            }
+            DrawKotBlockAtCenter(tr, btr, btr.Database, kotCenter.X, kotCenter.Y, topElevM, bottomElevM, rotationRad: 0.0);
+        }
+
+        /// <summary>
         /// Basit kopya: mevcut plandaki perdeleri ve onlara bitişik kolonları,
         /// geometriyi bozmadan (döndürmeden/gruplamadan) planın üstüne taşır.
         /// </summary>
@@ -1801,6 +1824,7 @@ namespace ST4PlanIdCiz
                             0.0,
                             LayerPerdeYazisi,
                             useMiddleCenter: true);
+                        DrawKolon50CopyPerdeKotIfNeeded(tr, btr, floor, w, it.beam);
                     }
                     foreach (var c in it.columns)
                     {
@@ -1938,6 +1962,7 @@ namespace ST4PlanIdCiz
                         string wallText = string.Format(CultureInfo.InvariantCulture, "P{0}{1}", katEtiketi, wallNo);
                         var wEnv = w.EnvelopeInternal;
                         DrawBeamLabel(tr, btr, btr.Database, new Point3d((wEnv.MinX + wEnv.MaxX) * 0.5, (wEnv.MinY + wEnv.MaxY) * 0.5, 0), wallText, 12.0, 0.0, LayerPerdeYazisi, useMiddleCenter: true);
+                        DrawKolon50CopyPerdeKotIfNeeded(tr, btr, floor, w, it.beam);
                     }
                     foreach (var c in it.columns)
                     {
