@@ -405,6 +405,7 @@ namespace ST4PlanIdCiz
                         out _, out _, out _, out _, out _);
                 }
 
+                ApplyPlanStructuralLayerDrawOrder(tr, btr);
                 tr.Commit();
 
                 ed.WriteMessage(
@@ -506,6 +507,7 @@ namespace ST4PlanIdCiz
 
                     TryDrawKolonDonatiTableAboveKolon50PerdeCopies(tr, btr, db, ed, baseInsertPoint, st4SourcePath);
 
+                    ApplyPlanStructuralLayerDrawOrder(tr, btr);
                     tr.Commit();
                     ed.WriteMessage(
                         "\nKOLON50ST4: {0} kat icin 1/50 kolon aplikasyon plani cizildi (aks, aks olculeri, kolonlar/poligon kolonlar, perdeler).",
@@ -695,6 +697,7 @@ namespace ST4PlanIdCiz
                         drawnPlanCount++;
                     }
 
+                    ApplyPlanStructuralLayerDrawOrder(tr, btr);
                     tr.Commit();
                     string gprSummary = string.Empty;
                     if (gprKalipDosemeDonati != null && gprKalipDosemeDonati.Count > 0)
@@ -2862,6 +2865,7 @@ namespace ST4PlanIdCiz
                     double yLowestHorizontalAxis = GetLowestHorizontalColumnAxisY(offsetY, firstFloorAxisExt);
                     TryDrawTemelAntetFromDxf(tr, btr, antetLayMinX, antetLayMinY, antetLayMaxX, antetLayMaxY, leftSectionMinX, xRightBalloonTemel, yLowestHorizontalAxis, st4SourcePath, ed);
 
+                    ApplyPlanStructuralLayerDrawOrder(tr, btr);
                     tr.Commit();
 
                     ed.WriteMessage(
@@ -2953,8 +2957,6 @@ namespace ST4PlanIdCiz
         private const int LayerBlokajTransparencyPercent = 90;
         /// <summary>Temel kesitlerinde grobeton altı zemin temas çizgisi (A-A: alt kenar; B-B: dış yüzey).</summary>
         private const string LayerZemin = "ZEMIN (BEYKENT)";
-        /// <summary>DASHED katmanlarda (AKS, KESIT SINIRI) entity çizgi tipi ölçeği; LTSCALE=1 iken kesikli okunaklı olsun.</summary>
-        private const double DashedLayerEntityLinetypeScale = 25.0;
         private const string YaziBeykentTextStyleName = "YAZI (BEYKENT)";
         /// <summary>Kiriş etiket çizim boyutları (resimdeki gibi): 70cm x 14cm referans (13 karakter). Genişlik = RefWidth * metin uzunluğu / RefCharCount.</summary>
         private const double BeamLabelRefWidthCm = 70.0;
@@ -3085,6 +3087,61 @@ namespace ST4PlanIdCiz
             }
             // Cizimde gorunurluk: sablon / onceki oturumda kapatilmis olabilir.
             try { rec.IsOff = false; } catch { /* eski surum */ }
+        }
+
+        /// <summary>
+        /// Plan çiziminde yapı katmanlarının üst üste binme sırası (önde = üstte): 1=Temel, 2=Kolon, 3=Perde, 4=Kiriş, 5=Kat sınırı, 6=Aks.
+        /// Yalnızca Model Space’te ve bu isimli katmanlardaki nesneler yeniden sıralanır; diğer katmanlara dokunulmaz.
+        /// </summary>
+        private static void ApplyPlanStructuralLayerDrawOrder(Transaction tr, BlockTableRecord btr)
+        {
+            if (tr == null || btr == null) return;
+            ObjectId dotId;
+            try { dotId = btr.DrawOrderTableId; }
+            catch { return; }
+            if (!dotId.IsValid || dotId.IsNull) return;
+            DrawOrderTable dot;
+            try { dot = (DrawOrderTable)tr.GetObject(dotId, OpenMode.ForWrite); }
+            catch { return; }
+            if (dot == null) return;
+
+            var aks = new ObjectIdCollection();
+            var kat = new ObjectIdCollection();
+            var kiris = new ObjectIdCollection();
+            var perde = new ObjectIdCollection();
+            var kolon = new ObjectIdCollection();
+            var temel = new ObjectIdCollection();
+
+            foreach (ObjectId eid in btr)
+            {
+                if (!eid.IsValid || eid.IsErased) continue;
+                var ent = tr.GetObject(eid, OpenMode.ForRead, false, false) as Entity;
+                if (ent == null) continue;
+                string lyr = ent.Layer;
+                if (string.IsNullOrEmpty(lyr)) continue;
+
+                if (lyr == LayerAks || lyr == LayerAksBalonu || lyr == LayerAksYazisi || lyr == LayerAksOlcu)
+                    aks.Add(eid);
+                else if (lyr == LayerKatSiniri)
+                    kat.Add(eid);
+                else if (lyr == LayerKiris || lyr == LayerKirisYazisi)
+                    kiris.Add(eid);
+                else if (lyr == LayerPerde || lyr == LayerPerdeYazisi)
+                    perde.Add(eid);
+                else if (lyr == LayerKolon || lyr == LayerKolonIsmi)
+                    kolon.Add(eid);
+                else if (lyr == "TEMEL (BEYKENT)" || lyr == "TEMEL AMPATMAN (BEYKENT)" || lyr == "TEMEL HATILI (BEYKENT)" || lyr == LayerTemelHatiliIsmi || lyr == LayerTemelIsmi)
+                    temel.Add(eid);
+            }
+
+            // Arkada (altta) kalan önce MoveToTop: Aks → … → en son Temel en üstte.
+            ObjectIdCollection[] order = { aks, kat, kiris, perde, kolon, temel };
+            foreach (var coll in order)
+            {
+                if (coll == null || coll.Count == 0) continue;
+                try { dot.MoveToTop(coll); }
+                catch { /* çizim sırası desteklenmiyorsa veya nesne uyumsuz */ }
+            }
         }
 
         private (double Xmin, double Xmax, double Ymin, double Ymax) CalculateBaseExtents()
@@ -10938,18 +10995,10 @@ namespace ST4PlanIdCiz
             return pl;
         }
 
-        private static void ApplyDashedLinetypeScaleToEntity(Entity e)
-        {
-            if (e == null || string.IsNullOrEmpty(e.Layer)) return;
-            if (e.Layer != LayerAks && e.Layer != LayerKesitSiniri) return;
-            try { e.LinetypeScale = DashedLayerEntityLinetypeScale; } catch { /* eski API */ }
-        }
-
         private static void AppendEntity(Transaction tr, BlockTableRecord btr, Entity e)
         {
             btr.AppendEntity(e);
             tr.AddNewlyCreatedDBObject(e, true);
-            ApplyDashedLinetypeScaleToEntity(e);
         }
 
         /// <summary>Entity ekler ve ObjectId döndürür (tarama boundary için).</summary>
@@ -10957,7 +11006,6 @@ namespace ST4PlanIdCiz
         {
             btr.AppendEntity(e);
             tr.AddNewlyCreatedDBObject(e, true);
-            ApplyDashedLinetypeScaleToEntity(e);
             return e.ObjectId;
         }
 
