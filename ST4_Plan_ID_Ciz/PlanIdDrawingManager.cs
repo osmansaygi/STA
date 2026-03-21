@@ -8067,7 +8067,8 @@ namespace ST4PlanIdCiz
                 return v;
             try
             {
-                string line3 = null, line4 = null, line7 = null, line14 = null, line15 = null, line18 = null;
+                // 18. satir okunmali: /Materials/ sonrasi beton sinifi (1. sutun / 10 -> C30 vb.); 15. satirda break vardi, CClass hic doldurulmuyordu.
+                string line3 = null, line4 = null, line7 = null, line14 = null, line18 = null;
                 int ln = 0;
                 foreach (string raw in File.ReadLines(st4SourcePath))
                 {
@@ -8076,8 +8077,7 @@ namespace ST4PlanIdCiz
                     else if (ln == 4) line4 = raw;
                     else if (ln == 7) line7 = raw;
                     else if (ln == 14) line14 = raw;
-                    else if (ln == 15) { line15 = raw; break; }
-                    else if (ln == 18) line18 = raw;
+                    else if (ln == 18) { line18 = raw; break; }
                 }
 
                 if (TryGetSt4ColumnDouble(line14, 7, out double c14_7) && TryGetSt4ColumnDouble(line14, 8, out double c14_8))
