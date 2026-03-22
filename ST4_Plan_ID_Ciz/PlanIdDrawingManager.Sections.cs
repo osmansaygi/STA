@@ -2254,8 +2254,14 @@ namespace ST4PlanIdCiz
             pl.Layer = LayerGrobeton;
             pl.LineWeight = LineWeight.LineWeight050;
             pl.ConstantWidth = 0;
-            ObjectId plId = AppendEntityReturnId(tr, btr, pl);
-            AppendHatchAnsi33(tr, btr, plId, 0);
+            AppendEntityReturnId(tr, btr, pl);
+            var plHid = (Polyline)pl.Clone();
+            plHid.SetDatabaseDefaults();
+            EnsureLayerTaramaHatchBoundaryIc(tr, btr.Database);
+            plHid.Layer = LayerTaramaHatchBoundaryIc;
+            ObjectId plHatchId = AppendEntityReturnId(tr, btr, plHid);
+            AppendHatchAnsi33(tr, btr, plHatchId, 0);
+            TryEraseDbObject(tr, plHatchId);
         }
 
         /// <summary>Ara boşluk alt blokaj: <see cref="LayerBlokaj"/> çizgi ve tarama (AR-CONC ölçek <see cref="BlokajGapStripArConcHatchScale"/>); katman şeffaflığı <see cref="LayerBlokajTransparencyPercent"/>.</summary>
@@ -2640,8 +2646,14 @@ namespace ST4PlanIdCiz
                 pl.LineWeight = LineWeight.LineWeight050;
             if (addGrobetonArConcHatch && layer == LayerGrobeton)
             {
-                ObjectId plId = AppendEntityReturnId(tr, btr, pl);
-                AppendHatchPredefined(tr, btr, plId, GrobetonHatchPatternName, GrobetonHatchPatternScale, 0, LayerTarama);
+                AppendEntityReturnId(tr, btr, pl);
+                var plH = (Polyline)pl.Clone();
+                plH.SetDatabaseDefaults();
+                EnsureLayerTaramaHatchBoundaryIc(tr, btr.Database);
+                plH.Layer = LayerTaramaHatchBoundaryIc;
+                ObjectId plHid = AppendEntityReturnId(tr, btr, plH);
+                AppendHatchPredefined(tr, btr, plHid, GrobetonHatchPatternName, GrobetonHatchPatternScale, 0, LayerTarama, associativeHatch: false);
+                TryEraseDbObject(tr, plHid);
             }
             else
                 AppendEntity(tr, btr, pl);

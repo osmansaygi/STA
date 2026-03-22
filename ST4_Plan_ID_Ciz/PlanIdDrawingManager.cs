@@ -7159,7 +7159,7 @@ namespace ST4PlanIdCiz
             string qLine = null;
             if (slab.LiveLoadKNm2 > 0)
             {
-                qLine = string.Format(CultureInfo.InvariantCulture, "Q={0:F1}kN/m²", slab.LiveLoadKNm2);
+                qLine = string.Format(CultureInfo.InvariantCulture, "Q={0}kN/m²", FormatLiveLoadKNm2NumericForLabel(slab.LiveLoadKNm2));
                 blockWidth = Math.Max(blockWidth, EstimateTextWidthCm(qLine, subTextHeightCm));
                 blockHeight += mainToQCm + subTextHeightCm + qToUstKotCm;
             }
@@ -7361,7 +7361,7 @@ namespace ST4PlanIdCiz
             string qLine = null;
             if (sf.LiveLoadKNm2 > 0)
             {
-                qLine = string.Format(CultureInfo.InvariantCulture, "Q={0:F1}kN/m²", sf.LiveLoadKNm2);
+                qLine = string.Format(CultureInfo.InvariantCulture, "Q={0}kN/m²", FormatLiveLoadKNm2NumericForLabel(sf.LiveLoadKNm2));
                 blockWidth = Math.Max(blockWidth, EstimateTextWidthCm(qLine, subTextHeightCm));
                 blockHeight += mainToQCm + subTextHeightCm + qToUstKotCm;
             }
@@ -9224,7 +9224,7 @@ namespace ST4PlanIdCiz
             catch { return false; }
         }
 
-        /// <summary>NTS Geometry (Polygon/MultiPolygon) dış ve iç halkalarını verilen katmanda polyline olarak çizer; 4 mm'den kısa segmentleri atlar. addHatch true ise her halka için tarama eklenir: <paramref name="hatchPatternName"/> doluysa o desen + ölçek + <paramref name="hatchLayerOverride"/> (varsayılan <see cref="LayerTarama"/>), değilse ANSI33. hatchAngleRad verilirse tarama açısı olarak kullanılır (perde: aks eğimi). exteriorRingsOnly true ise sadece dış halkalar çizilir (iç halkalar/delik sınırları çizilmez; kolona yapışık çizgi olmaz). <paramref name="hatchBoundaryPolylineOnHiddenLayer"/> true ise associative sınır polyline <see cref="LayerTaramaHatchBoundaryIc"/> üzerine alınır (TARAMA'da çevre çizgisi görünmez).</summary>
+        /// <summary>NTS Geometry (Polygon/MultiPolygon) dış ve iç halkalarını verilen katmanda polyline olarak çizer; 4 mm'den kısa segmentleri atlar. addHatch true ise her halka için tarama eklenir: <paramref name="hatchPatternName"/> doluysa o desen + ölçek + <paramref name="hatchLayerOverride"/> (varsayılan <see cref="LayerTarama"/>), değilse ANSI33. hatchAngleRad verilirse tarama açısı olarak kullanılır (perde: aks eğimi). exteriorRingsOnly true ise sadece dış halkalar çizilir (iç halkalar/delik sınırları çizilmez; kolona yapışık çizgi olmaz). <see cref="LayerTarama"/> hedefli taramada sınır polyline yalnızca geçicidir (kolon/perde/grobeton konturu gerekiyorsa ayrı kopya çizilir); <paramref name="hatchBoundaryPolylineOnHiddenLayer"/> yalnızca TARAMA dışı dolgu yolunda kullanılır.</summary>
         /// <param name="drawRingEdgesAsLines">true ise kapalı halka polyline yerine her kenar ayrı <see cref="Line"/> (KALIP50ST4 kiriş çizimi).</param>
         private static void EnsureLayerTaramaHatchBoundaryIc(Transaction tr, Database db)
         {
@@ -9253,6 +9253,17 @@ namespace ST4PlanIdCiz
                 }
                 catch { /* sürüm */ }
             }
+        }
+
+        private static void TryEraseDbObject(Transaction tr, ObjectId id)
+        {
+            if (id == ObjectId.Null || !id.IsValid) return;
+            try
+            {
+                var e = tr.GetObject(id, OpenMode.ForWrite, false) as Entity;
+                e?.Erase();
+            }
+            catch { /* silinmiş veya kilitli */ }
         }
 
         private static void DrawGeometryRingsAsPolylines(Transaction tr, BlockTableRecord btr, Geometry geom, string layer, bool addHatch = false, double? hatchAngleRad = null, bool exteriorRingsOnly = false, bool applySmallTriangleTrim = false, double vertexAngleTolDeg = 1.0, double minVertexDistCm = 0.4, double collinearTolCm = 0, string hatchPatternName = null, double hatchPatternScale = 1.0, string hatchLayerOverride = null, bool drawRingEdgesAsLines = false, bool hatchBoundaryPolylineOnHiddenLayer = false, double ansi33HatchPatternScale = 1.0)
@@ -9530,17 +9541,49 @@ namespace ST4PlanIdCiz
                     pl.LineWeight = LineWeight.LineWeight050;
                 if (addHatch)
                 {
-                    if (hatchBoundaryPolylineOnHiddenLayer)
+                    string hatchDestLayer = string.IsNullOrEmpty(hatchLayerOverride) ? LayerTarama : hatchLayerOverride;
+                    double angleRad = hatchAngleRad ?? Math.Atan2(filtered[1].Y - filtered[0].Y, filtered[1].X - filtered[0].X);
+                    if (string.Equals(hatchDestLayer, LayerTarama, StringComparison.Ordinal))
                     {
+                        bool needVisibleStructuralOutline =
+                            !string.Equals(layer, LayerTarama, StringComparison.Ordinal)
+                            && !string.Equals(layer, LayerTaramaHatchBoundaryIc, StringComparison.Ordinal);
+                        if (needVisibleStructuralOutline)
+                        {
+                            var plSeen = (Polyline)pl.Clone();
+                            plSeen.SetDatabaseDefaults();
+                            plSeen.Layer = layer;
+                            if (layer == LayerGrobeton)
+                                plSeen.LineWeight = LineWeight.LineWeight050;
+                            AppendEntity(tr, btr, plSeen);
+                        }
                         EnsureLayerTaramaHatchBoundaryIc(tr, btr.Database);
                         pl.Layer = LayerTaramaHatchBoundaryIc;
+                        ObjectId plHid = AppendEntityReturnId(tr, btr, pl);
+                        if (!string.IsNullOrEmpty(hatchPatternName))
+                        {
+                            AppendHatchPredefined(tr, btr, plHid, hatchPatternName, hatchPatternScale, hatchAngleRad ?? 0.0, hatchDestLayer, associativeHatch: false);
+                            TryEraseDbObject(tr, plHid);
+                        }
+                        else
+                        {
+                            AppendHatchAnsi33(tr, btr, plHid, angleRad, ansi33HatchPatternScale);
+                            TryEraseDbObject(tr, plHid);
+                        }
                     }
-                    ObjectId plId = AppendEntityReturnId(tr, btr, pl);
-                    double angleRad = hatchAngleRad ?? Math.Atan2(filtered[1].Y - filtered[0].Y, filtered[1].X - filtered[0].X);
-                    if (!string.IsNullOrEmpty(hatchPatternName))
-                        AppendHatchPredefined(tr, btr, plId, hatchPatternName, hatchPatternScale, hatchAngleRad ?? 0.0, string.IsNullOrEmpty(hatchLayerOverride) ? LayerTarama : hatchLayerOverride);
                     else
-                        AppendHatchAnsi33(tr, btr, plId, angleRad, ansi33HatchPatternScale);
+                    {
+                        if (hatchBoundaryPolylineOnHiddenLayer)
+                        {
+                            EnsureLayerTaramaHatchBoundaryIc(tr, btr.Database);
+                            pl.Layer = LayerTaramaHatchBoundaryIc;
+                        }
+                        ObjectId plId = AppendEntityReturnId(tr, btr, pl);
+                        if (!string.IsNullOrEmpty(hatchPatternName))
+                            AppendHatchPredefined(tr, btr, plId, hatchPatternName, hatchPatternScale, hatchAngleRad ?? 0.0, hatchDestLayer);
+                        else
+                            AppendHatchAnsi33(tr, btr, plId, angleRad, ansi33HatchPatternScale);
+                    }
                 }
                 else
                     AppendEntity(tr, btr, pl);
@@ -10342,6 +10385,19 @@ namespace ST4PlanIdCiz
             AppendEntity(tr, btr, MakeCenteredText(tr, btr.Database, LayerBaslik, 8, note, notePos));
         }
 
+        /// <summary>
+        /// Döşeme/radye Q satırı: tam sayıysa ondalık gösterilmez (5); değilse :F1 yuvarlaması olmadan, sondaki gereksiz 0'lar olmadan (ör. 5.35).
+        /// </summary>
+        private static string FormatLiveLoadKNm2NumericForLabel(double knPerM2)
+        {
+            var ci = CultureInfo.InvariantCulture;
+            double x = Math.Round(knPerM2, 10, MidpointRounding.AwayFromZero);
+            long asInt = (long)Math.Round(x, MidpointRounding.AwayFromZero);
+            if (Math.Abs(x - asInt) < 1e-9)
+                return asInt.ToString("0", ci);
+            return x.ToString("0.##########", ci);
+        }
+
         private static string NormalizeFloorNameWithoutNormal(string value)
         {
             string s = (value ?? string.Empty).Trim();
@@ -11138,14 +11194,14 @@ namespace ST4PlanIdCiz
             hatch.PatternAngle = 0; // Tüm taramalarda sabit açı
             hatch.PatternScale = patternScale;
             hatch.Layer = LayerTarama;
-            hatch.Associative = true;
+            hatch.Associative = false;
             var ids = new ObjectIdCollection { boundaryId };
             hatch.AppendLoop(HatchLoopTypes.Outermost, ids);
             hatch.EvaluateHatch(true);
         }
 
         /// <summary>Önceden tanımlı desen (ör. grobeton AR-CONC); tarama ayrı katmanda (genelde <see cref="LayerTarama"/>).</summary>
-        private static void AppendHatchPredefined(Transaction tr, BlockTableRecord btr, ObjectId boundaryId, string patternName, double patternScale, double patternAngleRad, string hatchLayer)
+        private static void AppendHatchPredefined(Transaction tr, BlockTableRecord btr, ObjectId boundaryId, string patternName, double patternScale, double patternAngleRad, string hatchLayer, bool associativeHatch = true)
         {
             var hatch = new Hatch();
             btr.AppendEntity(hatch);
@@ -11154,7 +11210,7 @@ namespace ST4PlanIdCiz
             hatch.PatternScale = patternScale;
             hatch.PatternAngle = patternAngleRad;
             hatch.Layer = hatchLayer;
-            hatch.Associative = true;
+            hatch.Associative = associativeHatch;
             var ids = new ObjectIdCollection { boundaryId };
             hatch.AppendLoop(HatchLoopTypes.Outermost, ids);
             try { hatch.EvaluateHatch(true); }
