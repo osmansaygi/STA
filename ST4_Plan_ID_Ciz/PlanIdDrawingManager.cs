@@ -19,6 +19,13 @@ using ST4AksCizCSharp;
 
 namespace ST4PlanIdCiz
 {
+    /// <summary>TEMEL50ST4 / TEMEL100ST4 çizim ölçeği (yalnızca temel plan komutları).</summary>
+    public enum TemelFoundationPlanScale
+    {
+        Fifty = 1,
+        Hundred = 2,
+    }
+
     /// <summary>
     /// Akslar, kolonlar (dikdörtgen + daire + poligon), kirişler, perdeler ve döşemeleri
     /// tüm eleman ID'leriyle çizer; katlar yan yana dizilir.
@@ -35,8 +42,11 @@ namespace ST4PlanIdCiz
         private List<Geometry> _drawnSlabGeometriesForUnion;
         /// <summary>ST4PLANID Draw süresince tek fabrika (binlerce new önlenir).</summary>
         private GeometryFactory _ntsDrawFactory;
-        /// <summary>TEMEL50ST4 için özel 1:50 başlık/yazı modu.</summary>
-        private bool _isTemel50Mode;
+        private TemelFoundationPlanScale? _temelFoundationScale;
+        private bool IsTemelPlanDraw => _temelFoundationScale.HasValue;
+        /// <summary>TEMEL100: kesit etiket, kot, ölçü ofsetleri ve yazı yükseklikleri 50 moduna göre 1.5×.</summary>
+        private double TemelFoundationAnnotMul => _temelFoundationScale == TemelFoundationPlanScale.Hundred ? 1.5 : 1.0;
+        private string TemelKesitScaleSuffix => _temelFoundationScale == TemelFoundationPlanScale.Hundred ? " (1:100)" : " (1:50)";
         /// <summary>KOLON50ST4 için kolon aplikasyon ölçü modu.</summary>
         private bool _isKolon50Mode;
         /// <summary>KALIP50ST4 için 1:50 kalıp planı modu.</summary>
@@ -64,13 +74,20 @@ namespace ST4PlanIdCiz
         private const double Kolon50AntetLeftOfLeftVerticalAxisCm = 400.0;
         private const double Kolon50AntetGapBetweenSheetsCm = 50.0;
         private const double AntetTargetRightExtraCm = 400.0;
+        /// <summary>TEMEL100ST4: antet 2× sonrası en sağ dik aks balonunun sağında SheetView sağ çizgisine kadar boşluk (plan cm).</summary>
+        private const double Temel100AntetRightGapFromRightAxisBalloonCm = 640.0;
+        /// <summary>TEMEL100ST4: perde etiketi perde eksenine dik, merkezden uzağa (dış kenara) cm.</summary>
+        private const double Temel100PerdeLabelShiftAlongPerpCm = 4.0;
         /// <summary>antet_02 SHEETVIEW sol-alt (cizim birimi); bire bir yerlesimde bu köse layout sol-alt ile hizalanir.</summary>
         private const double AntetDxfSheetViewXmin = -2854.616393644967;
         private const double AntetDxfSheetViewYmin = 1658.94236737828;
         private const double AntetDxfSheetViewOutYmin = 1608.94236737828;
         private const double AntetDxfSheetViewOutYmax = 5808.942367378282;
         private const double AntetDxfSheetViewXmax = 4857.138603748386;
+        /// <summary>KALIP antet ve genel gömülü antet şablonu: SheetViewOut başlangıç iç yüksekliği (cm).</summary>
         private const double TemelAntetBaslangicYukseklikCm = 4500.0;
+        /// <summary>TEMEL50ST4 / TEMEL100ST4 antet: SheetViewOut başlangıç iç yüksekliği (cm); germe layoutMaxY aşımında adım adım uzar.</summary>
+        private const double TemelAntetSheetViewOutBaslangicYukseklikCm = 9000.0;
         private const double TemelAntetEkStretchAdimCm = 500.0;
         // Ileride: antet sablon degiskenleri — klon sonrasi DBText/ATTRIBUTE (sablon: antet_02.dwg + projede antet_02.dxf referans)
         private const string TemelAntetEmbeddedResourceName = "ST4PlanIdCiz.TemelAntet.antet_02.dwg";
@@ -2858,12 +2875,19 @@ namespace ST4PlanIdCiz
 
         /// <summary>
         /// Sadece temel planını (ilk kat) ve ona ait plan kesitlerini çizer.
-        /// 1/50 projeler için TEMEL50ST4 komutundan çağrılır.
+        /// <see cref="TemelFoundationPlanScale.Fifty"/> → TEMEL50ST4; <see cref="TemelFoundationPlanScale.Hundred"/> → TEMEL100ST4.
         /// </summary>
         public void DrawFoundationPlanWithSections(Database db, Editor ed, Point3d baseInsertPoint, string st4SourcePath = null)
         {
+            DrawFoundationPlanWithSections(db, ed, baseInsertPoint, st4SourcePath, TemelFoundationPlanScale.Fifty);
+        }
+
+        /// <summary>TEMEL50ST4 / TEMEL100ST4: <paramref name="scaleMode"/> antet ve kesit ölçülerini belirler.</summary>
+        public void DrawFoundationPlanWithSections(Database db, Editor ed, Point3d baseInsertPoint, string st4SourcePath, TemelFoundationPlanScale scaleMode)
+        {
             _ntsDrawFactory = NtsGeometryServices.Instance.CreateGeometryFactory();
-            _isTemel50Mode = true;
+            _temelFoundationScale = scaleMode;
+            string cmdTag = scaleMode == TemelFoundationPlanScale.Hundred ? "TEMEL100ST4" : "TEMEL50ST4";
             try
             {
                 using (var tr = db.TransactionManager.StartTransaction())
@@ -2875,7 +2899,7 @@ namespace ST4PlanIdCiz
                     bool hasFoundations = _model.ContinuousFoundations.Count > 0 || _model.SlabFoundations.Count > 0 || _model.TieBeams.Count > 0 || _model.SingleFootings.Count > 0;
                     if (!hasFoundations || _model.Floors.Count == 0)
                     {
-                        ed.WriteMessage("\nTEMEL50ST4: Cizilecek temel verisi bulunamadi.");
+                        ed.WriteMessage("\n{0}: Cizilecek temel verisi bulunamadi.", cmdTag);
                         return;
                     }
 
@@ -2897,14 +2921,14 @@ namespace ST4PlanIdCiz
                     DrawTieBeams(tr, btr, firstFloor, offsetX, offsetY, kolonPerdeUnion, temelHatiliRaws);
                     DrawSingleFootings(tr, btr, firstFloor, offsetX, offsetY, drawTemelOutline: false);
                     DrawPerdeLabelsForFloor(tr, btr, firstFloor, offsetX, offsetY, kolonPerdeUnion);
-                    // TEMEL50ST4: temel plan basligi istenmiyor.
                     DrawPlanSections(tr, btr, db, firstFloor, offsetX, offsetY, firstFloorAxisExt, isFoundationPlan: true, firstFloorUnion,
                         out double antetLayMinX, out double antetLayMaxX, out double antetLayMinY, out double antetLayMaxY, out double leftSectionMinX);
                     GetSectionCutBalloonExtents(offsetX, offsetY, firstFloorAxisExt,
                         out _, out double xRightBalloonTemel, out double yBottomBalloonTemel, out _,
                         out _, out _, out _, out _);
-                    double temelBaslikYTop = yBottomBalloonTemel - Temel50BaslikAltAksBalonBoslukCm;
-                    antetLayMinY = Math.Min(antetLayMinY, temelBaslikYTop - 30.0 - 100.0);
+                    double fa = TemelFoundationAnnotMul;
+                    double temelBaslikYTop = yBottomBalloonTemel - Temel50BaslikAltAksBalonBoslukCm * fa;
+                    antetLayMinY = Math.Min(antetLayMinY, temelBaslikYTop - 30.0 * fa - 100.0 * fa);
                     double yLowestHorizontalAxis = GetLowestHorizontalColumnAxisY(offsetY, firstFloorAxisExt);
                     TryDrawTemelAntetFromDxf(tr, btr, antetLayMinX, antetLayMinY, antetLayMaxX, antetLayMaxY, leftSectionMinX, xRightBalloonTemel, yLowestHorizontalAxis, st4SourcePath, ed);
 
@@ -2912,7 +2936,8 @@ namespace ST4PlanIdCiz
                     tr.Commit();
 
                     ed.WriteMessage(
-                        "\nTEMEL50ST4: Temel plani cizildi (surekli: {0}, radye: {1}, bag kirisi: {2}, tekil: {3}) ve kesitler olusturuldu.",
+                        "\n{0}: Temel plani cizildi (surekli: {1}, radye: {2}, bag kirisi: {3}, tekil: {4}) ve kesitler olusturuldu.",
+                        cmdTag,
                         _model.ContinuousFoundations.Count,
                         _model.SlabFoundations.Count,
                         _model.TieBeams.Count,
@@ -2921,7 +2946,7 @@ namespace ST4PlanIdCiz
             }
             finally
             {
-                _isTemel50Mode = false;
+                _temelFoundationScale = null;
                 _ntsDrawFactory = null;
             }
         }
@@ -3009,6 +3034,9 @@ namespace ST4PlanIdCiz
         private const int BeamLabelRefCharCount = 13;
         private const string AksOlcuDimStyleName = "AKS_OLCU";
         private const string PlanOlcuDimStyleName = "PLAN_OLCU";
+        /// <summary>TEMEL100ST4: aks/plan ölçü yazısı, ok, uzatma ve gap 1.5×; AKS_OLCU/PLAN_OLCU ile aynı çizgide kalır.</summary>
+        private const string AksOlcuDimStyleNameTemel100 = "AKS_OLCU_TEMEL100";
+        private const string PlanOlcuDimStyleNameTemel100 = "PLAN_OLCU_TEMEL100";
         /// <summary>Symbols and Arrows → Arrow size = 3 (cm). <see cref="DimStyleTableRecord.Dimasz"/>; First/Second tik için <see cref="DimStyleTableRecord.Dimtsz"/>.</summary>
         private const double OlcuDimArrowTickSizeCm = 3.0;
 
@@ -3657,14 +3685,15 @@ namespace ST4PlanIdCiz
             (double Xmin, double Xmax, double Ymin, double Ymax) ext)
         {
             Database db = btr.Database;
-            const double axisBalonRadiusCm = 20.0;   // çap 40 cm
-            const double axisLabelHeightCm = 20.0;
+            double ann = TemelFoundationAnnotMul;
+            double axisBalonRadiusCm = 20.0 * ann;
+            double axisLabelHeightCm = 20.0 * ann;
+            double dimOffsetFromBalonCm = 55.0 * ann;
+            double dimRowGapCm = 20.0 * ann;
+            double dimTextHeightCm = 12.0 * ann;
+            double balloonCollisionStep = AxisBalloonCollisionStepCm * ann;
 
-            const double dimOffsetFromBalonCm = 55.0;  // ölçü çizgisi aks balonundan 55 cm (içeri doğru)
-            const double dimRowGapCm = 20.0;           // iki aks ölçü sırası arasında 20 cm
-            const double dimTextHeightCm = 12.0;
-
-            double extCm = AxisExtensionBeyondBoundaryCm;
+            double extCm = AxisExtensionBeyondBoundaryCm * ann;
             double xLo = ext.Xmin + offsetX - extCm;
             double xHi = ext.Xmax + offsetX + extCm;
             double yLo = ext.Ymin + offsetY - extCm;
@@ -3702,8 +3731,8 @@ namespace ST4PlanIdCiz
                         : (i + 1).ToString(CultureInfo.InvariantCulture);
                     Point3d centerTopRaw = AxisBalonCenterAtEnd(q2, q1, axisBalonRadiusCm);
                     Point3d centerBotRaw = AxisBalonCenterAtEnd(q1, q2, axisBalonRadiusCm);
-                    Point3d centerTop = PushBalloonOutwardIfOverlapping(centerTopRaw, placedTopCenters, axisBalonRadiusCm, new Vector2d(0, 1));
-                    Point3d centerBot = PushBalloonOutwardIfOverlapping(centerBotRaw, placedBottomCenters, axisBalonRadiusCm, new Vector2d(0, -1));
+                    Point3d centerTop = PushBalloonOutwardIfOverlapping(centerTopRaw, placedTopCenters, axisBalonRadiusCm, new Vector2d(0, 1), balloonCollisionStep);
+                    Point3d centerBot = PushBalloonOutwardIfOverlapping(centerBotRaw, placedBottomCenters, axisBalonRadiusCm, new Vector2d(0, -1), balloonCollisionStep);
                     placedTopCenters.Add(centerTop);
                     placedBottomCenters.Add(centerBot);
 
@@ -3742,8 +3771,8 @@ namespace ST4PlanIdCiz
                         : (j < 26 ? ((char)('A' + j)).ToString() : "A" + (j - 25).ToString(CultureInfo.InvariantCulture));
                     Point3d centerRightRaw = AxisBalonCenterAtEnd(q2, q1, axisBalonRadiusCm);
                     Point3d centerLeftRaw = AxisBalonCenterAtEnd(q1, q2, axisBalonRadiusCm);
-                    Point3d centerRight = PushBalloonOutwardIfOverlapping(centerRightRaw, placedRightCenters, axisBalonRadiusCm, new Vector2d(1, 0));
-                    Point3d centerLeft = PushBalloonOutwardIfOverlapping(centerLeftRaw, placedLeftCenters, axisBalonRadiusCm, new Vector2d(-1, 0));
+                    Point3d centerRight = PushBalloonOutwardIfOverlapping(centerRightRaw, placedRightCenters, axisBalonRadiusCm, new Vector2d(1, 0), balloonCollisionStep);
+                    Point3d centerLeft = PushBalloonOutwardIfOverlapping(centerLeftRaw, placedLeftCenters, axisBalonRadiusCm, new Vector2d(-1, 0), balloonCollisionStep);
                     placedRightCenters.Add(centerRight);
                     placedLeftCenters.Add(centerLeft);
 
@@ -3762,14 +3791,14 @@ namespace ST4PlanIdCiz
                 AppendEntity(tr, btr, new Line(q1, q2) { Layer = LayerAks });
             }
 
-            ObjectId aksOlcuDimStyleId = GetOrCreateAksOlcuDimStyle(tr, db, dimTextHeightCm);
+            ObjectId aksOlcuDimStyleId = GetOrCreateAksOlcuDimStyle(tr, db, dimTextHeightCm, ann);
             if (xAxisTopPositions.Count >= 2)
                 DrawAxisDimensionsXFourSides(tr, btr, xAxisTopPositions, xAxisBottomPositions, dimOffsetFromBalonCm, dimRowGapCm, aksOlcuDimStyleId);
             if (yAxisLeftPositions.Count >= 2)
                 DrawAxisDimensionsYFourSides(tr, btr, yAxisLeftPositions, yAxisRightPositions, dimOffsetFromBalonCm, dimRowGapCm, aksOlcuDimStyleId);
         }
 
-        private static Point3d PushBalloonOutwardIfOverlapping(Point3d center, List<Point3d> existingCenters, double radiusCm, Vector2d outwardDir)
+        private static Point3d PushBalloonOutwardIfOverlapping(Point3d center, List<Point3d> existingCenters, double radiusCm, Vector2d outwardDir, double collisionStepCm = AxisBalloonCollisionStepCm)
         {
             if (existingCenters == null || existingCenters.Count == 0) return center;
             if (outwardDir.Length <= 1e-9) return center;
@@ -3787,7 +3816,7 @@ namespace ST4PlanIdCiz
             }
             while (overlaps() && guard++ < 100)
             {
-                c = new Point3d(c.X + outwardDir.X * AxisBalloonCollisionStepCm, c.Y + outwardDir.Y * AxisBalloonCollisionStepCm, 0);
+                c = new Point3d(c.X + outwardDir.X * collisionStepCm, c.Y + outwardDir.Y * collisionStepCm, 0);
             }
             return c;
         }
@@ -3797,8 +3826,9 @@ namespace ST4PlanIdCiz
             out double xLeftBalloon, out double xRightBalloon, out double yBottomBalloon, out double yTopBalloon,
             out List<Point3d> xBotBalloons, out List<Point3d> xTopBalloons, out List<Point3d> yLeftBalloons, out List<Point3d> yRightBalloons)
         {
-            const double axisBalonRadiusCm = 20.0;
-            double extCm = AxisExtensionBeyondBoundaryCm;
+            double ann = TemelFoundationAnnotMul;
+            double axisBalonRadiusCm = 20.0 * ann;
+            double extCm = AxisExtensionBeyondBoundaryCm * ann;
             double xLo = ext.Xmin + offsetX - extCm;
             double xHi = ext.Xmax + offsetX + extCm;
             double yLo = ext.Ymin + offsetY - extCm;
@@ -3839,7 +3869,7 @@ namespace ST4PlanIdCiz
                 yL.Add(AxisBalonCenterAtEnd(q1, q2, axisBalonRadiusCm));
                 yR.Add(AxisBalonCenterAtEnd(q2, q1, axisBalonRadiusCm));
             }
-            double pad = extCm + axisBalonRadiusCm + 40;
+            double pad = extCm + axisBalonRadiusCm + 40.0 * ann;
             xLeftBalloon = yL.Count > 0 ? yL.Min(p => p.X) : offsetX + ext.Xmin - pad;
             xRightBalloon = yR.Count > 0 ? yR.Max(p => p.X) : offsetX + ext.Xmax + pad;
             yBottomBalloon = xBotCenters.Count > 0 ? xBotCenters.Min(p => p.Y) : offsetY + ext.Ymin - pad;
@@ -3943,9 +3973,11 @@ namespace ST4PlanIdCiz
         /// First/Second — Oblique tik (Dimtsz + boş ok blokları).
         /// Leader — diyalogda &quot;Oblique&quot; görünsün diye özel blok atanmaz: <see cref="DimStyleTableRecord.Dimldrblk"/> = Null, First/Second ile aynı Dimtsz tik mantığı.
         /// </summary>
-        private static void ApplyAksPlanOlcuDimStyleArrowsAndSize(DimStyleTableRecord rec, double dimTextHeightCm)
+        private static void ApplyAksPlanOlcuDimStyleArrowsAndSize(DimStyleTableRecord rec, double dimTextHeightCm, double lineGeomScale = 1.0)
         {
-            const double arrowSize = OlcuDimArrowTickSizeCm;
+            if (lineGeomScale < 1e-6) lineGeomScale = 1.0;
+            double mul = Math.Abs(lineGeomScale - 1.0) < 1e-6 ? 1.0 : lineGeomScale;
+            double arrowSize = OlcuDimArrowTickSizeCm * mul;
             try { rec.Dimscale = 1.0; } catch { }
             try { rec.Dimlfac = 1.0; } catch { }
             try { rec.Dimtxt = dimTextHeightCm; } catch { }
@@ -3957,33 +3989,41 @@ namespace ST4PlanIdCiz
             try { rec.Dimtsz = arrowSize; } catch { }
             try { rec.Dimasz = arrowSize; } catch { }
             try { rec.Dimtsz = arrowSize; } catch { }
-            try { rec.Dimexo = 3.0; } catch { } // Lines tab: Offset from origin
+            try { rec.Dimexo = 3.0 * mul; } catch { }
+            try
+            {
+                if (mul > 1.0 + 1e-6)
+                    rec.Dimexe = 1.25 * mul;
+            }
+            catch { }
+            try { rec.Dimgap = 2.0 * mul; } catch { }
             try { rec.Dimtix = true; } catch { }
         }
 
         /// <summary>Aks ölçüleri için özel dim style "AKS_OLCU": metin stili YAZI (BEYKENT), yükseklik çağrıda; oklar vb. AKS_OLCU ayarları.</summary>
-        private static ObjectId GetOrCreateAksOlcuDimStyle(Transaction tr, Database db, double dimTextHeightCm)
+        private static ObjectId GetOrCreateAksOlcuDimStyle(Transaction tr, Database db, double dimTextHeightCm, double lineGeomScale = 1.0)
         {
+            if (lineGeomScale < 1e-6) lineGeomScale = 1.0;
+            string styleName = Math.Abs(lineGeomScale - 1.0) > 1e-6 ? AksOlcuDimStyleNameTemel100 : AksOlcuDimStyleName;
             ObjectId yaziId = GetOrCreateYaziBeykentTextStyle(tr, db);
             var dst = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
-            if (dst.Has(AksOlcuDimStyleName))
+            if (dst.Has(styleName))
             {
-                ObjectId id = dst[AksOlcuDimStyleName];
+                ObjectId id = dst[styleName];
                 try
                 {
                     var existing = (DimStyleTableRecord)tr.GetObject(id, OpenMode.ForWrite);
                     if (!yaziId.IsNull) existing.Dimtxsty = yaziId;
-                    ApplyAksPlanOlcuDimStyleArrowsAndSize(existing, dimTextHeightCm);
+                    ApplyAksPlanOlcuDimStyleArrowsAndSize(existing, dimTextHeightCm, lineGeomScale);
                 }
                 catch { }
                 return id;
             }
 
             var newRec = new DimStyleTableRecord();
-            newRec.Name = AksOlcuDimStyleName;
+            newRec.Name = styleName;
             try { if (!yaziId.IsNull) newRec.Dimtxsty = yaziId; } catch { }
             try { newRec.Dimclrt = Color.FromColorIndex(ColorMethod.ByAci, 7); } catch { }
-            try { newRec.Dimgap = 2.0; } catch { }
             try { newRec.Dimtad = 1; } catch { }
             try { newRec.Dimtih = false; } catch { }
             try { newRec.Dimtoh = false; } catch { }
@@ -3997,7 +4037,7 @@ namespace ST4PlanIdCiz
 
             try { newRec.Dimtofl = true; } catch { }
             try { newRec.Dimscale = 1.0; } catch { }
-            ApplyAksPlanOlcuDimStyleArrowsAndSize(newRec, dimTextHeightCm);
+            ApplyAksPlanOlcuDimStyleArrowsAndSize(newRec, dimTextHeightCm, lineGeomScale);
 
             dst.UpgradeOpen();
             ObjectId newDimId = dst.Add(newRec);
@@ -4007,28 +4047,29 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>Kesit/plan eleman ölçüleri: AKS_OLCU ile aynı özellikler, metin YAZI (BEYKENT), isim PLAN_OLCU.</summary>
-        private static ObjectId GetOrCreatePlanOlcuDimStyle(Transaction tr, Database db, double dimTextHeightCm)
+        private static ObjectId GetOrCreatePlanOlcuDimStyle(Transaction tr, Database db, double dimTextHeightCm, double lineGeomScale = 1.0)
         {
+            if (lineGeomScale < 1e-6) lineGeomScale = 1.0;
+            string styleName = Math.Abs(lineGeomScale - 1.0) > 1e-6 ? PlanOlcuDimStyleNameTemel100 : PlanOlcuDimStyleName;
             ObjectId yaziId = GetOrCreateYaziBeykentTextStyle(tr, db);
             var dst = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
-            if (dst.Has(PlanOlcuDimStyleName))
+            if (dst.Has(styleName))
             {
-                ObjectId id = dst[PlanOlcuDimStyleName];
+                ObjectId id = dst[styleName];
                 try
                 {
                     var existing = (DimStyleTableRecord)tr.GetObject(id, OpenMode.ForWrite);
                     if (!yaziId.IsNull) existing.Dimtxsty = yaziId;
-                    ApplyAksPlanOlcuDimStyleArrowsAndSize(existing, dimTextHeightCm);
+                    ApplyAksPlanOlcuDimStyleArrowsAndSize(existing, dimTextHeightCm, lineGeomScale);
                 }
                 catch { }
                 return id;
             }
 
             var newRec = new DimStyleTableRecord();
-            newRec.Name = PlanOlcuDimStyleName;
+            newRec.Name = styleName;
             try { if (!yaziId.IsNull) newRec.Dimtxsty = yaziId; } catch { }
             try { newRec.Dimclrt = Color.FromColorIndex(ColorMethod.ByAci, 7); } catch { }
-            try { newRec.Dimgap = 2.0; } catch { }
             try { newRec.Dimtad = 1; } catch { }
             try { newRec.Dimtih = false; } catch { }
             try { newRec.Dimtoh = false; } catch { }
@@ -4040,7 +4081,7 @@ namespace ST4PlanIdCiz
             try { newRec.Dimadec = 0; } catch { }
             try { newRec.Dimtofl = true; } catch { }
             try { newRec.Dimscale = 1.0; } catch { }
-            ApplyAksPlanOlcuDimStyleArrowsAndSize(newRec, dimTextHeightCm);
+            ApplyAksPlanOlcuDimStyleArrowsAndSize(newRec, dimTextHeightCm, lineGeomScale);
             dst.UpgradeOpen();
             ObjectId newPlanDimId = dst.Add(newRec);
             tr.AddNewlyCreatedDBObject(newRec, true);
@@ -4457,10 +4498,11 @@ namespace ST4PlanIdCiz
         /// <summary>Kolon etiketi: KOLON ISMI (BEYKENT), format "S" + Story ID + kolon no (haneli, örn. SB01 S15). Isim üstte boyut altta; boyut satırı kolon açısı yönünde altında.</summary>
         private void AppendColumnLabel(Transaction tr, BlockTableRecord btr, Point2d refPoint, double angleDeg, int columnNo, int columnType, (double W, double H) dim, FloorInfo floor, int columnNoPadWidth = 2)
         {
-            const double labelHeightCm = 12.0;
-            const double gapNameToDimCm = 18.0;
-            const double offsetRightCm = 10.0;
-            const double offsetNameDownCm = 22.0;
+            double ann = TemelFoundationAnnotMul;
+            double labelHeightCm = 12.0 * ann;
+            double gapNameToDimCm = 18.0 * ann;
+            double offsetRightCm = 10.0 * ann;
+            double offsetNameDownCm = 22.0 * ann;
             double angleRad = angleDeg * (Math.PI / 180.0);
             double cos = Math.Cos(angleRad), sin = Math.Sin(angleRad);
             Point2d namePos = new Point2d(
@@ -4715,9 +4757,8 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>Sürekli temel etiketi: etiket kutusu diğer sürekli temeller veya radye alanı ile kesişiyorsa yazı açısı doğrultusunda sadece sağa/sola kaydırarak temiz alan arar. Sürekli/radye alanı içine taşımaz. Temiz alan yoksa taşımaz.</summary>
-        private static void TryFindClearLabelPositionForContinuous(GeometryFactory factory, ref double labelCx, ref double labelCy, double axisAngleRad, string labelText, List<Geometry> obstaclePolygons, int currentObstacleIndex = -1, Geometry slabUnion = null)
+        private static void TryFindClearLabelPositionForContinuous(GeometryFactory factory, ref double labelCx, ref double labelCy, double axisAngleRad, string labelText, List<Geometry> obstaclePolygons, int currentObstacleIndex = -1, Geometry slabUnion = null, double labelHeightCm = 12.0)
         {
-            const double labelHeightCm = 12.0;
             const double toleranceCm = 5.0;
             const double extraShiftCm = 4.0;
             double labelWidthCm = Math.Max(55.0, (labelText?.Length ?? 0) * 7.0);
@@ -6327,7 +6368,7 @@ namespace ST4PlanIdCiz
                 DrawBeamLabel(tr, btr, db, labelInsert, labelText, labelHeightCm, beamAngleRad, bottomLeftAligned: !useBottomRight);
 
                 // Kot takımı: sadece kiriş üst kotu kat kotundan farklıysa; birleştirilmeden önceki poligon (drawnGeometry) merkezine ortalı; kirişin fixlendiği aksa göre döndürülür
-                if (!_isTemel50Mode && (firstBeam.Point1KotCm != 0 || firstBeam.Point2KotCm != 0))
+                if (!IsTemelPlanDraw && (firstBeam.Point1KotCm != 0 || firstBeam.Point2KotCm != 0))
                 {
                     double floorElevM = floorInfo != null ? floorInfo.ElevationM : 0.0;
                     double topElevM = _model.BuildingBaseKotu + floorElevM + (Math.Max(firstBeam.Point1KotCm, firstBeam.Point2KotCm) / 100.0);
@@ -6445,7 +6486,7 @@ namespace ST4PlanIdCiz
                 DrawBeamLabel(tr, btr, db, labelInsert, labelText, wallLabelHeightCm, angleRad, LayerPerdeYazisi, bottomLeftAligned: !isFixedX);
 
                 // Kot takımı: sadece perde üst kotu kat kotundan farklıysa; poligon merkezine ortalı; perdenin fixlendiği aksa göre döndürülür
-                if (!_isTemel50Mode && (beam.Point1KotCm != 0 || beam.Point2KotCm != 0))
+                if (!IsTemelPlanDraw && (beam.Point1KotCm != 0 || beam.Point2KotCm != 0))
                 {
                     var floorInfoPerde = _model.Floors.FirstOrDefault(f => f.FloorNo == beamFloor);
                     double floorElevM = floorInfoPerde != null ? floorInfoPerde.ElevationM : 0.0;
@@ -6483,7 +6524,8 @@ namespace ST4PlanIdCiz
             Geometry kolonPerdeUnion = kolonPerdeUnionForObstacles ?? BuildKolonPerdeUnion(floor, offsetX, offsetY);
             var kolonPerdeSafe = (kolonPerdeUnion != null && !kolonPerdeUnion.IsEmpty) ? EnsureBoundarySafe(kolonPerdeUnion, factory) : null;
             Geometry kolonPerdeBoundary = (kolonPerdeSafe != null && !kolonPerdeSafe.IsEmpty) ? kolonPerdeSafe.Boundary : null;
-            const double beamEndExtensionCm = 22.0;
+            double annWall = TemelFoundationAnnotMul;
+            double beamEndExtensionCm = 22.0 * annWall;
             const double touchEpsilonCm = 0.2;
 
             var wallList = new List<(Geometry poly, int fixedAxisId, BeamInfo beam, Point2d a, Point2d b)>();
@@ -6563,9 +6605,10 @@ namespace ST4PlanIdCiz
             catch { }
 
             Database db = btr.Database;
-            const double wallLabelHeightCm = 12.0;
-            const double wallLabelOffsetCm = 2.0;
-            const double wallLabelStepCm = 15.0;
+            double ann = TemelFoundationAnnotMul;
+            double wallLabelHeightCm = 12.0 * ann;
+            double wallLabelOffsetCm = 2.0 * ann;
+            double wallLabelStepCm = 15.0 * ann;
             int maxWallNumeroFloor = wallLabelInfos.Count > 0 ? wallLabelInfos.Max(x => GetBeamNumero(x.beamId)) : 0;
             int wallPadFloor = GetLabelPadWidth(maxWallNumeroFloor);
             foreach (var (wallBeamId, drawnGeometry, beam, firstA, firstB) in wallLabelInfos)
@@ -6618,30 +6661,37 @@ namespace ST4PlanIdCiz
                 catch { }
                 bool isFixedX = beam.FixedAxisId >= 1001 && beam.FixedAxisId <= 1999;
                 double angleRad = Math.Atan2(u.Y, u.X);
+                double wallLabelPerpCm = pMin + wallLabelOffsetCm;
+                if (_temelFoundationScale == TemelFoundationPlanScale.Hundred)
+                {
+                    double pCenterAlongPerp = (wallCenter - firstA).DotProduct(perp);
+                    double inwardSign = pCenterAlongPerp >= wallLabelPerpCm ? 1.0 : -1.0;
+                    wallLabelPerpCm -= inwardSign * Temel100PerdeLabelShiftAlongPerpCm;
+                }
                 Point2d insertion;
                 if (isFixedX)
                 {
                     double tIns = Math.Max(tMin, tLineEnd - textWidthCm);
-                    insertion = firstA + u.MultiplyBy(tIns) + perp.MultiplyBy(pMin + wallLabelOffsetCm);
+                    insertion = firstA + u.MultiplyBy(tIns) + perp.MultiplyBy(wallLabelPerpCm);
                     while (obstacles != null && TextBoxIntersectsObstacles(insertion, textWidthCm, wallLabelHeightCm, angleRad, 0, obstacles, factory) && tIns > tMin + 1e-6)
                     {
                         tIns -= wallLabelStepCm;
                         if (tIns < tMin) { tIns = tMin; break; }
-                        insertion = firstA + u.MultiplyBy(tIns) + perp.MultiplyBy(pMin + wallLabelOffsetCm);
+                        insertion = firstA + u.MultiplyBy(tIns) + perp.MultiplyBy(wallLabelPerpCm);
                     }
-                    insertion = firstA + u.MultiplyBy(tIns) + perp.MultiplyBy(pMin + wallLabelOffsetCm);
+                    insertion = firstA + u.MultiplyBy(tIns) + perp.MultiplyBy(wallLabelPerpCm);
                 }
                 else
                 {
                     double tIns = Math.Max(tMin, Math.Min(tMax - textWidthCm, tLineStart));
-                    insertion = firstA + u.MultiplyBy(tIns) + perp.MultiplyBy(pMin + wallLabelOffsetCm);
+                    insertion = firstA + u.MultiplyBy(tIns) + perp.MultiplyBy(wallLabelPerpCm);
                     while (obstacles != null && TextBoxIntersectsObstacles(insertion, textWidthCm, wallLabelHeightCm, angleRad, 0, obstacles, factory) && tIns + textWidthCm <= tMax - 1e-6)
                     {
                         tIns += wallLabelStepCm;
                         if (tIns + textWidthCm > tMax) { tIns = Math.Max(tMin, tMax - textWidthCm); break; }
-                        insertion = firstA + u.MultiplyBy(tIns) + perp.MultiplyBy(pMin + wallLabelOffsetCm);
+                        insertion = firstA + u.MultiplyBy(tIns) + perp.MultiplyBy(wallLabelPerpCm);
                     }
-                    insertion = firstA + u.MultiplyBy(tIns) + perp.MultiplyBy(pMin + wallLabelOffsetCm);
+                    insertion = firstA + u.MultiplyBy(tIns) + perp.MultiplyBy(wallLabelPerpCm);
                 }
                 GetLabelBoxCorners(insertion, textWidthCm, wallLabelHeightCm, angleRad, out _, out Point2d br, out _, out _);
                 Point3d labelInsert = isFixedX ? new Point3d(br.X, br.Y, 0) : new Point3d(insertion.X, insertion.Y, 0);
@@ -7544,7 +7594,7 @@ namespace ST4PlanIdCiz
         /// <summary>Üst kot, yatay kot işareti ve alt kot takımını verilen merkeze ortalı çizer. Kiriş/perde kot etiketi için kullanılır. rotationRad: kiriş/perdenin fixlendiği aksa göre dönüş (radyan); 0 ise yatay.</summary>
         private void DrawKotBlockAtCenter(Transaction tr, BlockTableRecord btr, Database db, double centerX, double centerY, double topElevM, double bottomElevM, double rotationRad = 0)
         {
-            if (_isTemel50Mode) return;
+            if (IsTemelPlanDraw) return;
             const double kotArasiMesafeCm = 10.0;
             const double kotTextHeightCm = 8.0;
             const double blockHalfWidthCm = 21.75;
@@ -7698,14 +7748,15 @@ namespace ST4PlanIdCiz
             }
         }
 
-        /// <summary>Yalnizca TEMEL50ST4: gömülü antet_02.dwg, SheetView alt cizgisi en alt yatay kolon aksindan 500 cm asagida olacak sekilde yerlestirilir.</summary>
+        /// <summary>TEMEL50ST4 / TEMEL100ST4: gömülü antet_02.dwg. TEMEL100: germe öncesi SheetViewOut yüksekliği ve sağ boşluk hedefi yarılanır; 2× sonrası plan cm'de ~9000 ve balon+640 olur. Üst taşma eşiği aynı mantıkla ölçek öncesine çevrilir.</summary>
         private void TryDrawTemelAntetFromDxf(Transaction tr, BlockTableRecord btr, double layoutMinX, double layoutMinY, double layoutMaxX, double layoutMaxY, double leftSectionMinX, double xRightBalloonTemel, double yLowestHorizontalAxis, string st4SourcePath, Editor ed)
         {
+            string antetCmd = _temelFoundationScale == TemelFoundationPlanScale.Hundred ? "TEMEL100ST4" : "TEMEL50ST4";
             double contentW = layoutMaxX - layoutMinX;
             double contentH = layoutMaxY - layoutMinY;
             if (contentW < 10.0 || contentH < 10.0)
             {
-                ed?.WriteMessage("\nTEMEL50ST4: Antet icin plan sinirlari gecersiz.");
+                ed?.WriteMessage("\n{0}: Antet icin plan sinirlari gecersiz.", antetCmd);
                 return;
             }
 
@@ -7735,7 +7786,7 @@ namespace ST4PlanIdCiz
                 }
                 if (ids.Count == 0)
                 {
-                    ed?.WriteMessage("\nTEMEL50ST4: antet dosyasinda Model Space bos.");
+                    ed?.WriteMessage("\n{0}: antet dosyasinda Model Space bos.", antetCmd);
                     return;
                 }
 
@@ -7759,7 +7810,7 @@ namespace ST4PlanIdCiz
                         var entDst = tr.GetObject(pair.Value, OpenMode.ForWrite) as Entity;
                         if (entDst == null) continue;
                         RemapAntetLayer(entDst);
-                        ReplaceAntetDynamicTexts(entDst, antetValues, null);
+                        ReplaceAntetDynamicTexts(entDst, antetValues, null, useTemelAntetScaleOneHundred: _temelFoundationScale == TemelFoundationPlanScale.Hundred);
                         if (entSrc.BlockId.Equals(sourceMs.ObjectId))
                         {
                             entDst.TransformBy(xf);
@@ -7773,25 +7824,55 @@ namespace ST4PlanIdCiz
                 double placedSheetViewTop = targetSheetViewBottom + (5758.942367378282 - AntetDxfSheetViewYmin);
                 double placedSheetViewOutBottom = targetSheetViewBottom + (AntetDxfSheetViewOutYmin - AntetDxfSheetViewYmin);
                 double placedSheetViewOutTop = targetSheetViewBottom + (AntetDxfSheetViewOutYmax - AntetDxfSheetViewYmin);
-                double targetSheetViewRight = xRightBalloonTemel + AntetTargetRightExtraCm;
+                // TEMEL100: germe öncesi koordinatlarda sağ kenar; 2× ölçek sonrası plan cm'de (balon + gap) olur.
+                double desiredSheetViewRightPostScale = xRightBalloonTemel + (_temelFoundationScale == TemelFoundationPlanScale.Hundred
+                    ? Temel100AntetRightGapFromRightAxisBalloonCm
+                    : AntetTargetRightExtraCm);
+                double targetSheetViewRight = _temelFoundationScale == TemelFoundationPlanScale.Hundred
+                    ? (targetSheetViewLeft + (desiredSheetViewRightPostScale - targetSheetViewLeft) * 0.5)
+                    : desiredSheetViewRightPostScale;
                 double deltaRight = targetSheetViewRight - placedSheetViewRight;
                 if (Math.Abs(deltaRight) > 1e-6)
                     StretchAntetRightBandWithoutScaling(tr, rootEntityIds, placedSheetViewRight, deltaRight);
 
                 // Yukseklik kurali sadece SheetViewOut katmanina gore uygulanir.
-                double targetSheetViewOutTop = placedSheetViewOutBottom + TemelAntetBaslangicYukseklikCm;
-                if (layoutMaxY > targetSheetViewOutTop + 1e-6)
+                // TEMEL100: 2× ölçek SheetViewOut yüksekliğini ikiye katlar; hedef 9000 plan cm ise germe öncesi +4500.
+                double sheetOutAddCm = TemelAntetSheetViewOutBaslangicYukseklikCm;
+                double stretchStepCm = TemelAntetEkStretchAdimCm;
+                if (_temelFoundationScale == TemelFoundationPlanScale.Hundred)
                 {
-                    double overflow = layoutMaxY - targetSheetViewOutTop;
-                    targetSheetViewOutTop += Math.Ceiling(overflow / TemelAntetEkStretchAdimCm) * TemelAntetEkStretchAdimCm;
+                    sheetOutAddCm *= 0.5;
+                    stretchStepCm *= 0.5;
+                }
+                double targetSheetViewOutTop = placedSheetViewOutBottom + sheetOutAddCm;
+                // TEMEL100: üst germe eşiği plan Y'sinde; 2× sonrası O+2*(T-O) >= layoutMaxY → T >= O+(layoutMaxY-O)/2.
+                double stretchNeedTopPreScale = layoutMaxY;
+                if (_temelFoundationScale == TemelFoundationPlanScale.Hundred)
+                    stretchNeedTopPreScale = targetSheetViewBottom + (layoutMaxY - targetSheetViewBottom) * 0.5;
+                if (stretchNeedTopPreScale > targetSheetViewOutTop + 1e-6)
+                {
+                    double overflow = stretchNeedTopPreScale - targetSheetViewOutTop;
+                    targetSheetViewOutTop += Math.Ceiling(overflow / stretchStepCm) * stretchStepCm;
                 }
                 double deltaTop = targetSheetViewOutTop - placedSheetViewOutTop;
                 if (Math.Abs(deltaTop) > 1e-6)
                     StretchAntetTopBandWithoutScaling(tr, rootEntityIds, placedSheetViewTop, deltaTop);
+
+                if (_temelFoundationScale == TemelFoundationPlanScale.Hundred)
+                {
+                    var scaleAt = new Point3d(targetSheetViewLeft, targetSheetViewBottom, 0);
+                    var sc = Matrix3d.Scaling(2.0, scaleAt);
+                    foreach (ObjectId rid in rootEntityIds)
+                    {
+                        if (!rid.IsValid) continue;
+                        var ent = tr.GetObject(rid, OpenMode.ForWrite) as Entity;
+                        ent?.TransformBy(sc);
+                    }
+                }
             }
             catch (Exception ex)
             {
-                ed?.WriteMessage("\nTEMEL50ST4: Antet yuklenemedi: {0}", ex.Message);
+                ed?.WriteMessage("\n{0}: Antet yuklenemedi: {1}", antetCmd, ex.Message);
             }
             finally
             {
@@ -8292,22 +8373,22 @@ namespace ST4PlanIdCiz
             catch { }
         }
 
-        private static void ReplaceAntetDynamicTexts(Entity ent, AntetValueSet v, string antetPlanTitle)
+        private static void ReplaceAntetDynamicTexts(Entity ent, AntetValueSet v, string antetPlanTitle, bool useTemelAntetScaleOneHundred = false)
         {
             if (v == null) return;
 
             if (ent is DBText t)
             {
-                t.TextString = ReplaceAntetTextCore(t.TextString, v, antetPlanTitle);
+                t.TextString = ReplaceAntetTextCore(t.TextString, v, antetPlanTitle, useTemelAntetScaleOneHundred);
                 return;
             }
             if (ent is MText mt)
             {
-                mt.Contents = ReplaceAntetTextCore(mt.Contents, v, antetPlanTitle);
+                mt.Contents = ReplaceAntetTextCore(mt.Contents, v, antetPlanTitle, useTemelAntetScaleOneHundred);
             }
         }
 
-        private static string ReplaceAntetTextCore(string text, AntetValueSet v, string antetPlanTitle)
+        private static string ReplaceAntetTextCore(string text, AntetValueSet v, string antetPlanTitle, bool useTemelAntetScaleOneHundred = false)
         {
             string s = text ?? string.Empty;
             if (!string.IsNullOrWhiteSpace(antetPlanTitle) &&
@@ -8316,6 +8397,9 @@ namespace ST4PlanIdCiz
                 bool isUnderlined = s.IndexOf("%%u", StringComparison.OrdinalIgnoreCase) >= 0;
                 return isUnderlined ? ("%%u" + antetPlanTitle + "%%u") : antetPlanTitle;
             }
+            if (useTemelAntetScaleOneHundred &&
+                string.Equals(s.Trim(), "1:50", StringComparison.OrdinalIgnoreCase))
+                return "1:100";
             if (!string.IsNullOrWhiteSpace(antetPlanTitle) &&
                 string.Equals(s.Trim(), "1:50", StringComparison.OrdinalIgnoreCase))
             {
@@ -9671,7 +9755,8 @@ namespace ST4PlanIdCiz
                     string labelText = string.Format(CultureInfo.InvariantCulture, "T-{0} ({1}/{2})", temelNo, eniStr, yukseklik);
                     int labelAxisId = cf.LabelAxisId != 0 ? cf.LabelAxisId : cf.FixedAxisId;
                     double axisAngleRad = GetAxisLineAngleRad(labelAxisId);
-                    TryFindClearLabelPositionForContinuous(factory, ref labelCx, ref labelCy, axisAngleRad, labelText, continuousRectsForLabelCheck, cfIndex, slabUnion);
+                    double temelIsmiH = 12.0 * TemelFoundationAnnotMul;
+                    TryFindClearLabelPositionForContinuous(factory, ref labelCx, ref labelCy, axisAngleRad, labelText, continuousRectsForLabelCheck, cfIndex, slabUnion, labelHeightCm: temelIsmiH);
                     DrawTemelIsmiLabel(tr, btr, btr.Database, labelCx, labelCy, labelText, axisAngleRad, bottomRightAligned: true);
                 }
                 cfIndex++;
@@ -10069,11 +10154,11 @@ namespace ST4PlanIdCiz
             }
         }
 
-        /// <summary>Radye temel temel hatılı: TH-01 (en/yükseklik). Sürekli temel altı hatılı: TH (en/yükseklik), numara ve - yok. Yazı yüksekliği 12 cm.</summary>
+        /// <summary>Radye temel temel hatılı: TH-01 (en/yükseklik). Sürekli temel altı hatılı: TH (en/yükseklik), numara ve - yok. TEMEL100: yazı 1.5×.</summary>
         private void DrawRadyeTemelTemelHatiliLabels(Transaction tr, BlockTableRecord btr, Database db, List<(Polygon poly, double widthCm, double heightDisplayCm, double kot, bool isRadyeTemelHatili)> pieces)
         {
             if (pieces == null || pieces.Count == 0) return;
-            const double labelHeightCm = 12.0;
+            double labelHeightCm = 12.0 * TemelFoundationAnnotMul;
             var radyeIndices = pieces.Select((p, i) => (p, i)).Where(x => x.p.isRadyeTemelHatili).Select(x => x.i).ToList();
             var keyToIndices = new Dictionary<(int w, int h, int k), List<int>>();
             foreach (int i in radyeIndices)
@@ -10353,19 +10438,20 @@ namespace ST4PlanIdCiz
         private void DrawFloorTitle(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY,
             (double Xmin, double Xmax, double Ymin, double Ymax) ext, bool isFoundationPlan = false, double extraYOffsetCm = 0.0)
         {
-            if (isFoundationPlan && _isTemel50Mode)
+            if (isFoundationPlan && IsTemelPlanDraw)
             {
                 GetSectionCutBalloonExtents(offsetX, offsetY, ext,
                     out _, out _, out double yBottomBalloon, out _,
                     out _, out _, out _, out _);
                 double xCenter = offsetX + (ext.Xmin + ext.Xmax) / 2.0;
-                double yTopAnchor = yBottomBalloon - Temel50BaslikAltAksBalonBoslukCm;
+                double fa = TemelFoundationAnnotMul;
+                double yTopAnchor = yBottomBalloon - Temel50BaslikAltAksBalonBoslukCm * fa;
                 var txt = new DBText
                 {
                     Layer = LayerBaslik,
-                    Height = 30.0,
+                    Height = 30.0 * fa,
                     TextStyleId = GetOrCreateYaziBeykentTextStyle(tr, btr.Database),
-                    TextString = "%%uTEMEL APLIKASYON PLANI (1:50)%%u",
+                    TextString = "%%uTEMEL APLIKASYON PLANI" + TemelKesitScaleSuffix + "%%u",
                     HorizontalMode = TextHorizontalMode.TextCenter,
                     VerticalMode = TextVerticalMode.TextTop,
                     Position = new Point3d(xCenter, yTopAnchor, 0),
@@ -10494,7 +10580,7 @@ namespace ST4PlanIdCiz
         /// <summary>Sürekli/tekil temel ve bağ kirişi etiketi: TEMEL ISMI (BEYKENT) katmanı, 12 cm yükseklik, YAZI (BEYKENT) stili, 0.2 mm kalınlık. bottomRightAligned: sağ alt (metin sola ve yukarı). bottomLeftAligned: sol alt (metin sağa ve yukarı).</summary>
         private void DrawTemelIsmiLabel(Transaction tr, BlockTableRecord btr, Database db, double centerX, double centerY, string labelText, double rotationRad, bool bottomRightAligned = false, bool bottomLeftAligned = false)
         {
-            const double labelHeightCm = 12.0;
+            double labelHeightCm = 12.0 * TemelFoundationAnnotMul;
             ObjectId textStyleId = GetOrCreateYaziBeykentTextStyle(tr, db);
             var txt = new DBText
             {

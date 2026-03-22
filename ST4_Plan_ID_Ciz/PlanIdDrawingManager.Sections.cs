@@ -843,7 +843,8 @@ namespace ST4PlanIdCiz
             List<FloorInfo> similarFloorsForKot = null)
         {
             double xmin = ext.Xmin, xmax = ext.Xmax, ymin = ext.Ymin, ymax = ext.Ymax;
-            double e = SectionLineExtendCm;
+            double fa = isFoundationPlan ? TemelFoundationAnnotMul : 1.0;
+            double e = SectionLineExtendCm * fa;
             Geometry occ = BuildCutOccupancyUnion(floor, isFoundationPlan);
 
             // Her zaman: yatay kesit çizgisi → KESİT 1-1 üstte; dikey kesit → KESİT 2-2 solda
@@ -861,10 +862,10 @@ namespace ST4PlanIdCiz
             Vector2d dirLeft = new Vector2d(0, 1);
 
             var colExtra = GetColumnTableExtraData(floor);
-            DrawSectionCutsRevitStyleOnPlan(tr, btr, db, offsetX, offsetY, ext, xvCut, yhCut, "A", "B");
-            double extC = AxisExtensionBeyondBoundaryCm;
-            double Rbal = KesitEtiketRadiusCm;
-            const double sectionLayoutPadCm = 280.0;
+            DrawSectionCutsRevitStyleOnPlan(tr, btr, db, offsetX, offsetY, ext, xvCut, yhCut, "A", "B", fa);
+            double extC = AxisExtensionBeyondBoundaryCm * fa;
+            double Rbal = KesitEtiketRadiusCm * fa;
+            double sectionLayoutPadCm = 280.0 * fa;
             layoutMinX = offsetX + xmin - extC - 2.0 * Rbal - sectionLayoutPadCm;
             layoutMaxX = offsetX + xmax + extC + 2.0 * Rbal + sectionLayoutPadCm;
             layoutMinY = offsetY + ymin - extC - 2.0 * Rbal - sectionLayoutPadCm;
@@ -894,14 +895,14 @@ namespace ST4PlanIdCiz
             if (TryGetKesitSiniriPlacementZBounds(slicesTop, isFoundationPlan, out double zLoKesitT))
             {
                 double yKesitSiniriAltOfset = zLoKesitT - minZT;
-                double yKesitSiniriAltHedef = yAksBalonUstDisYuzey + SectionMinAboveAxisTopLabelsCm;
+                double yKesitSiniriAltHedef = yAksBalonUstDisYuzey + SectionMinAboveAxisTopLabelsCm * fa;
                 contentTopY = yKesitSiniriAltHedef - yKesitSiniriAltOfset;
             }
             else
             {
-                contentTopY = yAksBalonUstDisYuzey + SectionMinAboveAxisTopLabelsCm + 12.0;
+                contentTopY = yAksBalonUstDisYuzey + SectionMinAboveAxisTopLabelsCm * fa + 12.0 * fa;
             }
-            ObjectId planOlcuDimId = GetOrCreatePlanOlcuDimStyle(tr, db, 12.0);
+            ObjectId planOlcuDimId = GetOrCreatePlanOlcuDimStyle(tr, db, 12.0 * fa, fa);
             DrawSchematicFromSlicesOneToOne(tr, btr, slicesTop, contentTopX, contentTopY, aminT, minZT, spanAT, spanZT, horizontalAlongX: true, mirrorElevationX: false, isFoundationPlan, drawReferenceAxis: false);
             DrawKesitSiniriFromBeams(tr, btr, slicesTop, contentTopX, contentTopY, aminT, minZT, spanZT, horizontalAlongX: true, mirrorElevationX: false, isFoundationPlan);
             DrawKesitSchematicDimensions(tr, btr, slicesTop, contentTopX, contentTopY, aminT, minZT, spanZT, horizontalAlongX: true, mirrorElevationX: false, isFoundationPlan, planOlcuDimId);
@@ -912,15 +913,21 @@ namespace ST4PlanIdCiz
             try { DrawKesitSchematicElevationKots(tr, btr, db, slicesTop, contentTopX, contentTopY, aminT, minZT, spanZT, horizontalAlongX: true, mirrorElevationX: false, isFoundationPlan, similarKotSuffix); }
             catch { /* kesit kotları — planın geri kalanı çizilsin */ }
             // A-A başlık: üst aks balon üst yüzeyinden 60 cm yukarıda (metin alt kenarı); TextTop için üst hizası = alt + yükseklik
-            double yAaBaslikUstHizasi = yAksBalonUstDisYuzey + KesitIsmiUstAksBalonUstuBoslukCm + KesitBaslikMetinYukseklikCm;
-            bool useScaledKesitTitle = (isFoundationPlan && _isTemel50Mode) || (!isFoundationPlan && _isKalip50Mode);
-            string aaTitle = useScaledKesitTitle ? "A-A KESİTİ (1:50)" : "A-A KESİTİ";
+            double kesitBaslikHForLayout;
+            if (isFoundationPlan && IsTemelPlanDraw)
+                kesitBaslikHForLayout = KesitBaslikMetinYukseklikTemel50Cm * fa;
+            else
+                kesitBaslikHForLayout = KesitBaslikMetinYukseklikCm;
+            double yAaBaslikUstHizasi = yAksBalonUstDisYuzey + KesitIsmiUstAksBalonUstuBoslukCm * fa + kesitBaslikHForLayout;
+            bool useScaledKesitTitle = (isFoundationPlan && IsTemelPlanDraw) || (!isFoundationPlan && _isKalip50Mode);
+            string aaTitle = !useScaledKesitTitle ? "A-A KESİTİ"
+                : (isFoundationPlan && IsTemelPlanDraw ? "A-A KESİTİ" + TemelKesitScaleSuffix : "A-A KESİTİ (1:50)");
             DrawKesitTitleBelowSchematic(tr, btr, db, aaTitle, contentTopX + spanAT * 0.5, yAaBaslikUstHizasi);
             layoutMinX = Math.Min(layoutMinX, contentTopX - sectionLayoutPadCm);
             layoutMaxX = Math.Max(layoutMaxX, contentTopX + spanAT + sectionLayoutPadCm);
             layoutMinY = Math.Min(layoutMinY, contentTopY - sectionLayoutPadCm);
             layoutMaxY = Math.Max(layoutMaxY, contentTopY + spanZT + sectionLayoutPadCm);
-            double aaTitleHeight = _isTemel50Mode ? KesitBaslikMetinYukseklikTemel50Cm : KesitBaslikMetinYukseklikCm;
+            double aaTitleHeight = kesitBaslikHForLayout;
             layoutMinY = Math.Min(layoutMinY, yAaBaslikUstHizasi - aaTitleHeight - sectionLayoutPadCm);
             layoutMaxY = Math.Max(layoutMaxY, yAaBaslikUstHizasi + sectionLayoutPadCm);
 
@@ -935,12 +942,12 @@ namespace ST4PlanIdCiz
             if (TryGetKesitSiniriPlacementZBounds(slicesLeft, isFoundationPlan, out double zLoKesitL))
             {
                 double xKesitSiniriSagOfset = spanZL - (zLoKesitL - minZL);
-                double xKesitSiniriSagHedef = xAksBalonSolDisYuzey - SectionMinLeftOfAxisLeftLabelsCm;
+                double xKesitSiniriSagHedef = xAksBalonSolDisYuzey - SectionMinLeftOfAxisLeftLabelsCm * fa;
                 contentLeftX = xKesitSiniriSagHedef - xKesitSiniriSagOfset;
             }
             else
             {
-                contentLeftX = xAksBalonSolDisYuzey - SectionMinLeftOfAxisLeftLabelsCm - spanZL - 28.0;
+                contentLeftX = xAksBalonSolDisYuzey - SectionMinLeftOfAxisLeftLabelsCm * fa - spanZL - 28.0 * fa;
             }
             DrawSchematicFromSlicesOneToOne(tr, btr, slicesLeft, contentLeftX, contentLeftY, aminL, minZL, spanAL, spanZL, horizontalAlongX: false, mirrorElevationX: true, isFoundationPlan, drawReferenceAxis: false);
             DrawKesitSiniriFromBeams(tr, btr, slicesLeft, contentLeftX, contentLeftY, aminL, minZL, spanZL, horizontalAlongX: false, mirrorElevationX: true, isFoundationPlan);
@@ -951,9 +958,10 @@ namespace ST4PlanIdCiz
             try { DrawKesitSchematicElevationKots(tr, btr, db, slicesLeft, contentLeftX, contentLeftY, aminL, minZL, spanZL, horizontalAlongX: false, mirrorElevationX: true, isFoundationPlan, similarKotSuffix); }
             catch { /* kesit kotları */ }
             // B-B başlık: sol aks balon sol dış yüzeyinden 60 cm sola; dikey metnin plana bakan sağ kenarı ≈ merkez + yükseklik/2
-            double bbTitleHeight = _isTemel50Mode ? KesitBaslikMetinYukseklikTemel50Cm : KesitBaslikMetinYukseklikCm;
-            double xBbBaslikMerkez = xAksBalonSolDisYuzey - KesitIsmiSolAksBalonSolBoslukCm - bbTitleHeight * 0.5;
-            string bbTitle = useScaledKesitTitle ? "B-B KESİTİ (1:50)" : "B-B KESİTİ";
+            double bbTitleHeight = kesitBaslikHForLayout;
+            double xBbBaslikMerkez = xAksBalonSolDisYuzey - KesitIsmiSolAksBalonSolBoslukCm * fa - bbTitleHeight * 0.5;
+            string bbTitle = !useScaledKesitTitle ? "B-B KESİTİ"
+                : (isFoundationPlan && IsTemelPlanDraw ? "B-B KESİTİ" + TemelKesitScaleSuffix : "B-B KESİTİ (1:50)");
             DrawKesitTitleVerticalRightOfSection(tr, btr, db, bbTitle, xBbBaslikMerkez, contentLeftY + spanAL * 0.5);
             // Antet sol hizasi icin referans: soldaki kesitin kirpilmis NET geometri sinirinin en solu.
             // (kolon/perde/temel/temel hatili cizimi; baslik/metinler dahil degil)
@@ -2454,10 +2462,15 @@ namespace ST4PlanIdCiz
         /// </summary>
         private static void DrawKesitKotClassicSymbol(Transaction tr, BlockTableRecord btr, double apexX, double apexY, double rotationRad)
         {
-            double h = KesitKotTriHeightCm;
-            double w = KesitKotTriHalfWidthCm;
-            double eSec = KesitKotExtTowardSectionCm;
-            double eR = KesitKotExtTopRightCm;
+            DrawKesitKotClassicSymbol(tr, btr, apexX, apexY, rotationRad, 1.0);
+        }
+
+        private static void DrawKesitKotClassicSymbol(Transaction tr, BlockTableRecord btr, double apexX, double apexY, double rotationRad, double geomScale)
+        {
+            double h = KesitKotTriHeightCm * geomScale;
+            double w = KesitKotTriHalfWidthCm * geomScale;
+            double eSec = KesitKotExtTowardSectionCm * geomScale;
+            double eR = KesitKotExtTopRightCm * geomScale;
             double c = Math.Cos(rotationRad);
             double s = Math.Sin(rotationRad);
             void Lw(double lx, double ly, out double wx, out double wy)
@@ -2488,10 +2501,15 @@ namespace ST4PlanIdCiz
         /// <summary>Kesit kotu: <see cref="DBText"/> (MText değil); plan kotlarıyla aynı LEFT + BOTTOM + <c>AdjustAlignment(db)</c>.</summary>
         private static void AppendKesitKotElevationDbText(Transaction tr, BlockTableRecord btr, Database db, ObjectId textStyleId, string text, double x, double y, double rotationRad)
         {
+            AppendKesitKotElevationDbText(tr, btr, db, textStyleId, text, x, y, rotationRad, KesitKotTextHeightCm);
+        }
+
+        private static void AppendKesitKotElevationDbText(Transaction tr, BlockTableRecord btr, Database db, ObjectId textStyleId, string text, double x, double y, double rotationRad, double textHeightCm)
+        {
             var txt = new DBText();
             txt.SetDatabaseDefaults();
             txt.Layer = LayerKotYazi;
-            txt.Height = KesitKotTextHeightCm;
+            txt.Height = textHeightCm;
             txt.TextStyleId = textStyleId;
             txt.TextString = text ?? string.Empty;
             txt.HorizontalMode = TextHorizontalMode.TextLeft;
@@ -2515,7 +2533,8 @@ namespace ST4PlanIdCiz
             var rawZ = CollectKesitKotElevationZs(slices, isFoundationPlan);
             var zsAsc = MergeKesitElevationZsAscending(rawZ, KesitKotMergeTolCm);
             if (zsAsc.Count == 0) return;
-            double[] crowdedShiftLower = BuildKesitKotCrowdedShiftForLowerElevation(zsAsc, KesitKotCrowdedSeparationMinCm, KesitKotCrowdedShiftLowerCm);
+            double km = isFoundationPlan ? TemelFoundationAnnotMul : 1.0;
+            double[] crowdedShiftLower = BuildKesitKotCrowdedShiftForLowerElevation(zsAsc, KesitKotCrowdedSeparationMinCm * km, KesitKotCrowdedShiftLowerCm * km);
             ObjectId styleId = GetOrCreateYaziBeykentTextStyle(tr, db);
             const double rotAa = 0.0;
             const double rotBb = Math.PI / 2.0;
@@ -2523,7 +2542,7 @@ namespace ST4PlanIdCiz
             if (horizontalAlongX)
             {
                 double xRight = originX + (aHi - amin);
-                double xDatum = xRight + KesitKotDatumGapFromSectionCm;
+                double xDatum = xRight + KesitKotDatumGapFromSectionCm * km;
                 foreach (double zElev in zsAsc.OrderByDescending(v => v))
                 {
                     int zi = IndexOfKesitMergedZ(zsAsc, zElev);
@@ -2532,21 +2551,21 @@ namespace ST4PlanIdCiz
                     double apexY = originY + (zElev - minZ);
                     if (!isFoundationPlan)
                         apexX -= KesitKotKalipPlanAaShiftLeftCm;
-                    DrawKesitKotClassicSymbol(tr, btr, apexX, apexY, rotAa);
-                    double lxText = KesitKotTriHalfWidthCm;
-                    double lyText = KesitKotTriHeightCm + KesitKotTextAboveExtensionCm;
+                    DrawKesitKotClassicSymbol(tr, btr, apexX, apexY, rotAa, km);
+                    double lxText = KesitKotTriHalfWidthCm * km;
+                    double lyText = (KesitKotTriHeightCm + KesitKotTextAboveExtensionCm) * km;
                     double c = Math.Cos(rotAa), si = Math.Sin(rotAa);
                     double textX = apexX + c * lxText - si * lyText;
                     double textY = apexY + si * lxText + c * lyText;
                     string kotText = FormatKesitKotElevationString(zElev);
                     if (!string.IsNullOrWhiteSpace(similarKotSuffix)) kotText += similarKotSuffix;
-                    AppendKesitKotElevationDbText(tr, btr, db, styleId, kotText, textX, textY, rotAa);
+                    AppendKesitKotElevationDbText(tr, btr, db, styleId, kotText, textX, textY, rotAa, KesitKotTextHeightCm * km);
                 }
             }
             else
             {
                 double yTop = originY + (aHi - amin);
-                double apexYRow = yTop + KesitKotBbDatumGapFromSectionCm;
+                double apexYRow = yTop + KesitKotBbDatumGapFromSectionCm * km;
                 foreach (double zElev in zsAsc.OrderBy(v => v))
                 {
                     int zi = IndexOfKesitMergedZ(zsAsc, zElev);
@@ -2555,24 +2574,26 @@ namespace ST4PlanIdCiz
                     double apexY = apexYRow + extraUp;
                     if (!isFoundationPlan)
                         apexY -= KesitKotKalipPlanBbShiftDownCm;
-                    DrawKesitKotClassicSymbol(tr, btr, apexX, apexY, rotBb);
-                    double lxText = KesitKotTriHalfWidthCm;
-                    double lyText = KesitKotTriHeightCm + KesitKotTextAboveExtensionCm;
+                    DrawKesitKotClassicSymbol(tr, btr, apexX, apexY, rotBb, km);
+                    double lxText = KesitKotTriHalfWidthCm * km;
+                    double lyText = (KesitKotTriHeightCm + KesitKotTextAboveExtensionCm) * km;
                     double c = Math.Cos(rotBb), si = Math.Sin(rotBb);
                     double textX = apexX + c * lxText - si * lyText;
                     double textY = apexY + si * lxText + c * lyText;
                     string kotText = FormatKesitKotElevationString(zElev);
                     if (!string.IsNullOrWhiteSpace(similarKotSuffix)) kotText += similarKotSuffix;
-                    AppendKesitKotElevationDbText(tr, btr, db, styleId, kotText, textX, textY, rotBb);
+                    AppendKesitKotElevationDbText(tr, btr, db, styleId, kotText, textX, textY, rotBb, KesitKotTextHeightCm * km);
                 }
             }
         }
 
-        private static string BuildSimilarFloorKotSuffix(List<FloorInfo> similarFloors)
+        // Benzer kat parantez kotları: kesit Z ile aynı mutlak cm = (BuildingBaseKotu + ElevationM) * 100.
+        private string BuildSimilarFloorKotSuffix(List<FloorInfo> similarFloors)
         {
             if (similarFloors == null || similarFloors.Count == 0) return null;
+            double baseM = _model?.BuildingBaseKotu ?? 0.0;
             var parts = similarFloors
-                .Select(f => FormatKesitKotElevationString((f?.ElevationM ?? 0.0) * 100.0))
+                .Select(f => FormatKesitKotElevationString((baseM + (f?.ElevationM ?? 0.0)) * 100.0))
                 .Where(s => !string.IsNullOrWhiteSpace(s))
                 .Distinct(StringComparer.Ordinal)
                 .ToList();
@@ -2662,13 +2683,15 @@ namespace ST4PlanIdCiz
         /// <summary>A-A yatay kesit başlığı; <see cref="TextVerticalMode.TextTop"/> — <paramref name="yTopAnchor"/> metin üst kenarı.</summary>
         private void DrawKesitTitleBelowSchematic(Transaction tr, BlockTableRecord btr, Database db, string title, double cx, double yTopAnchor)
         {
-            double titleHeight = _isTemel50Mode ? KesitBaslikMetinYukseklikTemel50Cm : KesitBaslikMetinYukseklikCm;
+            double titleHeight = IsTemelPlanDraw
+                ? KesitBaslikMetinYukseklikTemel50Cm * TemelFoundationAnnotMul
+                : KesitBaslikMetinYukseklikCm;
             var txt = new DBText
             {
                 Layer = LayerKesitIsmi,
                 Height = titleHeight,
                 TextStyleId = GetOrCreateYaziBeykentTextStyle(tr, db),
-                TextString = _isTemel50Mode ? ("%%u" + title + "%%u") : title,
+                TextString = IsTemelPlanDraw ? ("%%u" + title + "%%u") : title,
                 HorizontalMode = TextHorizontalMode.TextCenter,
                 VerticalMode = TextVerticalMode.TextTop,
                 Position = new Point3d(cx, yTopAnchor, 0),
@@ -2680,13 +2703,15 @@ namespace ST4PlanIdCiz
 
         private void DrawKesitTitleVerticalRightOfSection(Transaction tr, BlockTableRecord btr, Database db, string title, double x, double cy)
         {
-            double titleHeight = _isTemel50Mode ? KesitBaslikMetinYukseklikTemel50Cm : KesitBaslikMetinYukseklikCm;
+            double titleHeight = IsTemelPlanDraw
+                ? KesitBaslikMetinYukseklikTemel50Cm * TemelFoundationAnnotMul
+                : KesitBaslikMetinYukseklikCm;
             var txt = new DBText
             {
                 Layer = LayerKesitIsmi,
                 Height = titleHeight,
                 TextStyleId = GetOrCreateYaziBeykentTextStyle(tr, db),
-                TextString = _isTemel50Mode ? ("%%u" + title + "%%u") : title,
+                TextString = IsTemelPlanDraw ? ("%%u" + title + "%%u") : title,
                 HorizontalMode = TextHorizontalMode.TextCenter,
                 VerticalMode = TextVerticalMode.TextVerticalMid,
                 Position = new Point3d(x, cy, 0),
@@ -2700,8 +2725,9 @@ namespace ST4PlanIdCiz
         /// <summary>Kesit çizgisi daireden kat sınırına 30 cm kala biter; dışa uzamaz.</summary>
         private void DrawSectionCutsRevitStyleOnPlan(Transaction tr, BlockTableRecord btr, Database db,
             double offsetX, double offsetY, (double Xmin, double Xmax, double Ymin, double Ymax) ext,
-            double xvCut, double yhCut, string letterH, string letterV)
+            double xvCut, double yhCut, string letterH, string letterV, double kesitEtiketScale = 1.0)
         {
+            if (kesitEtiketScale < 1e-6) kesitEtiketScale = 1.0;
             GetSectionCutBalloonExtents(offsetX, offsetY, ext, out double xL, out double xR, out double yB, out double yT,
                 out List<Point3d> xBot, out List<Point3d> xTop, out List<Point3d> yL, out List<Point3d> yR);
             double Xmi = offsetX + ext.Xmin, Xma = offsetX + ext.Xmax;
@@ -2713,8 +2739,8 @@ namespace ST4PlanIdCiz
 
             string hL = string.IsNullOrEmpty(letterH) ? "?" : letterH.ToUpperInvariant();
             string vL = string.IsNullOrEmpty(letterV) ? "?" : letterV.ToUpperInvariant();
-            double Rlab = KesitEtiketRadiusCm;
-            double g = SectionCutGapFromFloorBoundaryCm;
+            double Rlab = KesitEtiketRadiusCm * kesitEtiketScale;
+            double g = SectionCutGapFromFloorBoundaryCm * kesitEtiketScale;
             const double tol = 0.02;
 
             Point3d cHL = new Point3d(xL, yw, 0);
@@ -2729,8 +2755,8 @@ namespace ST4PlanIdCiz
                 AppendDashedCutSegment(tr, btr, dashId, xStartR, yw, xR - Rlab, yw);
             if (yL.Count + yR.Count > 0)
             {
-                DrawKesitEtiketDxfStyle(tr, btr, db, cHL, new Vector2d(1, 0), new Vector2d(0, 1), false, hL);
-                DrawKesitEtiketDxfStyle(tr, btr, db, cHR, new Vector2d(1, 0), new Vector2d(0, 1), true, hL);
+                DrawKesitEtiketDxfStyle(tr, btr, db, cHL, new Vector2d(1, 0), new Vector2d(0, 1), false, hL, kesitEtiketScale);
+                DrawKesitEtiketDxfStyle(tr, btr, db, cHR, new Vector2d(1, 0), new Vector2d(0, 1), true, hL, kesitEtiketScale);
             }
 
             Point3d cVB = new Point3d(xw, yB, 0);
@@ -2744,8 +2770,8 @@ namespace ST4PlanIdCiz
                 AppendDashedCutSegment(tr, btr, dashId, xw, yStartT, xw, yT - Rlab);
             if (xBot.Count + xTop.Count > 0)
             {
-                DrawKesitEtiketDxfStyle(tr, btr, db, cVB, new Vector2d(0, 1), new Vector2d(-1, 0), false, vL);
-                DrawKesitEtiketDxfStyle(tr, btr, db, cVT, new Vector2d(0, 1), new Vector2d(-1, 0), true, vL);
+                DrawKesitEtiketDxfStyle(tr, btr, db, cVB, new Vector2d(0, 1), new Vector2d(-1, 0), false, vL, kesitEtiketScale);
+                DrawKesitEtiketDxfStyle(tr, btr, db, cVT, new Vector2d(0, 1), new Vector2d(-1, 0), true, vL, kesitEtiketScale);
             }
         }
 
@@ -2799,9 +2825,10 @@ namespace ST4PlanIdCiz
         }
 
         private void DrawKesitEtiketDxfStyle(Transaction tr, BlockTableRecord btr, Database db, Point3d center,
-            Vector2d unitAlongCut, Vector2d unitArrow, bool mirrorAlong, string letter)
+            Vector2d unitAlongCut, Vector2d unitArrow, bool mirrorAlong, string letter, double geomScale = 1.0)
         {
-            double R = KesitEtiketRadiusCm;
+            if (geomScale < 1e-6) geomScale = 1.0;
+            double R = KesitEtiketRadiusCm * geomScale;
             var t = unitAlongCut.GetNormal();
             var n = unitArrow.GetNormal();
             double w = R * Math.Sqrt(2.0);
@@ -2823,7 +2850,7 @@ namespace ST4PlanIdCiz
             var dt = new DBText
             {
                 Layer = LayerKesitIsmi,
-                Height = KesitEtiketTextHeightCm,
+                Height = KesitEtiketTextHeightCm * geomScale,
                 TextStyleId = GetOrCreateYaziBeykentTextStyle(tr, db),
                 TextString = ch,
                 HorizontalMode = TextHorizontalMode.TextCenter,
@@ -3660,11 +3687,12 @@ namespace ST4PlanIdCiz
             bool horizontalAlongX, bool mirrorElevationX, bool isFoundationPlan)
         {
             if (slices == null || slices.Count == 0) return;
-            const double beamUnderGap = 5.0;
-            const double siniriGap = 12.0;
-            const double labelH = 11.0;
+            double dm = isFoundationPlan ? TemelFoundationAnnotMul : 1.0;
+            double beamUnderGap = 5.0 * dm;
+            double siniriGap = 12.0 * dm;
+            double labelH = 11.0 * dm;
             const double rotDikKesit = Math.PI / 2.0;
-            const double kirisSagGap = 8.0;
+            double kirisSagGap = 8.0 * dm;
             bool hasSiniri = TryGetKesitSiniriBounds(slices, isFoundationPlan, out _, out _, out double zLoS, out double zHiS);
             double zHiEff = hasSiniri ? zHiS : slices.Max(s => s.Z1);
             double zLoEff = hasSiniri ? zLoS : slices.Min(s => s.Z0);
@@ -3720,13 +3748,13 @@ namespace ST4PlanIdCiz
                     putLabel(xKirisSag, cy, s.Etiket, LayerKirisYazisi, rotDikKesit);
                 }
             }
-            const double temelEtiketH = 12.0;
+            double temelEtiketH = 12.0 * dm;
             foreach (var s in slices.Where(x => x.Layer == "TEMEL (BEYKENT)" && x.Order == SectionOrderContinuousFoundation && !string.IsNullOrEmpty(x.Etiket)))
             {
                 if (horizontalAlongX)
                 {
                     double cx = originX + ((s.A0 + s.A1) * 0.5 - amin);
-                    double yAlt = originY + (s.Z1 - minZ) + KesitSurekliTemelEtiketGapCm;
+                    double yAlt = originY + (s.Z1 - minZ) + KesitSurekliTemelEtiketGapCm * dm;
                     AppendEntity(tr, btr, new DBText
                     {
                         Layer = LayerTemelIsmi,
@@ -3747,7 +3775,7 @@ namespace ST4PlanIdCiz
                     double xSolKenar = mirrorElevationX
                         ? originX + spanZ - (s.Z1 - minZ)
                         : originX + (s.Z0 - minZ);
-                    double xTxt = xSolKenar - KesitSurekliTemelEtiketSolBbCm;
+                    double xTxt = xSolKenar - KesitSurekliTemelEtiketSolBbCm * dm;
                     AppendEntity(tr, btr, new DBText
                     {
                         Layer = LayerTemelIsmi,
@@ -3776,7 +3804,7 @@ namespace ST4PlanIdCiz
                     double xKp = originX + (aMid - amin);
                     if (kolonPerdeUstunde)
                     {
-                        double yAltKenar = originY + (zHiEff - minZ) + KesitTemelKolonPerdeUstBoslukCm + (rowKp - 1) * (labelH + 3);
+                        double yAltKenar = originY + (zHiEff - minZ) + KesitTemelKolonPerdeUstBoslukCm * dm + (rowKp - 1) * (labelH + 3.0 * dm);
                         AppendEntity(tr, btr, new DBText
                         {
                             Layer = layer,
@@ -3792,13 +3820,13 @@ namespace ST4PlanIdCiz
                     }
                     else
                     {
-                        double yRow = yKolonPerdeBaseAa - (rowKp - 1) * (labelH + 3);
+                        double yRow = yKolonPerdeBaseAa - (rowKp - 1) * (labelH + 3.0 * dm);
                         putLabel(xKp, yRow, g.Key, layer, 0);
                     }
                 }
                 else
                 {
-                    double cy = originY + (aMid - amin) + (rowKp - 1) * 3.0;
+                    double cy = originY + (aMid - amin) + (rowKp - 1) * 3.0 * dm;
                     double xTxt = isFoundationPlan ? xSiniriSol - kolPerXOffset : xSiniriSag + kolPerXOffset;
                     putLabel(xTxt, cy, g.Key, layer, rotDikKesit);
                 }
@@ -3915,6 +3943,11 @@ namespace ST4PlanIdCiz
             bool horizontalAlongX, bool mirrorElevationX, bool isFoundationPlan, ObjectId dimStyleId)
         {
             if (slices == null || slices.Count == 0 || dimStyleId.IsNull) return;
+            double dm = isFoundationPlan ? TemelFoundationAnnotMul : 1.0;
+            double aaOff = KesitOlcuAaDimLineOffsetCm * dm;
+            double stag = KesitOlcuStaggerCm * dm;
+            double cift = KesitOlcuCiftOlcuAraligiCm * dm;
+            double bbBelow = KesitOlcuBbDimLineBelowRefCm * dm;
 
             void AddAligned(Point3d p1, Point3d p2, Point3d dimLinePt)
             {
@@ -3949,7 +3982,7 @@ namespace ST4PlanIdCiz
                         double y1 = originY + (s.Z1 - minZ);
                         if (y1 - y0 < 2.0) y1 = y0 + 2.0;
                         int st = NextStaggerAa(aMax);
-                        double dimX = xR + KesitOlcuAaDimLineOffsetCm + st * KesitOlcuStaggerCm;
+                        double dimX = xR + aaOff + st * stag;
                         AddAligned(new Point3d(xR, y0, 0), new Point3d(xR, y1, 0), new Point3d(dimX, (y0 + y1) * 0.5, 0));
                         // Grobeton 10 cm: temel kalınlık ölçüsü ile aynı dikey ölçü çizgisi (dimX).
                         double yGro = y0 - GrobetonUnderFoundationKesitHeightCm;
@@ -3969,9 +4002,9 @@ namespace ST4PlanIdCiz
                         double xW = olcuSol ? xLbeam : xR;
                         int st = NextStaggerAa(olcuSol ? aMin - 1e7 : aMax);
                         double dimInner = olcuSol
-                            ? xLbeam - KesitOlcuAaDimLineOffsetCm - st * KesitOlcuStaggerCm
-                            : xR + KesitOlcuAaDimLineOffsetCm + st * KesitOlcuStaggerCm;
-                        double dimOuterOfset = olcuSol ? -KesitOlcuCiftOlcuAraligiCm : KesitOlcuCiftOlcuAraligiCm;
+                            ? xLbeam - aaOff - st * stag
+                            : xR + aaOff + st * stag;
+                        double dimOuterOfset = olcuSol ? -cift : cift;
                         double h0 = Math.Min(s.Z0, s.Z1), h1 = Math.Max(s.Z0, s.Z1);
                         double yBot = originY + (h0 - minZ), yTop = originY + (h1 - minZ);
                         if (Math.Abs(yTop - yBot) < 2.0) { double m = (yTop + yBot) * 0.5; yBot = m - 1.0; yTop = m + 1.0; }
@@ -4018,7 +4051,7 @@ namespace ST4PlanIdCiz
                             if (KesitRadyeIstasyonuTemelHatiliAltinda(aSta, s, temelHatiliRadyeAtlama))
                                 continue;
                             double xm = originX + (aSta - amin);
-                            double dimX = xm + KesitOlcuAaDimLineOffsetCm + (radyeIx++ % 5) * (KesitOlcuStaggerCm * 0.45);
+                            double dimX = xm + aaOff + (radyeIx++ % 5) * (stag * 0.45);
                             AddAligned(new Point3d(xm, y0, 0), new Point3d(xm, y1, 0), new Point3d(dimX, (y0 + y1) * 0.5, 0));
                             double yGro = y0 - GrobetonUnderFoundationKesitHeightCm;
                             AddAligned(new Point3d(xm, yGro, 0), new Point3d(xm, y0, 0), new Point3d(dimX, (yGro + y0) * 0.5, 0));
@@ -4040,9 +4073,9 @@ namespace ST4PlanIdCiz
                         double xW = olcuSol ? xLbeam : xR;
                         int st = NextStaggerAa(olcuSol ? aMin - 1e7 : aMax);
                         double dimInner = olcuSol
-                            ? xLbeam - KesitOlcuAaDimLineOffsetCm - st * KesitOlcuStaggerCm
-                            : xR + KesitOlcuAaDimLineOffsetCm + st * KesitOlcuStaggerCm;
-                        double dimOuterOfset = olcuSol ? -KesitOlcuCiftOlcuAraligiCm : KesitOlcuCiftOlcuAraligiCm;
+                            ? xLbeam - aaOff - st * stag
+                            : xR + aaOff + st * stag;
+                        double dimOuterOfset = olcuSol ? -cift : cift;
                         double Zb = Math.Min(s.Z0, s.Z1), Zt = Math.Max(s.Z0, s.Z1);
                         double yBot = originY + (Zb - minZ), yTop = originY + (Zt - minZ);
                         if (Math.Abs(yTop - yBot) < 2.0) { double m = (yTop + yBot) * 0.5; yBot = m - 1.0; yTop = m + 1.0; }
@@ -4082,7 +4115,7 @@ namespace ST4PlanIdCiz
                         double y1 = originY + (s.Z1 - minZ);
                         if (y1 - y0 < 2.0) y1 = y0 + 2.0;
                         int st = NextStaggerAa((s.A0 + s.A1) * 0.5);
-                        double dimX = xm + KesitOlcuAaDimLineOffsetCm + st * KesitOlcuStaggerCm;
+                        double dimX = xm + aaOff + st * stag;
                         AddAligned(new Point3d(xm, y0, 0), new Point3d(xm, y1, 0), new Point3d(dimX, (y0 + y1) * 0.5, 0));
                     }
                 }
@@ -4116,7 +4149,7 @@ namespace ST4PlanIdCiz
                         KotXR(s, out double xL, out double xR);
                         double yRef = originY + Math.Min(s.A0, s.A1) - amin;
                         int st = NextStaggerBb(yRef);
-                        double yDimLine = yRef - KesitOlcuBbDimLineBelowRefCm - st * KesitOlcuStaggerCm;
+                        double yDimLine = yRef - bbBelow - st * stag;
                         AddAligned(new Point3d(xL, yRef, 0), new Point3d(xR, yRef, 0), new Point3d((xL + xR) * 0.5, yDimLine, 0));
                         // Grobeton 10 cm: temel genişlik ölçüsü ile aynı yatay ölçü çizgisi (yDimLine).
                         double hG = GrobetonUnderFoundationKesitHeightCm;
@@ -4137,15 +4170,15 @@ namespace ST4PlanIdCiz
                         {
                             KesitBbEnAltOlcuYerleri(s, originY, amin, temelGovdeBb.Where(x => x.Order == SectionOrderSlabFoundation), out yRef, out double yIc);
                             int st = NextStaggerBb(yRef + 1e7);
-                            yDimInner = yIc + st * (KesitOlcuStaggerCm * 0.35);
-                            yDimDis = yDimInner + KesitOlcuCiftOlcuAraligiCm;
+                            yDimInner = yIc + st * (stag * 0.35);
+                            yDimDis = yDimInner + cift;
                         }
                         else
                         {
                             yRef = originY + Math.Min(s.A0, s.A1) - amin;
                             int st = NextStaggerBb(yRef);
-                            yDimInner = yRef - KesitOlcuBbDimLineBelowRefCm - st * KesitOlcuStaggerCm;
-                            yDimDis = yDimInner - KesitOlcuCiftOlcuAraligiCm;
+                            yDimInner = yRef - bbBelow - st * stag;
+                            yDimDis = yDimInner - cift;
                         }
                         double bestLen = 0, bestIl = xL, bestIr = xR;
                         foreach (var t in temelGovdeBb)
@@ -4202,7 +4235,7 @@ namespace ST4PlanIdCiz
                             if (KesitRadyeIstasyonuTemelHatiliAltinda(aSta, s, temelHatiliRadyeAtlama))
                                 continue;
                             double yRef = originY + (aSta - amin);
-                            double yDimLine = yRef - KesitOlcuBbDimLineBelowRefCm - (ri++ % 4) * 8.0;
+                            double yDimLine = yRef - bbBelow - (ri++ % 4) * 8.0 * dm;
                             AddAligned(new Point3d(xL, yRef, 0), new Point3d(xR, yRef, 0), new Point3d((xL + xR) * 0.5, yDimLine, 0));
                             double hGr = GrobetonUnderFoundationKesitHeightCm;
                             double xGroA = mirrorElevationX ? xR : xL - hGr;
@@ -4225,15 +4258,15 @@ namespace ST4PlanIdCiz
                         {
                             KesitBbEnAltOlcuYerleri(s, originY, amin, dosemeBbAll, out yRef, out double yIc);
                             int st = NextStaggerBb(yRef + 1e7);
-                            yDimInner = yIc + st * (KesitOlcuStaggerCm * 0.35);
-                            yDimDis = yDimInner + KesitOlcuCiftOlcuAraligiCm;
+                            yDimInner = yIc + st * (stag * 0.35);
+                            yDimDis = yDimInner + cift;
                         }
                         else
                         {
                             yRef = originY + Math.Min(s.A0, s.A1) - amin;
                             int st = NextStaggerBb(yRef);
-                            yDimInner = yRef - KesitOlcuBbDimLineBelowRefCm - st * KesitOlcuStaggerCm;
-                            yDimDis = yDimInner - KesitOlcuCiftOlcuAraligiCm;
+                            yDimInner = yRef - bbBelow - st * stag;
+                            yDimDis = yDimInner - cift;
                         }
                         SectionSlice bestD = null;
                         double bestA = 0;
@@ -4297,7 +4330,7 @@ namespace ST4PlanIdCiz
                         KotXR(s, out double xL, out double xR);
                         double yRef = originY + ((s.A0 + s.A1) * 0.5 - amin);
                         int st = NextStaggerBb(yRef);
-                        double yDimLine = yRef - KesitOlcuBbDimLineBelowRefCm - st * KesitOlcuStaggerCm;
+                        double yDimLine = yRef - bbBelow - st * stag;
                         AddAligned(new Point3d(xL, yRef, 0), new Point3d(xR, yRef, 0), new Point3d((xL + xR) * 0.5, yDimLine, 0));
                     }
                 }
