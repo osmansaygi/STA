@@ -816,15 +816,26 @@ namespace ST4PlanIdCiz
             var ci = CultureInfo.InvariantCulture;
             string slabPadStr = n.ToString("D" + slabPad, ci);
             string slabNat = n.ToString(ci);
+            string slabD2 = n.ToString("D2", ci);
+            string slabD3 = n.ToString("D3", ci);
+            string slabD4 = n < 10000 ? n.ToString("D4", ci) : slabD3;
             var tried = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            // GPR çoğu projede DZ-001 (3 hane); etiket pad’i 2 hane (DB-01) olunca eşleşmezdi.
             string[] candidates =
             {
                 "D" + core + "-" + slabPadStr,
                 "D" + core + "-" + slabNat,
+                "D" + core + "-" + slabD2,
+                "D" + core + "-" + slabD3,
+                "D" + core + "-" + slabD4,
                 "D" + raw + slabPadStr,
                 "D" + raw + slabNat,
+                "D" + raw + slabD2,
+                "D" + raw + slabD3,
                 "D" + core + slabPadStr,
                 "D" + core + slabNat,
+                "D" + core + slabD2,
+                "D" + core + slabD3,
             };
             foreach (string k in candidates)
             {
