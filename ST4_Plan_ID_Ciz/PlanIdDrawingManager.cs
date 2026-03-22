@@ -41,6 +41,23 @@ namespace ST4PlanIdCiz
         private bool _isKolon50Mode;
         /// <summary>KALIP50ST4 için 1:50 kalıp planı modu.</summary>
         private bool _isKalip50Mode;
+        /// <summary>KALIP50 bina şema kesiti: blok tanımı bir kez; her antet üstüne ayrı INSERT.</summary>
+        private ObjectId _kalip50BinaSemaBlockId = ObjectId.Null;
+        private double _kalip50BinaSemaAminT;
+        private double _kalip50BinaSemaMinZT;
+        private double _kalip50BinaSemaSpanAT;
+        private double _kalip50BinaSemaSpanZT;
+        /// <summary>Şema blok içi A ekseninde kesit genişlik ortası (originX=0, amin çıkarılmış blok cm).</summary>
+        private double _kalip50BinaSemaLabelXBlock;
+        /// <summary>KALIP50: kot yüksekliğine göre sıralı model kat indeksleri (tekrarlayan OrderBy maliyetini önler).</summary>
+        private List<int> _kalip50FloorIdxByElevationAsc;
+        /// <summary>KALIP50: model kat indeksi → elevation sırasındaki pozisyon (0 = en alçak).</summary>
+        private int[] _kalip50FloorModelIndexToElevationOrder;
+        /// <summary>KALIP50: FloorNo → model Floors listesindeki indeks.</summary>
+        private Dictionary<int, int> _kalip50FloorNoToModelIndex;
+        /// <summary>KALIP50: bina şema birleştirilmiş kot Z listesi (cm), antet başına yeniden hesaplanmaz.</summary>
+        private List<double> _kalip50BinaSemaKotZsAsc;
+        private double[] _kalip50BinaSemaKotCrowdedShiftLower;
         /// <summary>KOLON50ST4 perde+kolon kopyalarının dünya sınırları (GPR tablosu yerleşimi için).</summary>
         private Envelope _kolon50PerdeCopyExtent;
         private const double Temel50BaslikAltAksBalonBoslukCm = 50.0;
@@ -492,7 +509,7 @@ namespace ST4PlanIdCiz
                         string kolonPlanAntetTitle = BuildKolonPlanAntetTitle(floor);
                         if (TryDrawAntetFromEmbeddedTemplate(
                             tr, btr, layoutMinX, layoutMinY, layoutMaxY, antetSheetViewLeft, antetSheetViewBottom, antetTargetRight, st4SourcePath, ed,
-                            kolonPlanAntetTitle, null, out double placedAntetOuterLeft, out double placedAntetOuterRight))
+                            kolonPlanAntetTitle, null, out double placedAntetOuterLeft, out double placedAntetOuterRight, out _))
                         {
                             antetOuterLeftDeltaFromSheetViewLeft = placedAntetOuterLeft - antetSheetViewLeft;
                             nextAntetOuterLeftTarget = placedAntetOuterRight + Kolon50AntetGapBetweenSheetsCm;
@@ -530,6 +547,9 @@ namespace ST4PlanIdCiz
         {
             _ntsDrawFactory = NtsGeometryServices.Instance.CreateGeometryFactory();
             _isKalip50Mode = true;
+            _kalip50BinaSemaBlockId = ObjectId.Null;
+            _kalip50BinaSemaLabelXBlock = 0.0;
+            ClearKalip50FormworkSessionCaches();
             try
             {
                 using (var tr = db.TransactionManager.StartTransaction())
@@ -584,6 +604,7 @@ namespace ST4PlanIdCiz
                         gprKalipDosemeDonati = dosemeMap;
 
                     int gprDonatiSlabMatchCountTotal = 0;
+                    int kalip50BinaSemaKesitSayisi = 0;
                     foreach (var group in groups)
                     {
                         if (group == null || group.Count == 0) continue;
@@ -677,7 +698,7 @@ namespace ST4PlanIdCiz
                             double antetTargetRight = rightCopyRightVerticalAxisX + AntetTargetRightExtraCm;
                             string kalipAntetTitle = BuildKalipPlanAntetTitle(floor);
                             string benzerSatiri = BuildKalipBenzerKatSatiri(otherFloors);
-                            TryDrawAntetFromEmbeddedTemplate(
+                            bool kalipAntetOk = TryDrawAntetFromEmbeddedTemplate(
                                 tr,
                                 btr,
                                 antetLayMinX,
@@ -691,8 +712,14 @@ namespace ST4PlanIdCiz
                                 kalipAntetTitle,
                                 benzerSatiri,
                                 out double placedAntetOuterLeft,
-                                out double placedAntetOuterRight);
+                                out double placedAntetOuterRight,
+                                out double placedAntetOuterTop);
                             nextKatAntetOuterLeftTarget = placedAntetOuterRight + 50.0;
+                            // Bina şeması: her benzersiz kat anteti üstünde aynı blok tanımıyla bir kopya.
+                            if (kalipAntetOk && TryDrawKalip50WholeBuildingSchematicSectionAboveAntet(
+                                    tr, btr, db, placedAntetOuterLeft, placedAntetOuterRight, placedAntetOuterTop,
+                                    floor, otherFloors, ed))
+                                kalip50BinaSemaKesitSayisi++;
                         }
                         drawnPlanCount++;
                     }
@@ -710,18 +737,23 @@ namespace ST4PlanIdCiz
                         if (gprDonatiSlabMatchCountTotal == 0)
                             gprSummary += " UYARI: Hic donati yazisi yazilmadi (anahtar eslesmesi veya geometri).";
                     }
+                    string binaSemaNote = kalip50BinaSemaKesitSayisi > 0
+                        ? string.Format(CultureInfo.InvariantCulture, " Bina sema kesiti (1:200): {0} adet (her antet ustu).", kalip50BinaSemaKesitSayisi)
+                        : string.Empty;
                     ed.WriteMessage(
-                        "\nKALIP50ST4: {0} benzersiz kat icin {1} plan cizildi (toplam kat: {2}, temel plani cizilmedi).{3}",
+                        "\nKALIP50ST4: {0} benzersiz kat icin {1} plan cizildi (toplam kat: {2}, temel plani cizilmedi).{3}{4}",
                         drawnPlanCount,
                         drawnCopyCount,
                         _model.Floors.Count,
-                        gprSummary);
+                        gprSummary,
+                        binaSemaNote);
                 }
             }
             finally
             {
                 _isKalip50Mode = false;
                 _ntsDrawFactory = null;
+                ClearKalip50FormworkSessionCaches();
             }
         }
 
@@ -2890,6 +2922,8 @@ namespace ST4PlanIdCiz
         private const string LayerKolon = "KOLON (BEYKENT)";
         private const string LayerPerde = "PERDE (BEYKENT)";
         private const string LayerTarama = "TARAMA (BEYKENT)";
+        /// <summary>ANSI33 sınır polyline'ı; TARAMA'da çizilmez (yalnızca associative hatch için; katman kapalı + plot dışı).</summary>
+        private const string LayerTaramaHatchBoundaryIc = "TARAMA SINIR IC (BEYKENT)";
         private const string LayerDoseme = "DOSEME SINIRI (BEYKENT)";
         private const string LayerMerdiven = "MERDIVEN (BEYKENT)";
         private const string LayerYazi = "YAZI (BEYKENT)";
@@ -7768,10 +7802,12 @@ namespace ST4PlanIdCiz
             string antetPlanTitle,
             string antetSimilarKatText,
             out double placedAntetOuterLeftAfterStretch,
-            out double placedAntetOuterRightAfterStretch)
+            out double placedAntetOuterRightAfterStretch,
+            out double placedAntetOuterTopAfterStretch)
         {
             placedAntetOuterLeftAfterStretch = targetSheetViewLeft;
             placedAntetOuterRightAfterStretch = targetSheetViewLeft + (AntetDxfSheetViewXmax - AntetDxfSheetViewXmin);
+            placedAntetOuterTopAfterStretch = targetSheetViewBottom + TemelAntetBaslangicYukseklikCm;
             if ((targetSheetViewRight - targetSheetViewLeft) < 10.0 || (layoutMaxY - layoutMinY) < 10.0)
                 return false;
 
@@ -7864,6 +7900,7 @@ namespace ST4PlanIdCiz
                     rootEntityIds,
                     AntetSheetViewOutLayerName,
                     targetSheetViewRight);
+                placedAntetOuterTopAfterStretch = targetSheetViewOutTop;
                 return true;
             }
             catch
@@ -9187,9 +9224,38 @@ namespace ST4PlanIdCiz
             catch { return false; }
         }
 
-        /// <summary>NTS Geometry (Polygon/MultiPolygon) dış ve iç halkalarını verilen katmanda polyline olarak çizer; 4 mm'den kısa segmentleri atlar. addHatch true ise her halka için tarama eklenir: <paramref name="hatchPatternName"/> doluysa o desen + ölçek + <paramref name="hatchLayerOverride"/> (varsayılan <see cref="LayerTarama"/>), değilse ANSI33. hatchAngleRad verilirse tarama açısı olarak kullanılır (perde: aks eğimi). exteriorRingsOnly true ise sadece dış halkalar çizilir (iç halkalar/delik sınırları çizilmez; kolona yapışık çizgi olmaz).</summary>
+        /// <summary>NTS Geometry (Polygon/MultiPolygon) dış ve iç halkalarını verilen katmanda polyline olarak çizer; 4 mm'den kısa segmentleri atlar. addHatch true ise her halka için tarama eklenir: <paramref name="hatchPatternName"/> doluysa o desen + ölçek + <paramref name="hatchLayerOverride"/> (varsayılan <see cref="LayerTarama"/>), değilse ANSI33. hatchAngleRad verilirse tarama açısı olarak kullanılır (perde: aks eğimi). exteriorRingsOnly true ise sadece dış halkalar çizilir (iç halkalar/delik sınırları çizilmez; kolona yapışık çizgi olmaz). <paramref name="hatchBoundaryPolylineOnHiddenLayer"/> true ise associative sınır polyline <see cref="LayerTaramaHatchBoundaryIc"/> üzerine alınır (TARAMA'da çevre çizgisi görünmez).</summary>
         /// <param name="drawRingEdgesAsLines">true ise kapalı halka polyline yerine her kenar ayrı <see cref="Line"/> (KALIP50ST4 kiriş çizimi).</param>
-        private static void DrawGeometryRingsAsPolylines(Transaction tr, BlockTableRecord btr, Geometry geom, string layer, bool addHatch = false, double? hatchAngleRad = null, bool exteriorRingsOnly = false, bool applySmallTriangleTrim = false, double vertexAngleTolDeg = 1.0, double minVertexDistCm = 0.4, double collinearTolCm = 0, string hatchPatternName = null, double hatchPatternScale = 1.0, string hatchLayerOverride = null, bool drawRingEdgesAsLines = false)
+        private static void EnsureLayerTaramaHatchBoundaryIc(Transaction tr, Database db)
+        {
+            var lt = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
+            LayerTableRecord rec;
+            if (lt.Has(LayerTaramaHatchBoundaryIc))
+            {
+                rec = (LayerTableRecord)tr.GetObject(lt[LayerTaramaHatchBoundaryIc], OpenMode.ForWrite);
+                try { rec.IsPlottable = false; } catch { /* sürüm */ }
+            }
+            else
+            {
+                lt.UpgradeOpen();
+                rec = new LayerTableRecord
+                {
+                    Name = LayerTaramaHatchBoundaryIc,
+                    Color = Color.FromColorIndex(ColorMethod.ByAci, 8),
+                    LineWeight = LineWeight.LineWeight018
+                };
+                lt.Add(rec);
+                tr.AddNewlyCreatedDBObject(rec, true);
+                try
+                {
+                    rec.IsPlottable = false;
+                    rec.IsOff = true;
+                }
+                catch { /* sürüm */ }
+            }
+        }
+
+        private static void DrawGeometryRingsAsPolylines(Transaction tr, BlockTableRecord btr, Geometry geom, string layer, bool addHatch = false, double? hatchAngleRad = null, bool exteriorRingsOnly = false, bool applySmallTriangleTrim = false, double vertexAngleTolDeg = 1.0, double minVertexDistCm = 0.4, double collinearTolCm = 0, string hatchPatternName = null, double hatchPatternScale = 1.0, string hatchLayerOverride = null, bool drawRingEdgesAsLines = false, bool hatchBoundaryPolylineOnHiddenLayer = false, double ansi33HatchPatternScale = 1.0)
         {
             if (geom == null || geom.IsEmpty) return;
             double minSegmentLen = minVertexDistCm; // ardışık vertex arası min mesafe (varsayılan 4 mm)
@@ -9464,12 +9530,17 @@ namespace ST4PlanIdCiz
                     pl.LineWeight = LineWeight.LineWeight050;
                 if (addHatch)
                 {
+                    if (hatchBoundaryPolylineOnHiddenLayer)
+                    {
+                        EnsureLayerTaramaHatchBoundaryIc(tr, btr.Database);
+                        pl.Layer = LayerTaramaHatchBoundaryIc;
+                    }
                     ObjectId plId = AppendEntityReturnId(tr, btr, pl);
                     double angleRad = hatchAngleRad ?? Math.Atan2(filtered[1].Y - filtered[0].Y, filtered[1].X - filtered[0].X);
                     if (!string.IsNullOrEmpty(hatchPatternName))
                         AppendHatchPredefined(tr, btr, plId, hatchPatternName, hatchPatternScale, hatchAngleRad ?? 0.0, string.IsNullOrEmpty(hatchLayerOverride) ? LayerTarama : hatchLayerOverride);
                     else
-                        AppendHatchAnsi33(tr, btr, plId, angleRad);
+                        AppendHatchAnsi33(tr, btr, plId, angleRad, ansi33HatchPatternScale);
                 }
                 else
                     AppendEntity(tr, btr, pl);
@@ -10307,6 +10378,21 @@ namespace ST4PlanIdCiz
             return t + " KAT";
         }
 
+        /// <summary>Antet/şema: ST4 kat adı veya kısa adı; kat numarası ID değil isim metninden türetilir.</summary>
+        private static string FormatKalipSchematicAntetFloorName(FloorInfo f)
+        {
+            if (f == null) return string.Empty;
+            // ST4 /Story/: üst satır tam ad (BODRUM), alt satır kısa kod (B-); şemada tam ad kullanılır.
+            string raw = !string.IsNullOrWhiteSpace(f.Name) ? f.Name.Trim() : (f.ShortName ?? string.Empty).Trim();
+            raw = NormalizeFloorNameWithoutNormal(raw);
+            if (string.IsNullOrWhiteSpace(raw)) return string.Empty;
+            if (Regex.IsMatch(raw, @"\bKAT\b", RegexOptions.IgnoreCase))
+                return raw;
+            if (Regex.IsMatch(raw, @"^\d+\.?\s*$"))
+                return Regex.Match(raw, @"^(\d+)").Groups[1].Value + ".KAT";
+            return raw + " KAT";
+        }
+
         /// <summary>Çizilmeyen benzer katları planın üstüne not olarak yazar (kalıp planı gruplama).</summary>
         private void DrawSimilarFloorsNote(Transaction tr, BlockTableRecord btr, double offsetX, double offsetY,
             (double Xmin, double Xmax, double Ymin, double Ymax) ext, List<FloorInfo> otherFloors)
@@ -11043,13 +11129,14 @@ namespace ST4PlanIdCiz
         /// Kolon ve perde taraması: ANSI33, katman TARAMA (BEYKENT).
         /// patternAngleRad parametresi şu an kullanılmıyor; tüm taramalar sabit açı ile çizilir.
         /// </summary>
-        private static void AppendHatchAnsi33(Transaction tr, BlockTableRecord btr, ObjectId boundaryId, double patternAngleRad = 0)
+        private static void AppendHatchAnsi33(Transaction tr, BlockTableRecord btr, ObjectId boundaryId, double patternAngleRad = 0, double patternScale = 1.0)
         {
             var hatch = new Hatch();
             btr.AppendEntity(hatch);
             tr.AddNewlyCreatedDBObject(hatch, true);
             hatch.SetHatchPattern(HatchPatternType.PreDefined, "ANSI33");
             hatch.PatternAngle = 0; // Tüm taramalarda sabit açı
+            hatch.PatternScale = patternScale;
             hatch.Layer = LayerTarama;
             hatch.Associative = true;
             var ids = new ObjectIdCollection { boundaryId };

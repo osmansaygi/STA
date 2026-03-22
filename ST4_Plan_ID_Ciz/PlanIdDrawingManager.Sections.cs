@@ -128,6 +128,24 @@ namespace ST4PlanIdCiz
         /// <summary>Radye ölçü istasyonu, kesitte dar kalan temel hatılı A bandının dışında kalmasın diye ± genişletme (cm).</summary>
         private const double KesitRadyeOlcuHatilSkipMarginCm = 650.0;
         private const double KesitOlcuStaggerCm = 16.0;
+        /// <summary>KALIP50 bina şeması: plan 1:50 kesidine göre 4× küçük (1:200) çizim ölçeği.</summary>
+        private const double Kalip50BuildingSchematicSectionScale = 0.25;
+        /// <summary>Şema kesitinin antet dış çerçeve üst çizgisinden boşluğu (cm).</summary>
+        private const double Kalip50BuildingSectionAboveAntetGapCm = 90.0;
+        /// <summary>Şema üstü başlık metninin alt kenarı ile şema üst kenarı arası (cm).</summary>
+        private const double Kalip50BuildingSectionTitleGapCm = 40.0;
+        /// <summary>Aynı Y kabulü; bu eşik altında alternatif dilim ana gruba eklenir.</summary>
+        private const double Kalip50AlternateCutSameYToleranceCm = 2.5;
+        /// <summary>Bina şeması: ana kesitte dilim yoksa aynı kat için denenecek ek yatay kesit adayı sayısı (skor sırasıyla).</summary>
+        private const int Kalip50BinaSemaMaxFloorCutLineStages = 4;
+        /// <summary>Şematik kesitte kat ortası KESİT SINIRI: kolon/perde Z aralığı ile kesişim toleransı (cm).</summary>
+        private const double Kalip50AlternateStoryMidZSiniriEpsCm = 2.0;
+        /// <summary>Kot üçgeninin üstünden sonra kat adı (model cm); <see cref="KesitKotTriHeightCm"/> ile birlikte.</summary>
+        private const double Kalip50BinaSemaFloorLabelGapAboveKotSymbolCm = 14.0;
+        /// <summary>Kat adı şema kot hizasından aşağı (model cm).</summary>
+        private const double Kalip50BinaSemaFloorLabelDownFromKotLineCm = 26.0;
+        /// <summary>Antet üstü şemada kat adı; model uzayı cm (blok ölçeği uygulanmış görünür yükseklik).</summary>
+        private const double Kalip50BinaSemaAntetFloorLabelHeightModelCm = 26.0;
 
         private sealed class SectionSlice
         {
@@ -725,19 +743,40 @@ namespace ST4PlanIdCiz
             return bestX;
         }
 
-        private double FindBestHorizontalCutY(FloorInfo floor, double xmin, double xmax, double ymin, double ymax, double e, Geometry occ, bool isFoundationPlan, Geometry structuralUnion)
+        /// <summary>
+        /// Yatay kesit için arama ızgarasındaki Y değerlerini skora göre sıralar; birincisi <see cref="FindBestHorizontalCutY"/> ile aynıdır.
+        /// Bina şemasında bazı katlarda tek adayda dilim çıkmazsa sıradaki adaylar denenir.
+        /// </summary>
+        private List<double> GetRankedHorizontalCutYs(
+            FloorInfo floor,
+            double xmin,
+            double xmax,
+            double ymin,
+            double ymax,
+            double e,
+            Geometry occ,
+            bool isFoundationPlan,
+            Geometry structuralUnion,
+            int maxDistinctY)
         {
+            var picked = new List<double>();
+            if (maxDistinctY <= 0) return picked;
             var stairs = BuildStairAvoidZonesForFloor(floor);
             var gf = _ntsDrawFactory;
             double halfW = Math.Max(60.0, SectionStripHalfWidthCm * 1.2);
             GetCutLineSearchBoundsFromStructure(xmin, xmax, ymin, ymax, structuralUnion, out _, out _, out double yLo, out double yHi, out _, out double cyPrefer);
-            if (yHi <= yLo) return (ymin + ymax) * 0.5;
-            double step = Math.Max(40.0, (yHi - yLo) / 48.0);
-            double bestY = cyPrefer;
-            double bestKey = double.NegativeInfinity;
-            var tanH = new Vector2d(1, 0);
+            if (yHi <= yLo)
+            {
+                picked.Add((ymin + ymax) * 0.5);
+                return picked;
+            }
 
-            void consider(double y)
+            double step = Math.Max(40.0, (yHi - yLo) / 48.0);
+            double minSep = Math.Max(20.0, step * 0.51);
+            var tanH = new Vector2d(1, 0);
+            var scored = new List<(double y, double key)>();
+
+            for (double y = yLo; y <= yHi + 1e-6; y += step)
             {
                 var (frac, lng) = SampleHorizontalOnOccupancy(occ, y, xmin, xmax);
                 Geometry strip = HorizontalCutStripPoly(gf, y, xmin, xmax, e, halfW);
@@ -747,15 +786,53 @@ namespace ST4PlanIdCiz
                 double axisClr = ParallelColumnAxisClearancePenaltyHorizontal(y);
                 double polyCol = isFoundationPlan ? FoundationPolygonColumnCutPenaltyHorizontal(y, xmin, xmax, e, floor) : 0;
                 double key = frac * 900.0 + lng * 320.0 - stair - par - colLong - axisClr - polyCol - Math.Abs(y - cyPrefer) * 0.02;
-                if (key > bestKey + 1e-6 || (Math.Abs(key - bestKey) < 1e-6 && Math.Abs(y - cyPrefer) < Math.Abs(bestY - cyPrefer)))
+                scored.Add((y, key));
+            }
+
+            foreach (var t in scored.OrderByDescending(t => t.key).ThenBy(t => Math.Abs(t.y - cyPrefer)))
+            {
+                if (picked.Count >= maxDistinctY) break;
+                bool nearDup = false;
+                foreach (double py in picked)
                 {
-                    bestKey = key;
-                    bestY = y;
+                    if (Math.Abs(t.y - py) < minSep)
+                    {
+                        nearDup = true;
+                        break;
+                    }
+                }
+                if (!nearDup) picked.Add(t.y);
+            }
+
+            if (picked.Count < maxDistinctY && yHi > yLo)
+            {
+                for (int div = 3; div <= 9 && picked.Count < maxDistinctY; div++)
+                {
+                    for (int k = 1; k < div && picked.Count < maxDistinctY; k++)
+                    {
+                        double y = yLo + (yHi - yLo) * (k / (double)div);
+                        bool nearDup = false;
+                        foreach (double py in picked)
+                        {
+                            if (Math.Abs(y - py) < minSep)
+                            {
+                                nearDup = true;
+                                break;
+                            }
+                        }
+                        if (!nearDup) picked.Add(y);
+                    }
                 }
             }
 
-            for (double y = yLo; y <= yHi + 1e-6; y += step) consider(y);
-            return bestY;
+            if (picked.Count == 0) picked.Add(cyPrefer);
+            return picked;
+        }
+
+        private double FindBestHorizontalCutY(FloorInfo floor, double xmin, double xmax, double ymin, double ymax, double e, Geometry occ, bool isFoundationPlan, Geometry structuralUnion)
+        {
+            var ys = GetRankedHorizontalCutYs(floor, xmin, xmax, ymin, ymax, e, occ, isFoundationPlan, structuralUnion, maxDistinctY: 1);
+            return ys.Count > 0 ? ys[0] : (ymin + ymax) * 0.5;
         }
 
         private void DrawPlanSections(Transaction tr, BlockTableRecord btr, Database db, FloorInfo floor,
@@ -949,6 +1026,700 @@ namespace ST4PlanIdCiz
             catch
             {
                 return false;
+            }
+        }
+
+        /// <summary>
+        /// KALIP50ST4: Bina şema kesiti blok tanımını bir kez oluşturur (model + kesit hattı değişmeden yeniden kullanılır).
+        /// </summary>
+        private bool TryEnsureKalip50BinaSemaBlockDefinition(Transaction tr, Database db, Editor ed)
+        {
+            if (_kalip50BinaSemaBlockId.IsValid)
+                return true;
+            if (!_isKalip50Mode || _model?.Floors == null || _model.Floors.Count == 0 || _ntsDrawFactory == null)
+                return false;
+
+            try
+            {
+                Geometry cutSearchUnion = TryMergeKalip50BinaKesitCutSearchUnion();
+                Geometry mergedOccFloors = TryMergeFormworkCutOccupancyAllFloors();
+                Geometry mergedOccFound = TryMergeFoundationOccupancyForKalip50Cut();
+                Geometry occForCut = TryMergeGeometryList(new List<Geometry>
+                {
+                    mergedOccFloors,
+                    mergedOccFound,
+                    cutSearchUnion
+                }.Where(g => g != null && !g.IsEmpty).ToList()) ?? cutSearchUnion ?? mergedOccFloors;
+
+                if (cutSearchUnion == null || cutSearchUnion.IsEmpty)
+                    return false;
+
+                var ext = GetAksSiniriEnvelope(cutSearchUnion);
+                double xmin = ext.Xmin, xmax = ext.Xmax, ymin = ext.Ymin, ymax = ext.Ymax;
+                double e = SectionLineExtendCm;
+                var refFloor = _model.Floors[0];
+                double yhCut = FindBestHorizontalCutY(refFloor, xmin, xmax, ymin, ymax, e, occForCut ?? cutSearchUnion, isFoundationPlan: false, cutSearchUnion);
+
+                Point2d topA = new Point2d(xmin - e, yhCut);
+                Point2d topB = new Point2d(xmax + e, yhCut);
+                Point2d alongOrigTop = new Point2d(xmin, yhCut);
+                Vector2d dirTop = new Vector2d(1, 0);
+
+                var primarySlices = new List<SectionSlice>();
+                var alternateByFloor = new Dictionary<int, List<SectionSlice>>();
+                for (int fi = 0; fi < _model.Floors.Count; fi++)
+                    CollectKalip50FloorHorizontalSlices(_model.Floors[fi], fi, e, topA, topB, alongOrigTop, dirTop, primarySlices, alternateByFloor);
+
+                if (Kalip50ModelHasFoundationGeometry())
+                {
+                    var ff = _model.Floors[0];
+                    var colExtraF = GetColumnTableExtraData(ff);
+                    var foundSlices = CollectAllSectionSlices(ff, topA, topB, alongOrigTop, dirTop, isFoundationPlan: true, colExtraF);
+                    if (foundSlices != null && foundSlices.Count > 0)
+                    {
+                        foreach (var s in foundSlices)
+                        {
+                            if (IsKalip50FoundationFootprintSlice(s))
+                                primarySlices.Add(s);
+                        }
+                    }
+                }
+
+                var allSlices = new List<SectionSlice>(primarySlices);
+                foreach (var kv in alternateByFloor)
+                    if (kv.Value != null && kv.Value.Count > 0)
+                        allSlices.AddRange(kv.Value);
+
+                if (allSlices.Count == 0)
+                    return false;
+
+                double aminT = allSlices.Min(s => s.A0) - 40.0;
+                double amaxT = allSlices.Max(s => s.A1) + 40.0;
+                double minZT = allSlices.Min(s => s.Z0) - 25.0;
+                double maxZT = allSlices.Max(s => s.Z1) + 25.0;
+                double spanAT = Math.Max(180.0, amaxT - aminT);
+                double spanZT = Math.Max(SectionMinStoryHeightCm * 0.5, maxZT - minZT);
+                double aLoL = allSlices.Min(s => Math.Min(s.A0, s.A1));
+                double aHiL = allSlices.Max(s => Math.Max(s.A0, s.A1));
+                _kalip50BinaSemaLabelXBlock = (aLoL + aHiL) * 0.5 - aminT;
+
+                string blockName = "K50BINASEMA_" + Guid.NewGuid().ToString("N");
+                var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForWrite);
+                while (bt.Has(blockName))
+                    blockName = "K50BINASEMA_" + Guid.NewGuid().ToString("N");
+                var btrDef = new BlockTableRecord { Name = blockName, Origin = Point3d.Origin };
+                ObjectId blockId = bt.Add(btrDef);
+                tr.AddNewlyCreatedDBObject(btrDef, true);
+
+                const bool k50Clip = true;
+                DrawKalip50BinaSemaSliceGroups(tr, btrDef, primarySlices, alternateByFloor, aminT, minZT, spanAT, spanZT, k50Clip);
+
+                _kalip50BinaSemaBlockId = blockId;
+                _kalip50BinaSemaAminT = aminT;
+                _kalip50BinaSemaMinZT = minZT;
+                _kalip50BinaSemaSpanAT = spanAT;
+                _kalip50BinaSemaSpanZT = spanZT;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                ed?.WriteMessage("\nKALIP50ST4: Bina sema kesiti (blok) olusturulamadi: {0}", ex.Message);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// KALIP50ST4: Tüm katların tek yatay kesitte birleştirilmiş şeması; planda bu kesite ait çizgi yok.
+        /// Her çağrıda ilgili antet üstüne bir INSERT + başlık + kotlar; blok tanımı <see cref="TryEnsureKalip50BinaSemaBlockDefinition"/> ile paylaşılır.
+        /// Kat adı yalnızca bu antetin planına ait kat(lar)ın ST4 isimleriyle, temsil katının döşeme üstüne yakın çizilir.
+        /// </summary>
+        private bool TryDrawKalip50WholeBuildingSchematicSectionAboveAntet(
+            Transaction tr,
+            BlockTableRecord btr,
+            Database db,
+            double antetOuterLeft,
+            double antetOuterRight,
+            double antetOuterTop,
+            FloorInfo antetPrimaryFloor,
+            List<FloorInfo> antetSimilarOtherFloors,
+            Editor ed)
+        {
+            if (antetOuterRight <= antetOuterLeft + 5.0)
+                return false;
+
+            try
+            {
+                if (!TryEnsureKalip50BinaSemaBlockDefinition(tr, db, ed))
+                    return false;
+
+                double schematicWidthCm = _kalip50BinaSemaSpanAT * Kalip50BuildingSchematicSectionScale;
+                double insertX = (antetOuterLeft + antetOuterRight) * 0.5 - schematicWidthCm * 0.5;
+                double insertY = antetOuterTop + Kalip50BuildingSectionAboveAntetGapCm;
+
+                var br = new BlockReference(new Point3d(insertX, insertY, 0), _kalip50BinaSemaBlockId)
+                {
+                    ScaleFactors = new Scale3d(Kalip50BuildingSchematicSectionScale),
+                    Layer = LayerKesit
+                };
+                AppendEntity(tr, btr, br);
+
+                double cx = (antetOuterLeft + antetOuterRight) * 0.5;
+                double yTitleTop = insertY - Kalip50BuildingSectionTitleGapCm;
+                var titleTxt = new DBText
+                {
+                    Layer = LayerKesitIsmi,
+                    Height = KesitBaslikMetinYukseklikCm,
+                    TextStyleId = GetOrCreateYaziBeykentTextStyle(tr, db),
+                    TextString = "SEMATIK KESIT (1:200)",
+                    HorizontalMode = TextHorizontalMode.TextCenter,
+                    VerticalMode = TextVerticalMode.TextTop,
+                    Position = new Point3d(cx, yTitleTop, 0),
+                    AlignmentPoint = new Point3d(cx, yTitleTop, 0),
+                    LineWeight = LineWeight.LineWeight020
+                };
+                try { titleTxt.AdjustAlignment(db); } catch { /* sürüm farkı */ }
+                AppendEntity(tr, btr, titleTxt);
+
+                DrawKalip50BuildingSchematicFloorLevelKotsInModelSpace(tr, btr, db, insertX, insertY,
+                    _kalip50BinaSemaAminT, _kalip50BinaSemaMinZT, _kalip50BinaSemaSpanAT, _kalip50BinaSemaSpanZT);
+                DrawKalip50BinaSemaAntetFloorNameInModelSpace(tr, btr, db, insertX, insertY, antetPrimaryFloor, antetSimilarOtherFloors);
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                ed?.WriteMessage("\nKALIP50ST4: Bina sema kesiti yerlestirilemedi: {0}", ex.Message);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Antet planındaki kat(lar): benzer grupta her katın adı ayrı DBText, kendi döşeme kotunun üstünde (2. resim gibi).
+        /// </summary>
+        private void DrawKalip50BinaSemaAntetFloorNameInModelSpace(
+            Transaction tr,
+            BlockTableRecord btr,
+            Database db,
+            double insertX,
+            double insertY,
+            FloorInfo antetPrimaryFloor,
+            List<FloorInfo> antetSimilarOtherFloors)
+        {
+            if (antetPrimaryFloor == null || _model?.Floors == null || _model.Floors.Count == 0)
+                return;
+            var merged = new Dictionary<int, FloorInfo>();
+            if (antetSimilarOtherFloors != null)
+            {
+                foreach (var f in antetSimilarOtherFloors)
+                {
+                    if (f == null) continue;
+                    merged[f.FloorNo] = f;
+                }
+            }
+            merged[antetPrimaryFloor.FloorNo] = antetPrimaryFloor;
+            var orderedFloors = merged.Values.OrderBy(f => f.ElevationM).ToList();
+            EnsureKalip50FloorOrderCaches();
+            double scale = Kalip50BuildingSchematicSectionScale;
+            double xWorld = insertX + _kalip50BinaSemaLabelXBlock * scale;
+            ObjectId styleId = GetOrCreateYaziBeykentTextStyle(tr, db);
+            var trTr = CultureInfo.GetCultureInfo("tr-TR");
+            foreach (var f in orderedFloors)
+            {
+                if (_kalip50FloorNoToModelIndex == null
+                    || !_kalip50FloorNoToModelIndex.TryGetValue(f.FloorNo, out int idx))
+                    continue;
+                if (!TryGetKalip50StoryBandZBoundsCmForFloorIndex(idx, out _, out double zTopCm))
+                    continue;
+                string label = FormatKalipSchematicAntetFloorName(f);
+                if (string.IsNullOrWhiteSpace(label))
+                    continue;
+                double yApex = insertY + (zTopCm - _kalip50BinaSemaMinZT) * scale;
+                double yWorld = yApex + KesitKotTriHeightCm + Kalip50BinaSemaFloorLabelGapAboveKotSymbolCm
+                    - Kalip50BinaSemaFloorLabelDownFromKotLineCm;
+                var txt = new DBText
+                {
+                    Layer = LayerKesitIsmi,
+                    Height = Kalip50BinaSemaAntetFloorLabelHeightModelCm,
+                    TextStyleId = styleId,
+                    TextString = label.ToUpper(trTr),
+                    HorizontalMode = TextHorizontalMode.TextCenter,
+                    VerticalMode = TextVerticalMode.TextBottom,
+                    Position = new Point3d(xWorld, yWorld, 0),
+                    AlignmentPoint = new Point3d(xWorld, yWorld, 0),
+                    Color = Color.FromColorIndex(ColorMethod.ByAci, 6),
+                    LineWeight = LineWeight.LineWeight020
+                };
+                try { txt.AdjustAlignment(db); } catch { /* sürüm farkı */ }
+                AppendEntity(tr, btr, txt);
+            }
+        }
+
+        private void ClearKalip50FormworkSessionCaches()
+        {
+            _kalip50FloorIdxByElevationAsc = null;
+            _kalip50FloorModelIndexToElevationOrder = null;
+            _kalip50FloorNoToModelIndex = null;
+            _kalip50BinaSemaKotZsAsc = null;
+            _kalip50BinaSemaKotCrowdedShiftLower = null;
+        }
+
+        private void EnsureKalip50FloorOrderCaches()
+        {
+            if (_kalip50FloorIdxByElevationAsc != null) return;
+            if (_model?.Floors == null || _model.Floors.Count == 0) return;
+            int n = _model.Floors.Count;
+            var indices = Enumerable.Range(0, n).OrderBy(i => _model.Floors[i].ElevationM).ToList();
+            _kalip50FloorIdxByElevationAsc = indices;
+            _kalip50FloorModelIndexToElevationOrder = new int[n];
+            for (int oi = 0; oi < n; oi++)
+                _kalip50FloorModelIndexToElevationOrder[indices[oi]] = oi;
+            _kalip50FloorNoToModelIndex = new Dictionary<int, int>(n);
+            for (int i = 0; i < n; i++)
+                _kalip50FloorNoToModelIndex[_model.Floors[i].FloorNo] = i;
+        }
+
+        private void EnsureKalip50BinaSemaKotCaches()
+        {
+            if (_kalip50BinaSemaKotZsAsc != null) return;
+            if (_model?.Floors == null)
+            {
+                _kalip50BinaSemaKotZsAsc = new List<double>();
+                _kalip50BinaSemaKotCrowdedShiftLower = Array.Empty<double>();
+                return;
+            }
+            var zs = new List<double> { _model.BuildingBaseKotu * 100.0 };
+            foreach (var floor in _model.Floors)
+                zs.Add((_model.BuildingBaseKotu + floor.ElevationM) * 100.0);
+            _kalip50BinaSemaKotZsAsc = MergeKesitElevationZsAscending(zs, KesitKotMergeTolCm);
+            if (_kalip50BinaSemaKotZsAsc == null || _kalip50BinaSemaKotZsAsc.Count == 0)
+            {
+                _kalip50BinaSemaKotZsAsc = new List<double>();
+                _kalip50BinaSemaKotCrowdedShiftLower = Array.Empty<double>();
+                return;
+            }
+            _kalip50BinaSemaKotCrowdedShiftLower = BuildKesitKotCrowdedShiftForLowerElevation(
+                _kalip50BinaSemaKotZsAsc, KesitKotCrowdedSeparationMinCm, KesitKotCrowdedShiftLowerCm);
+        }
+
+        private bool TryGetKalip50StoryBandZBoundsCmForFloorIndex(int floorIdx, out double zBottomCm, out double zTopCm)
+        {
+            zBottomCm = zTopCm = 0.0;
+            if (_model?.Floors == null || floorIdx < 0 || floorIdx >= _model.Floors.Count)
+                return false;
+            EnsureKalip50FloorOrderCaches();
+            if (_kalip50FloorIdxByElevationAsc == null
+                || _kalip50FloorModelIndexToElevationOrder == null
+                || floorIdx >= _kalip50FloorModelIndexToElevationOrder.Length)
+                return false;
+            var floorIdxAsc = _kalip50FloorIdxByElevationAsc;
+            int oi = _kalip50FloorModelIndexToElevationOrder[floorIdx];
+            zTopCm = (_model.BuildingBaseKotu + _model.Floors[floorIdx].ElevationM) * 100.0;
+            zBottomCm = oi == 0
+                ? _model.BuildingBaseKotu * 100.0
+                : (_model.BuildingBaseKotu + _model.Floors[floorIdxAsc[oi - 1]].ElevationM) * 100.0;
+            return zTopCm - zBottomCm >= 45.0;
+        }
+
+        private static bool IsKalip50FoundationFootprintSlice(SectionSlice s)
+        {
+            if (s == null) return false;
+            return s.Order == SectionOrderContinuousFoundation
+                || s.Order == SectionOrderSingleFooting
+                || s.Order == SectionOrderSlabFoundation
+                || s.Order == SectionOrderTieBeam
+                || s.Order == SectionOrderHatilStrip;
+        }
+
+        private bool Kalip50ModelHasFoundationGeometry()
+        {
+            return _model.ContinuousFoundations.Count > 0 || _model.SlabFoundations.Count > 0
+                || _model.TieBeams.Count > 0 || _model.SingleFootings.Count > 0;
+        }
+
+        /// <summary>Kesit hattı araması: tüm kat gövdeleri + temel ayak izleri.</summary>
+        private Geometry TryMergeKalip50BinaKesitCutSearchUnion()
+        {
+            var parts = new List<Geometry>();
+            var floorsU = TryMergeFormworkStructuralUnionAllFloors();
+            if (floorsU != null && !floorsU.IsEmpty) parts.Add(floorsU);
+            foreach (var cf in _model.ContinuousFoundations)
+            {
+                try
+                {
+                    var p = ContinuousFootprintPoly(cf);
+                    if (p != null && !p.IsEmpty) parts.Add(ReducePrecisionSafe(p, 1) ?? p);
+                }
+                catch { }
+            }
+            foreach (var sfd in _model.SlabFoundations)
+            {
+                try
+                {
+                    var p = SlabFoundationFootprintPoly(sfd);
+                    if (p != null && !p.IsEmpty) parts.Add(ReducePrecisionSafe(p, 1) ?? p);
+                }
+                catch { }
+            }
+            foreach (var tb in _model.TieBeams)
+            {
+                try
+                {
+                    var p = TieBeamFootprintPoly(tb);
+                    if (p != null && !p.IsEmpty) parts.Add(ReducePrecisionSafe(p, 1) ?? p);
+                }
+                catch { }
+            }
+            if (_model.Floors.Count > 0)
+            {
+                foreach (var sf in _model.SingleFootings)
+                {
+                    try
+                    {
+                        var p = SingleFootingModelPoly(sf, _model.Floors[0]);
+                        if (p != null && !p.IsEmpty) parts.Add(ReducePrecisionSafe(p, 1) ?? p);
+                    }
+                    catch { }
+                }
+            }
+            return TryMergeGeometryList(parts);
+        }
+
+        private Geometry TryMergeFoundationOccupancyForKalip50Cut()
+        {
+            if (_model.Floors.Count == 0) return null;
+            try { return BuildCutOccupancyUnion(_model.Floors[0], isFoundationPlan: true); }
+            catch { return null; }
+        }
+
+        /// <summary>
+        /// Ana yatay kesitte dilim varsa <paramref name="primarySlices"/>; yoksa farklı Y kesitinde dilim bulunursa
+        /// <paramref name="alternateByFloor"/> (planda çizgi yok; şemada kat ortası KESİT SINIRI yalnız kolon/perde üzerinde).
+        /// </summary>
+        private void CollectKalip50FloorHorizontalSlices(
+            FloorInfo floor,
+            int floorIndex,
+            double e,
+            Point2d topA,
+            Point2d topB,
+            Point2d alongOrigTop,
+            Vector2d dirTop,
+            List<SectionSlice> primarySlices,
+            Dictionary<int, List<SectionSlice>> alternateByFloor)
+        {
+            double yGlobalCut = topA.Y;
+            var colExtra = GetColumnTableExtraData(floor);
+            var sl = CollectAllSectionSlices(floor, topA, topB, alongOrigTop, dirTop, isFoundationPlan: false, colExtra);
+            if (sl != null && sl.Count > 0)
+            {
+                primarySlices.AddRange(sl);
+                return;
+            }
+            Geometry elemU;
+            try { elemU = BuildFloorElementUnion(floor); }
+            catch { elemU = null; }
+            if (elemU == null || elemU.IsEmpty)
+                return;
+            var fe = GetAksSiniriEnvelope(elemU);
+            Geometry occ;
+            try { occ = BuildCutOccupancyUnion(floor, isFoundationPlan: false) ?? elemU; }
+            catch { occ = elemU; }
+            var yCandidates = GetRankedHorizontalCutYs(
+                floor, fe.Xmin, fe.Xmax, fe.Ymin, fe.Ymax, e, occ, isFoundationPlan: false, elemU,
+                maxDistinctY: Kalip50BinaSemaMaxFloorCutLineStages);
+            foreach (double yAlt in yCandidates)
+            {
+                Point2d a2 = new Point2d(fe.Xmin - e, yAlt);
+                Point2d b2 = new Point2d(fe.Xmax + e, yAlt);
+                Point2d o2 = new Point2d(fe.Xmin, yAlt);
+                var sl2 = CollectAllSectionSlices(floor, a2, b2, o2, dirTop, isFoundationPlan: false, colExtra);
+                if (sl2 == null || sl2.Count == 0)
+                    continue;
+                if (Math.Abs(yAlt - yGlobalCut) <= Kalip50AlternateCutSameYToleranceCm)
+                {
+                    primarySlices.AddRange(sl2);
+                    return;
+                }
+                if (!alternateByFloor.TryGetValue(floorIndex, out var bucket) || bucket == null)
+                {
+                    bucket = new List<SectionSlice>();
+                    alternateByFloor[floorIndex] = bucket;
+                }
+                bucket.AddRange(sl2);
+                return;
+            }
+        }
+
+        /// <summary>Ana kesit grubu + her alternatif kesit grubu ayrı union/tarama; şemada tam KESİT SINIRI dikdörtgeni yok.</summary>
+        private void DrawKalip50BinaSemaSliceGroups(
+            Transaction tr,
+            BlockTableRecord btr,
+            List<SectionSlice> primarySlices,
+            Dictionary<int, List<SectionSlice>> alternateByFloor,
+            double amin,
+            double minZ,
+            double spanA,
+            double spanZ,
+            bool kalip50BuildingStackSiniriClip)
+        {
+            if (primarySlices != null && primarySlices.Count > 0)
+                DrawKalip50SchematicHorizontalSliceGroup(tr, btr, primarySlices, 0, 0, amin, minZ, spanA, spanZ, kalip50BuildingStackSiniriClip, drawKesitSiniriFromBeams: false);
+
+            var altOrdered = alternateByFloor
+                .Where(kv => kv.Value != null && kv.Value.Count > 0)
+                .OrderBy(kv => kv.Value.Min(s => s.Z0))
+                .ToList();
+            foreach (var kv in altOrdered)
+            {
+                if (!TryGetKalip50StoryMidElevationCmBetweenSlabs(kv.Key, kv.Value, out double zStoryMid))
+                    continue;
+                var clippedAlt = BuildKalip50AlternateSlicesClippedAboveStoryMid(kv.Value, zStoryMid);
+                if (clippedAlt.Count == 0)
+                    clippedAlt = new List<SectionSlice>(kv.Value);
+                DrawKalip50SchematicHorizontalSliceGroup(tr, btr, clippedAlt, 0, 0, amin, minZ, spanA, spanZ, kalip50BuildingStackSiniriClip, drawKesitSiniriFromBeams: false);
+                DrawKalip50AlternateStoryMidKesitSiniriOnKolonPerde(tr, btr, zStoryMid, clippedAlt, 0, 0, amin, minZ);
+            }
+        }
+
+        /// <summary>Yatay bina şeması: tek dilim grubu (birleşik tarama bir sonraki grupla yapılmaz).</summary>
+        private void DrawKalip50SchematicHorizontalSliceGroup(
+            Transaction tr,
+            BlockTableRecord btr,
+            List<SectionSlice> groupSlices,
+            double originX,
+            double originY,
+            double amin,
+            double minZ,
+            double spanA,
+            double spanZ,
+            bool kalip50BuildingStackSiniriClip,
+            bool drawKesitSiniriFromBeams = true)
+        {
+            if (groupSlices == null || groupSlices.Count == 0)
+                return;
+            var gf = _ntsDrawFactory;
+            var slicePolys = new List<Geometry>();
+            foreach (var s in groupSlices.OrderBy(x => x.Order).ThenBy(x => x.Z0))
+            {
+                double x0 = originX + (s.A0 - amin);
+                double x1 = originX + (s.A1 - amin);
+                if (x1 - x0 < 6.0) { double m = (x0 + x1) * 0.5; x0 = m - 4.0; x1 = m + 4.0; }
+                double y0 = originY + (s.Z0 - minZ);
+                double y1 = originY + (s.Z1 - minZ);
+                if (y1 - y0 < 3.0) y1 = y0 + 3.0;
+                var ring = gf.CreateLinearRing(new[]
+                {
+                    new Coordinate(x0, y0), new Coordinate(x1, y0), new Coordinate(x1, y1), new Coordinate(x0, y1), new Coordinate(x0, y0)
+                });
+                slicePolys.Add(gf.CreatePolygon(ring));
+            }
+            TryDrawKesitSchematicMergedOutline(tr, btr, slicePolys, groupSlices, isFoundationPlan: false, originX, originY, amin, minZ, spanZ,
+                horizontalAlongX: true, mirrorElevationX: false, kalip50BuildingStackSiniriClip, perSliceHatchOnly: true,
+                ansi33HatchPatternScale: 1.0);
+            if (drawKesitSiniriFromBeams)
+                DrawKesitSiniriFromBeams(tr, btr, groupSlices, originX, originY, amin, minZ, spanZ,
+                    horizontalAlongX: true, mirrorElevationX: false, isFoundationPlan: false, kalip50BuildingStackSiniriClip);
+        }
+
+        /// <summary>
+        /// Farklı kesit hattındaki kat için: kat yüksekliği ortası kotunda; yalnızca kolon/perde diliminin içinden geçen yatay KESİT SINIRI segmentleri.
+        /// </summary>
+        private void DrawKalip50AlternateStoryMidKesitSiniriOnKolonPerde(
+            Transaction tr,
+            BlockTableRecord btr,
+            double zMid,
+            List<SectionSlice> altSlices,
+            double originX,
+            double originY,
+            double amin,
+            double minZ)
+        {
+            if (altSlices == null || altSlices.Count == 0)
+                return;
+            double eps = Kalip50AlternateStoryMidZSiniriEpsCm;
+            double yLine = originY + (zMid - minZ);
+            foreach (var s in altSlices)
+            {
+                if (s.Layer != LayerKolon && s.Layer != LayerPerde)
+                    continue;
+                if (zMid < s.Z0 - eps || zMid > s.Z1 + eps)
+                    continue;
+                double aLo = Math.Min(s.A0, s.A1);
+                double aHi = Math.Max(s.A0, s.A1);
+                double x0 = originX + (aLo - amin);
+                double x1 = originX + (aHi - amin);
+                if (x1 <= x0 + 1e-6)
+                    continue;
+                var pl = new Polyline(2);
+                pl.AddVertexAt(0, new Point2d(x0, yLine), 0, 0, 0);
+                pl.AddVertexAt(1, new Point2d(x1, yLine), 0, 0, 0);
+                pl.Closed = false;
+                pl.Layer = LayerKesitSiniri;
+                pl.ConstantWidth = 0;
+                AppendEntity(tr, btr, pl);
+            }
+        }
+
+        /// <summary>
+        /// Kat yüksekliği ortası (cm): üstte daha yüksek döşeme kotu varsa (bu kat + üst kot)/2;
+        /// en üst katta alttaki en yüksek komşu kot ile bu kat kotunun ortası (ST4 <see cref="FloorInfo"/> listesi sırasından bağımsız).
+        /// </summary>
+        private bool TryGetKalip50StoryMidElevationCmBetweenSlabs(int floorIndex, List<SectionSlice> altSlices, out double zMidCm)
+        {
+            zMidCm = 0;
+            if (_model.Floors == null || floorIndex < 0 || floorIndex >= _model.Floors.Count)
+                return false;
+            double baseM = _model.BuildingBaseKotu;
+            double zThis = (baseM + _model.Floors[floorIndex].ElevationM) * 100.0;
+
+            double? zUpper = null;
+            foreach (var g in _model.Floors)
+            {
+                double z = (baseM + g.ElevationM) * 100.0;
+                if (z > zThis + 1e-3)
+                    zUpper = zUpper.HasValue ? Math.Min(zUpper.Value, z) : z;
+            }
+            if (zUpper.HasValue)
+            {
+                zMidCm = (zThis + zUpper.Value) * 0.5;
+                return true;
+            }
+
+            double? zLower = null;
+            foreach (var g in _model.Floors)
+            {
+                double z = (baseM + g.ElevationM) * 100.0;
+                if (z < zThis - 1e-3)
+                    zLower = zLower.HasValue ? Math.Max(zLower.Value, z) : z;
+            }
+            if (zLower.HasValue)
+            {
+                zMidCm = (zLower.Value + zThis) * 0.5;
+                return true;
+            }
+
+            var kp = altSlices != null
+                ? altSlices.Where(s => s.Layer == LayerKolon || s.Layer == LayerPerde).ToList()
+                : new List<SectionSlice>();
+            if (kp.Count > 0)
+            {
+                zMidCm = kp.Average(s => (s.Z0 + s.Z1) * 0.5);
+                return true;
+            }
+            if (altSlices != null && altSlices.Count > 0)
+            {
+                zMidCm = (altSlices.Min(s => s.Z0) + altSlices.Max(s => s.Z1)) * 0.5;
+                return true;
+            }
+            zMidCm = zThis;
+            return true;
+        }
+
+        /// <summary>Farklı kesit hattındaki kat: kesit sınırı kotunun <b>altındaki</b> kısmı şemadan çıkar (yalnız bu grup).</summary>
+        private static List<SectionSlice> BuildKalip50AlternateSlicesClippedAboveStoryMid(List<SectionSlice> src, double zMid)
+        {
+            const double tol = 1e-3;
+            var outList = new List<SectionSlice>();
+            if (src == null || src.Count == 0)
+                return outList;
+            foreach (var s in src)
+            {
+                if (s.Z1 <= zMid + tol)
+                    continue;
+                double z0n = Math.Max(s.Z0, zMid);
+                double z1n = s.Z1;
+                if (z1n <= z0n + tol)
+                    continue;
+                outList.Add(new SectionSlice
+                {
+                    A0 = s.A0,
+                    A1 = s.A1,
+                    Z0 = z0n,
+                    Z1 = z1n,
+                    Layer = s.Layer,
+                    Order = s.Order,
+                    Etiket = s.Etiket
+                });
+            }
+            return outList;
+        }
+
+        /// <summary>Bina tabanı + her kat döşeme kotu (cm); üst A-A kot stili, model uzayında (blok ölçeği dışında).</summary>
+        private void DrawKalip50BuildingSchematicFloorLevelKotsInModelSpace(
+            Transaction tr, BlockTableRecord btr, Database db,
+            double insertX, double insertY, double amin, double minZ, double spanA, double spanZ)
+        {
+            double scale = Kalip50BuildingSchematicSectionScale;
+            double xRight = insertX + spanA * scale;
+            EnsureKalip50BinaSemaKotCaches();
+            if (_kalip50BinaSemaKotZsAsc == null || _kalip50BinaSemaKotZsAsc.Count == 0) return;
+            var zsAsc = _kalip50BinaSemaKotZsAsc;
+            double[] crowdedShiftLower = _kalip50BinaSemaKotCrowdedShiftLower ?? Array.Empty<double>();
+            ObjectId styleId = GetOrCreateYaziBeykentTextStyle(tr, db);
+            const double rotAa = 0.0;
+            double xDatumBase = xRight + KesitKotDatumGapFromSectionCm + 35.0;
+
+            for (int zi = zsAsc.Count - 1; zi >= 0; zi--)
+            {
+                double zElev = zsAsc[zi];
+                double extra = zi < crowdedShiftLower.Length ? crowdedShiftLower[zi] : 0.0;
+                double apexX = xDatumBase + extra;
+                double apexY = insertY + (zElev - minZ) * scale;
+                DrawKesitKotClassicSymbol(tr, btr, apexX, apexY, rotAa);
+                double lxText = KesitKotTriHalfWidthCm;
+                double lyText = KesitKotTriHeightCm + KesitKotTextAboveExtensionCm;
+                double c = Math.Cos(rotAa), si = Math.Sin(rotAa);
+                double textX = apexX + c * lxText - si * lyText;
+                double textY = apexY + si * lxText + c * lyText;
+                string kotText = FormatKesitKotElevationString(zElev);
+                AppendKesitKotElevationDbText(tr, btr, db, styleId, kotText, textX, textY, rotAa);
+            }
+        }
+
+        private Geometry TryMergeFormworkStructuralUnionAllFloors()
+        {
+            var list = new List<Geometry>();
+            foreach (var floor in _model.Floors)
+            {
+                try
+                {
+                    var u = BuildFloorElementUnion(floor);
+                    if (u != null && !u.IsEmpty)
+                        list.Add(ReducePrecisionSafe(u, 1) ?? u);
+                }
+                catch { /* kat atlanir */ }
+            }
+            return TryMergeGeometryList(list);
+        }
+
+        private Geometry TryMergeFormworkCutOccupancyAllFloors()
+        {
+            var list = new List<Geometry>();
+            foreach (var floor in _model.Floors)
+            {
+                try
+                {
+                    var u = BuildCutOccupancyUnion(floor, isFoundationPlan: false);
+                    if (u != null && !u.IsEmpty)
+                        list.Add(ReducePrecisionSafe(u, 1) ?? u);
+                }
+                catch { /* kat atlanir */ }
+            }
+            return TryMergeGeometryList(list);
+        }
+
+        private static Geometry TryMergeGeometryList(List<Geometry> geoms)
+        {
+            if (geoms == null || geoms.Count == 0) return null;
+            if (geoms.Count == 1) return geoms[0];
+            try { return CascadedPolygonUnion.Union(geoms); }
+            catch
+            {
+                try
+                {
+                    var reduced = geoms.Select(g => ReducePrecisionSafe(g, 1)).Where(g => g != null && !g.IsEmpty).ToList();
+                    return reduced.Count == 0 ? null : (reduced.Count == 1 ? reduced[0] : CascadedPolygonUnion.Union(reduced));
+                }
+                catch { return geoms[0]; }
             }
         }
 
@@ -2677,6 +3448,22 @@ namespace ST4PlanIdCiz
             return true;
         }
 
+        /// <summary>KALIP50 bina şeması: temel + tüm kat dilimleri birlikte; KESİT SINIRI Z aralığı tüm dilim zarfına göre (altta kesilmesin).</summary>
+        private static bool TryGetKesitSiniriBoundsKalip50BuildingStack(List<SectionSlice> slices, out double aLo, out double aHi, out double zLo, out double zHi)
+        {
+            aLo = aHi = zLo = zHi = 0;
+            if (slices == null || slices.Count == 0) return false;
+            aLo = slices.Min(s => s.A0) - KesitSiniriBoyunaTasmasiCm;
+            aHi = slices.Max(s => s.A1) + KesitSiniriBoyunaTasmasiCm;
+            double zMin = slices.Min(s => s.Z0);
+            double zMax = slices.Max(s => s.Z1);
+            double gLo = Math.Max(Math.Max(KesitSiniriTemelKotTasmasiCm, KesitSiniriDosemeAltTasmasiCm), KesitSiniriKotTasmasiCm);
+            double gHi = Math.Max(Math.Max(KesitSiniriDosemeUstTasmasiCm, KesitSiniriKotTasmasiCm), KesitSiniriTemelKotTasmasiCm);
+            zLo = zMin - gLo;
+            zHi = zMax + gHi;
+            return true;
+        }
+
         /// <summary>Plan üst/sol kesit ile aks balonu arası uzaklık: KESİT SINIRI kotu kolon/perde dilimlerine göre değil, kiriş-döşeme-temel gövdesine göre.</summary>
         private static bool TryGetKesitSiniriPlacementZBounds(List<SectionSlice> slices, bool isFoundationPlan, out double zLo)
         {
@@ -2705,9 +3492,12 @@ namespace ST4PlanIdCiz
         /// <summary>KESİT SINIRI: kolon+perde dilimlerinin KESİT SINIRI dikdörtgeni kenarıyla örtüştüğü parçalar; kolon/perde yoksa veya hiç örtüşme yoksa çizilmez.</summary>
         private void DrawKesitSiniriFromBeams(Transaction tr, BlockTableRecord btr, List<SectionSlice> slices,
             double originX, double originY, double amin, double minZ, double spanZ, bool horizontalAlongX, bool mirrorElevationX,
-            bool isFoundationPlan)
+            bool isFoundationPlan, bool kalip50BuildingStackSiniriClip = false)
         {
-            if (!TryGetKesitSiniriBounds(slices, isFoundationPlan, out double aLo, out double aHi, out double zLo, out double zHi))
+            bool okBounds = kalip50BuildingStackSiniriClip
+                ? TryGetKesitSiniriBoundsKalip50BuildingStack(slices, out double aLo, out double aHi, out double zLo, out double zHi)
+                : TryGetKesitSiniriBounds(slices, isFoundationPlan, out aLo, out aHi, out zLo, out zHi);
+            if (!okBounds)
                 return;
             if (!slices.Any(s => s.Layer == LayerKolon || s.Layer == LayerPerde))
                 return;
@@ -3505,7 +4295,7 @@ namespace ST4PlanIdCiz
         /// <summary>Model cm birebir: yatay eksen = kesit boyunca mesafe, dikey = kot (genel cm).</summary>
         /// <param name="mirrorElevationX">Sol kesit kutusunda kot ekseninde (X) simetri; zincir (Y) aynalanmaz.</param>
         private void DrawSchematicFromSlicesOneToOne(Transaction tr, BlockTableRecord btr, List<SectionSlice> slices,
-            double originX, double originY, double amin, double minZ, double spanA, double spanZ, bool horizontalAlongX, bool mirrorElevationX, bool isFoundationPlan, bool drawReferenceAxis = true)
+            double originX, double originY, double amin, double minZ, double spanA, double spanZ, bool horizontalAlongX, bool mirrorElevationX, bool isFoundationPlan, bool drawReferenceAxis = true, bool kalip50BuildingStackSiniriClip = false)
         {
             if (slices == null || slices.Count == 0)
             {
@@ -3553,7 +4343,7 @@ namespace ST4PlanIdCiz
                     });
                     slicePolys.Add(gf.CreatePolygon(ring));
                 }
-                TryDrawKesitSchematicMergedOutline(tr, btr, slicePolys, slices, isFoundationPlan, originX, originY, amin, minZ, spanZ, horizontalAlongX, mirrorElevationX);
+                TryDrawKesitSchematicMergedOutline(tr, btr, slicePolys, slices, isFoundationPlan, originX, originY, amin, minZ, spanZ, horizontalAlongX, mirrorElevationX, kalip50BuildingStackSiniriClip);
             }
             else
             {
@@ -3593,15 +4383,19 @@ namespace ST4PlanIdCiz
                     });
                     slicePolys2.Add(gf2.CreatePolygon(ring));
                 }
-                TryDrawKesitSchematicMergedOutline(tr, btr, slicePolys2, slices, isFoundationPlan, originX, originY, amin, minZ, spanZ, horizontalAlongX, mirrorElevationX);
+                TryDrawKesitSchematicMergedOutline(tr, btr, slicePolys2, slices, isFoundationPlan, originX, originY, amin, minZ, spanZ, horizontalAlongX, mirrorElevationX, kalip50BuildingStackSiniriClip);
             }
         }
 
         /// <summary>KESİT SINIRI çizgisi ile aynı dikdörtgen (şema koordinatlarında).</summary>
         private Geometry BuildKesitSiniriClipPolygon(List<SectionSlice> slices, bool isFoundationPlan,
-            double originX, double originY, double amin, double minZ, double spanZ, bool horizontalAlongX, bool mirrorElevationX)
+            double originX, double originY, double amin, double minZ, double spanZ, bool horizontalAlongX, bool mirrorElevationX,
+            bool kalip50BuildingStackSiniriClip = false)
         {
-            if (!TryGetKesitSiniriBounds(slices, isFoundationPlan, out double aLo, out double aHi, out double zLo, out double zHi))
+            bool ok = kalip50BuildingStackSiniriClip
+                ? TryGetKesitSiniriBoundsKalip50BuildingStack(slices, out double aLo, out double aHi, out double zLo, out double zHi)
+                : TryGetKesitSiniriBounds(slices, isFoundationPlan, out aLo, out aHi, out zLo, out zHi);
+            if (!ok)
                 return null;
             var gf = _ntsDrawFactory;
             double x0, x1, y0, y1;
@@ -3634,10 +4428,12 @@ namespace ST4PlanIdCiz
             return gf.CreatePolygon(ring);
         }
 
-        /// <summary>Dilimleri union eder; KESİT SINIRI dışını keser; <see cref="LayerKesitCizgisi"/> üzerinde çizer.</summary>
+        /// <summary>Dilimleri union eder; KESİT SINIRI dışını keser; <see cref="LayerKesitCizgisi"/> üzerinde çizer.
+        /// <paramref name="perSliceHatchOnly"/> true ise tarama birleşik union ile değil her dilim poligonu için ayrı yapılır (iç boşluk yanlış dolmaz).</summary>
         private void TryDrawKesitSchematicMergedOutline(Transaction tr, BlockTableRecord btr, List<Geometry> slicePolys,
             List<SectionSlice> slices, bool isFoundationPlan, double originX, double originY, double amin, double minZ, double spanZ,
-            bool horizontalAlongX, bool mirrorElevationX)
+            bool horizontalAlongX, bool mirrorElevationX, bool kalip50BuildingStackSiniriClip = false, bool perSliceHatchOnly = false,
+            double ansi33HatchPatternScale = 1.0)
         {
             if (slicePolys == null || slicePolys.Count == 0) return;
             Geometry merged;
@@ -3658,7 +4454,7 @@ namespace ST4PlanIdCiz
                 }
             }
             if (merged == null || merged.IsEmpty) return;
-            Geometry clip = BuildKesitSiniriClipPolygon(slices, isFoundationPlan, originX, originY, amin, minZ, spanZ, horizontalAlongX, mirrorElevationX);
+            Geometry clip = BuildKesitSiniriClipPolygon(slices, isFoundationPlan, originX, originY, amin, minZ, spanZ, horizontalAlongX, mirrorElevationX, kalip50BuildingStackSiniriClip);
             if (clip != null && !clip.IsEmpty)
             {
                 try
@@ -3672,9 +4468,42 @@ namespace ST4PlanIdCiz
                 catch { /* tam gövde */ }
             }
             if (merged == null || merged.IsEmpty) return;
+
+            if (perSliceHatchOnly)
+            {
+                Geometry c2ForSlices = null;
+                if (clip != null && !clip.IsEmpty)
+                    c2ForSlices = ReducePrecisionSafe(clip, 2) ?? clip;
+                foreach (var raw in slicePolys)
+                {
+                    if (raw == null || raw.IsEmpty) continue;
+                    var p = ReducePrecisionSafe(raw, 2) ?? raw;
+                    Geometry piece = p;
+                    if (c2ForSlices != null)
+                    {
+                        try
+                        {
+                            var interS = p.Intersection(c2ForSlices);
+                            if (interS == null || interS.IsEmpty) continue;
+                            piece = interS;
+                        }
+                        catch { continue; }
+                    }
+                    DrawGeometryRingsAsPolylines(tr, btr, piece, LayerTarama, addHatch: true, hatchAngleRad: null,
+                        exteriorRingsOnly: true, applySmallTriangleTrim: false, hatchBoundaryPolylineOnHiddenLayer: true,
+                        ansi33HatchPatternScale: ansi33HatchPatternScale);
+                }
+                if (clip != null && !clip.IsEmpty)
+                    DrawKesitCizgisiExcludingSiniriEdges(tr, btr, merged, clip);
+                else
+                    DrawGeometryRingsAsPolylines(tr, btr, merged, LayerKesitCizgisi, addHatch: false, exteriorRingsOnly: false, applySmallTriangleTrim: false);
+                return;
+            }
+
             // Kolon/perde ile aynı: ANSI33 tarama (TARAMA), sınır çizgisi TARAMA üzerinde; üstte KESIT CIZGISI
             DrawGeometryRingsAsPolylines(tr, btr, merged, LayerTarama, addHatch: true, hatchAngleRad: null,
-                exteriorRingsOnly: true, applySmallTriangleTrim: false);
+                exteriorRingsOnly: true, applySmallTriangleTrim: false, hatchBoundaryPolylineOnHiddenLayer: true,
+                ansi33HatchPatternScale: ansi33HatchPatternScale);
             if (clip != null && !clip.IsEmpty)
                 DrawKesitCizgisiExcludingSiniriEdges(tr, btr, merged, clip);
             else
