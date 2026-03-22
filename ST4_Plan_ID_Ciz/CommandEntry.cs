@@ -26,6 +26,24 @@ namespace ST4PlanIdCiz
     public class CommandEntry
     {
         /// <summary>
+        /// STA komutları çalışırken aktif çizimde ızgara kapalı ve genel çizgi tipi ölçeği sabitlensin.
+        /// </summary>
+        private static void ApplyStaDefaultDrawingDisplaySettings(Document doc)
+        {
+            if (doc == null) return;
+            try
+            {
+                Application.SetSystemVariable("GRIDMODE", (short)0);
+            }
+            catch { /* sürüm / bağlam */ }
+            try
+            {
+                Application.SetSystemVariable("LTSCALE", 10.0);
+            }
+            catch { /* sürüm / bağlam */ }
+        }
+
+        /// <summary>
         /// ST4 dosyasından akslar, kolonlar (poligon dahil), kirişler ve perdeleri
         /// tüm eleman ID'leriyle çizer; katlar yan yana dizilir.
         /// </summary>
@@ -34,6 +52,7 @@ namespace ST4PlanIdCiz
         {
             var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
+            ApplyStaDefaultDrawingDisplaySettings(doc);
 
             var ed = doc.Editor;
             var db = doc.Database;
@@ -84,6 +103,7 @@ namespace ST4PlanIdCiz
         {
             var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
+            ApplyStaDefaultDrawingDisplaySettings(doc);
 
             var ed = doc.Editor;
             var db = doc.Database;
@@ -188,6 +208,7 @@ namespace ST4PlanIdCiz
         {
             var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
+            ApplyStaDefaultDrawingDisplaySettings(doc);
 
             var ed = doc.Editor;
             var db = doc.Database;
@@ -253,6 +274,7 @@ namespace ST4PlanIdCiz
         {
             var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
+            ApplyStaDefaultDrawingDisplaySettings(doc);
 
             var ed = doc.Editor;
             var db = doc.Database;
@@ -300,6 +322,7 @@ namespace ST4PlanIdCiz
         {
             var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
+            ApplyStaDefaultDrawingDisplaySettings(doc);
 
             var ed = doc.Editor;
             var db = doc.Database;
@@ -347,6 +370,7 @@ namespace ST4PlanIdCiz
         {
             var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
+            ApplyStaDefaultDrawingDisplaySettings(doc);
 
             var ed = doc.Editor;
             var db = doc.Database;

@@ -70,7 +70,7 @@ namespace ST4PlanIdCiz
         private const double AntetDxfSheetViewOutYmin = 1608.94236737828;
         private const double AntetDxfSheetViewOutYmax = 5808.942367378282;
         private const double AntetDxfSheetViewXmax = 4857.138603748386;
-        private const double TemelAntetBaslangicYukseklikCm = 5000.0;
+        private const double TemelAntetBaslangicYukseklikCm = 4500.0;
         private const double TemelAntetEkStretchAdimCm = 500.0;
         // Ileride: antet sablon degiskenleri — klon sonrasi DBText/ATTRIBUTE (sablon: antet_02.dwg + projede antet_02.dxf referans)
         private const string TemelAntetEmbeddedResourceName = "ST4PlanIdCiz.TemelAntet.antet_02.dwg";
