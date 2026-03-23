@@ -117,6 +117,8 @@ namespace ST4AksCizCSharp
     {
         public string Name { get; set; }
         public double ThicknessCm { get; set; }
+        /// <summary>6. sütun: bina tabanına göre radye alt kotu (m). Örn: -.8 = tabandan 80 cm aşağı.</summary>
+        public double BottomLevelM { get; set; }
         /// <summary>7. sütun (örn. 50) / 10 = hareketli yük kN/m².</summary>
         public double LiveLoadKNm2 { get; set; }
         /// <summary>İki X ekseni (1001..1999).</summary>

@@ -3059,6 +3059,7 @@ namespace ST4PlanIdCiz
             return factory.CreatePolygon(factory.CreateLinearRing(coords));
         }
 
+        /// <summary>Sürekli temel üstündeki temel hatılı şeridi: 8–9. sütun (başlangıç/bitiş uzatması) uygulanmaz; yalnızca sabit aks ile başlangıç/bitiş aks kesişimleri.</summary>
         private Geometry HatilStripOnContinuousPoly(ContinuousFoundationInfo cf)
         {
             if (cf.TieBeamWidthCm <= 0) return null;
@@ -3235,15 +3236,16 @@ namespace ST4PlanIdCiz
                     var hat = HatilStripOnContinuousPoly(cf);
                     if (hat != null && cf.HatilLabelHeightCm > 0)
                     {
-                        double hz1 = z1 + Math.Max(15.0, cf.HatilLabelHeightCm * 0.35);
+                        // ST4 13. sütun (HatilLabelHeightCm): sürekli temel üstünden (z1) itibaren temel hatılı yüksekliği (cm); alt=z1, üst=z1+HatilLabelHeightCm.
+                        double hz1 = z1 + cf.HatilLabelHeightCm;
                         TryAddSliceCutLine(cutLine, hat, alongOrigin, dirN, z1, hz1, "TEMEL HATILI (BEYKENT)", 15, list);
                     }
                 }
                 foreach (var sfd in _model.SlabFoundations)
                 {
                     var poly = SlabFoundationFootprintPoly(sfd);
-                    double z1 = baseCm;
-                    double z0 = z1 - Math.Max(sfd.ThicknessCm, 40.0);
+                    double z0 = (_model.BuildingBaseKotu + sfd.BottomLevelM) * 100.0;
+                    double z1 = z0 + Math.Max(sfd.ThicknessCm, 40.0);
                     TryAddSliceCutLine(cutLine, poly, alongOrigin, dirN, z0, z1, "TEMEL (BEYKENT)", 12, list);
                 }
                 foreach (var tb in _model.TieBeams)

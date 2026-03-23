@@ -667,6 +667,8 @@ namespace ST4AksCizCSharp
                         }
                         if (x1 != 0 && y1 != 0)
                         {
+                            double bottomLevelM = 0.0;
+                            if (p.Count > 5) St4Text.TryParseDouble(p[5], out bottomLevelM);
                             double liveLoadKNm2 = 0;
                             if (p.Count >= 7 && St4Text.TryParseDouble(p[6], out double col7))
                                 liveLoadKNm2 = col7 / 10.0;
@@ -674,6 +676,7 @@ namespace ST4AksCizCSharp
                             {
                                 Name = pendingSlabName ?? "",
                                 ThicknessCm = thickness,
+                                BottomLevelM = bottomLevelM,
                                 LiveLoadKNm2 = liveLoadKNm2,
                                 AxisX1 = x1,
                                 AxisX2 = x2,

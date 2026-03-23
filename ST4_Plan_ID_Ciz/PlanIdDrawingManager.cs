@@ -7836,14 +7836,13 @@ namespace ST4PlanIdCiz
                     StretchAntetRightBandWithoutScaling(tr, rootEntityIds, placedSheetViewRight, deltaRight);
 
                 // Yukseklik kurali sadece SheetViewOut katmanina gore uygulanir.
-                // TEMEL100: 2× ölçek SheetViewOut yüksekliğini ikiye katlar; hedef 9000 plan cm ise germe öncesi +4500.
-                double sheetOutAddCm = TemelAntetSheetViewOutBaslangicYukseklikCm;
-                double stretchStepCm = TemelAntetEkStretchAdimCm;
-                if (_temelFoundationScale == TemelFoundationPlanScale.Hundred)
-                {
-                    sheetOutAddCm *= 0.5;
-                    stretchStepCm *= 0.5;
-                }
+                // TEMEL50: +4500 cm. TEMEL100: 2× sonrası 9000 cm hedefi için germe öncesi +4500 cm.
+                double sheetOutAddCm = _temelFoundationScale == TemelFoundationPlanScale.Hundred
+                    ? (TemelAntetSheetViewOutBaslangicYukseklikCm * 0.5)
+                    : TemelAntetBaslangicYukseklikCm;
+                double stretchStepCm = _temelFoundationScale == TemelFoundationPlanScale.Hundred
+                    ? (TemelAntetEkStretchAdimCm * 0.5)
+                    : TemelAntetEkStretchAdimCm;
                 double targetSheetViewOutTop = placedSheetViewOutBottom + sheetOutAddCm;
                 // TEMEL100: üst germe eşiği plan Y'sinde; 2× sonrası O+2*(T-O) >= layoutMaxY → T >= O+(layoutMaxY-O)/2.
                 double stretchNeedTopPreScale = layoutMaxY;
@@ -9685,7 +9684,13 @@ namespace ST4PlanIdCiz
             }
         }
 
-        /// <param name="temelHatiliRaws">Dolu verilirse sürekli temel hatılı (geom, widthCm, heightDisplayCm, kot, isRadyeTemelHatili=false).</param>
+        /// <summary>Sürekli temelin üst yüzey kotu (m, mutlak). Hatılın sürekli temel üzerine oturduğu alt kot bu değere eşittir (kesit z1 ile aynı mantık).</summary>
+        private static double GetContinuousFoundationTopElevationM(double buildingBaseKotuM, ContinuousFoundationInfo cf)
+        {
+            return buildingBaseKotuM + (cf.BottomKotBinaGoreCm + cf.HeightCm) / 100.0;
+        }
+
+        /// <param name="temelHatiliRaws">Dolu verilirse sürekli temel hatılı (geom, widthCm, heightDisplayCm, kot, isRadyeTemelHatili=false). kot = sürekli temel üst yüzey kotu (m); hatılın oturma (alt) kotu buna eşitlenir.</param>
         /// <param name="slabUnion">Radye temel alanı birleşiği; etiket taşınırken bu alanın içine girmemesi için kullanılır.</param>
         private void DrawContinuousFoundations(Transaction tr, BlockTableRecord btr, double offsetX, double offsetY, FloorInfo floor, bool drawTemelOutline = true, Geometry temelUnion = null, Geometry kolonPerdeUnion = null, List<(Geometry geom, double widthCm, double heightDisplayCm, double kot, bool isRadyeTemelHatili)> temelHatiliRaws = null, Geometry slabUnion = null)
         {
@@ -9828,8 +9833,8 @@ namespace ST4PlanIdCiz
 
                     if (temelHatiliRaws != null)
                     {
-                        double temelUstKotu = _model.BuildingBaseKotu + (cf.BottomKotBinaGoreCm + cf.HeightCm) / 100.0;
-                        temelHatiliRaws.Add((hatilPoly, cf.TieBeamWidthCm, cf.HatilLabelHeightCm, temelUstKotu, false));
+                        double hatilOturmaAltKotM = GetContinuousFoundationTopElevationM(_model.BuildingBaseKotu, cf);
+                        temelHatiliRaws.Add((hatilPoly, cf.TieBeamWidthCm, cf.HatilLabelHeightCm, hatilOturmaAltKotM, false));
                     }
                     else
                     {
