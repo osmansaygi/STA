@@ -398,7 +398,7 @@ namespace ST4PlanIdCiz
                 var manager = new PlanIdDrawingManager(model);
                 var insRes = ed.GetPoint(new PromptPointOptions("\nKOLON50ST4 yerlestirme noktasi (sol-alt): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
-                manager.DrawColumnApplicationPlan50(db, ed, insRes.Value, fileRes.StringResult);
+                manager.DrawColumnApplicationPlan(db, ed, insRes.Value, fileRes.StringResult, KolonApplicationPlanScale.Fifty);
                 doc.SendStringToExecute("_.ZOOM _E ", true, false, false);
             }
             catch (AcRxException aex)
@@ -408,6 +408,54 @@ namespace ST4PlanIdCiz
             catch (System.Exception ex)
             {
                 ed.WriteMessage("\nKOLON50ST4 hata: {0}", ex.Message);
+                if (ex.InnerException != null)
+                    ed.WriteMessage("  Inner: {0}", ex.InnerException.Message);
+            }
+        }
+
+        [CommandMethod("KOLON100ST4")]
+        public void Kolon100St4()
+        {
+            var doc = Application.DocumentManager.MdiActiveDocument;
+            if (doc == null) return;
+            ApplyStaDefaultDrawingDisplaySettings(doc);
+
+            var ed = doc.Editor;
+            var db = doc.Database;
+
+            var opts = new PromptOpenFileOptions("\nKOLON100ST4 icin ST4 Dosyasi Secin")
+            {
+                Filter = "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*"
+            };
+
+            var fileRes = ed.GetFileNameForOpen(opts);
+            if (fileRes.Status != PromptStatus.OK) return;
+
+            try
+            {
+                NtsGeometryServices.Instance = new NtsGeometryServices(
+                    CoordinateArraySequenceFactory.Instance,
+                    new PrecisionModel(),
+                    0,
+                    GeometryOverlay.NG,
+                    new CoordinateEqualityComparer());
+
+                var parser = new St4Parser();
+                var model = parser.Parse(fileRes.StringResult);
+                GprYapiAksLabels.TryMergeFromGprBesideSt4(fileRes.StringResult, model);
+                var manager = new PlanIdDrawingManager(model);
+                var insRes = ed.GetPoint(new PromptPointOptions("\nKOLON100ST4 yerlestirme noktasi (sol-alt): ") { AllowNone = false });
+                if (insRes.Status != PromptStatus.OK) return;
+                manager.DrawColumnApplicationPlan(db, ed, insRes.Value, fileRes.StringResult, KolonApplicationPlanScale.Hundred);
+                doc.SendStringToExecute("_.ZOOM _E ", true, false, false);
+            }
+            catch (AcRxException aex)
+            {
+                ed.WriteMessage("\nKOLON100ST4 hata: {0} ({1})", aex.Message, aex.ErrorStatus);
+            }
+            catch (System.Exception ex)
+            {
+                ed.WriteMessage("\nKOLON100ST4 hata: {0}", ex.Message);
                 if (ex.InnerException != null)
                     ed.WriteMessage("  Inner: {0}", ex.InnerException.Message);
             }
@@ -446,7 +494,7 @@ namespace ST4PlanIdCiz
                 var manager = new PlanIdDrawingManager(model);
                 var insRes = ed.GetPoint(new PromptPointOptions("\nKALIP50ST4: En soldaki antet SHEETVIEW sol-alt kosesi (yerlesim referansi): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
-                manager.DrawFormworkPlan50(db, ed, insRes.Value, fileRes.StringResult);
+                manager.DrawFormworkPlan50(db, ed, insRes.Value, fileRes.StringResult, KalipPlanScale.Fifty);
                 doc.SendStringToExecute("_.ZOOM _E ", true, false, false);
             }
             catch (AcRxException aex)
@@ -459,6 +507,57 @@ namespace ST4PlanIdCiz
                 if (e is System.AggregateException agg && agg.InnerExceptions.Count > 0)
                     e = agg.Flatten().InnerExceptions[0];
                 ed.WriteMessage("\nKALIP50ST4 hata: {0}", e.Message);
+                if (e.InnerException != null)
+                    ed.WriteMessage("  Inner: {0}", e.InnerException.Message);
+            }
+        }
+
+        [CommandMethod("KALIP100ST4")]
+        public void Kalip100St4()
+        {
+            var doc = Application.DocumentManager.MdiActiveDocument;
+            if (doc == null) return;
+            ApplyStaDefaultDrawingDisplaySettings(doc);
+
+            var ed = doc.Editor;
+            var db = doc.Database;
+
+            var opts = new PromptOpenFileOptions("\nKALIP100ST4 icin ST4 Dosyasi Secin")
+            {
+                Filter = "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*"
+            };
+
+            var fileRes = ed.GetFileNameForOpen(opts);
+            if (fileRes.Status != PromptStatus.OK) return;
+
+            try
+            {
+                NtsGeometryServices.Instance = new NtsGeometryServices(
+                    CoordinateArraySequenceFactory.Instance,
+                    new PrecisionModel(),
+                    0,
+                    GeometryOverlay.NG,
+                    new CoordinateEqualityComparer());
+
+                var parser = new St4Parser();
+                var model = parser.Parse(fileRes.StringResult);
+                GprYapiAksLabels.TryMergeFromGprBesideSt4(fileRes.StringResult, model);
+                var manager = new PlanIdDrawingManager(model);
+                var insRes = ed.GetPoint(new PromptPointOptions("\nKALIP100ST4: En soldaki antet SHEETVIEW sol-alt kosesi (yerlesim referansi): ") { AllowNone = false });
+                if (insRes.Status != PromptStatus.OK) return;
+                manager.DrawFormworkPlan50(db, ed, insRes.Value, fileRes.StringResult, KalipPlanScale.Hundred);
+                doc.SendStringToExecute("_.ZOOM _E ", true, false, false);
+            }
+            catch (AcRxException aex)
+            {
+                ed.WriteMessage("\nKALIP100ST4 hata: {0} ({1})", aex.Message, aex.ErrorStatus);
+            }
+            catch (System.Exception ex)
+            {
+                var e = ex;
+                if (e is System.AggregateException agg && agg.InnerExceptions.Count > 0)
+                    e = agg.Flatten().InnerExceptions[0];
+                ed.WriteMessage("\nKALIP100ST4 hata: {0}", e.Message);
                 if (e.InnerException != null)
                     ed.WriteMessage("  Inner: {0}", e.InnerException.Message);
             }

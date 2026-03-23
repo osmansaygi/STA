@@ -128,8 +128,10 @@ namespace ST4PlanIdCiz
         /// <summary>Radye ölçü istasyonu, kesitte dar kalan temel hatılı A bandının dışında kalmasın diye ± genişletme (cm).</summary>
         private const double KesitRadyeOlcuHatilSkipMarginCm = 650.0;
         private const double KesitOlcuStaggerCm = 16.0;
-        /// <summary>KALIP50 bina şeması: plan 1:50 kesidine göre 4× küçük (1:200) çizim ölçeği.</summary>
-        private const double Kalip50BuildingSchematicSectionScale = 0.25;
+        /// <summary>KALIP50 için bina şeması ölçeği (1:400).</summary>
+        private const double Kalip50BuildingSchematicSectionScale = 0.125;
+        /// <summary>KALIP100 için bina şeması ölçeği (KALIP100'de mevcut 1:400 durumuna göre 4× büyütülmüş).</summary>
+        private const double Kalip100BuildingSchematicSectionScale = 0.5;
         /// <summary>Şema kesitinin antet dış çerçeve üst çizgisinden boşluğu (cm).</summary>
         private const double Kalip50BuildingSectionAboveAntetGapCm = 90.0;
         /// <summary>Şema üstü başlık metninin alt kenarı ile şema üst kenarı arası (cm).</summary>
@@ -137,7 +139,7 @@ namespace ST4PlanIdCiz
         /// <summary>Aynı Y kabulü; bu eşik altında alternatif dilim ana gruba eklenir.</summary>
         private const double Kalip50AlternateCutSameYToleranceCm = 2.5;
         /// <summary>Bina şeması: ana kesitte dilim yoksa aynı kat için denenecek ek yatay kesit adayı sayısı (skor sırasıyla).</summary>
-        private const int Kalip50BinaSemaMaxFloorCutLineStages = 4;
+        private const int Kalip50BinaSemaMaxFloorCutLineStages = 2;
         /// <summary>Şematik kesitte kat ortası KESİT SINIRI: kolon/perde Z aralığı ile kesişim toleransı (cm).</summary>
         private const double Kalip50AlternateStoryMidZSiniriEpsCm = 2.0;
         /// <summary>Kot üçgeninin üstünden sonra kat adı (model cm); <see cref="KesitKotTriHeightCm"/> ile birlikte.</summary>
@@ -843,7 +845,7 @@ namespace ST4PlanIdCiz
             List<FloorInfo> similarFloorsForKot = null)
         {
             double xmin = ext.Xmin, xmax = ext.Xmax, ymin = ext.Ymin, ymax = ext.Ymax;
-            double fa = isFoundationPlan ? TemelFoundationAnnotMul : 1.0;
+            double fa = (isFoundationPlan || _kalipPlanScale == KalipPlanScale.Hundred) ? TemelFoundationAnnotMul : 1.0;
             double e = SectionLineExtendCm * fa;
             Geometry occ = BuildCutOccupancyUnion(floor, isFoundationPlan);
 
@@ -916,12 +918,15 @@ namespace ST4PlanIdCiz
             double kesitBaslikHForLayout;
             if (isFoundationPlan && IsTemelPlanDraw)
                 kesitBaslikHForLayout = KesitBaslikMetinYukseklikTemel50Cm * fa;
+            else if (!isFoundationPlan && _kalipPlanScale == KalipPlanScale.Hundred)
+                kesitBaslikHForLayout = KesitBaslikMetinYukseklikCm * TemelFoundationAnnotMul;
             else
                 kesitBaslikHForLayout = KesitBaslikMetinYukseklikCm;
             double yAaBaslikUstHizasi = yAksBalonUstDisYuzey + KesitIsmiUstAksBalonUstuBoslukCm * fa + kesitBaslikHForLayout;
             bool useScaledKesitTitle = (isFoundationPlan && IsTemelPlanDraw) || (!isFoundationPlan && _isKalip50Mode);
+            string kalipKesitScaleSuffix = _kalipPlanScale == KalipPlanScale.Hundred ? " (1:100)" : " (1:50)";
             string aaTitle = !useScaledKesitTitle ? "A-A KESİTİ"
-                : (isFoundationPlan && IsTemelPlanDraw ? "A-A KESİTİ" + TemelKesitScaleSuffix : "A-A KESİTİ (1:50)");
+                : (isFoundationPlan && IsTemelPlanDraw ? "A-A KESİTİ" + TemelKesitScaleSuffix : "A-A KESİTİ" + kalipKesitScaleSuffix);
             DrawKesitTitleBelowSchematic(tr, btr, db, aaTitle, contentTopX + spanAT * 0.5, yAaBaslikUstHizasi);
             layoutMinX = Math.Min(layoutMinX, contentTopX - sectionLayoutPadCm);
             layoutMaxX = Math.Max(layoutMaxX, contentTopX + spanAT + sectionLayoutPadCm);
@@ -961,7 +966,7 @@ namespace ST4PlanIdCiz
             double bbTitleHeight = kesitBaslikHForLayout;
             double xBbBaslikMerkez = xAksBalonSolDisYuzey - KesitIsmiSolAksBalonSolBoslukCm * fa - bbTitleHeight * 0.5;
             string bbTitle = !useScaledKesitTitle ? "B-B KESİTİ"
-                : (isFoundationPlan && IsTemelPlanDraw ? "B-B KESİTİ" + TemelKesitScaleSuffix : "B-B KESİTİ (1:50)");
+                : (isFoundationPlan && IsTemelPlanDraw ? "B-B KESİTİ" + TemelKesitScaleSuffix : "B-B KESİTİ" + kalipKesitScaleSuffix);
             DrawKesitTitleVerticalRightOfSection(tr, btr, db, bbTitle, xBbBaslikMerkez, contentLeftY + spanAL * 0.5);
             // Antet sol hizasi icin referans: soldaki kesitin kirpilmis NET geometri sinirinin en solu.
             // (kolon/perde/temel/temel hatili cizimi; baslik/metinler dahil degil)
@@ -1160,13 +1165,14 @@ namespace ST4PlanIdCiz
                 if (!TryEnsureKalip50BinaSemaBlockDefinition(tr, db, ed))
                     return false;
 
-                double schematicWidthCm = _kalip50BinaSemaSpanAT * Kalip50BuildingSchematicSectionScale;
+                double schematicScale = _kalipPlanScale == KalipPlanScale.Hundred ? Kalip100BuildingSchematicSectionScale : Kalip50BuildingSchematicSectionScale;
+                double schematicWidthCm = _kalip50BinaSemaSpanAT * schematicScale;
                 double insertX = (antetOuterLeft + antetOuterRight) * 0.5 - schematicWidthCm * 0.5;
                 double insertY = antetOuterTop + Kalip50BuildingSectionAboveAntetGapCm;
 
                 var br = new BlockReference(new Point3d(insertX, insertY, 0), _kalip50BinaSemaBlockId)
                 {
-                    ScaleFactors = new Scale3d(Kalip50BuildingSchematicSectionScale),
+                    ScaleFactors = new Scale3d(schematicScale),
                     Layer = LayerKesit
                 };
                 AppendEntity(tr, btr, br);
@@ -1178,7 +1184,7 @@ namespace ST4PlanIdCiz
                     Layer = LayerKesitIsmi,
                     Height = KesitBaslikMetinYukseklikCm,
                     TextStyleId = GetOrCreateYaziBeykentTextStyle(tr, db),
-                    TextString = "SEMATIK KESIT (1:200)",
+                    TextString = _kalipPlanScale == KalipPlanScale.Hundred ? "SEMATIK KESIT (1:100)" : "SEMATIK KESIT (1:400)",
                     HorizontalMode = TextHorizontalMode.TextCenter,
                     VerticalMode = TextVerticalMode.TextTop,
                     Position = new Point3d(cx, yTitleTop, 0),
@@ -1227,7 +1233,7 @@ namespace ST4PlanIdCiz
             merged[antetPrimaryFloor.FloorNo] = antetPrimaryFloor;
             var orderedFloors = merged.Values.OrderBy(f => f.ElevationM).ToList();
             EnsureKalip50FloorOrderCaches();
-            double scale = Kalip50BuildingSchematicSectionScale;
+            double scale = _kalipPlanScale == KalipPlanScale.Hundred ? Kalip100BuildingSchematicSectionScale : Kalip50BuildingSchematicSectionScale;
             double xWorld = insertX + _kalip50BinaSemaLabelXBlock * scale;
             ObjectId styleId = GetOrCreateYaziBeykentTextStyle(tr, db);
             var trTr = CultureInfo.GetCultureInfo("tr-TR");
@@ -1656,7 +1662,8 @@ namespace ST4PlanIdCiz
             Transaction tr, BlockTableRecord btr, Database db,
             double insertX, double insertY, double amin, double minZ, double spanA, double spanZ)
         {
-            double scale = Kalip50BuildingSchematicSectionScale;
+            double scale = _kalipPlanScale == KalipPlanScale.Hundred ? Kalip100BuildingSchematicSectionScale : Kalip50BuildingSchematicSectionScale;
+            double km = _kalipPlanScale == KalipPlanScale.Hundred ? TemelFoundationAnnotMul : 1.0;
             double xRight = insertX + spanA * scale;
             EnsureKalip50BinaSemaKotCaches();
             if (_kalip50BinaSemaKotZsAsc == null || _kalip50BinaSemaKotZsAsc.Count == 0) return;
@@ -1672,14 +1679,14 @@ namespace ST4PlanIdCiz
                 double extra = zi < crowdedShiftLower.Length ? crowdedShiftLower[zi] : 0.0;
                 double apexX = xDatumBase + extra;
                 double apexY = insertY + (zElev - minZ) * scale;
-                DrawKesitKotClassicSymbol(tr, btr, apexX, apexY, rotAa);
-                double lxText = KesitKotTriHalfWidthCm;
-                double lyText = KesitKotTriHeightCm + KesitKotTextAboveExtensionCm;
+                DrawKesitKotClassicSymbol(tr, btr, apexX, apexY, rotAa, km);
+                double lxText = KesitKotTriHalfWidthCm * km;
+                double lyText = (KesitKotTriHeightCm + KesitKotTextAboveExtensionCm) * km;
                 double c = Math.Cos(rotAa), si = Math.Sin(rotAa);
                 double textX = apexX + c * lxText - si * lyText;
                 double textY = apexY + si * lxText + c * lyText;
                 string kotText = FormatKesitKotElevationString(zElev);
-                AppendKesitKotElevationDbText(tr, btr, db, styleId, kotText, textX, textY, rotAa);
+                AppendKesitKotElevationDbText(tr, btr, db, styleId, kotText, textX, textY, rotAa, KesitKotTextHeightCm * km);
             }
         }
 
@@ -2533,7 +2540,7 @@ namespace ST4PlanIdCiz
             var rawZ = CollectKesitKotElevationZs(slices, isFoundationPlan);
             var zsAsc = MergeKesitElevationZsAscending(rawZ, KesitKotMergeTolCm);
             if (zsAsc.Count == 0) return;
-            double km = isFoundationPlan ? TemelFoundationAnnotMul : 1.0;
+            double km = (isFoundationPlan || _kalipPlanScale == KalipPlanScale.Hundred) ? TemelFoundationAnnotMul : 1.0;
             double[] crowdedShiftLower = BuildKesitKotCrowdedShiftForLowerElevation(zsAsc, KesitKotCrowdedSeparationMinCm * km, KesitKotCrowdedShiftLowerCm * km);
             ObjectId styleId = GetOrCreateYaziBeykentTextStyle(tr, db);
             const double rotAa = 0.0;
@@ -2685,7 +2692,7 @@ namespace ST4PlanIdCiz
         {
             double titleHeight = IsTemelPlanDraw
                 ? KesitBaslikMetinYukseklikTemel50Cm * TemelFoundationAnnotMul
-                : KesitBaslikMetinYukseklikCm;
+                : (_isKalip50Mode && _kalipPlanScale == KalipPlanScale.Hundred ? KesitBaslikMetinYukseklikCm * TemelFoundationAnnotMul : KesitBaslikMetinYukseklikCm);
             var txt = new DBText
             {
                 Layer = LayerKesitIsmi,
@@ -2705,7 +2712,7 @@ namespace ST4PlanIdCiz
         {
             double titleHeight = IsTemelPlanDraw
                 ? KesitBaslikMetinYukseklikTemel50Cm * TemelFoundationAnnotMul
-                : KesitBaslikMetinYukseklikCm;
+                : (_isKalip50Mode && _kalipPlanScale == KalipPlanScale.Hundred ? KesitBaslikMetinYukseklikCm * TemelFoundationAnnotMul : KesitBaslikMetinYukseklikCm);
             var txt = new DBText
             {
                 Layer = LayerKesitIsmi,
@@ -3689,10 +3696,11 @@ namespace ST4PlanIdCiz
             bool horizontalAlongX, bool mirrorElevationX, bool isFoundationPlan)
         {
             if (slices == null || slices.Count == 0) return;
-            double dm = isFoundationPlan ? TemelFoundationAnnotMul : 1.0;
+            double dm = (isFoundationPlan || _kalipPlanScale == KalipPlanScale.Hundred) ? TemelFoundationAnnotMul : 1.0;
             double beamUnderGap = 5.0 * dm;
             double siniriGap = 12.0 * dm;
-            double labelH = 11.0 * dm;
+            bool kalipKesitEtiket18 = _isKalip50Mode && !isFoundationPlan;
+            double labelH = kalipKesitEtiket18 ? 18.0 : (11.0 * dm);
             const double rotDikKesit = Math.PI / 2.0;
             double kirisSagGap = 8.0 * dm;
             bool hasSiniri = TryGetKesitSiniriBounds(slices, isFoundationPlan, out _, out _, out double zLoS, out double zHiS);
@@ -3750,7 +3758,7 @@ namespace ST4PlanIdCiz
                     putLabel(xKirisSag, cy, s.Etiket, LayerKirisYazisi, rotDikKesit);
                 }
             }
-            double temelEtiketH = 12.0 * dm;
+            double temelEtiketH = kalipKesitEtiket18 ? 18.0 : (12.0 * dm);
             foreach (var s in slices.Where(x => x.Layer == "TEMEL (BEYKENT)" && x.Order == SectionOrderContinuousFoundation && !string.IsNullOrEmpty(x.Etiket)))
             {
                 if (horizontalAlongX)
@@ -3945,7 +3953,7 @@ namespace ST4PlanIdCiz
             bool horizontalAlongX, bool mirrorElevationX, bool isFoundationPlan, ObjectId dimStyleId)
         {
             if (slices == null || slices.Count == 0 || dimStyleId.IsNull) return;
-            double dm = isFoundationPlan ? TemelFoundationAnnotMul : 1.0;
+            double dm = (isFoundationPlan || _kalipPlanScale == KalipPlanScale.Hundred) ? TemelFoundationAnnotMul : 1.0;
             double aaOff = KesitOlcuAaDimLineOffsetCm * dm;
             double stag = KesitOlcuStaggerCm * dm;
             double cift = KesitOlcuCiftOlcuAraligiCm * dm;

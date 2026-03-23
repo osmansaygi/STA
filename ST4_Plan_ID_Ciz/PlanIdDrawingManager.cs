@@ -26,6 +26,20 @@ namespace ST4PlanIdCiz
         Hundred = 2,
     }
 
+    /// <summary>KOLON50ST4 / KOLON100ST4 çizim ölçeği (yalnızca kolon aplikasyon komutları).</summary>
+    public enum KolonApplicationPlanScale
+    {
+        Fifty = 1,
+        Hundred = 2,
+    }
+
+    /// <summary>KALIP50ST4 / KALIP100ST4 çizim ölçeği (yalnızca kalıp plan komutları).</summary>
+    public enum KalipPlanScale
+    {
+        Fifty = 1,
+        Hundred = 2,
+    }
+
     /// <summary>
     /// Akslar, kolonlar (dikdörtgen + daire + poligon), kirişler, perdeler ve döşemeleri
     /// tüm eleman ID'leriyle çizer; katlar yan yana dizilir.
@@ -43,13 +57,18 @@ namespace ST4PlanIdCiz
         /// <summary>ST4PLANID Draw süresince tek fabrika (binlerce new önlenir).</summary>
         private GeometryFactory _ntsDrawFactory;
         private TemelFoundationPlanScale? _temelFoundationScale;
+        private KolonApplicationPlanScale? _kolonApplicationScale;
+        private KalipPlanScale? _kalipPlanScale;
         private bool IsTemelPlanDraw => _temelFoundationScale.HasValue;
         /// <summary>TEMEL100: kesit etiket, kot, ölçü ofsetleri ve yazı yükseklikleri 50 moduna göre 1.5×.</summary>
-        private double TemelFoundationAnnotMul => _temelFoundationScale == TemelFoundationPlanScale.Hundred ? 1.5 : 1.0;
+        private double TemelFoundationAnnotMul =>
+            (_temelFoundationScale == TemelFoundationPlanScale.Hundred ||
+             _kolonApplicationScale == KolonApplicationPlanScale.Hundred ||
+             _kalipPlanScale == KalipPlanScale.Hundred) ? 1.5 : 1.0;
         private string TemelKesitScaleSuffix => _temelFoundationScale == TemelFoundationPlanScale.Hundred ? " (1:100)" : " (1:50)";
         /// <summary>KOLON50ST4 için kolon aplikasyon ölçü modu.</summary>
         private bool _isKolon50Mode;
-        /// <summary>KALIP50ST4 için 1:50 kalıp planı modu.</summary>
+        /// <summary>KALIP50ST4 / KALIP100ST4 kalıp planı modu.</summary>
         private bool _isKalip50Mode;
         /// <summary>KALIP50 bina şema kesiti: blok tanımı bir kez; her antet üstüne ayrı INSERT.</summary>
         private ObjectId _kalip50BinaSemaBlockId = ObjectId.Null;
@@ -452,14 +471,17 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>
-        /// 1/50 kolon aplikasyon planı için tüm katlarda sadece
+        /// 1/50 veya 1/100 kolon aplikasyon planı için tüm katlarda sadece
         /// akslar (+aks ölçüleri), kolonlar (poligon dahil) ve perdeleri çizer.
         /// </summary>
-        public void DrawColumnApplicationPlan50(Database db, Editor ed, Point3d baseInsertPoint, string st4SourcePath = null)
+        public void DrawColumnApplicationPlan(Database db, Editor ed, Point3d baseInsertPoint, string st4SourcePath = null, KolonApplicationPlanScale scaleMode = KolonApplicationPlanScale.Fifty)
         {
             _ntsDrawFactory = NtsGeometryServices.Instance.CreateGeometryFactory();
             _isKolon50Mode = true;
+            _kolonApplicationScale = scaleMode;
             _kolon50PerdeCopyExtent = null;
+            string cmdTag = scaleMode == KolonApplicationPlanScale.Hundred ? "KOLON100ST4" : "KOLON50ST4";
+            string scaleText = scaleMode == KolonApplicationPlanScale.Hundred ? "1/100" : "1/50";
             try
             {
                 using (var tr = db.TransactionManager.StartTransaction())
@@ -486,6 +508,7 @@ namespace ST4PlanIdCiz
                         var floor = _model.Floors[floorIdx];
                         double offsetX;
                         double offsetY = baseDy;
+                        double antetSpacingMul = _kolonApplicationScale == KolonApplicationPlanScale.Hundred ? 2.0 : 1.0;
 
                         Geometry kolonPerdeUnion = BuildKolonPerdeUnion(floor, 0.0, 0.0);
                         Geometry axisExtGeom = (kolonPerdeUnion != null && !kolonPerdeUnion.IsEmpty)
@@ -496,14 +519,14 @@ namespace ST4PlanIdCiz
                         double targetAntetSheetViewLeft;
                         if (!nextAntetOuterLeftTarget.HasValue)
                         {
-                            targetAntetSheetViewLeft = (floorAxisExt.Xmin + Kolon50AntetLeftOfLeftVerticalAxisCm);
-                            offsetX = targetAntetSheetViewLeft - (leftVerticalAxisX - Kolon50AntetLeftOfLeftVerticalAxisCm);
+                            targetAntetSheetViewLeft = floorAxisExt.Xmin + Kolon50AntetLeftOfLeftVerticalAxisCm * antetSpacingMul;
+                            offsetX = targetAntetSheetViewLeft - (leftVerticalAxisX - Kolon50AntetLeftOfLeftVerticalAxisCm * antetSpacingMul);
                         }
                         else
                         {
                             double deltaLeft = antetOuterLeftDeltaFromSheetViewLeft ?? 0.0;
                             targetAntetSheetViewLeft = nextAntetOuterLeftTarget.Value - deltaLeft;
-                            offsetX = targetAntetSheetViewLeft - (leftVerticalAxisX - Kolon50AntetLeftOfLeftVerticalAxisCm);
+                            offsetX = targetAntetSheetViewLeft - (leftVerticalAxisX - Kolon50AntetLeftOfLeftVerticalAxisCm * antetSpacingMul);
                         }
 
                         DrawAxes(tr, btr, offsetX, offsetY, floorAxisExt);
@@ -520,16 +543,20 @@ namespace ST4PlanIdCiz
                         double antetSheetViewLeft = targetAntetSheetViewLeft;
                         double yLowestHorizontalAxis = GetLowestHorizontalColumnAxisY(offsetY, floorAxisExt);
                         double antetSheetViewBottom = yLowestHorizontalAxis - 600.0;
-                        double antetTargetRight = layoutMaxX + AntetTargetRightExtraCm;
+                        double desiredAntetTargetRightPostScale = layoutMaxX + AntetTargetRightExtraCm * antetSpacingMul;
+                        bool scaleAntetTwoTimes = _kolonApplicationScale == KolonApplicationPlanScale.Hundred;
+                        double antetTargetRight = scaleAntetTwoTimes
+                            ? (antetSheetViewLeft + (desiredAntetTargetRightPostScale - antetSheetViewLeft) * 0.5)
+                            : desiredAntetTargetRightPostScale;
                         // Antet ölçümü başarısız olsa bile bir sonraki kat için güvenli ayrık yerleşim.
-                        double plannedNextAntetOuterLeftTarget = antetTargetRight + Kolon50AntetGapBetweenSheetsCm;
+                        double plannedNextAntetOuterLeftTarget = desiredAntetTargetRightPostScale + Kolon50AntetGapBetweenSheetsCm * antetSpacingMul;
                         string kolonPlanAntetTitle = BuildKolonPlanAntetTitle(floor);
                         if (TryDrawAntetFromEmbeddedTemplate(
                             tr, btr, layoutMinX, layoutMinY, layoutMaxY, antetSheetViewLeft, antetSheetViewBottom, antetTargetRight, st4SourcePath, ed,
-                            kolonPlanAntetTitle, null, out double placedAntetOuterLeft, out double placedAntetOuterRight, out _))
+                            kolonPlanAntetTitle, null, out double placedAntetOuterLeft, out double placedAntetOuterRight, out _, scaleAntetTwoTimes, useKolonAntetScaleOneHundred: scaleAntetTwoTimes))
                         {
                             antetOuterLeftDeltaFromSheetViewLeft = placedAntetOuterLeft - antetSheetViewLeft;
-                            nextAntetOuterLeftTarget = placedAntetOuterRight + Kolon50AntetGapBetweenSheetsCm;
+                            nextAntetOuterLeftTarget = placedAntetOuterRight + Kolon50AntetGapBetweenSheetsCm * antetSpacingMul;
                         }
                         else
                         {
@@ -544,26 +571,31 @@ namespace ST4PlanIdCiz
                     ApplyPlanStructuralLayerDrawOrder(tr, btr);
                     tr.Commit();
                     ed.WriteMessage(
-                        "\nKOLON50ST4: {0} kat icin 1/50 kolon aplikasyon plani cizildi (aks, aks olculeri, kolonlar/poligon kolonlar, perdeler).",
-                        _model.Floors.Count);
+                        "\n{0}: {1} kat icin {2} kolon aplikasyon plani cizildi (aks, aks olculeri, kolonlar/poligon kolonlar, perdeler).",
+                        cmdTag, _model.Floors.Count, scaleText);
                 }
             }
             finally
             {
                 _isKolon50Mode = false;
+                _kolonApplicationScale = null;
                 _kolon50PerdeCopyExtent = null;
                 _ntsDrawFactory = null;
             }
         }
 
+        public void DrawColumnApplicationPlan50(Database db, Editor ed, Point3d baseInsertPoint, string st4SourcePath = null)
+            => DrawColumnApplicationPlan(db, ed, baseInsertPoint, st4SourcePath, KolonApplicationPlanScale.Fifty);
+
         /// <summary>
         /// 1/50 kalıp planı için temel planı çizmeden sadece kat planlarını çizer.
         /// Benzer katlar gruplanır; her gruptan yalnızca bir plan çizilir.
         /// </summary>
-        public void DrawFormworkPlan50(Database db, Editor ed, Point3d baseInsertPoint, string st4SourcePath = null)
+        public void DrawFormworkPlan50(Database db, Editor ed, Point3d baseInsertPoint, string st4SourcePath = null, KalipPlanScale scaleMode = KalipPlanScale.Fifty)
         {
             _ntsDrawFactory = NtsGeometryServices.Instance.CreateGeometryFactory();
             _isKalip50Mode = true;
+            _kalipPlanScale = scaleMode;
             _kalip50BinaSemaBlockId = ObjectId.Null;
             _kalip50BinaSemaLabelXBlock = 0.0;
             ClearKalip50FormworkSessionCaches();
@@ -592,14 +624,15 @@ namespace ST4PlanIdCiz
                     var firstFloor = _model.Floors[firstGroup.Min()];
                     Geometry firstUnion = BuildFloorElementUnion(firstFloor);
                     var firstExt = GetAksSiniriEnvelope(firstUnion);
+                    double kalipAntetSpacingMul = scaleMode == KalipPlanScale.Hundred ? 2.0 : 1.0;
                     // Yerleşim referansı: en soldaki antet SHEETVIEW sol-alt = kullanıcı noktası (KALIP50 şablonunda SheetView, kesit solundan 140 cm içerde).
                     double baseDy;
                     double cursorX;
                     if (TryComputeKalipLeftSectionMinXForAntetAnchor(firstFloor, firstUnion, firstExt, 0, out double L0))
                     {
                         double yRefAntetBottom = GetLowestHorizontalColumnAxisY(0, firstExt);
-                        cursorX = baseInsertPoint.X + firstExt.Xmin - L0 + 140.0;
-                        baseDy = baseInsertPoint.Y - yRefAntetBottom + 600.0;
+                        cursorX = baseInsertPoint.X + firstExt.Xmin - L0 + 140.0 * kalipAntetSpacingMul;
+                        baseDy = baseInsertPoint.Y - yRefAntetBottom + 600.0 * kalipAntetSpacingMul;
                     }
                     else
                     {
@@ -611,7 +644,7 @@ namespace ST4PlanIdCiz
                     int drawnPlanCount = 0;
                     int drawnCopyCount = 0;
                     double? nextKatAntetOuterLeftTarget = null;
-                    bool hasAntetOutDx = TryGetEmbeddedAntetSheetViewOutOffsets(out double antetOutDxConst, out _, ed);
+                    double? kalipAntetOuterLeftDeltaFromSheetViewLeft = null;
 
                     Dictionary<string, GprDosemeDonatiXy> gprKalipDosemeDonati = null;
                     string gprPathDoseme = ResolveGprPathNextToSt4(st4SourcePath);
@@ -625,6 +658,7 @@ namespace ST4PlanIdCiz
                     foreach (var group in groups)
                     {
                         if (group == null || group.Count == 0) continue;
+                        double groupStartCursorX = cursorX;
                         int labelFloorIdx = group.Min();
                         var floor = _model.Floors[labelFloorIdx];
 
@@ -669,7 +703,7 @@ namespace ST4PlanIdCiz
                                 antetLayMinY = layMinY;
                                 antetLayMaxY = layMaxY;
                                 antetLeftSectionMinX = leftSectionMinX;
-                                antetBottom = GetLowestHorizontalColumnAxisY(offsetY, floorAxisExt) - 600.0;
+                                antetBottom = GetLowestHorizontalColumnAxisY(offsetY, floorAxisExt) - 600.0 * kalipAntetSpacingMul;
                                 // Ölçü planı sağ sınırı: sağ aks balonunun sağ yüzeyi.
                                 GetSectionCutBalloonExtents(offsetX, offsetY, floorAxisExt,
                                     out _, out double xRightBalloon, out _, out _,
@@ -709,10 +743,15 @@ namespace ST4PlanIdCiz
                         }
                         if (hasFirstCopyAntetData)
                         {
-                            double antetSheetViewLeft = antetLeftSectionMinX - 140.0;
-                            if (nextKatAntetOuterLeftTarget.HasValue && hasAntetOutDx)
-                                antetSheetViewLeft = nextKatAntetOuterLeftTarget.Value - antetOutDxConst;
-                            double antetTargetRight = rightCopyRightVerticalAxisX + AntetTargetRightExtraCm;
+                            double antetSheetViewLeft = antetLeftSectionMinX - 140.0 * kalipAntetSpacingMul;
+                            if (nextKatAntetOuterLeftTarget.HasValue && kalipAntetOuterLeftDeltaFromSheetViewLeft.HasValue)
+                                antetSheetViewLeft = nextKatAntetOuterLeftTarget.Value - kalipAntetOuterLeftDeltaFromSheetViewLeft.Value;
+                            double desiredAntetTargetRightPostScale = rightCopyRightVerticalAxisX + AntetTargetRightExtraCm * kalipAntetSpacingMul;
+                            bool kalipScaleTwoTimes = _kalipPlanScale == KalipPlanScale.Hundred;
+                            double antetTargetRight = kalipScaleTwoTimes
+                                ? (antetSheetViewLeft + (desiredAntetTargetRightPostScale - antetSheetViewLeft) * 0.5)
+                                : desiredAntetTargetRightPostScale;
+                            double plannedNextKatAntetOuterLeftTarget = desiredAntetTargetRightPostScale + Kolon50AntetGapBetweenSheetsCm * kalipAntetSpacingMul;
                             string kalipAntetTitle = BuildKalipPlanAntetTitle(floor);
                             string benzerSatiri = BuildKalipBenzerKatSatiri(otherFloors);
                             bool kalipAntetOk = TryDrawAntetFromEmbeddedTemplate(
@@ -730,8 +769,28 @@ namespace ST4PlanIdCiz
                                 benzerSatiri,
                                 out double placedAntetOuterLeft,
                                 out double placedAntetOuterRight,
-                                out double placedAntetOuterTop);
-                            nextKatAntetOuterLeftTarget = placedAntetOuterRight + 50.0;
+                                out double placedAntetOuterTop,
+                                scaleTwoTimes: kalipScaleTwoTimes,
+                                useKalipAntetScaleOneHundred: kalipScaleTwoTimes);
+                            if (kalipAntetOk)
+                            {
+                                kalipAntetOuterLeftDeltaFromSheetViewLeft = placedAntetOuterLeft - antetSheetViewLeft;
+                                nextKatAntetOuterLeftTarget = placedAntetOuterRight + Kolon50AntetGapBetweenSheetsCm * kalipAntetSpacingMul;
+                                // Sonraki kat plan başlangıcını da antet zincirine göre sağa it:
+                                // planlar antetin üzerine binmesin.
+                                double planStartOffsetFromAntetOuterLeft = groupStartCursorX - placedAntetOuterLeft;
+                                double minNextCursorXByAntet = nextKatAntetOuterLeftTarget.Value + planStartOffsetFromAntetOuterLeft;
+                                if (cursorX < minNextCursorXByAntet)
+                                    cursorX = minNextCursorXByAntet;
+                            }
+                            else
+                            {
+                                nextKatAntetOuterLeftTarget = plannedNextKatAntetOuterLeftTarget;
+                                double planStartOffsetFromSheetViewLeft = groupStartCursorX - antetSheetViewLeft;
+                                double minNextCursorXByAntetFallback = nextKatAntetOuterLeftTarget.Value + planStartOffsetFromSheetViewLeft;
+                                if (cursorX < minNextCursorXByAntetFallback)
+                                    cursorX = minNextCursorXByAntetFallback;
+                            }
                             // Bina şeması: her benzersiz kat anteti üstünde aynı blok tanımıyla bir kopya.
                             if (kalipAntetOk && TryDrawKalip50WholeBuildingSchematicSectionAboveAntet(
                                     tr, btr, db, placedAntetOuterLeft, placedAntetOuterRight, placedAntetOuterTop,
@@ -755,12 +814,16 @@ namespace ST4PlanIdCiz
                             gprSummary += " UYARI: Hic donati yazisi yazilmadi (anahtar eslesmesi veya geometri).";
                     }
                     string binaSemaNote = kalip50BinaSemaKesitSayisi > 0
-                        ? string.Format(CultureInfo.InvariantCulture, " Bina sema kesiti (1:200): {0} adet (her antet ustu).", kalip50BinaSemaKesitSayisi)
+                        ? string.Format(CultureInfo.InvariantCulture, " Bina sema kesiti (1:400): {0} adet (her antet ustu).", kalip50BinaSemaKesitSayisi)
                         : string.Empty;
+                    string kalipCmdTag = scaleMode == KalipPlanScale.Hundred ? "KALIP100ST4" : "KALIP50ST4";
+                    string kalipScaleText = scaleMode == KalipPlanScale.Hundred ? "1/100" : "1/50";
                     ed.WriteMessage(
-                        "\nKALIP50ST4: {0} benzersiz kat icin {1} plan cizildi (toplam kat: {2}, temel plani cizilmedi).{3}{4}",
+                        "\n{0}: {1} benzersiz kat icin {2} plan cizildi ({3}, toplam kat: {4}, temel plani cizilmedi).{5}{6}",
+                        kalipCmdTag,
                         drawnPlanCount,
                         drawnCopyCount,
+                        kalipScaleText,
                         _model.Floors.Count,
                         gprSummary,
                         binaSemaNote);
@@ -769,6 +832,7 @@ namespace ST4PlanIdCiz
             finally
             {
                 _isKalip50Mode = false;
+                _kalipPlanScale = null;
                 _ntsDrawFactory = null;
                 ClearKalip50FormworkSessionCaches();
             }
@@ -1738,7 +1802,7 @@ namespace ST4PlanIdCiz
                 var e = placedWallGeom.EnvelopeInternal;
                 kotCenter = new Point2d((e.MinX + e.MaxX) * 0.5, (e.MinY + e.MaxY) * 0.5);
             }
-            DrawKotBlockAtCenter(tr, btr, btr.Database, kotCenter.X, kotCenter.Y, topElevM, bottomElevM, rotationRad: 0.0);
+            DrawKotBlockAtCenter(tr, btr, btr.Database, kotCenter.X, kotCenter.Y, topElevM, bottomElevM, rotationRad: 0.0, scaleWithPlan: false);
         }
 
         /// <summary>
@@ -3034,9 +3098,9 @@ namespace ST4PlanIdCiz
         private const int BeamLabelRefCharCount = 13;
         private const string AksOlcuDimStyleName = "AKS_OLCU";
         private const string PlanOlcuDimStyleName = "PLAN_OLCU";
-        /// <summary>TEMEL100ST4: aks/plan ölçü yazısı, ok, uzatma ve gap 1.5×; AKS_OLCU/PLAN_OLCU ile aynı çizgide kalır.</summary>
-        private const string AksOlcuDimStyleNameTemel100 = "AKS_OLCU_TEMEL100";
-        private const string PlanOlcuDimStyleNameTemel100 = "PLAN_OLCU_TEMEL100";
+        /// <summary>100 ölçekli planlarda aks/plan ölçü yazısı, ok, uzatma ve gap 1.5×; AKS_OLCU/PLAN_OLCU ile aynı çizgide kalır.</summary>
+        private const string AksOlcuDimStyleName100 = "AKS_OLCU_100";
+        private const string PlanOlcuDimStyleName100 = "PLAN_OLCU_100";
         /// <summary>Symbols and Arrows → Arrow size = 3 (cm). <see cref="DimStyleTableRecord.Dimasz"/>; First/Second tik için <see cref="DimStyleTableRecord.Dimtsz"/>.</summary>
         private const double OlcuDimArrowTickSizeCm = 3.0;
 
@@ -4004,7 +4068,7 @@ namespace ST4PlanIdCiz
         private static ObjectId GetOrCreateAksOlcuDimStyle(Transaction tr, Database db, double dimTextHeightCm, double lineGeomScale = 1.0)
         {
             if (lineGeomScale < 1e-6) lineGeomScale = 1.0;
-            string styleName = Math.Abs(lineGeomScale - 1.0) > 1e-6 ? AksOlcuDimStyleNameTemel100 : AksOlcuDimStyleName;
+            string styleName = Math.Abs(lineGeomScale - 1.0) > 1e-6 ? AksOlcuDimStyleName100 : AksOlcuDimStyleName;
             ObjectId yaziId = GetOrCreateYaziBeykentTextStyle(tr, db);
             var dst = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
             if (dst.Has(styleName))
@@ -4050,7 +4114,7 @@ namespace ST4PlanIdCiz
         private static ObjectId GetOrCreatePlanOlcuDimStyle(Transaction tr, Database db, double dimTextHeightCm, double lineGeomScale = 1.0)
         {
             if (lineGeomScale < 1e-6) lineGeomScale = 1.0;
-            string styleName = Math.Abs(lineGeomScale - 1.0) > 1e-6 ? PlanOlcuDimStyleNameTemel100 : PlanOlcuDimStyleName;
+            string styleName = Math.Abs(lineGeomScale - 1.0) > 1e-6 ? PlanOlcuDimStyleName100 : PlanOlcuDimStyleName;
             ObjectId yaziId = GetOrCreateYaziBeykentTextStyle(tr, db);
             var dst = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
             if (dst.Has(styleName))
@@ -4264,10 +4328,11 @@ namespace ST4PlanIdCiz
         private void DrawColumnPlanDimensionsForFloor(Transaction tr, BlockTableRecord btr, Database db, FloorInfo floor, double offsetX, double offsetY)
         {
             if (!_isKolon50Mode) return;
-            const double dimTextHeightCm = 12.0;
-            ObjectId dimStyleId = GetOrCreatePlanOlcuDimStyle(tr, db, dimTextHeightCm);
-            const double rowGapCm = 20.0;
-            const double firstOffsetCm = 20.0;
+            double ann = TemelFoundationAnnotMul;
+            double dimTextHeightCm = 12.0 * ann;
+            ObjectId dimStyleId = GetOrCreatePlanOlcuDimStyle(tr, db, dimTextHeightCm, ann);
+            double rowGapCm = 20.0 * ann;
+            double firstOffsetCm = 20.0 * ann;
 
             foreach (var col in _model.Columns)
             {
@@ -6296,6 +6361,10 @@ namespace ST4PlanIdCiz
                 }
             }
 
+            bool isPlan100Annot =
+                _temelFoundationScale == TemelFoundationPlanScale.Hundred ||
+                _kalipPlanScale == KalipPlanScale.Hundred;
+            double plan100AnnotMul = isPlan100Annot ? TemelFoundationAnnotMul : 1.0;
             const double minSegmentAfterShortenCm = 1.0;
             int maxBeamNumero = beamLabelInfos.Count > 0 ? beamLabelInfos.Max(x => GetBeamNumero(x.firstBeam.BeamId)) : 0;
             int beamPad = GetLabelPadWidth(maxBeamNumero);
@@ -6318,14 +6387,14 @@ namespace ST4PlanIdCiz
                     katEtiketi, beamNumeroStr, (int)Math.Round(firstBeam.WidthCm), (int)Math.Round(firstBeam.HeightCm));
 
                 // Etiket boyutları (resimdeki gibi): 70cm x 14cm referans, genişlik = 70 * karakter sayısı / 13
-                double labelHeightCm = BeamLabelRefHeightCm;
+                double labelHeightCm = BeamLabelRefHeightCm * plan100AnnotMul;
                 int charCount = Math.Max(1, labelText?.Length ?? 0);
-                double labelWidthCm = BeamLabelRefWidthCm * charCount / BeamLabelRefCharCount;
+                double labelWidthCm = BeamLabelRefWidthCm * plan100AnnotMul * charCount / BeamLabelRefCharCount;
 
                 double tMin = (rectBottomLeft - firstA).DotProduct(u);
                 double tMax = (rectBottomRight - firstA).DotProduct(u);
                 double pMin = (rectBottomLeft - firstA).DotProduct(perp);
-                const double labelOffsetFromAxisCm = 2.0;
+                double labelOffsetFromAxisCm = 2.0 * plan100AnnotMul;
 
                 bool isFixedX = firstBeam.FixedAxisId >= 1001 && firstBeam.FixedAxisId <= 1999;
                 double beamAngleRad = Math.Atan2(u.Y, u.X);
@@ -6360,7 +6429,16 @@ namespace ST4PlanIdCiz
                     else
                         tIns = tMin;
                 }
-                Point2d insertion = firstA + u.MultiplyBy(tIns) + perp.MultiplyBy(pMin + labelOffsetFromAxisCm);
+                double beamLabelPerpCm = pMin + labelOffsetFromAxisCm;
+                if (_temelFoundationScale == TemelFoundationPlanScale.Hundred ||
+                    _kolonApplicationScale == KolonApplicationPlanScale.Hundred ||
+                    _kalipPlanScale == KalipPlanScale.Hundred)
+                {
+                    double pCenterAlongPerp = (center - firstA).DotProduct(perp);
+                    double inwardSign = pCenterAlongPerp >= beamLabelPerpCm ? 1.0 : -1.0;
+                    beamLabelPerpCm -= inwardSign * Temel100PerdeLabelShiftAlongPerpCm;
+                }
+                Point2d insertion = firstA + u.MultiplyBy(tIns) + perp.MultiplyBy(beamLabelPerpCm);
 
                 GetLabelBoxCorners(insertion, labelWidthCm, labelHeightCm, beamAngleRad, out _, out Point2d br, out _, out _);
                 bool useBottomRight = isFixedX;
@@ -6385,9 +6463,9 @@ namespace ST4PlanIdCiz
             // Kiriş uzunluk çizgileri artık çizilmiyor; segment değerleri (beamLengthSegmentByBeamId) sadece etiket yerleşimi için hafızada kullanılıyor.
 
             // Perde etiketleri: kiriş ile aynı mantık — çizilen perde geometrisine göre sol alt/alt sağ + 2 cm, 15 cm adımlarla merkeze kaydırma. Ölçü: eni/uzunluk (uzunluk = merkez doğrusunun kolonları kestiği noktalar arası).
-            const double wallLabelHeightCm = 12.0;
-            const double wallLabelOffsetCm = 2.0;
-            const double wallLabelStepCm = 15.0;
+            double wallLabelHeightCm = 12.0 * plan100AnnotMul;
+            double wallLabelOffsetCm = 2.0 * plan100AnnotMul;
+            double wallLabelStepCm = 15.0 * plan100AnnotMul;
             Geometry kolonUnionForWalls = wallLabelInfos.Count > 0 ? BuildKolonUnionSameFloorOnly(floor, offsetX, offsetY) : null;
             Geometry baseObstaclesWalls = null;
             try
@@ -6662,7 +6740,7 @@ namespace ST4PlanIdCiz
                 bool isFixedX = beam.FixedAxisId >= 1001 && beam.FixedAxisId <= 1999;
                 double angleRad = Math.Atan2(u.Y, u.X);
                 double wallLabelPerpCm = pMin + wallLabelOffsetCm;
-                if (_temelFoundationScale == TemelFoundationPlanScale.Hundred)
+                if (_temelFoundationScale == TemelFoundationPlanScale.Hundred || _kolonApplicationScale == KolonApplicationPlanScale.Hundred)
                 {
                     double pCenterAlongPerp = (wallCenter - firstA).DotProduct(perp);
                     double inwardSign = pCenterAlongPerp >= wallLabelPerpCm ? 1.0 : -1.0;
@@ -7202,13 +7280,17 @@ namespace ST4PlanIdCiz
         /// <summary>Döşeme etiketi: D+KatId+-+no d=Xcm (12 cm), çerçeve sol/sağ yarım daire (2 yay + 2 düz), Q, üst/alt kot, aralarında doğrudan çizilen kot işareti. Üst kot = bina tabanı + kat kotu + 16. sütun (cm)/100; alt kot = üst kot - kalınlık.</summary>
         private void AppendSlabLabel(Transaction tr, BlockTableRecord btr, SlabInfo slab, FloorInfo floor, string storyId, int slabPad, Point2d center, ObjectId textStyleId)
         {
-            const double labelHeightCm = 12.0;
-            const double framePaddingCm = 2.0;
-            const double mainToQCm = 15.0;
-            const double qToUstKotCm = 11.0;
-            const double kotArasiMesafeCm = 10.0;
-            const double subTextHeightCm = 10.0;
-            const double kotTextHeightCm = 8.0;
+            bool isPlan100Annot =
+                _temelFoundationScale == TemelFoundationPlanScale.Hundred ||
+                _kalipPlanScale == KalipPlanScale.Hundred;
+            double ann = isPlan100Annot ? TemelFoundationAnnotMul : 1.0;
+            double labelHeightCm = 12.0 * ann;
+            double framePaddingCm = 2.0 * ann;
+            double mainToQCm = 15.0 * ann;
+            double qToUstKotCm = 11.0 * ann;
+            double kotArasiMesafeCm = 10.0 * ann;
+            double subTextHeightCm = 10.0 * ann;
+            double kotTextHeightCm = 8.0 * ann;
 
             int slabNumero = GetSlabNumero(slab.SlabId);
             string slabNoStr = slabNumero.ToString("D" + slabPad, CultureInfo.InvariantCulture);
@@ -7275,7 +7357,7 @@ namespace ST4PlanIdCiz
             double R = H * 0.5;
             double x0 = textCx - textW * 0.5 - framePaddingCm - R;
             double x1 = textCx + textW * 0.5 + framePaddingCm + R;
-            const double frameVerticalOffsetCm = 3.4828;
+            double frameVerticalOffsetCm = 3.4828 * ann;
             double y0 = textCy - textH * 0.5 - framePaddingCm + frameVerticalOffsetCm;
             double y1 = textCy + textH * 0.5 + framePaddingCm + frameVerticalOffsetCm;
             var pline = new Polyline();
@@ -7308,8 +7390,8 @@ namespace ST4PlanIdCiz
             }
             else
                 nextY -= qToUstKotCm;
-            const double kotBlokOffsetXcm = 19.5;
-            const double kotSolaKaydirCm = 5.1739;
+            double kotBlokOffsetXcm = 19.5 * ann;
+            double kotSolaKaydirCm = 5.1739 * ann;
             double leftXKot = leftX + kotBlokOffsetXcm - kotSolaKaydirCm;
             var txtTop = new DBText
             {
@@ -7325,10 +7407,10 @@ namespace ST4PlanIdCiz
             };
             AppendEntity(tr, btr, txtTop);
             nextY -= kotArasiMesafeCm;
-            const double kotSymbolOffsetXcm = 3.5;
-            const double kotSymbolOffsetYcm = 6.322;
+            double kotSymbolOffsetXcm = 3.5 * ann;
+            double kotSymbolOffsetYcm = 6.322 * ann;
             double kotSymbolY = nextY + kotArasiMesafeCm * 0.5;
-            DrawKotSymbol(tr, btr, leftXKot + kotSymbolOffsetXcm, kotSymbolY + kotSymbolOffsetYcm);
+            DrawKotSymbol(tr, btr, leftXKot + kotSymbolOffsetXcm, kotSymbolY + kotSymbolOffsetYcm, symbolScale: ann);
             var txtBottom = new DBText
             {
                 Layer = LayerKotYazi,
@@ -7405,13 +7487,14 @@ namespace ST4PlanIdCiz
         /// <summary>Radye temel etiketi: RD-+no d=Xcm, çerçeve, Q (7. sütun/10 kN/m²), üst/alt kot, kot işareti. Üst kot = bina taban kotu; alt kot = üst kot - kalınlık.</summary>
         private void AppendRadyeLabel(Transaction tr, BlockTableRecord btr, SlabFoundationInfo sf, int radyeNo, int radyePad, Point2d center, ObjectId textStyleId)
         {
-            const double labelHeightCm = 12.0;
-            const double framePaddingCm = 2.0;
-            const double mainToQCm = 15.0;
-            const double qToUstKotCm = 11.0;
-            const double kotArasiMesafeCm = 10.0;
-            const double subTextHeightCm = 10.0;
-            const double kotTextHeightCm = 8.0;
+            double ann = TemelFoundationAnnotMul;
+            double labelHeightCm = 12.0 * ann;
+            double framePaddingCm = 2.0 * ann;
+            double mainToQCm = 15.0 * ann;
+            double qToUstKotCm = 11.0 * ann;
+            double kotArasiMesafeCm = 10.0 * ann;
+            double subTextHeightCm = 10.0 * ann;
+            double kotTextHeightCm = 8.0 * ann;
 
             string radyeNoStr = radyeNo.ToString("D" + radyePad, CultureInfo.InvariantCulture);
             double thickness = sf.ThicknessCm > 0 ? sf.ThicknessCm : 80.0;
@@ -7468,7 +7551,7 @@ namespace ST4PlanIdCiz
             double R = H * 0.5;
             double x0 = textCx - textW * 0.5 - framePaddingCm - R;
             double x1 = textCx + textW * 0.5 + framePaddingCm + R;
-            const double frameVerticalOffsetCm = 3.4828;
+            double frameVerticalOffsetCm = 3.4828 * ann;
             double y0 = textCy - textH * 0.5 - framePaddingCm + frameVerticalOffsetCm;
             double y1 = textCy + textH * 0.5 + framePaddingCm + frameVerticalOffsetCm;
             var pline = new Polyline();
@@ -7501,8 +7584,8 @@ namespace ST4PlanIdCiz
             }
             else
                 nextY -= qToUstKotCm;
-            const double kotBlokOffsetXcm = 19.5;
-            const double kotSolaKaydirCm = 5.1739;
+            double kotBlokOffsetXcm = 19.5 * ann;
+            double kotSolaKaydirCm = 5.1739 * ann;
             double leftXKot = leftX + kotBlokOffsetXcm - kotSolaKaydirCm;
             var txtTop = new DBText
             {
@@ -7518,10 +7601,10 @@ namespace ST4PlanIdCiz
             };
             AppendEntity(tr, btr, txtTop);
             nextY -= kotArasiMesafeCm;
-            const double kotSymbolOffsetXcm = 3.5;
-            const double kotSymbolOffsetYcm = 6.322;
+            double kotSymbolOffsetXcm = 3.5 * ann;
+            double kotSymbolOffsetYcm = 6.322 * ann;
             double kotSymbolY = nextY + kotArasiMesafeCm * 0.5;
-            DrawKotSymbol(tr, btr, leftXKot + kotSymbolOffsetXcm, kotSymbolY + kotSymbolOffsetYcm);
+            DrawKotSymbol(tr, btr, leftXKot + kotSymbolOffsetXcm, kotSymbolY + kotSymbolOffsetYcm, symbolScale: ann);
             var txtBottom = new DBText
             {
                 Layer = LayerKotYazi,
@@ -7563,14 +7646,15 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>Üst ve alt kot yazıları arasına çizilen kot işareti. YATAY_KOT.dxf/dwg varsa dosyadan entity kopyalanır (KOT CIZGISI katmanında), yoksa T şekli çizilir. rotationRad != 0 ise aksa göre döndürülür (rotCenterX, rotCenterY) etrafında.</summary>
-        private static void DrawKotSymbol(Transaction tr, BlockTableRecord btr, double leftX, double centerY, double rotCenterX = double.NaN, double rotCenterY = double.NaN, double rotationRad = 0)
+        private static void DrawKotSymbol(Transaction tr, BlockTableRecord btr, double leftX, double centerY, double rotCenterX = double.NaN, double rotCenterY = double.NaN, double rotationRad = 0, double symbolScale = 1.0)
         {
+            if (symbolScale < 1e-6) symbolScale = 1.0;
             bool rotate = rotationRad != 0 && !double.IsNaN(rotCenterX) && !double.IsNaN(rotCenterY);
             string path = GetKotSymbolFilePath();
-            if (!string.IsNullOrEmpty(path) && TryLoadKotSymbolFromFile(tr, btr, path, leftX, centerY, rotCenterX, rotCenterY, rotationRad))
+            if (!string.IsNullOrEmpty(path) && TryLoadKotSymbolFromFile(tr, btr, path, leftX, centerY, rotCenterX, rotCenterY, rotationRad, symbolScale))
                 return;
-            const double kotSymbolWidthCm = 40.0; // Yatay çizgi sağ taraftan 40 cm
-            const double kotSymbolTickHeightCm = 0.5;
+            double kotSymbolWidthCm = 40.0 * symbolScale; // Yatay çizgi sağ taraftan 40 cm
+            double kotSymbolTickHeightCm = 0.5 * symbolScale;
             double xMid = leftX + kotSymbolWidthCm * 0.5;
             double x1 = leftX, y1 = centerY, x2 = leftX + kotSymbolWidthCm, y2 = centerY;
             double x3 = xMid, y3 = centerY, x4 = xMid, y4 = centerY + kotSymbolTickHeightCm;
@@ -7592,15 +7676,16 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>Üst kot, yatay kot işareti ve alt kot takımını verilen merkeze ortalı çizer. Kiriş/perde kot etiketi için kullanılır. rotationRad: kiriş/perdenin fixlendiği aksa göre dönüş (radyan); 0 ise yatay.</summary>
-        private void DrawKotBlockAtCenter(Transaction tr, BlockTableRecord btr, Database db, double centerX, double centerY, double topElevM, double bottomElevM, double rotationRad = 0)
+        private void DrawKotBlockAtCenter(Transaction tr, BlockTableRecord btr, Database db, double centerX, double centerY, double topElevM, double bottomElevM, double rotationRad = 0, bool scaleWithPlan = true)
         {
             if (IsTemelPlanDraw) return;
-            const double kotArasiMesafeCm = 10.0;
-            const double kotTextHeightCm = 8.0;
-            const double blockHalfWidthCm = 21.75;
-            const double kotBlockSagaKaydirCm = 21.75;
-            const double ustKotAsagiKaydirCm = 10.322;
-            const double altKotAsagiKaydirCm = 2.322;
+            double ann = scaleWithPlan ? TemelFoundationAnnotMul : 1.0;
+            double kotArasiMesafeCm = 10.0 * ann;
+            double kotTextHeightCm = 8.0 * ann;
+            double blockHalfWidthCm = 21.75 * ann;
+            double kotBlockSagaKaydirCm = 21.75 * ann;
+            double ustKotAsagiKaydirCm = 10.322 * ann;
+            double altKotAsagiKaydirCm = 2.322 * ann;
             double leftX = centerX - blockHalfWidthCm + kotBlockSagaKaydirCm;
             string topElevStr = string.Format(CultureInfo.InvariantCulture, "{0:+0.00;-0.00;0.00}", topElevM);
             string bottomElevStr = string.Format(CultureInfo.InvariantCulture, "{0:+0.00;-0.00;0.00}", bottomElevM);
@@ -7609,7 +7694,7 @@ namespace ST4PlanIdCiz
             ObjectId textStyleId = GetOrCreateYaziBeykentTextStyle(tr, db);
             double topY = centerY + kotArasiMesafeCm * 0.5 + kotTextHeightCm * 0.5 - ustKotAsagiKaydirCm;
             double bottomY = centerY - kotArasiMesafeCm * 0.5 - kotTextHeightCm * 0.5 - altKotAsagiKaydirCm;
-            const double kotSymbolOffsetFromLeftCm = 3.5;
+            double kotSymbolOffsetFromLeftCm = 3.5 * ann;
             double leftXSym = leftX + kotSymbolOffsetFromLeftCm;
             bool rotate = rotationRad != 0;
             double topX = leftX, topYout = topY, bottomX = leftX, bottomYout = bottomY;
@@ -7631,7 +7716,7 @@ namespace ST4PlanIdCiz
                 Rotation = rotationRad
             };
             AppendEntity(tr, btr, txtTop);
-            DrawKotSymbol(tr, btr, leftXSym, centerY, centerX, centerY, rotationRad);
+            DrawKotSymbol(tr, btr, leftXSym, centerY, centerX, centerY, rotationRad, ann);
             var txtBottom = new DBText
             {
                 Layer = LayerKotYazi,
@@ -7648,8 +7733,9 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>YATAY_KOT.dxf veya .dwg dosyasındaki Model Space entity'lerini btr'ye kopyalar; merkezi (leftX, centerY) olacak şekilde öteler, isteğe bağlı döndürür ve KOT CIZGISI katmanına alır.</summary>
-        private static bool TryLoadKotSymbolFromFile(Transaction tr, BlockTableRecord btr, string filePath, double leftX, double centerY, double rotCenterX = double.NaN, double rotCenterY = double.NaN, double rotationRad = 0)
+        private static bool TryLoadKotSymbolFromFile(Transaction tr, BlockTableRecord btr, string filePath, double leftX, double centerY, double rotCenterX = double.NaN, double rotCenterY = double.NaN, double rotationRad = 0, double symbolScale = 1.0)
         {
+            if (symbolScale < 1e-6) symbolScale = 1.0;
             Database sourceDb = null;
             try
             {
@@ -7689,7 +7775,7 @@ namespace ST4PlanIdCiz
                 double srcCx = (minX + maxX) * 0.5;
                 double srcCy = (minY + maxY) * 0.5;
                 Matrix3d disp = Matrix3d.Displacement(new Vector3d(leftX - srcCx, centerY - srcCy, 0));
-                const double kotSymbolHorzLengthCm = 40.0; // Yatay çizgi sağ taraftan 40 cm
+                double kotSymbolHorzLengthCm = 40.0 * symbolScale; // Yatay çizgi sağ taraftan 40 cm
                 double scaleX = kotSymbolHorzLengthCm / (maxX - minX);
                 Matrix3d scaleAt = Matrix3d.Scaling(scaleX, new Point3d(leftX, centerY, 0));
                 bool applyRotation = rotationRad != 0 && !double.IsNaN(rotCenterX) && !double.IsNaN(rotCenterY);
@@ -7894,7 +7980,10 @@ namespace ST4PlanIdCiz
             string antetSimilarKatText,
             out double placedAntetOuterLeftAfterStretch,
             out double placedAntetOuterRightAfterStretch,
-            out double placedAntetOuterTopAfterStretch)
+            out double placedAntetOuterTopAfterStretch,
+            bool scaleTwoTimes = false,
+            bool useKolonAntetScaleOneHundred = false,
+            bool useKalipAntetScaleOneHundred = false)
         {
             placedAntetOuterLeftAfterStretch = targetSheetViewLeft;
             placedAntetOuterRightAfterStretch = targetSheetViewLeft + (AntetDxfSheetViewXmax - AntetDxfSheetViewXmin);
@@ -7948,7 +8037,7 @@ namespace ST4PlanIdCiz
                         var entDst = tr.GetObject(pair.Value, OpenMode.ForWrite) as Entity;
                         if (entDst == null) continue;
                         RemapAntetLayer(entDst);
-                        ReplaceAntetDynamicTexts(entDst, antetValues, antetPlanTitle);
+                        ReplaceAntetDynamicTexts(entDst, antetValues, antetPlanTitle, useKolonAntetScaleOneHundred: useKolonAntetScaleOneHundred, useKalipAntetScaleOneHundred: useKalipAntetScaleOneHundred);
                         if (entSrc.BlockId.Equals(sourceMs.ObjectId))
                         {
                             entDst.TransformBy(xf);
@@ -7971,15 +8060,33 @@ namespace ST4PlanIdCiz
                 if (Math.Abs(deltaRight) > 1e-6)
                     StretchAntetRightBandWithoutScaling(tr, rootEntityIds, placedSheetViewRight, deltaRight);
 
-                double targetSheetViewOutTop = placedSheetViewOutBottom + TemelAntetBaslangicYukseklikCm;
-                if (layoutMaxY > targetSheetViewOutTop + 1e-6)
+                // KOLON50: +4500 cm. KOLON100: 2× sonrası 9000 cm hedefi için germe öncesi +4500 cm.
+                double sheetOutAddCm = scaleTwoTimes ? (TemelAntetSheetViewOutBaslangicYukseklikCm * 0.5) : TemelAntetBaslangicYukseklikCm;
+                double stretchStepCm = scaleTwoTimes ? (TemelAntetEkStretchAdimCm * 0.5) : TemelAntetEkStretchAdimCm;
+                double targetSheetViewOutTop = placedSheetViewOutBottom + sheetOutAddCm;
+                double stretchNeedTopPreScale = layoutMaxY;
+                if (scaleTwoTimes)
+                    stretchNeedTopPreScale = targetSheetViewBottom + (layoutMaxY - targetSheetViewBottom) * 0.5;
+                if (stretchNeedTopPreScale > targetSheetViewOutTop + 1e-6)
                 {
-                    double overflow = layoutMaxY - targetSheetViewOutTop;
-                    targetSheetViewOutTop += Math.Ceiling(overflow / TemelAntetEkStretchAdimCm) * TemelAntetEkStretchAdimCm;
+                    double overflow = stretchNeedTopPreScale - targetSheetViewOutTop;
+                    targetSheetViewOutTop += Math.Ceiling(overflow / stretchStepCm) * stretchStepCm;
                 }
                 double deltaTop = targetSheetViewOutTop - placedSheetViewOutTop;
                 if (Math.Abs(deltaTop) > 1e-6)
                     StretchAntetTopBandWithoutScaling(tr, rootEntityIds, placedSheetViewTop, deltaTop);
+
+                if (scaleTwoTimes)
+                {
+                    var scaleAt = new Point3d(targetSheetViewLeft, targetSheetViewBottom, 0);
+                    var sc = Matrix3d.Scaling(2.0, scaleAt);
+                    foreach (ObjectId rid in rootEntityIds)
+                    {
+                        if (!rid.IsValid) continue;
+                        var ent = tr.GetObject(rid, OpenMode.ForWrite) as Entity;
+                        ent?.TransformBy(sc);
+                    }
+                }
 
                 placedAntetOuterLeftAfterStretch = GetMinXOfEntitiesOnLayer(
                     tr,
@@ -7991,7 +8098,9 @@ namespace ST4PlanIdCiz
                     rootEntityIds,
                     AntetSheetViewOutLayerName,
                     targetSheetViewRight);
-                placedAntetOuterTopAfterStretch = targetSheetViewOutTop;
+                placedAntetOuterTopAfterStretch = scaleTwoTimes
+                    ? (targetSheetViewBottom + 2.0 * (targetSheetViewOutTop - targetSheetViewBottom))
+                    : targetSheetViewOutTop;
                 return true;
             }
             catch
@@ -8372,22 +8481,22 @@ namespace ST4PlanIdCiz
             catch { }
         }
 
-        private static void ReplaceAntetDynamicTexts(Entity ent, AntetValueSet v, string antetPlanTitle, bool useTemelAntetScaleOneHundred = false)
+        private static void ReplaceAntetDynamicTexts(Entity ent, AntetValueSet v, string antetPlanTitle, bool useTemelAntetScaleOneHundred = false, bool useKolonAntetScaleOneHundred = false, bool useKalipAntetScaleOneHundred = false)
         {
             if (v == null) return;
 
             if (ent is DBText t)
             {
-                t.TextString = ReplaceAntetTextCore(t.TextString, v, antetPlanTitle, useTemelAntetScaleOneHundred);
+                t.TextString = ReplaceAntetTextCore(t.TextString, v, antetPlanTitle, useTemelAntetScaleOneHundred, useKolonAntetScaleOneHundred, useKalipAntetScaleOneHundred);
                 return;
             }
             if (ent is MText mt)
             {
-                mt.Contents = ReplaceAntetTextCore(mt.Contents, v, antetPlanTitle, useTemelAntetScaleOneHundred);
+                mt.Contents = ReplaceAntetTextCore(mt.Contents, v, antetPlanTitle, useTemelAntetScaleOneHundred, useKolonAntetScaleOneHundred, useKalipAntetScaleOneHundred);
             }
         }
 
-        private static string ReplaceAntetTextCore(string text, AntetValueSet v, string antetPlanTitle, bool useTemelAntetScaleOneHundred = false)
+        private static string ReplaceAntetTextCore(string text, AntetValueSet v, string antetPlanTitle, bool useTemelAntetScaleOneHundred = false, bool useKolonAntetScaleOneHundred = false, bool useKalipAntetScaleOneHundred = false)
         {
             string s = text ?? string.Empty;
             if (!string.IsNullOrWhiteSpace(antetPlanTitle) &&
@@ -8399,6 +8508,13 @@ namespace ST4PlanIdCiz
             if (useTemelAntetScaleOneHundred &&
                 string.Equals(s.Trim(), "1:50", StringComparison.OrdinalIgnoreCase))
                 return "1:100";
+            if (useKolonAntetScaleOneHundred &&
+                string.Equals(s.Trim(), "1:50 - 1:25", StringComparison.OrdinalIgnoreCase))
+                return "1:100 - 1:25";
+            if (useKalipAntetScaleOneHundred &&
+                (string.Equals(s.Trim(), "1:50", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(s.Trim(), "1:100", StringComparison.OrdinalIgnoreCase)))
+                return "1:100 - 1:25";
             if (!string.IsNullOrWhiteSpace(antetPlanTitle) &&
                 string.Equals(s.Trim(), "1:50", StringComparison.OrdinalIgnoreCase))
             {
