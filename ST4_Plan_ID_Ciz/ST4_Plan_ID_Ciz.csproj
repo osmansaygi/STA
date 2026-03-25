@@ -23,6 +23,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- DWG: DxfIn DXF bazi sembol tablolarinda eInvalidSymbolTableName verebilir; ReadDwgFile ile acilir. -->
     <EmbeddedResource Include="..\antet_02.dwg" LogicalName="ST4PlanIdCiz.TemelAntet.antet_02.dwg" />
   </ItemGroup>
@@ -60,5 +65,6 @@
   <Target Name="CopyYatayKot" AfterTargets="Build">
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\YATAY_KOT.dxf" DestinationFolder="$(OutputPath)" Condition="Exists('$(MSBuildProjectDirectory)\..\YATAY_KOT.dxf')" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\YATAY_KOT.dwg" DestinationFolder="$(OutputPath)" Condition="Exists('$(MSBuildProjectDirectory)\..\YATAY_KOT.dwg')" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\iskele_plan.lsp" DestinationFolder="$(OutputPath)" Condition="Exists('$(MSBuildProjectDirectory)\..\iskele_plan.lsp')" />
   </Target>
 </Project>

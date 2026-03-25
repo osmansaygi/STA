@@ -19,7 +19,10 @@ namespace ST4PlanIdCiz
 {
     public class PluginLifecycle : IExtensionApplication
     {
-        public void Initialize() { }
+        public void Initialize()
+        {
+            CommandPaletteManager.Show();
+        }
         public void Terminate() { }
     }
 
@@ -92,6 +95,18 @@ namespace ST4PlanIdCiz
                 if (ex.InnerException != null)
                     ed.WriteMessage("  Inner: {0}", ex.InnerException.Message);
             }
+        }
+
+        /// <summary>
+        /// Kalıp iskele planı: kapalı poligon etrafında iskele çizimi (iskele_plan.lsp ISKELEPLAN ile aynı mantık).
+        /// </summary>
+        [CommandMethod("ISKELECIZ")]
+        public void IskeleCiz()
+        {
+            var doc = Application.DocumentManager.MdiActiveDocument;
+            if (doc == null) return;
+            ApplyStaDefaultDrawingDisplaySettings(doc);
+            IskelePlanRunner.Execute(doc);
         }
 
         /// <summary>
