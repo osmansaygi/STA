@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using ST4AksCizCSharp;
@@ -50,32 +51,35 @@ namespace ST4PlanIdCiz
                     rawLine.IndexOf("isim", StringComparison.OrdinalIgnoreCase) >= 0) continue;
                 if (rawLine.IndexOf("X y", StringComparison.OrdinalIgnoreCase) >= 0 &&
                     rawLine.IndexOf("Y y", StringComparison.OrdinalIgnoreCase) >= 0) continue;
-                string line = rawLine.Replace('\u2502', '|').Replace('│', '|');
+                string line = NormalizeTableSeparators(rawLine);
                 if (!line.Contains("|")) continue;
                 var matches = rowRx.Matches(line);
-                if (matches.Count >= 1)
+                if (matches.Count >= 2)
                 {
                     int xNo = int.Parse(matches[0].Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
                     string xName = matches[0].Groups[2].Value.Trim();
                     if (!string.IsNullOrWhiteSpace(xName))
                         model.GprAxisXLabelByRow[xNo] = xName;
-                }
-                if (matches.Count >= 2)
-                {
+
                     int yNo = int.Parse(matches[1].Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
                     string yName = matches[1].Groups[2].Value.Trim();
                     if (!string.IsNullOrWhiteSpace(yName))
                         model.GprAxisYLabelByRow[yNo] = yName;
                 }
-                else if (matches.Count == 1 && line.TrimStart().Length > 0)
+                else if (matches.Count == 1)
                 {
                     int firstPipe = line.IndexOf('|');
-                    if (firstPipe > 42)
+                    int no = int.Parse(matches[0].Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+                    string name = matches[0].Groups[2].Value.Trim();
+                    if (firstPipe > 30)
                     {
-                        int yNo = int.Parse(matches[0].Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
-                        string yName = matches[0].Groups[2].Value.Trim();
-                        if (!string.IsNullOrWhiteSpace(yName))
-                            model.GprAxisYLabelByRow[yNo] = yName;
+                        if (!string.IsNullOrWhiteSpace(name))
+                            model.GprAxisYLabelByRow[no] = name;
+                    }
+                    else
+                    {
+                        if (!string.IsNullOrWhiteSpace(name))
+                            model.GprAxisXLabelByRow[no] = name;
                     }
                 }
             }
@@ -84,9 +88,44 @@ namespace ST4PlanIdCiz
         private static string ReadAllTextRobust(string path)
         {
             byte[] bytes = File.ReadAllBytes(path);
+            // OEM 857/437/850'de 0xB3 = │ (box-drawing vertical).
+            // Hangi encoding kullanılırsa kullanılsın sorun çıkmaması için
+            // byte seviyesinde doğrudan ASCII pipe'a dönüştür.
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                if (bytes[i] == 0xB3) bytes[i] = 0x7C; // │ → |
+                if (bytes[i] == 0xED) bytes[i] = 0x7C; // í/� → |
+            }
             try { return Encoding.GetEncoding(1254).GetString(bytes); }
             catch { }
             return Encoding.UTF8.GetString(bytes);
+        }
+
+        private static string NormalizeTableSeparators(string rawLine)
+        {
+            if (string.IsNullOrEmpty(rawLine)) return rawLine ?? string.Empty;
+            var sb = new StringBuilder(rawLine.Length);
+            for (int i = 0; i < rawLine.Length; i++)
+            {
+                char ch = rawLine[i];
+                bool keep =
+                    char.IsLetterOrDigit(ch) ||
+                    char.IsWhiteSpace(ch) ||
+                    ch == '.' || ch == ',' || ch == '-' || ch == '\'';
+                sb.Append(keep ? ch : '|');
+            }
+
+            // Birden fazla ardışık ayırıcıyı tek "|" yap (regex eşleşmesini stabil tutar).
+            var collapsed = new StringBuilder(sb.Length);
+            bool prevPipe = false;
+            foreach (char ch in sb.ToString())
+            {
+                bool isPipe = ch == '|';
+                if (!(isPipe && prevPipe))
+                    collapsed.Append(ch);
+                prevPipe = isPipe;
+            }
+            return collapsed.ToString();
         }
     }
 }

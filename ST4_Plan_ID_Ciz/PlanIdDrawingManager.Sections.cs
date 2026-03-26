@@ -128,8 +128,8 @@ namespace ST4PlanIdCiz
         /// <summary>Radye ölçü istasyonu, kesitte dar kalan temel hatılı A bandının dışında kalmasın diye ± genişletme (cm).</summary>
         private const double KesitRadyeOlcuHatilSkipMarginCm = 650.0;
         private const double KesitOlcuStaggerCm = 16.0;
-        /// <summary>KALIP50 için bina şeması ölçeği (1:400).</summary>
-        private const double Kalip50BuildingSchematicSectionScale = 0.125;
+        /// <summary>KALIP50 için bina şeması ölçeği (1:200).</summary>
+        private const double Kalip50BuildingSchematicSectionScale = 0.25;
         /// <summary>KALIP100 için bina şeması ölçeği (KALIP100'de mevcut 1:400 durumuna göre 4× büyütülmüş).</summary>
         private const double Kalip100BuildingSchematicSectionScale = 0.5;
         /// <summary>Şema kesitinin antet dış çerçeve üst çizgisinden boşluğu (cm).</summary>
@@ -1184,7 +1184,7 @@ namespace ST4PlanIdCiz
                     Layer = LayerKesitIsmi,
                     Height = KesitBaslikMetinYukseklikCm,
                     TextStyleId = GetOrCreateYaziBeykentTextStyle(tr, db),
-                    TextString = _kalipPlanScale == KalipPlanScale.Hundred ? "SEMATIK KESIT (1:100)" : "SEMATIK KESIT (1:400)",
+                    TextString = _kalipPlanScale == KalipPlanScale.Hundred ? "SEMATIK KESIT (1:100)" : "SEMATIK KESIT (1:200)",
                     HorizontalMode = TextHorizontalMode.TextCenter,
                     VerticalMode = TextVerticalMode.TextTop,
                     Position = new Point3d(cx, yTitleTop, 0),

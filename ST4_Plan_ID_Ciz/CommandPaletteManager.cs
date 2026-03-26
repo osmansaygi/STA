@@ -21,7 +21,7 @@ namespace ST4PlanIdCiz
         private static readonly string[] StaCommandsFallback =
         {
             "ST4PLANID", "KOLONDATA", "ST4KESIT", "TEMEL50ST4", "TEMEL100ST4",
-            "KOLON50ST4", "KOLON100ST4", "KALIP50ST4", "KALIP100ST4", "ISKELECIZ"
+            "KOLON50ST4", "KOLON100ST4", "KALIP50ST4", "KALIP100ST4", "ISKELECIZ", "ISKELEKESIT"
         };
 
         /// <summary>

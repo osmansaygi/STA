@@ -66,5 +66,7 @@
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\YATAY_KOT.dxf" DestinationFolder="$(OutputPath)" Condition="Exists('$(MSBuildProjectDirectory)\..\YATAY_KOT.dxf')" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\YATAY_KOT.dwg" DestinationFolder="$(OutputPath)" Condition="Exists('$(MSBuildProjectDirectory)\..\YATAY_KOT.dwg')" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\iskele_plan.lsp" DestinationFolder="$(OutputPath)" Condition="Exists('$(MSBuildProjectDirectory)\..\iskele_plan.lsp')" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ISKELE_KESIT.dxf" DestinationFolder="$(OutputPath)" Condition="Exists('$(MSBuildProjectDirectory)\..\ISKELE_KESIT.dxf')" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ISKELE_KESIT.dwg" DestinationFolder="$(OutputPath)" Condition="Exists('$(MSBuildProjectDirectory)\..\ISKELE_KESIT.dwg')" />
   </Target>
 </Project>

@@ -81,6 +81,9 @@ namespace ST4PlanIdCiz
                 var parser = new St4Parser();
                 var model = parser.Parse(fileRes.StringResult);
                 GprYapiAksLabels.TryMergeFromGprBesideSt4(fileRes.StringResult, model);
+                ed.WriteMessage("\n[GPR aks etiketi] X={0} adet, Y={1} adet", model.GprAxisXLabelByRow.Count, model.GprAxisYLabelByRow.Count);
+                foreach (var kv in model.GprAxisXLabelByRow) ed.WriteMessage("  X{0}={1}", kv.Key, kv.Value);
+                foreach (var kv in model.GprAxisYLabelByRow) ed.WriteMessage("  Y{0}={1}", kv.Key, kv.Value);
                 var manager = new PlanIdDrawingManager(model);
                 manager.Draw(db, ed);
                 doc.SendStringToExecute("_.ZOOM _E ", true, false, false);
@@ -107,6 +110,18 @@ namespace ST4PlanIdCiz
             if (doc == null) return;
             ApplyStaDefaultDrawingDisplaySettings(doc);
             IskelePlanRunner.Execute(doc);
+        }
+
+        /// <summary>
+        /// Iskele kesiti: bu oturumda ISKELECIZ sonrasi kesit cizgisi + ISKELE YATAY kesisimleri + ST4 kotlari; ISKELE_KESIT.dxf sablonu yerlestirilir.
+        /// </summary>
+        [CommandMethod("ISKELEKESIT")]
+        public void IskeleKesit()
+        {
+            var doc = Application.DocumentManager.MdiActiveDocument;
+            if (doc == null) return;
+            ApplyStaDefaultDrawingDisplaySettings(doc);
+            IskeleKesitRunner.Execute(doc);
         }
 
         /// <summary>
@@ -247,6 +262,9 @@ namespace ST4PlanIdCiz
                 var parser = new St4Parser();
                 var model = parser.Parse(fileRes.StringResult);
                 GprYapiAksLabels.TryMergeFromGprBesideSt4(fileRes.StringResult, model);
+                ed.WriteMessage("\n[GPR aks etiketi] X={0} adet, Y={1} adet", model.GprAxisXLabelByRow.Count, model.GprAxisYLabelByRow.Count);
+                foreach (var kv in model.GprAxisXLabelByRow) ed.WriteMessage("  X{0}={1}", kv.Key, kv.Value);
+                foreach (var kv in model.GprAxisYLabelByRow) ed.WriteMessage("  Y{0}={1}", kv.Key, kv.Value);
                 var manager = new PlanIdDrawingManager(model);
 
                 var p1Res = ed.GetPoint(new PromptPointOptions("\nKesit hatti 1. nokta: ") { AllowNone = false });
@@ -314,6 +332,9 @@ namespace ST4PlanIdCiz
                 var parser = new St4Parser();
                 var model = parser.Parse(fileRes.StringResult);
                 GprYapiAksLabels.TryMergeFromGprBesideSt4(fileRes.StringResult, model);
+                ed.WriteMessage("\n[GPR aks etiketi] X={0} adet, Y={1} adet", model.GprAxisXLabelByRow.Count, model.GprAxisYLabelByRow.Count);
+                foreach (var kv in model.GprAxisXLabelByRow) ed.WriteMessage("  X{0}={1}", kv.Key, kv.Value);
+                foreach (var kv in model.GprAxisYLabelByRow) ed.WriteMessage("  Y{0}={1}", kv.Key, kv.Value);
                 var manager = new PlanIdDrawingManager(model);
                 var insRes = ed.GetPoint(new PromptPointOptions("\nTEMEL50ST4 yerlestirme noktasi (sol-alt): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
@@ -362,6 +383,9 @@ namespace ST4PlanIdCiz
                 var parser = new St4Parser();
                 var model = parser.Parse(fileRes.StringResult);
                 GprYapiAksLabels.TryMergeFromGprBesideSt4(fileRes.StringResult, model);
+                ed.WriteMessage("\n[GPR aks etiketi] X={0} adet, Y={1} adet", model.GprAxisXLabelByRow.Count, model.GprAxisYLabelByRow.Count);
+                foreach (var kv in model.GprAxisXLabelByRow) ed.WriteMessage("  X{0}={1}", kv.Key, kv.Value);
+                foreach (var kv in model.GprAxisYLabelByRow) ed.WriteMessage("  Y{0}={1}", kv.Key, kv.Value);
                 var manager = new PlanIdDrawingManager(model);
                 var insRes = ed.GetPoint(new PromptPointOptions("\nTEMEL100ST4 yerlestirme noktasi (sol-alt): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
@@ -410,6 +434,9 @@ namespace ST4PlanIdCiz
                 var parser = new St4Parser();
                 var model = parser.Parse(fileRes.StringResult);
                 GprYapiAksLabels.TryMergeFromGprBesideSt4(fileRes.StringResult, model);
+                ed.WriteMessage("\n[GPR aks etiketi] X={0} adet, Y={1} adet", model.GprAxisXLabelByRow.Count, model.GprAxisYLabelByRow.Count);
+                foreach (var kv in model.GprAxisXLabelByRow) ed.WriteMessage("  X{0}={1}", kv.Key, kv.Value);
+                foreach (var kv in model.GprAxisYLabelByRow) ed.WriteMessage("  Y{0}={1}", kv.Key, kv.Value);
                 var manager = new PlanIdDrawingManager(model);
                 var insRes = ed.GetPoint(new PromptPointOptions("\nKOLON50ST4 yerlestirme noktasi (sol-alt): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
@@ -458,6 +485,9 @@ namespace ST4PlanIdCiz
                 var parser = new St4Parser();
                 var model = parser.Parse(fileRes.StringResult);
                 GprYapiAksLabels.TryMergeFromGprBesideSt4(fileRes.StringResult, model);
+                ed.WriteMessage("\n[GPR aks etiketi] X={0} adet, Y={1} adet", model.GprAxisXLabelByRow.Count, model.GprAxisYLabelByRow.Count);
+                foreach (var kv in model.GprAxisXLabelByRow) ed.WriteMessage("  X{0}={1}", kv.Key, kv.Value);
+                foreach (var kv in model.GprAxisYLabelByRow) ed.WriteMessage("  Y{0}={1}", kv.Key, kv.Value);
                 var manager = new PlanIdDrawingManager(model);
                 var insRes = ed.GetPoint(new PromptPointOptions("\nKOLON100ST4 yerlestirme noktasi (sol-alt): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
@@ -506,6 +536,9 @@ namespace ST4PlanIdCiz
                 var parser = new St4Parser();
                 var model = parser.Parse(fileRes.StringResult);
                 GprYapiAksLabels.TryMergeFromGprBesideSt4(fileRes.StringResult, model);
+                ed.WriteMessage("\n[GPR aks etiketi] X={0} adet, Y={1} adet", model.GprAxisXLabelByRow.Count, model.GprAxisYLabelByRow.Count);
+                foreach (var kv in model.GprAxisXLabelByRow) ed.WriteMessage("  X{0}={1}", kv.Key, kv.Value);
+                foreach (var kv in model.GprAxisYLabelByRow) ed.WriteMessage("  Y{0}={1}", kv.Key, kv.Value);
                 var manager = new PlanIdDrawingManager(model);
                 var insRes = ed.GetPoint(new PromptPointOptions("\nKALIP50ST4: En soldaki antet SHEETVIEW sol-alt kosesi (yerlesim referansi): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
@@ -557,6 +590,9 @@ namespace ST4PlanIdCiz
                 var parser = new St4Parser();
                 var model = parser.Parse(fileRes.StringResult);
                 GprYapiAksLabels.TryMergeFromGprBesideSt4(fileRes.StringResult, model);
+                ed.WriteMessage("\n[GPR aks etiketi] X={0} adet, Y={1} adet", model.GprAxisXLabelByRow.Count, model.GprAxisYLabelByRow.Count);
+                foreach (var kv in model.GprAxisXLabelByRow) ed.WriteMessage("  X{0}={1}", kv.Key, kv.Value);
+                foreach (var kv in model.GprAxisYLabelByRow) ed.WriteMessage("  Y{0}={1}", kv.Key, kv.Value);
                 var manager = new PlanIdDrawingManager(model);
                 var insRes = ed.GetPoint(new PromptPointOptions("\nKALIP100ST4: En soldaki antet SHEETVIEW sol-alt kosesi (yerlesim referansi): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;

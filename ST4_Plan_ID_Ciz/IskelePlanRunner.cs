@@ -413,6 +413,8 @@ namespace ST4PlanIdCiz
                     (ptsCount + outerPtsCount + hitCnt).ToString(CultureInfo.InvariantCulture),
                     subCnt.ToString(CultureInfo.InvariantCulture),
                     ankCnt.ToString(CultureInfo.InvariantCulture));
+
+                IskeleCizContextStore.SetActive();
             }
 
             doc.SendStringToExecute("_.ZOOM _E ", true, false, false);

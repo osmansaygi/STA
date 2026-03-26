@@ -813,8 +813,9 @@ namespace ST4PlanIdCiz
                         if (gprDonatiSlabMatchCountTotal == 0)
                             gprSummary += " UYARI: Hic donati yazisi yazilmadi (anahtar eslesmesi veya geometri).";
                     }
+                    string binaSemaScaleText = scaleMode == KalipPlanScale.Hundred ? "1:100" : "1:200";
                     string binaSemaNote = kalip50BinaSemaKesitSayisi > 0
-                        ? string.Format(CultureInfo.InvariantCulture, " Bina sema kesiti (1:400): {0} adet (her antet ustu).", kalip50BinaSemaKesitSayisi)
+                        ? string.Format(CultureInfo.InvariantCulture, " Bina sema kesiti ({0}): {1} adet (her antet ustu).", binaSemaScaleText, kalip50BinaSemaKesitSayisi)
                         : string.Empty;
                     string kalipCmdTag = scaleMode == KalipPlanScale.Hundred ? "KALIP100ST4" : "KALIP50ST4";
                     string kalipScaleText = scaleMode == KalipPlanScale.Hundred ? "1/100" : "1/50";
