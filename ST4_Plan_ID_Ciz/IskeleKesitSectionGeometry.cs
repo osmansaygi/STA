@@ -69,13 +69,6 @@ namespace ST4PlanIdCiz
                     stations.Add(p);
             }
 
-            for (int i = 0; i < n; i++)
-            {
-                if (used[i]) continue;
-                if (TrySegIntersectCut(lines[i].a, lines[i].b, cutSegs, out Point3d q))
-                    stations.Add(q);
-            }
-
             return DedupeStations(stations, 0.5);
         }
 

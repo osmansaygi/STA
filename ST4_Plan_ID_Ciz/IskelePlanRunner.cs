@@ -30,6 +30,7 @@ namespace ST4PlanIdCiz
         private const string LayerBolt = "ISKELE BOLT (BEYKENT)";
         private const string LayerAnkraj = "ISKELE ANKRAJ (BEYKENT)";
         private const string LayerDoseme = "DOSEME SINIRI (BEYKENT)";
+        private const string LayerKesitIsmi = "KESIT ISMI (BEYKENT)";
 
         private const string DimPlanOlcu = "PLAN_OLCU";
         private const string DimPlanOlcuDetay = "PLAN_OLCU_DETAY";
@@ -355,6 +356,31 @@ namespace ST4PlanIdCiz
                     }
 
                     otherCatsSaved = otherCats;
+
+                    if (allVertexPts.Count > 0)
+                    {
+                        double bMinX = allVertexPts.Min(v => v.X);
+                        double bMaxX = allVertexPts.Max(v => v.X);
+                        double bMinY = allVertexPts.Min(v => v.Y);
+                        double titleCx = (bMinX + bMaxX) * 0.5;
+                        double titleYTop = bMinY - 120.0;
+                        var titleTxt = new DBText
+                        {
+                            Layer = LayerKesitIsmi,
+                            Height = 20.0,
+                            TextStyleId = yaziStyleId,
+                            TextString = "\u0130SKELE PLANI (1:50)",
+                            HorizontalMode = TextHorizontalMode.TextCenter,
+                            VerticalMode = TextVerticalMode.TextTop,
+                            Position = new Point3d(titleCx, titleYTop, 0),
+                            AlignmentPoint = new Point3d(titleCx, titleYTop, 0),
+                            LineWeight = LineWeight.LineWeight020
+                        };
+                        try { titleTxt.AdjustAlignment(db); } catch { }
+                        ms.AppendEntity(titleTxt);
+                        tr.AddNewlyCreatedDBObject(titleTxt, true);
+                    }
+
                     tr.Commit();
                 }
 
@@ -442,6 +468,7 @@ namespace ST4PlanIdCiz
             EnsureLayer(tr, db, LayerBolt, 5, "Continuous", LineWeight.LineWeight020);
             EnsureLayer(tr, db, LayerAnkraj, 95, "Continuous", LineWeight.LineWeight020);
             EnsureLayer(tr, db, LayerDoseme, 71, "Continuous", LineWeight.LineWeight030);
+            EnsureLayer(tr, db, LayerKesitIsmi, 6, "Continuous", LineWeight.LineWeight020);
         }
 
         private static void TryLoadLinetype(Transaction tr, Database db, string name)

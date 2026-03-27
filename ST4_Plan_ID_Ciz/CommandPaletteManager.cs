@@ -1,11 +1,6 @@
 using System;
-using System.Collections.Generic;
 using System.Drawing;
-using System.Linq;
-using System.Reflection;
 using System.Windows.Forms;
-using Autodesk.AutoCAD.ApplicationServices;
-using Autodesk.AutoCAD.Runtime;
 using Autodesk.AutoCAD.Windows;
 using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
 
@@ -15,132 +10,177 @@ namespace ST4PlanIdCiz
     {
         private static PaletteSet _palette;
 
-        /// <summary>
-        /// Yansıma başarısız olsa da panelde görünmesi gereken STA komutları (NETLOAD sonrası yenileme ile güncellenir).
-        /// </summary>
-        private static readonly string[] StaCommandsFallback =
-        {
-            "ST4PLANID", "KOLONDATA", "ST4KESIT", "TEMEL50ST4", "TEMEL100ST4",
-            "KOLON50ST4", "KOLON100ST4", "KALIP50ST4", "KALIP100ST4", "ISKELECIZ", "ISKELEKESIT"
-        };
-
-        /// <summary>
-        /// Her çağrıda paneli güncel komut listesiyle yeniden kurar.
-        /// Aksi halde ilk NETLOAD'daki eski butonlar kalır; yeni DLL yüklendiğinde ISKELECIZ görünmez.
-        /// </summary>
         public static void Show()
         {
             try
             {
                 if (_palette != null)
                 {
-                    try { _palette.Dispose(); } catch { /* sürüm / durum */ }
+                    try { _palette.Dispose(); } catch { }
                     _palette = null;
                 }
 
+                int palW = 135;
+                int palH = 440;
+
                 _palette = new PaletteSet("STA Komut Paneli")
                 {
-                    Style = PaletteSetStyles.ShowAutoHideButton | PaletteSetStyles.ShowCloseButton | PaletteSetStyles.ShowPropertiesMenu,
-                    MinimumSize = new Size(170, 220),
-                    Size = new Size(190, 310),
+                    Style = PaletteSetStyles.ShowAutoHideButton
+                          | PaletteSetStyles.ShowCloseButton,
+                    MinimumSize = new Size(palW, palH),
                     KeepFocus = false,
-                    DockEnabled = DockSides.Left | DockSides.Right
+                    DockEnabled = DockSides.None
                 };
 
-                _palette.Add("Komutlar", new CommandPaletteControl(GetAllCommandNames()));
-                _palette.Visible = true;
-            }
-            catch
-            {
-                // AutoCAD yükleme bağlamı farklı ise sessiz geç.
-            }
-        }
+                _palette.Add("Komutlar", new CommandPaletteControl());
 
-        private static List<string> GetAllCommandNames()
-        {
-            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var s in StaCommandsFallback)
-                set.Add(s);
-
-            try
-            {
-                var methods = typeof(CommandEntry)
-                    .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static)
-                    .OrderBy(m => m.MetadataToken);
-                foreach (var m in methods)
+                try
                 {
-                    foreach (CommandMethodAttribute a in m.GetCustomAttributes(typeof(CommandMethodAttribute), inherit: false))
-                    {
-                        if (!string.IsNullOrWhiteSpace(a.GlobalName))
-                            set.Add(a.GlobalName.Trim());
-                    }
+                    var screen = Screen.PrimaryScreen.WorkingArea;
+                    _palette.Location = new Point(screen.Left + 10, screen.Bottom - palH - 5);
                 }
-            }
-            catch { /* yansıma yoksa StaCommandsFallback yeterli */ }
+                catch { }
 
-            return set.OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToList();
+                _palette.Size = new Size(palW, palH);
+                _palette.Visible = true;
+                _palette.Size = new Size(palW, palH);
+            }
+            catch { }
         }
     }
 
     internal sealed class CommandPaletteControl : UserControl
     {
-        public CommandPaletteControl(List<string> commands)
+        private static readonly Color BgColor = Color.FromArgb(248, 249, 252);
+        private static readonly Color SecBg = Color.FromArgb(238, 240, 245);
+        private static readonly Color SecBrd = Color.FromArgb(205, 210, 222);
+        private static readonly Color BtnNorm = Color.White;
+        private static readonly Color BtnHov = Color.FromArgb(220, 232, 250);
+        private static readonly Color BtnPrs = Color.FromArgb(195, 215, 245);
+        private static readonly Color BtnBrd = Color.FromArgb(185, 192, 210);
+        private static readonly Color TxDark = Color.FromArgb(38, 38, 48);
+        private static readonly Color TxSec = Color.FromArgb(65, 75, 98);
+
+        private const int BtnH = 24;
+        private const int BtnGap = 2;
+        private const int InnerPad = 2;
+        private const int TitleH = 18;
+        private const int SecGap = 4;
+        private const int SidePad = 2;
+
+        private static readonly (string label, string cmd)[] S50 =
         {
-            BackColor = Color.FromArgb(245, 245, 245);
+            ("Kal\u0131p Plan\u0131",    "KALIP50ST4"),
+            ("Kolon Aplikasyon", "KOLON50ST4"),
+            ("Temel Plan\u0131",   "TEMEL50ST4"),
+        };
+        private static readonly (string label, string cmd)[] S100 =
+        {
+            ("Kal\u0131p Plan\u0131",    "KALIP100ST4"),
+            ("Kolon Aplikasyon", "KOLON100ST4"),
+            ("Temel Plan\u0131",   "TEMEL100ST4"),
+        };
+        private static readonly (string label, string cmd)[] Isk =
+        {
+            ("\u0130skele Plan\u0131",  "ISKELECIZ"),
+            ("\u0130skele Kesiti", "ISKELEKESIT"),
+        };
+        private static readonly (string label, string cmd)[] Gen =
+        {
+            ("ST4 Plan ID",  "ST4PLANID"),
+            ("Kolon Data",   "KOLONDATA"),
+            ("ST4 Kesit",    "ST4KESIT"),
+        };
+
+        public CommandPaletteControl()
+        {
+            BackColor = BgColor;
             Dock = DockStyle.Fill;
+            AutoScroll = true;
+            Padding = new Padding(SidePad, 4, SidePad, 4);
 
-            var header = new Label
-            {
-                Dock = DockStyle.Top,
-                Height = 34,
-                Text = "STA Komutlari",
-                TextAlign = ContentAlignment.MiddleLeft,
-                Font = new Font("Segoe UI", 10f, FontStyle.Bold),
-                Padding = new Padding(8, 0, 0, 0)
-            };
-            Controls.Add(header);
-
-            var panel = new FlowLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                FlowDirection = FlowDirection.TopDown,
-                WrapContents = false,
-                AutoScroll = true,
-                Padding = new Padding(8, 8, 8, 8)
-            };
-            Controls.Add(panel);
-            panel.BringToFront();
-
-            foreach (string cmd in commands)
-            {
-                var button = new Button
-                {
-                    Width = 135,
-                    Height = 17,
-                    Text = cmd,
-                    Tag = cmd,
-                    FlatStyle = FlatStyle.Standard
-                };
-                button.Click += OnCommandClick;
-                panel.Controls.Add(button);
-            }
+            int y = 4;
+            y = AddSection("\u00d6L\u00c7EK 1:50", S50, y);
+            y = AddSection("\u00d6L\u00c7EK 1:100", S100, y);
+            y = AddSection("\u0130SKELE", Isk, y);
+            y = AddSection("GENEL", Gen, y);
         }
 
-        private static void OnCommandClick(object sender, EventArgs e)
+        private int SecH(int n) => TitleH + InnerPad + n * (BtnH + BtnGap) - BtnGap + InnerPad;
+
+        private int AddSection(string title, (string label, string cmd)[] items, int top)
+        {
+            int h = SecH(items.Length);
+            var sp = new Panel
+            {
+                Location = new Point(SidePad, top),
+                Size = new Size(Width - SidePad * 2 - 1, h),
+                Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right,
+                BackColor = SecBg
+            };
+            sp.Paint += (s, e) =>
+            {
+                using (var pen = new Pen(SecBrd))
+                    e.Graphics.DrawRectangle(pen, 0, 0, sp.Width - 1, sp.Height - 1);
+            };
+
+            sp.Controls.Add(new Label
+            {
+                Text = title,
+                Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
+                ForeColor = TxSec,
+                Location = new Point(InnerPad + 1, 2),
+                AutoSize = true,
+                BackColor = Color.Transparent
+            });
+
+            int by = TitleH + InnerPad;
+            foreach (var it in items)
+            {
+                var btn = MakeBtn(it.label, it.cmd);
+                btn.Location = new Point(InnerPad, by);
+                btn.Size = new Size(sp.Width - InnerPad * 2 - 1, BtnH);
+                btn.Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right;
+                sp.Controls.Add(btn);
+                by += BtnH + BtnGap;
+            }
+
+            Controls.Add(sp);
+            return top + h + SecGap;
+        }
+
+        private Button MakeBtn(string text, string cmd)
+        {
+            var b = new Button
+            {
+                Text = text,
+                Tag = cmd,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = BtnNorm,
+                ForeColor = TxDark,
+                Font = new Font("Segoe UI", 8f),
+                Cursor = Cursors.Hand,
+                TextAlign = ContentAlignment.MiddleCenter
+            };
+            b.FlatAppearance.BorderColor = BtnBrd;
+            b.FlatAppearance.BorderSize = 1;
+            b.FlatAppearance.MouseOverBackColor = BtnHov;
+            b.FlatAppearance.MouseDownBackColor = BtnPrs;
+            b.Click += OnCmd;
+            return b;
+        }
+
+        private static void OnCmd(object sender, EventArgs e)
         {
             try
             {
                 if (!(sender is Control c) || !(c.Tag is string cmd) || string.IsNullOrWhiteSpace(cmd))
                     return;
-
                 var doc = AcApp.DocumentManager.MdiActiveDocument;
                 if (doc == null) return;
                 doc.SendStringToExecute(cmd + " ", true, false, false);
             }
-            catch
-            {
-                // Komut çağrısı başarısız olsa da panel açık kalmalı.
-            }
+            catch { }
         }
     }
 }

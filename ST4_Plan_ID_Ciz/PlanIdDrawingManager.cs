@@ -4066,7 +4066,7 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>Aks ölçüleri için özel dim style "AKS_OLCU": metin stili YAZI (BEYKENT), yükseklik çağrıda; oklar vb. AKS_OLCU ayarları.</summary>
-        private static ObjectId GetOrCreateAksOlcuDimStyle(Transaction tr, Database db, double dimTextHeightCm, double lineGeomScale = 1.0)
+        internal static ObjectId GetOrCreateAksOlcuDimStyle(Transaction tr, Database db, double dimTextHeightCm, double lineGeomScale = 1.0)
         {
             if (lineGeomScale < 1e-6) lineGeomScale = 1.0;
             string styleName = Math.Abs(lineGeomScale - 1.0) > 1e-6 ? AksOlcuDimStyleName100 : AksOlcuDimStyleName;
@@ -6535,30 +6535,38 @@ namespace ST4PlanIdCiz
                 catch { }
                 bool isFixedX = beam.FixedAxisId >= 1001 && beam.FixedAxisId <= 1999;
                 double angleRad = Math.Atan2(u.Y, u.X);
+                double wallLabelPerpCm = pMin + wallLabelOffsetCm;
+                if (_kalipPlanScale == KalipPlanScale.Hundred)
+                {
+                    double pCenterAlongPerp = (wallCenter - firstA).DotProduct(perp);
+                    double inwardSign = pCenterAlongPerp >= wallLabelPerpCm ? 1.0 : -1.0;
+                    wallLabelPerpCm -= inwardSign * Temel100PerdeLabelShiftAlongPerpCm;
+                }
+
                 Point2d insertion;
                 if (isFixedX)
                 {
                     double tIns = Math.Max(tMin, tLineEnd - textWidthCm);
-                    insertion = firstA + u.MultiplyBy(tIns) + perp.MultiplyBy(pMin + wallLabelOffsetCm);
+                    insertion = firstA + u.MultiplyBy(tIns) + perp.MultiplyBy(wallLabelPerpCm);
                     while (obstacles != null && TextBoxIntersectsObstacles(insertion, textWidthCm, wallLabelHeightCm, angleRad, 0, obstacles, factory) && tIns > tMin + 1e-6)
                     {
                         tIns -= wallLabelStepCm;
                         if (tIns < tMin) { tIns = tMin; break; }
-                        insertion = firstA + u.MultiplyBy(tIns) + perp.MultiplyBy(pMin + wallLabelOffsetCm);
+                        insertion = firstA + u.MultiplyBy(tIns) + perp.MultiplyBy(wallLabelPerpCm);
                     }
-                    insertion = firstA + u.MultiplyBy(tIns) + perp.MultiplyBy(pMin + wallLabelOffsetCm);
+                    insertion = firstA + u.MultiplyBy(tIns) + perp.MultiplyBy(wallLabelPerpCm);
                 }
                 else
                 {
                     double tIns = Math.Max(tMin, Math.Min(tMax - textWidthCm, tLineStart));
-                    insertion = firstA + u.MultiplyBy(tIns) + perp.MultiplyBy(pMin + wallLabelOffsetCm);
+                    insertion = firstA + u.MultiplyBy(tIns) + perp.MultiplyBy(wallLabelPerpCm);
                     while (obstacles != null && TextBoxIntersectsObstacles(insertion, textWidthCm, wallLabelHeightCm, angleRad, 0, obstacles, factory) && tIns + textWidthCm <= tMax - 1e-6)
                     {
                         tIns += wallLabelStepCm;
                         if (tIns + textWidthCm > tMax) { tIns = Math.Max(tMin, tMax - textWidthCm); break; }
-                        insertion = firstA + u.MultiplyBy(tIns) + perp.MultiplyBy(pMin + wallLabelOffsetCm);
+                        insertion = firstA + u.MultiplyBy(tIns) + perp.MultiplyBy(wallLabelPerpCm);
                     }
-                    insertion = firstA + u.MultiplyBy(tIns) + perp.MultiplyBy(pMin + wallLabelOffsetCm);
+                    insertion = firstA + u.MultiplyBy(tIns) + perp.MultiplyBy(wallLabelPerpCm);
                 }
                 GetLabelBoxCorners(insertion, textWidthCm, wallLabelHeightCm, angleRad, out _, out Point2d br, out _, out _);
                 Point3d labelInsert = isFixedX ? new Point3d(br.X, br.Y, 0) : new Point3d(insertion.X, insertion.Y, 0);
