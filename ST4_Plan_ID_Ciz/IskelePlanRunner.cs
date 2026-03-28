@@ -460,8 +460,9 @@ namespace ST4PlanIdCiz
             EnsureLayer(tr, db, LayerIskeleDetay, 4, "Continuous", LineWeight.LineWeight025);
             EnsureLayer(tr, db, LayerOlcu, 14, "Continuous", LineWeight.LineWeight020);
             EnsureLayer(tr, db, LayerCapraz, 140, "Continuous", LineWeight.LineWeight020);
-            TryLoadLinetype(tr, db, "HIDDEN2");
-            EnsureLayer(tr, db, LayerDetayGizli, 8, "HIDDEN2", LineWeight.LineWeight015);
+            TryLoadLinetype(tr, db, "DASHED");
+            EnsureLayer(tr, db, LayerDetayGizli, 8, "DASHED", LineWeight.LineWeight015);
+            ApplyLayerLinetype(tr, db, LayerDetayGizli, "DASHED");
             EnsureLayer(tr, db, LayerFlansDetay, 3, "Continuous", LineWeight.LineWeight020);
             EnsureLayer(tr, db, LayerFlans, 160, "Continuous", LineWeight.LineWeight020);
             EnsureLayer(tr, db, LayerYatay, 210, "Continuous", LineWeight.LineWeight030);
@@ -480,6 +481,21 @@ namespace ST4PlanIdCiz
                 db.LoadLineTypeFile(name, "acadiso.lin");
             }
             catch { }
+        }
+
+        /// <summary>Katman zaten varken <see cref="EnsureLayer"/> çizgi tipini değiştirmez; ISKELE DETAY GIZLI güncellemesi için.</summary>
+        private static void ApplyLayerLinetype(Transaction tr, Database db, string layerName, string linetypeName)
+        {
+            try
+            {
+                var ly = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
+                if (!ly.Has(layerName)) return;
+                var ltt = (LinetypeTable)tr.GetObject(db.LinetypeTableId, OpenMode.ForRead);
+                if (!ltt.Has(linetypeName)) return;
+                var rec = (LayerTableRecord)tr.GetObject(ly[layerName], OpenMode.ForWrite);
+                rec.LinetypeObjectId = ltt[linetypeName];
+            }
+            catch { /* yok */ }
         }
 
         private static ObjectId EnsureLayer(Transaction tr, Database db, string name, short color, string linetype, LineWeight lw)

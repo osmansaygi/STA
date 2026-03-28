@@ -1,0 +1,245 @@
+# Döşeme Donatı Çizim Kuralları ve Mantığı
+
+Bu kural dosyası betonarme döşeme donatılarının kalıp planı üzerinde nasıl çizildiğini, donatı türlerini, yerleşim mantığını ve gösterim kurallarını içerir.
+
+---
+
+## 1. DÖŞEME TÜRLERİ VE DONATI SİSTEMİ
+
+### Hurdi (Tek Yönlü) Döşeme
+- **Koşul:** Uzun kenar / kısa kenar ≥ 2
+- **Kısa doğrultu (taşıyıcı yön):** Ana donatılar → bir düz + bir pilye şeklinde sıralanır
+- **Uzun doğrultu:** Sadece düz donatı (dağıtma donatısı) bağlanır
+- Yük ağırlıklı olarak kısa doğrultuda taşınır
+
+### Dal (İki Yönlü / Çift Yönlü) Döşeme
+- **Koşul:** Uzun kenar / kısa kenar < 2
+- **Her iki doğrultuda:** Ana donatı → bir düz + bir pilye şeklinde sıralanır
+- Yük her iki doğrultuda taşınır
+
+### Konsol Döşeme
+- Esas donatı **üstte** bağlanır (çekme üstte oluşur)
+- İlave olarak **şapo donatıları** yerleştirilir
+- Konsola bağlı döşemelere tüm donatılar **L/4** kadar uzanır
+
+### Dişli (Nervürlü/Asmolen) Döşeme
+- Diş yönü genellikle döşemenin **uzun kenarına paralel** seçilir
+- Diş arası serbest aralık ≤ 700 mm
+- Tabla kalınlığı ≥ 1/10 × diş arası serbest aralık ve ≥ 50 mm
+- Tabla dağıtma donatısı: her yönde ≥ 0.0015 × plak alanı, aralık ≤ 250 mm
+
+---
+
+## 2. DONATI TÜRLERİ
+
+### Alt Donatı (Açıklık Donatısı)
+- Döşeme **alt yüzeyinde**, açıklık ortasındaki **pozitif momente** karşı
+- Kısa doğrultuda daha fazla, uzun doğrultuda daha az donatı
+- Döşemenin tüm açıklığı boyunca devam eder
+- Kiriş mesnetlerinde **90° kanca** ile bitirilir
+
+### Üst Donatı (Mesnet / İlave Donatısı)
+- Döşeme **üst yüzeyinde**, mesnet (kiriş) üzerindeki **negatif momente** karşı
+- Mesnet bölgesinde yoğunlaşır, açıklığa doğru azalır
+- Uzunluk: her iki taraftan **L/4** (tek yönlü) veya **L/5** (iki yönlü) kadar uzatılır
+- **Şapo donatı** olarak da adlandırılır
+
+### Pilye Donatı (Kalkık / Bent-up)
+- Açıklık ortasında **altta**, mesnet yakınında **45° bükülerek üste** çıkar
+- Hem pozitif hem negatif momente katkı sağlar
+- Komşu döşemeye **L/4** kadar devam eder
+- **Kalkış noktası:** Mesnetten ~**0.15L** uzaklıkta (alt), ~**0.25L** uzaklıkta (üst)
+- Bükülme açısı: **45°**
+
+### Dağıtma Donatısı
+- Ana donatıya **dik** yönde yerleştirilir
+- Çatlak önleme ve yük dağıtma amaçlı
+- Miktarı: ana donatının en az **1/5**'i
+- Aralık ≤ **300 mm**
+
+---
+
+## 3. PLAN GÖSTERİM KURALLARI
+
+### Çizgi Gösterimi
+- **Düz donatı:** Düz çizgi (kiriş ortasından kiriş ortasına)
+- **Pilye donatı:** Eğik bükülme noktası ile gösterilir (45° eğimli kırıklı çizgi)
+- **Üst ilave donatı:** Çizginin ucunda **daire** veya **kalın nokta** ile mesnet üzerinde bitiş gösterilir
+- **Donatı çizgisi kalınlığı:** 0.60 mm (standart)
+
+### Metin / Etiket Gösterimi
+- Donatı çizgisi üzerine veya yanına yazılır
+- **Format:** `Adet Φ Çap / Aralık  l=Boy`
+- **Örnekler:**
+  - `Φ12/15 l=306` → 12mm çap, 15cm aralıkla, 306cm uzunluk
+  - `6Φ14 l=420` → 14mm çap, 6 adet, 420cm uzunluk
+  - `Φ10/20 l=250` → 10mm çap, 20cm aralıkla, 250cm uzunluk
+- **Poz numarası:** Her farklı donatı tipine poz numarası atanır
+
+### Alt/Üst Ayrımı
+- Alt donatı: düz çizgi
+- Üst donatı: çizgi ucunda sembol (daire/nokta) veya **kesikli çizgi**
+- Bazı gösterim sistemlerinde:
+  - **T** = Top (üst), **B** = Bottom (alt)
+  - veya yön okları ile gösterilir
+
+---
+
+## 4. DONATI YERLEŞİM KURALLARI (TS 500 + TBDY 2018)
+
+### Minimum Donatı Oranları
+- Tek yön döşeme: ρ ≥ **0.002** (S420/S500), ≥ **0.003** (S220)
+- İki yön döşeme: her doğrultu ≥ **0.0015**; iki doğrultu toplamı ≥ **0.0035** (S420)
+
+### Donatı Aralıkları
+| Durum | Maks Aralık |
+|-------|-------------|
+| Tek yön döşeme asal donatı | ≤ 1.5h ve ≤ 200 mm |
+| Tek yön dağıtma donatısı | ≤ 300 mm |
+| İki yön döşeme kısa yön | ≤ 200 mm |
+| İki yön döşeme uzun yön | ≤ 250 mm |
+| Genel kural | ≤ 3d veya 300 mm |
+
+### Minimum Döşeme Kalınlıkları
+| Tip | Basit | Sürekli | Konsol |
+|-----|-------|---------|--------|
+| Tek yön döşeme | l/25 | l/30 | l/12 |
+| Min kalınlık (genel) | 80 mm | 80 mm | 80 mm |
+| Kirişsiz tablasız | l/30, min 180 mm | | |
+| Kirişsiz tablalı | l/35, min 140 mm | | |
+
+### Pas Payı
+- Döşeme/perde: **15 mm**
+- Zemin temas eden: **50 mm**
+
+---
+
+## 5. DONATI AÇILIM VE KESİM NOKTALARI
+
+### Açıklık Alt Donatısı
+- Kiriş mesnetlerinde **kiriş içine kenetlenme boyu** kadar girer
+- Kenetlenme boyu: lb = 0.12 × (fyd/fctd) × φ ≥ 20φ
+- 90° kanca ile bitirilir: kancalı lb = 3/4 × lb
+
+### Mesnet Üst Donatısı (Şapo)
+- Mesnet her iki tarafına doğru uzanır:
+  - **Tek yön döşeme:** L/4
+  - **İki yön döşeme:** L/5
+- Kenetlenme boyu sağlanarak kesilir
+
+### Pilye Kalkış Noktaları
+- Alt → üst geçiş: mesnetten **0.15L** uzaklıkta başlar
+- Üst → alt geçiş: mesnetten **0.25L** uzaklıkta biter
+- Bükülme açısı: **45°**
+- Komşu döşemeye en az **L/4** devam
+
+---
+
+## 6. ÇİZİM AKIŞI (KALIP PLANI ÜZERİNE DONATI)
+
+1. **Döşeme türünü belirle:** hurdi mi dal mı (Ly/Lx oranı)
+2. **Kısa ve uzun doğrultuyu belirle**
+3. **Alt donatı çiz:** Kısa doğrultuda ana donatılar (düz + pilye sıralı)
+4. **Dağıtma donatısı çiz:** Uzun doğrultuda (hurdi ise sadece düz)
+5. **Üst ilave donatı çiz:** Mesnet bölgelerinde L/4 veya L/5 uzunlukta
+6. **Pilye donatıları göster:** Kalkış/iniş noktaları ile
+7. **Etiketleme:** Çap, aralık, boy, poz numarası
+8. **Kesit göster:** Karakteristik kesitlerde donatı düzenini göster
+
+---
+
+## 7. GPR VERİSİNDEN DONATI BİLGİSİ
+
+GPR dosyasından okunan döşeme donatı bilgileri genellikle şunları içerir:
+- Döşeme adı (D1, D2, vb.)
+- Kısa ve uzun doğrultu donatı çapı ve aralığı
+- Alt ve üst donatı bilgileri
+- Mesnet ilave donatıları
+- Pilye bilgileri (varsa)
+
+**Dikkat:** Statik analiz programlarından alınan donatı metraj sonuçlarında %10-15 hata olabilir; eğik/ışınsal akslı yapılarda %35'e kadar çıkabilir. Elle kontrol önerilir.
+
+---
+
+## 8. DONATI ÇİZİM SEMBOLLERİ
+
+| Sembol | Anlam |
+|--------|-------|
+| Düz çizgi | Düz donatı (alt veya üst) |
+| Kırıklı çizgi (45°) | Pilye donatı |
+| Çizgi ucu daire/nokta | Üst ilave donatı bitişi |
+| Kesikli çizgi | Üst donatı (bazı gösterimlerde) |
+| Ok işareti | Donatı yönü |
+| Φ / ø | Donatı çapı |
+| / | Aralık (cm cinsinden) |
+| l= | Alt donatı boyu (BEYKENT konvansiyonunda) |
+| L= | Üst/pilye donatı boyu (BEYKENT konvansiyonunda) |
+
+---
+
+## 9. BEYKENT DXF ÇİZİM KONVANSIYONLARI (21 Örnek Dosyadan)
+
+### DXF Varlık Yapısı
+- Donatı çizgileri: **LWPOLYLINE** → `DONATI (BEYKENT)` katmanı
+- Donatı yazıları: **TEXT** → `DONATI YAZISI (BEYKENT)` katmanı (hem layer hem style)
+- Düz donatı: 2 köşe noktalı polyline
+- Pilye donatı: 4 köşe noktalı polyline + ark bulge (-0.4142, 90° çeyrek daire, r=3cm)
+
+### Pilye Üçlü Düzeni
+DXF dosyasında her pilye grubu sırasıyla:
+1. TEXT — alt donatı etiketi (küçük çap, kısa boy)
+2. LWPOLYLINE — pilye çizgisi (4 köşe + ark)
+3. TEXT — pilye/üst etiketi (büyük çap, uzun boy)
+
+### Yaygın Çap Kombinasyonları
+| Döşeme d | Alt Donatı | Pilye Donatı |
+|---|---|---|
+| 12cm | ø8/30-36 | ø8→ø14 |
+| 15cm | ø8/18-20 | ø8→ø10 veya ø8→ø14 |
+| 20cm | ø10/20 | ø10→ø14 veya ø10→ø16 |
+
+### Metin Özellikleri
+- Yükseklik: 10.0 (standart) veya 15.0 (büyük proje)
+- Hizalama: Yatay ortala, dikey orta
+- Dönme: 0° yatay, 90° düşey, 315° çapraz donatı
+
+---
+
+## 10. TEMEL DONATI ÇİZİM KURALLARI
+
+### Münferit (Tekil) Temel
+- Min kenar 100cm, min kalınlık 25cm
+- Donatı ızgara şeklinde her iki yönde; ortada sıklaştırma
+- Sıklaştırma: 8 eşit parça, ortadaki 4'e donatının %60-70'i
+- Pas payı: 50mm
+
+### Mütemadi (Sürekli) Temel
+- Pilyeler **kirişin tersine** yukarı kıvrılır (60° açıyla)
+- Kolon altında çelik üstte, kolonlar arasında altta
+- Etriye sıklaştırma: kolon yakınında L/5 mesafede max 10cm
+
+### Radye Temel
+- Min kalınlık 30cm, esas çelikler döşemenin aksine
+- Mesnet aralarında üstte, mesnetlerde altta
+- Sehpa donatısı: m²'ye 2 adet, ø14 L=150cm
+
+---
+
+## 11. ASMOLEN DONATI ÖZELLİKLERİ
+
+- Dişler arası ≤ 700mm, diş genişliği ≥ 100mm
+- Tabla kalınlığı ≥ 50mm (TS500), ≥ 70mm (TBDY2018)
+- Tablada pilye **konulmaz**; düz dağıtma donatısı (min ø8/250)
+- Diş donatısında açıklıkta 2 çubuktan biri pilye yapılabilir
+- Dağıtma dişi: 4-7m → 1 adet, >7m → 2 adet
+- İsimlendirme: N101 (10/32) → 1. katta 01 no'lu diş, 10cm genişlik, 32cm yükseklik
+
+---
+
+## 12. BURULMA DONATISI (KÖŞE DÖŞEME)
+
+- Köşeyi çevreleyen kenarların ikisi de süreksizse
+- 2 kat altta + 2 kat üstte, kenarlara paralel yerleştirilir
+- Uzunluk: kısa açıklık/5
+- Alan: en büyük açıklık donatısının 3/4'ü
+- Bir kenar sürekliyse %50 azaltılabilir

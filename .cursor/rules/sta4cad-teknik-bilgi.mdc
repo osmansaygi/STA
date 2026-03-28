@@ -1,0 +1,252 @@
+# STA4CAD Teknik Bilgi ve Modelleme Kuralları
+
+Bu dosya STA4CAD programının teknik altyapısı, veri girişi, analiz yöntemleri, çizim prosedürleri ve perde/döşeme/temel modelleme kurallarını içerir.
+
+---
+
+## 1. ANALİZ TEORİSİ
+
+### Stiffness Metodu
+- 3D sonlu eleman çözümü; kat planlarında dx, dy, θz (sonsuz rijit diyafram); eleman uçlarında dz, θx, θy
+- Gauss Eliminasyonu: değişken yarım bant matris, simetri ile hafıza tasarrufu
+- Yoğunlaştırılmış matris: 3 × kat_sayısı boyutuna indirgeme (modal analiz hızlanır)
+
+### Sonlu Eleman Tipleri
+- **Çubuk:** Rijid bölge + kayma deformasyonu + değişken kesit momentleri
+- **Plak:** Reissner-Mindlin 8 noktalı dörtgen; kayma deformasyonu dikkate alınır
+- **Kabuk:** Panel perdeler için; rijitlik matrisi 6 noktaya indirgenir
+- **Mesh kalitesi:** İnce mesh → doğru sonuç; 0.5 m mesh %0.09, 4.0 m mesh %5+ hata
+
+### Döşeme Yük Dağılımı
+- Yield-line (kırılma çizgileri) teorisi ile kirişlere ve kolonlara dağıtılır
+- Kaset aralığı ≤70 cm → makro kaset + Frame3D
+- Kaset aralığı 70-110 cm → kaset plak + FEA3D
+- Kaset aralığı >110 cm → plak-kiriş sonlu eleman modeli zorunlu
+
+---
+
+## 2. YÜK KOMBİNASYONLARI
+
+| Kombinasyon | Formül |
+|---|---|
+| Ölü+Hareketli | 1.4G + 1.6Q |
+| Depremli | G + Q + E |
+| Depremli (azaltılmış) | 0.9G + E |
+| Rüzgarlı | G + Q + 1.3W |
+| Rüzgarlı (azaltılmış) | 0.9G + 1.3W |
+
+16 adet yük kombinasyonu: 7 düşey (ölü, hareketli, damalı, bant), 4 deprem (±%5 eksantrisite), 4 rüzgar, 1 zemin itkisi.
+
+---
+
+## 3. VERİ GİRİŞ SIRASI
+
+1. Yapı genel bilgileri (deprem katsayıları, zemin yatak katsayısı, zemin emniyet gerilmesi)
+2. Kat bilgileri (kat koordinatı, sembol)
+3. Akslar (ardışık, sayısal, dairesel)
+4. Elemanlar: Döşeme → Kiriş → Kolon sırası
+5. Kopyalama, kaçıklık düzenleme, simetri
+6. Döşeme şeritleri (süreklilik)
+7. Malzeme seçimi (9 adede kadar farklı)
+8. Analiz seçenekleri → Data kontrol → Saklama → Analiz
+
+---
+
+## 4. ELEMAN BİLGİLERİ
+
+### Döşeme
+- D (kalınlık), G (ölü yük), Q (hareketli yük), aks bilgileri
+- Yön: 0=çift yönlü, 1-2=asmolen yönü
+- Bo, Bt, t: asmolen/kaset için
+- Süreklilik: Döşeme şeritleri menüsünden; verilmeyenler basit kiriş
+
+### Kiriş
+- Genişlik, yükseklik, yük (duvar+öz ağırlık dahil)
+- Kaçıklık: negatif=sol/üst, pozitif=sağ/alt, 0=merkez
+- La, Lb: 0=ankastre, -1=mafsal, -2=çatlamış kesit
+- 20 adede kadar dış yük
+
+### Kolon
+- Bx, By, tip (1=dikdörtgen, 2=daire)
+- Poligon kolon: 50 köşe noktasına kadar
+- Burkulma: kat ve kolon burkulmalarıyla moment büyütme
+
+---
+
+## 5. PERDE MODELLEMESİ
+
+### 3 Temel Perde Tipi
+
+**Dikdörtgen Perdeler:**
+- Kolon bilgisinden girilir; 1/6 kuralını sağlayan deprem perdeleri
+- Frame3d: çubuk sonlu eleman (kayma deformasyonlu)
+- Fea3d: kabuk sonlu eleman
+- Bodrumsuz yapılarda yalnızca bu tip kullanılmalı
+
+**Poligon Perdeler:**
+- E, U, C gibi çekirdek perdeleri
+- 5m'den büyükse kabuk sonucundan uzaklaşabilir → panel tercih
+- 2×Başlık opsiyonu: köşe birleşimlerde iki başlık
+
+**Panel Perdeler:**
+- Çok amaçlı: bodrum, deprem, güçlendirme, yığma duvar
+- Shell eleman; pencere boşlukları desteklenir
+- 6 noktaya indirgenmiş rijitlik matrisi
+- ~5m aks aralığında düzenlenir
+
+### Kritik Modelleme Kuralları
+- **Bağımsız dikdörtgen perde modeli KESİNLİKLE önerilmez** (peryotlar ~2 kat büyük, deplasmanlar yanlış)
+- Panel ve poligon çözümler birbirine ve ETABS'a yakın
+- Çok kollu perdelerde link eleman ile bağlama veya panel perde kullanma
+
+### Perde Taban Moment Oranı (αS)
+- αS ≤ 0.75 → R (yüksek sünek)
+- 0.75 < αS ≤ 1.0 → R = 10 − 4αS
+
+### Bodrum Perdeleri
+- Mutlaka panel ile modellenmeli
+- Kiriş bağlantı noktalarında kolon tanımı yapılmalı
+- Her 5 katta 1 kat bodrum rijitligi uygulaması (15 kata kadar)
+
+---
+
+## 6. TEMEL SİSTEMLERİ
+
+### 4 Temel Tipi
+- Tekil, Mütemadi (sürekli), Radye, Bağ kirişi
+
+### Analiz Opsiyonları
+1. Yapı-temel ayrı
+2. Birlikte (dönme etkin)
+3. Birlikte (dönme+çökme etkin)
+
+### Zemin Modelleri
+- **Winkler:** K = Katkı_Alanı × ks; bağımsız yaylar; deplasman süreksizliği dezavantajı
+- **Pseudo-Coupled:** 2+ eş merkezli bölge; iç ks küçük, dış ks büyük (~2 kat)
+- **Pasternak (2 parametreli):** Kesme tabakası eklenir; Gb = θ × ks (θ ≈ 0.35 m²); Winkler'a göre %1-25 iyileştirme
+
+### Radye Temelde Asal Eksen Optimizasyonu
+- Ortogonal olmayan yapılarda donatı asal doğrultularda düzenlenmeli
+- Mxy momenti dikkate alınarak döndürülür → As yeniden hesaplanır
+- STA4 ↔ SAP2000 doğrulaması: Mx %0.08, My %0.20 fark
+
+### Kademeli Mat Temeller
+- Dikey plaklara gelen zemin itkisi momenti ≈ ölü yük momentinin %5.5'i (ihmal edilebilir)
+
+---
+
+## 7. ÇİZİM PROSEDÜRLERI
+
+### Kalıp Aplikasyon
+- Kat/ölçek → metraj/pafta çerçevesi/ölçülendirme otomatik
+- DXF, DWG veya CAD formatı
+- İsimlendirme: DENKAL1 (kalıp), DENKOL1 (kolon), DENTEM1 (temel), DENKIR1 (kiriş)
+
+### Kolon Aplikasyon
+- **Opsiyon 1 — Üzerinde:** 1/50 plan + 1/25 detay (karışabilir)
+- **Opsiyon 2 — Kenarda (önerilen):** Detaylar kenar çerçevesinde; aplikasyon temiz kalır
+- Etriyeler aplikasyonun altında sıralı çizilir
+- Panel perdeler muaf — detayları her zaman aplikasyon üzerinde
+
+### Kiriş Çizimi
+- Manuel veya otomatik kiriş çizimi
+- Kiriş şerit bilgisi → donatılar düzenleme → pafta üretimi
+
+### Temel Çizimi
+- Tekil/sürekli seçimi → sıralı seçim → pafta yerleştirme (manuel)
+
+### Font Kuralı
+- `ROMANSTA.SHX` ve `STALIGHT.TTF` mutlaka CAD'e kopyalanmalı (yoksa donatı işareti yerine ? çıkar)
+
+---
+
+## 8. İSKELE MODÜLÜ
+
+### İki İskele Türü
+- **Cephe İskelesi:** İki nokta ile konumlandırılır; yük ayarları yönetmeliğe uygun
+- **Kalıp İskelesi:** STA4CAD modelinden otomatik; döşeme kalınlığı/alt kot otomatik alınır
+
+### Kalıp Dikme Seçimi
+- Teleskopik dikmeler tanımlanır (dış/iç çap)
+- En kısa dikmeden başlayarak seçim; bulunamazsa masa tipi iskeleye geçer
+
+### Analiz
+- İkinci mertebe analiz yapılır
+- Tasarım özeti ile yetersiz elemanlar belirlenir
+
+---
+
+## 9. ÇOK BLOKLU YAPILAR
+
+- Her blok kendi rijitliğine göre farklı peryoda sahip
+- Deprem yükü: her blok kendi kütle ve peryoduna göre
+- Alt ortak blok: kütle oranında paylaştırılır
+- STA4CAD: "Çok bloklu yapılardaki deprem yükü" opsiyonu
+
+---
+
+## 10. BENZER KATLAR
+
+- "=>" işareti ile tanımlanır
+- Geometrik + boyutsal + yük benzerliği kontrol edilir
+- En fazla 4 kat birlikte çizilir (kiriş/nervür)
+- Ortak donatı sonrası yüksek süneklik kontrolü zorunlu
+
+---
+
+## 11. PANELTON (ÖNGERMELİ BOŞLUKLU PLAK)
+
+- Uzun açıklık + yüksek hareketli yük → ortogonal sistem
+- İzostatik (tek açıklıklı); damalı yerleşim tercih edilmeli
+- Öngerme kayıp hesabı (PCI 4.5): ES + CR + SH + RE ≈ %13.7
+- Taşıma gücü: ACI 318 formülleri
+- Çatlamış moment kontrolü: 1.2×Mcr < ΦMn
+
+---
+
+## 12. SU DEPOSU ve SU BASMAN
+
+### Su Deposu
+- Panel perdeye su yükü ve zemin itkisi ayrı ayrı verilebilir
+- Su basıncı altında: çatlak kontrolü + donatı aralığı ≤ 15 cm
+- Deprem etkisi: parabolik deprem yük eğrisi
+
+### Su Basman
+- Bodrumsuz yapılarda su basman kotu girilir
+- Zemin kat plakları: donatısız zemine oturan plak
+- Su basman döşemesi rijit diyafram → hasır çelik konstrüktif donatı
+- >1.5 m ise panel perde ile yarım bodrum düzenlemesi
+- Bağ kirişi etriyesi radye içine **30 cm** sokulmalı
+
+---
+
+## 13. YIĞMA YAPI KURALLARI
+
+### Modelleme
+- Panel elemanlarla tuğla malzeme tanımı
+- Kayma yay rijitliği (TDY2007) / Sonlu eleman gerilme / Eşdeğer çubuk yöntemleri
+- K = A/H (düz k=1.0, uç elemanlı k=1.2)
+
+### Malzeme
+- fd = 0.5×fsbd; fem = 0.25×fd; Ed = 200×fd = 800×fem
+- τem = τ₀ + μ×σ; τ₀ = 0.25×fem; μ = 0.5
+
+### FEMA 356 Yığma Duvar
+- Basınç: f'me (prizma testi); E_me = 550×f'me; G_me = 0.4×E_me
+- Kayma: v_me = (0.75·v_te + P/A) / 1.5
+- Rocking: Q = 0.9·α·P·(L/h_eff)
+- Dolgu duvar: eşdeğer basınç çubuğu a = 0.175·(λ₁·h)^(-0.4)·r_inf
+
+### Güçlendirme
+- Püskürtme beton (shotcrete): beton rijitliği = duvar×5; hasır çelik ρ=0.001
+- Pencere boşluklarında kırılma çizgisi doğrultusu dikkate alınır
+
+---
+
+## 14. DEPREM İZOLATÖRLERİ (TBDY Bölüm 14)
+
+- Modal analiz zorunlu (eşdeğer yok)
+- Etkin sönüm oranı: 0.30
+- Performans: sadece zaman tanım alanında analiz
+- Etkin deprem yöntemi: yalnızca ≤4 katlı yapılar
+- İzolatör katı (bakım için) oluşturulması önerilir

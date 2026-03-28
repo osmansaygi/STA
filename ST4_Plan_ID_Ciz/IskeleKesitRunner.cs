@@ -180,98 +180,86 @@ namespace ST4PlanIdCiz
             try
             {
                 string dir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+                if (!string.IsNullOrEmpty(dir))
+                {
+                    // DWG: Insert/Wblock daha az eNotApplicable verir; DXF karmaşık sembol tablolarında sorun cikar.
+                    string dwg = Path.Combine(dir, "ISKELE_KESIT.dwg");
+                    if (File.Exists(dwg)) return dwg;
+                    string dxf = Path.Combine(dir, "ISKELE_KESIT.dxf");
+                    if (File.Exists(dxf)) return dxf;
+                }
+                string dxfWalk = FindIskelePieceTemplatePath("ISKELE_KESIT.dxf");
+                if (!string.IsNullOrEmpty(dxfWalk) && File.Exists(dxfWalk)) return dxfWalk;
+                string dwgWalk = FindIskeleKesitDwgPath();
+                if (!string.IsNullOrEmpty(dwgWalk) && File.Exists(dwgWalk)) return dwgWalk;
+                return IskeleKesitEmbeddedTemplates.TryExtractEmbeddedDxf("ISKELE_KESIT.dxf");
+            }
+            catch
+            {
+                return IskeleKesitEmbeddedTemplates.TryExtractEmbeddedDxf("ISKELE_KESIT.dxf");
+            }
+        }
+
+        private static string FindIskeleKesitDwgPath()
+        {
+            try
+            {
+                string dir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
                 if (string.IsNullOrEmpty(dir)) return null;
-                // DWG: Insert/Wblock daha az eNotApplicable verir; DXF karmaşık sembol tablolarında sorun cikar.
-                string dwg = Path.Combine(dir, "ISKELE_KESIT.dwg");
-                if (File.Exists(dwg)) return dwg;
-                string dxf = Path.Combine(dir, "ISKELE_KESIT.dxf");
-                if (File.Exists(dxf)) return dxf;
+                string cur = dir;
+                for (int i = 0; i < 10 && !string.IsNullOrEmpty(cur); i++)
+                {
+                    string p = Path.Combine(cur, "ISKELE_KESIT.dwg");
+                    if (File.Exists(p)) return p;
+                    string inDosyalar = Path.Combine(cur, "dosyalar", "ISKELE_KESIT.dwg");
+                    if (File.Exists(inDosyalar)) return inDosyalar;
+                    cur = Directory.GetParent(cur)?.FullName;
+                }
                 return null;
+            }
+            catch { return null; }
+        }
+
+        /// <summary>
+        /// Şablon DXF: önce DLL klasörü, sonra üst dizinlerde doğrudan veya <c>dosyalar\</c> altında aranır.
+        /// (Projede şablonlar genelde repo kökündeki <c>dosyalar\</c> klasöründedir; derleme çıktısına kopyalanmalıdır.)
+        /// </summary>
+        private static string FindIskelePieceTemplatePath(string fileName)
+        {
+            try
+            {
+                string dir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+                if (string.IsNullOrEmpty(dir)) return null;
+
+                string cur = dir;
+                for (int i = 0; i < 10 && !string.IsNullOrEmpty(cur); i++)
+                {
+                    string p = Path.Combine(cur, fileName);
+                    if (File.Exists(p)) return p;
+                    string inDosyalar = Path.Combine(cur, "dosyalar", fileName);
+                    if (File.Exists(inDosyalar)) return inDosyalar;
+
+                    var parent = Directory.GetParent(cur);
+                    cur = parent != null ? parent.FullName : null;
+                }
+
+                string local = Path.Combine(dir, fileName);
+                return File.Exists(local) ? local : null;
             }
             catch { return null; }
         }
 
         private static string GetIskeleTabanTemplatePath()
-        {
-            try
-            {
-                string dir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-                if (string.IsNullOrEmpty(dir)) return null;
-
-                string cur = dir;
-                for (int i = 0; i < 8 && !string.IsNullOrEmpty(cur); i++)
-                {
-                    string p = Path.Combine(cur, "ISKELE_TABAN.dxf");
-                    if (File.Exists(p)) return p;
-                    var parent = Directory.GetParent(cur);
-                    cur = parent != null ? parent.FullName : null;
-                }
-
-                string local = Path.Combine(dir, "ISKELE_TABAN.dxf");
-                return File.Exists(local) ? local : null;
-            }
-            catch { return null; }
-        }
+            => IskeleKesitEmbeddedTemplates.ResolveDxf("ISKELE_TABAN.dxf", () => FindIskelePieceTemplatePath("ISKELE_TABAN.dxf"));
 
         private static string GetIskeleD1TemplatePath()
-        {
-            try
-            {
-                string dir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-                if (string.IsNullOrEmpty(dir)) return null;
-
-                string cur = dir;
-                for (int i = 0; i < 8 && !string.IsNullOrEmpty(cur); i++)
-                {
-                    string p = Path.Combine(cur, "ISKELE_D1.dxf");
-                    if (File.Exists(p)) return p;
-                    var parent = Directory.GetParent(cur);
-                    cur = parent != null ? parent.FullName : null;
-                }
-
-                string local = Path.Combine(dir, "ISKELE_D1.dxf");
-                return File.Exists(local) ? local : null;
-            }
-            catch { return null; }
-        }
+            => IskeleKesitEmbeddedTemplates.ResolveDxf("ISKELE_D1.dxf", () => FindIskelePieceTemplatePath("ISKELE_D1.dxf"));
 
         private static string GetIskeleD2TemplatePath()
-        {
-            try
-            {
-                string dir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-                if (string.IsNullOrEmpty(dir)) return null;
-                string cur = dir;
-                for (int i = 0; i < 8 && !string.IsNullOrEmpty(cur); i++)
-                {
-                    string p = Path.Combine(cur, "ISKELE_D2.dxf");
-                    if (File.Exists(p)) return p;
-                    var parent = Directory.GetParent(cur);
-                    cur = parent != null ? parent.FullName : null;
-                }
-                return null;
-            }
-            catch { return null; }
-        }
+            => IskeleKesitEmbeddedTemplates.ResolveDxf("ISKELE_D2.dxf", () => FindIskelePieceTemplatePath("ISKELE_D2.dxf"));
 
         private static string GetIskeleC1TemplatePath()
-        {
-            try
-            {
-                string dir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-                if (string.IsNullOrEmpty(dir)) return null;
-                string cur = dir;
-                for (int i = 0; i < 8 && !string.IsNullOrEmpty(cur); i++)
-                {
-                    string p = Path.Combine(cur, "ISKELE_C1.dxf");
-                    if (File.Exists(p)) return p;
-                    var parent = Directory.GetParent(cur);
-                    cur = parent != null ? parent.FullName : null;
-                }
-                return null;
-            }
-            catch { return null; }
-        }
+            => IskeleKesitEmbeddedTemplates.ResolveDxf("ISKELE_C1.dxf", () => FindIskelePieceTemplatePath("ISKELE_C1.dxf"));
 
         private static void LoadTemplateDatabase(Database db, string filePath)
         {
@@ -828,6 +816,13 @@ namespace ST4PlanIdCiz
             string d1Path = GetIskeleD1TemplatePath();
             string d2Path = GetIskeleD2TemplatePath();
             string c1Path = GetIskeleC1TemplatePath();
+
+            if (string.IsNullOrEmpty(tabanPath) || !File.Exists(tabanPath))
+                ed.WriteMessage("\nUyari: ISKELE_TABAN.dxf bulunamadi — taban parcasi cizilmez. DLL ile ayni klasore veya ust dizinde/dosyalar\\ altina koyun ya da derleyip cikti klasorune kopyalayin.");
+            if (string.IsNullOrEmpty(d1Path) || !File.Exists(d1Path))
+                ed.WriteMessage("\nUyari: ISKELE_D1.dxf bulunamadi — 1. kat D1 dikmeleri cizilmez.");
+            if (string.IsNullOrEmpty(d2Path) || !File.Exists(d2Path))
+                ed.WriteMessage("\nUyari: ISKELE_D2.dxf bulunamadi — ust kat D2 dikmeleri cizilmez.");
 
             int maxFloors = 100;
             for (int fi = 0; fi < maxFloors; fi++)

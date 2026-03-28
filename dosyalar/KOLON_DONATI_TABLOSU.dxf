@@ -1,0 +1,21366 @@
+  0
+SECTION
+  2
+HEADER
+  9
+$ACADVER
+  1
+AC1032
+  9
+$ACADMAINTVER
+ 90
+      228
+  9
+$DWGCODEPAGE
+  3
+ANSI_1254
+  9
+$AUTHOR
+  1
+STA4-CAD
+  9
+$COMMENTS
+  1
+STA4-CAD
+  9
+$LASTSAVEDBY
+  1
+BEYKENT
+  9
+$REQUIREDVERSIONS
+160
+                 0
+  9
+$INSBASE
+ 10
+0.0
+ 20
+0.0
+ 30
+0.0
+  9
+$EXTMIN
+ 10
+115.7520022244496
+ 20
+50.99260501039657
+ 30
+0.0
+  9
+$EXTMAX
+ 10
+1736.521324442871
+ 20
+811.71675763009
+ 30
+0.0
+  9
+$LIMMIN
+ 10
+0.0
+ 20
+0.0
+  9
+$LIMMAX
+ 10
+12.0
+ 20
+9.0
+  9
+$ORTHOMODE
+ 70
+     0
+  9
+$REGENMODE
+ 70
+     1
+  9
+$FILLMODE
+ 70
+     1
+  9
+$QTEXTMODE
+ 70
+     0
+  9
+$MIRRTEXT
+ 70
+     1
+  9
+$LTSCALE
+ 40
+1.0
+  9
+$ATTMODE
+ 70
+     1
+  9
+$TEXTSIZE
+ 40
+0.2
+  9
+$TRACEWID
+ 40
+0.05
+  9
+$TEXTSTYLE
+  7
+Standard
+  9
+$CLAYER
+  8
+0
+  9
+$CELTYPE
+  6
+ByLayer
+  9
+$CECOLOR
+ 62
+   256
+  9
+$CELTSCALE
+ 40
+1.0
+  9
+$DISPSILH
+ 70
+     0
+  9
+$DIMSCALE
+ 40
+0.01
+  9
+$DIMASZ
+ 40
+0.18
+  9
+$DIMEXO
+ 40
+0.0625
+  9
+$DIMDLI
+ 40
+0.38
+  9
+$DIMRND
+ 40
+0.0
+  9
+$DIMDLE
+ 40
+0.0
+  9
+$DIMEXE
+ 40
+0.18
+  9
+$DIMTP
+ 40
+0.0
+  9
+$DIMTM
+ 40
+0.0
+  9
+$DIMTXT
+ 40
+0.18
+  9
+$DIMCEN
+ 40
+0.09
+  9
+$DIMTSZ
+ 40
+0.0
+  9
+$DIMTOL
+ 70
+     0
+  9
+$DIMLIM
+ 70
+     0
+  9
+$DIMTIH
+ 70
+     0
+  9
+$DIMTOH
+ 70
+     1
+  9
+$DIMSE1
+ 70
+     0
+  9
+$DIMSE2
+ 70
+     0
+  9
+$DIMTAD
+ 70
+     0
+  9
+$DIMZIN
+ 70
+     0
+  9
+$DIMBLK
+  1
+arrowblock
+  9
+$DIMASO
+ 70
+     1
+  9
+$DIMSHO
+ 70
+     1
+  9
+$DIMPOST
+  1
+
+  9
+$DIMAPOST
+  1
+
+  9
+$DIMALT
+ 70
+     0
+  9
+$DIMALTD
+ 70
+     2
+  9
+$DIMALTF
+ 40
+1.0
+  9
+$DIMLFAC
+ 40
+5000.0
+  9
+$DIMTOFL
+ 70
+     0
+  9
+$DIMTVP
+ 40
+0.0
+  9
+$DIMTIX
+ 70
+     0
+  9
+$DIMSOXD
+ 70
+     0
+  9
+$DIMSAH
+ 70
+     1
+  9
+$DIMBLK1
+  1
+arrowblock
+  9
+$DIMBLK2
+  1
+arrowblock
+  9
+$DIMSTYLE
+  2
+sta
+  9
+$DIMCLRD
+ 70
+     8
+  9
+$DIMCLRE
+ 70
+     0
+  9
+$DIMCLRT
+ 70
+     8
+  9
+$DIMTFAC
+ 40
+1.0
+  9
+$DIMGAP
+ 40
+0.09
+  9
+$DIMJUST
+ 70
+     0
+  9
+$DIMSD1
+ 70
+     0
+  9
+$DIMSD2
+ 70
+     0
+  9
+$DIMTOLJ
+ 70
+     1
+  9
+$DIMTZIN
+ 70
+     0
+  9
+$DIMALTZ
+ 70
+     0
+  9
+$DIMALTTZ
+ 70
+     0
+  9
+$DIMUPT
+ 70
+     0
+  9
+$DIMDEC
+ 70
+     0
+  9
+$DIMTDEC
+ 70
+     4
+  9
+$DIMALTU
+ 70
+     2
+  9
+$DIMALTTD
+ 70
+     0
+  9
+$DIMTXSTY
+  7
+KLNOLC-25
+  9
+$DIMAUNIT
+ 70
+     0
+  9
+$DIMADEC
+ 70
+     0
+  9
+$DIMALTRND
+ 40
+0.0
+  9
+$DIMAZIN
+ 70
+     0
+  9
+$DIMDSEP
+ 70
+    46
+  9
+$DIMATFIT
+ 70
+     3
+  9
+$DIMFRAC
+ 70
+     0
+  9
+$DIMLDRBLK
+  1
+
+  9
+$DIMLUNIT
+ 70
+     2
+  9
+$DIMLWD
+ 70
+    -2
+  9
+$DIMLWE
+ 70
+    -2
+  9
+$DIMTMOVE
+ 70
+     0
+  9
+$DIMFXL
+ 40
+1.0
+  9
+$DIMFXLON
+ 70
+     0
+  9
+$DIMJOGANG
+ 40
+0.7853981633974483
+  9
+$DIMTFILL
+ 70
+     0
+  9
+$DIMTFILLCLR
+ 70
+     0
+  9
+$DIMARCSYM
+ 70
+     1
+  9
+$DIMLTYPE
+  6
+
+  9
+$DIMLTEX1
+  6
+
+  9
+$DIMLTEX2
+  6
+
+  9
+$DIMTXTDIRECTION
+ 70
+     0
+  9
+$LUNITS
+ 70
+     2
+  9
+$LUPREC
+ 70
+     4
+  9
+$SKETCHINC
+ 40
+0.1
+  9
+$FILLETRAD
+ 40
+0.0
+  9
+$AUNITS
+ 70
+     0
+  9
+$AUPREC
+ 70
+     0
+  9
+$MENU
+  1
+.
+  9
+$ELEVATION
+ 40
+0.0
+  9
+$PELEVATION
+ 40
+0.0
+  9
+$THICKNESS
+ 40
+0.0
+  9
+$LIMCHECK
+ 70
+     0
+  9
+$CHAMFERA
+ 40
+0.5
+  9
+$CHAMFERB
+ 40
+0.5
+  9
+$CHAMFERC
+ 40
+0.0
+  9
+$CHAMFERD
+ 40
+0.0
+  9
+$SKPOLY
+ 70
+     0
+  9
+$TDCREATE
+ 40
+2461117.130601852
+  9
+$TDUCREATE
+ 40
+2461117.005613299
+  9
+$TDUPDATE
+ 40
+2461117.589710648
+  9
+$TDUUPDATE
+ 40
+2461117.464710648
+  9
+$TDINDWG
+ 40
+0.0026504630
+  9
+$TDUSRTIMER
+ 40
+0.0026504745
+  9
+$USRTIMER
+ 70
+     1
+  9
+$ANGBASE
+ 50
+0.0
+  9
+$ANGDIR
+ 70
+     1
+  9
+$PDMODE
+ 70
+     0
+  9
+$PDSIZE
+ 40
+0.0
+  9
+$PLINEWID
+ 40
+0.0
+  9
+$SPLFRAME
+ 70
+     0
+  9
+$SPLINETYPE
+ 70
+     6
+  9
+$SPLINESEGS
+ 70
+     8
+  9
+$HANDSEED
+  5
+2DF
+  9
+$SURFTAB1
+ 70
+     6
+  9
+$SURFTAB2
+ 70
+     6
+  9
+$SURFTYPE
+ 70
+     6
+  9
+$SURFU
+ 70
+     6
+  9
+$SURFV
+ 70
+     6
+  9
+$UCSBASE
+  2
+
+  9
+$UCSNAME
+  2
+
+  9
+$UCSORG
+ 10
+0.0
+ 20
+0.0
+ 30
+0.0
+  9
+$UCSXDIR
+ 10
+1.0
+ 20
+0.0
+ 30
+0.0
+  9
+$UCSYDIR
+ 10
+0.0
+ 20
+1.0
+ 30
+0.0
+  9
+$UCSORTHOREF
+  2
+
+  9
+$UCSORTHOVIEW
+ 70
+     0
+  9
+$UCSORGTOP
+ 10
+0.0
+ 20
+0.0
+ 30
+0.0
+  9
+$UCSORGBOTTOM
+ 10
+0.0
+ 20
+0.0
+ 30
+0.0
+  9
+$UCSORGLEFT
+ 10
+0.0
+ 20
+0.0
+ 30
+0.0
+  9
+$UCSORGRIGHT
+ 10
+0.0
+ 20
+0.0
+ 30
+0.0
+  9
+$UCSORGFRONT
+ 10
+0.0
+ 20
+0.0
+ 30
+0.0
+  9
+$UCSORGBACK
+ 10
+0.0
+ 20
+0.0
+ 30
+0.0
+  9
+$PUCSBASE
+  2
+
+  9
+$PUCSNAME
+  2
+
+  9
+$PUCSORG
+ 10
+0.0
+ 20
+0.0
+ 30
+0.0
+  9
+$PUCSXDIR
+ 10
+1.0
+ 20
+0.0
+ 30
+0.0
+  9
+$PUCSYDIR
+ 10
+0.0
+ 20
+1.0
+ 30
+0.0
+  9
+$PUCSORTHOREF
+  2
+
+  9
+$PUCSORTHOVIEW
+ 70
+     0
+  9
+$PUCSORGTOP
+ 10
+0.0
+ 20
+0.0
+ 30
+0.0
+  9
+$PUCSORGBOTTOM
+ 10
+0.0
+ 20
+0.0
+ 30
+0.0
+  9
+$PUCSORGLEFT
+ 10
+0.0
+ 20
+0.0
+ 30
+0.0
+  9
+$PUCSORGRIGHT
+ 10
+0.0
+ 20
+0.0
+ 30
+0.0
+  9
+$PUCSORGFRONT
+ 10
+0.0
+ 20
+0.0
+ 30
+0.0
+  9
+$PUCSORGBACK
+ 10
+0.0
+ 20
+0.0
+ 30
+0.0
+  9
+$USERI1
+ 70
+     0
+  9
+$USERI2
+ 70
+     0
+  9
+$USERI3
+ 70
+     0
+  9
+$USERI4
+ 70
+     0
+  9
+$USERI5
+ 70
+     0
+  9
+$USERR1
+ 40
+0.0
+  9
+$USERR2
+ 40
+0.0
+  9
+$USERR3
+ 40
+0.0
+  9
+$USERR4
+ 40
+0.0
+  9
+$USERR5
+ 40
+0.0
+  9
+$WORLDVIEW
+ 70
+     1
+  9
+$SHADEDGE
+ 70
+     3
+  9
+$SHADEDIF
+ 70
+    70
+  9
+$TILEMODE
+ 70
+     1
+  9
+$MAXACTVP
+ 70
+    48
+  9
+$PINSBASE
+ 10
+0.0
+ 20
+0.0
+ 30
+0.0
+  9
+$PLIMCHECK
+ 70
+     0
+  9
+$PEXTMIN
+ 10
+1.000000000000000E+20
+ 20
+1.000000000000000E+20
+ 30
+1.000000000000000E+20
+  9
+$PEXTMAX
+ 10
+-1.000000000000000E+20
+ 20
+-1.000000000000000E+20
+ 30
+-1.000000000000000E+20
+  9
+$PLIMMIN
+ 10
+0.0
+ 20
+0.0
+  9
+$PLIMMAX
+ 10
+0.0
+ 20
+0.0
+  9
+$UNITMODE
+ 70
+     0
+  9
+$VISRETAIN
+ 70
+     1
+  9
+$PLINEGEN
+ 70
+     1
+  9
+$PSLTSCALE
+ 70
+     1
+  9
+$TREEDEPTH
+ 70
+  3020
+  9
+$CMLSTYLE
+  2
+STANDARD
+  9
+$CMLJUST
+ 70
+     0
+  9
+$CMLSCALE
+ 40
+1.0
+  9
+$PROXYGRAPHICS
+ 70
+     1
+  9
+$MEASUREMENT
+ 70
+     1
+  9
+$CELWEIGHT
+370
+    -3
+  9
+$ENDCAPS
+280
+     0
+  9
+$JOINSTYLE
+280
+     0
+  9
+$LWDISPLAY
+290
+     0
+  9
+$INSUNITS
+ 70
+     1
+  9
+$HYPERLINKBASE
+  1
+
+  9
+$STYLESHEET
+  1
+
+  9
+$XEDIT
+290
+     0
+  9
+$CEPSNTYPE
+380
+     0
+  9
+$PSTYLEMODE
+290
+     0
+  9
+$FINGERPRINTGUID
+  2
+
+  9
+$VERSIONGUID
+  2
+{AA63A879-61FA-8642-8213-C757C1C9F1B9}
+  9
+$EXTNAMES
+290
+     1
+  9
+$PSVPSCALE
+ 40
+0.0
+  9
+$OLESTARTUP
+290
+     0
+  9
+$SORTENTS
+280
+   127
+  9
+$INDEXCTL
+280
+     0
+  9
+$HIDETEXT
+280
+     1
+  9
+$XCLIPFRAME
+280
+     1
+  9
+$HALOGAP
+280
+     0
+  9
+$OBSCOLOR
+ 70
+   257
+  9
+$OBSLTYPE
+280
+     0
+  9
+$INTERSECTIONDISPLAY
+280
+     0
+  9
+$INTERSECTIONCOLOR
+ 70
+   257
+  9
+$DIMASSOC
+280
+     1
+  9
+$PROJECTNAME
+  1
+
+  9
+$CAMERADISPLAY
+290
+     0
+  9
+$LENSLENGTH
+ 40
+0.0
+  9
+$CAMERAHEIGHT
+ 40
+0.0
+  9
+$STEPSPERSEC
+ 40
+0.0
+  9
+$STEPSIZE
+ 40
+0.0
+  9
+$3DDWFPREC
+ 40
+0.0
+  9
+$PSOLWIDTH
+ 40
+0.0
+  9
+$PSOLHEIGHT
+ 40
+0.0
+  9
+$LOFTANG1
+ 40
+0.0
+  9
+$LOFTANG2
+ 40
+0.0
+  9
+$LOFTMAG1
+ 40
+0.0
+  9
+$LOFTMAG2
+ 40
+0.0
+  9
+$LOFTPARAM
+ 70
+     0
+  9
+$LOFTNORMALS
+280
+     0
+  9
+$LATITUDE
+ 40
+0.0
+  9
+$LONGITUDE
+ 40
+0.0
+  9
+$NORTHDIRECTION
+ 40
+0.0
+  9
+$TIMEZONE
+ 70
+     0
+  9
+$LIGHTGLYPHDISPLAY
+280
+     0
+  9
+$TILEMODELIGHTSYNCH
+280
+     0
+  9
+$CMATERIAL
+347
+114
+  9
+$SOLIDHIST
+280
+     0
+  9
+$SHOWHIST
+280
+     0
+  9
+$DWFFRAME
+280
+     0
+  9
+$DGNFRAME
+280
+     0
+  9
+$REALWORLDSCALE
+290
+     1
+  9
+$INTERFERECOLOR
+ 62
+     1
+  9
+$INTERFEREOBJVS
+345
+135
+  9
+$INTERFEREVPVS
+346
+132
+  9
+$CSHADOW
+280
+     0
+  9
+$SHADOWPLANELOCATION
+ 40
+0.0
+  0
+ENDSEC
+  0
+SECTION
+  2
+CLASSES
+  0
+CLASS
+  1
+DBCOLOR
+  2
+AcDbColor
+  3
+ObjectDBX Classes
+ 90
+        0
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+DATATABLE
+  2
+AcDbDataTable
+  3
+ObjectDBX Classes
+ 90
+        0
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+IDBUFFER
+  2
+AcDbIdBuffer
+  3
+ObjectDBX Classes
+ 90
+        0
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+DICTIONARYVAR
+  2
+AcDbDictionaryVar
+  3
+ObjectDBX Classes
+ 90
+        0
+ 91
+        9
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+ACDBDICTIONARYWDFLT
+  2
+AcDbDictionaryWithDefault
+  3
+ObjectDBX Classes
+ 90
+        0
+ 91
+        1
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+IMAGE
+  2
+AcDbRasterImage
+  3
+ISM
+ 90
+     2175
+ 91
+        0
+280
+     0
+281
+     1
+  0
+CLASS
+  1
+RASTERVARIABLES
+  2
+AcDbRasterVariables
+  3
+ISM
+ 90
+        0
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+WIPEOUT
+  2
+AcDbWipeout
+  3
+WipeOut|Product Desc: Object Enabler for WipeOut entity | Company: Autodesk, Inc. | WEB Address: www.autodesk.com
+ 90
+     2175
+ 91
+        0
+280
+     0
+281
+     1
+  0
+CLASS
+  1
+VISUALSTYLE
+  2
+AcDbVisualStyle
+  3
+ObjectDBX Classes
+ 90
+     4095
+ 91
+       24
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+WIPEOUTVARIABLES
+  2
+AcDbWipeoutVariables
+  3
+"WipeOut|Product Desc:     WipeOut Dbx Application|Company:          Autodesk, Inc.|WEB Address:      www.autodesk.com"
+ 90
+        0
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+ACIDBLOCKREFERENCE
+  2
+AcIdBlockReference
+  3
+AcIdViewObj | Product: Inventor Drawing Enabler | Company : Autodesk | Website : www.autodesk.com
+ 90
+        1
+ 91
+        0
+280
+     0
+281
+     1
+  0
+CLASS
+  1
+MULTILEADER
+  2
+AcDbMLeader
+  3
+ACDB_MLEADER_CLASS
+ 90
+     1025
+ 91
+        0
+280
+     0
+281
+     1
+  0
+CLASS
+  1
+MLEADERSTYLE
+  2
+AcDbMLeaderStyle
+  3
+ACDB_MLEADERSTYLE_CLASS
+ 90
+     4095
+ 91
+        1
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+ACDB_MLEADEROBJECTCONTEXTDATA_CLASS
+  2
+AcDbMLeaderObjectContextData
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+IMAGEDEF
+  2
+AcDbRasterImageDef
+  3
+ISM
+ 90
+        0
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+ACAD_TABLE
+  2
+AcDbTable
+  3
+ObjectDBX Classes
+ 90
+     1025
+ 91
+        0
+280
+     0
+281
+     1
+  0
+CLASS
+  1
+TABLESTYLE
+  2
+AcDbTableStyle
+  3
+ObjectDBX Classes
+ 90
+     4095
+ 91
+        1
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+CELLSTYLEMAP
+  2
+AcDbCellStyleMap
+  3
+ObjectDBX Classes
+ 90
+     1152
+ 91
+        2
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+SCALE
+  2
+AcDbScale
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+       17
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+SORTENTSTABLE
+  2
+AcDbSortentsTable
+  3
+ObjectDBX Classes
+ 90
+        0
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+SPATIAL_FILTER
+  2
+AcDbSpatialFilter
+  3
+ObjectDBX Classes
+ 90
+        0
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+TABLECONTENT
+  2
+AcDbTableContent
+  3
+ObjectDBX Classes
+ 90
+     1152
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+FIELD
+  2
+AcDbField
+  3
+ObjectDBX Classes
+ 90
+     1152
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+FIELDLIST
+  2
+AcDbFieldList
+  3
+ObjectDBX Classes
+ 90
+     1152
+ 91
+        1
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+GEODATA
+  2
+AcDbGeoData
+  3
+ObjectDBX Classes
+ 90
+     4095
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+PLOTSETTINGS
+  2
+AcDbPlotSettings
+  3
+ObjectDBX Classes
+ 90
+        0
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+ACAD_EVALUATION_GRAPH
+  2
+AcDbEvalGraph
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+BLOCKPOINTPARAMETER
+  2
+AcDbBlockPointParameter
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+BLOCKBASEPOINTPARAMETER
+  2
+AcDbBlockBasepointParameter
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+BLOCKLOOKUPPARAMETER
+  2
+AcDbBlockLookupParameter
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+BLOCKVISIBILITYPARAMETER
+  2
+AcDbBlockVisibilityParameter
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+BLOCKPROPERTIESTABLE
+  2
+AcDbBlockPropertiesTable
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+BLOCKPOLARPARAMETER
+  2
+AcDbBlockPolarParameter
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+BLOCKROTATIONPARAMETER
+  2
+AcDbBlockRotationParameter
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+BLOCKLINEARPARAMETER
+  2
+AcDbBlockLinearParameter
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+BLOCKXYPARAMETER
+  2
+AcDbBlockXYParameter
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+BLOCKFLIPPARAMETER
+  2
+AcDbBlockFlipParameter
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+BLOCKALIGNMENTPARAMETER
+  2
+AcDbBlockAlignmentParameter
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+BLOCKROTATEACTION
+  2
+AcDbBlockRotateAction
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+BLOCKSCALEACTION
+  2
+AcDbBlockScaleAction
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+BLOCKARRAYACTION
+  2
+AcDbBlockArrayAction
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+BLOCKFLIPACTION
+  2
+AcDbBlockFlipAction
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+BLOCKLOOKUPACTION
+  2
+AcDbBlockLookupAction
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+BLOCKMOVEACTION
+  2
+AcDbBlockMoveAction
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+BLOCKPOLARSTRETCHACTION
+  2
+AcDbBlockPolarStretchAction
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+BLOCKSTRETCHACTION
+  2
+AcDbBlockStretchAction
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+BLOCKALIGNMENTGRIP
+  2
+AcDbBlockAlignmentGrip
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+BLOCKFLIPGRIP
+  2
+AcDbBlockFlipGrip
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+ACDB_BLOCKREPRESENTATION_DATA
+  2
+AcDbBlockRepresentationData
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+ACDB_DYNAMICBLOCKPURGEPREVENTER_VERSION
+  2
+AcDbDynamicBlockPurgePreventer
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+BLOCKLINEARGRIP
+  2
+AcDbBlockLinearGrip
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+BLOCKLOOKUPGRIP
+  2
+AcDbBlockLookupGrip
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+BLOCKPOLARGRIP
+  2
+AcDbBlockPolarGrip
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+BLOCKPROPERTIESTABLEGRIP
+  2
+AcDbBlockPropertiesTableGrip
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+BLOCKROTATIONGRIP
+  2
+AcDbBlockRotationGrip
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+BLOCKVISIBILITYGRIP
+  2
+AcDbBlockVisibilityGrip
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+BLOCKXYGRIP
+  2
+AcDbBlockXYGrip
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+BLOCKGRIPLOCATIONCOMPONENT
+  2
+AcDbBlockGripExpr
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+ACDB_DYNAMICBLOCKPROXYNODE
+  2
+AcDbDynamicBlockProxyNode
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+BLOCKLINEARCONSTRAINTPARAMETER
+  2
+AcDbBlockLinearConstraintParameter
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+BLOCKHORIZONTALCONSTRAINTPARAMETER
+  2
+AcDbBlockHorizontalConstraintParameter
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+BLOCKVERTICALCONSTRAINTPARAMETER
+  2
+AcDbBlockVerticalConstraintParameter
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+BLOCKALIGNEDCONSTRAINTPARAMETER
+  2
+AcDbBlockAlignedConstraintParameter
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+BLOCKANGULARCONSTRAINTPARAMETER
+  2
+AcDbBlockAngularConstraintParameter
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+BLOCKDIAMETRICCONSTRAINTPARAMETER
+  2
+AcDbBlockDiametricConstraintParameter
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+BLOCKRADIALCONSTRAINTPARAMETER
+  2
+AcDbBlockRadialConstraintParameter
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+ACDB_ANNOTSCALEOBJECTCONTEXTDATA_CLASS
+  2
+AcDbAnnotScaleObjectContextData
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+ACDB_MTEXTOBJECTCONTEXTDATA_CLASS
+  2
+AcDbMTextObjectContextData
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+ACDB_BLKREFOBJECTCONTEXTDATA_CLASS
+  2
+AcDbBlkRefObjectContextData
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+ACDB_FCFOBJECTCONTEXTDATA_CLASS
+  2
+AcDbFcfObjectContextData
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+ACDB_HATCHSCALECONTEXTDATA_CLASS
+  2
+AcDbHatchScaleContextData
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+ACDB_DIMENSIONOBJECTCONTEXTDATA_CLASS
+  2
+AcDbDimensionObjectContextData
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+ACDB_ALDIMOBJECTCONTEXTDATA_CLASS
+  2
+AcDbAlignedDimensionObjectContextData
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+ACDB_ANGDIMOBJECTCONTEXTDATA_CLASS
+  2
+AcDbAngularDimensionObjectContextData
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+ACDB_DMDIMOBJECTCONTEXTDATA_CLASS
+  2
+AcDbDiametricDimensionObjectContextData
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+ACDB_ORDDIMOBJECTCONTEXTDATA_CLASS
+  2
+AcDbOrdinateDimensionObjectContextData
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+ACDB_RADIMOBJECTCONTEXTDATA_CLASS
+  2
+AcDbRadialDimensionObjectContextData
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+ACDB_RADIMLRGOBJECTCONTEXTDATA_CLASS
+  2
+AcDbRadialDimensionLargeObjectContextData
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+ACDB_HATCHVIEWCONTEXTDATA_CLASS
+  2
+AcDbHatchViewContextData
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+ACDB_TEXTOBJECTCONTEXTDATA_CLASS
+  2
+AcDbTextObjectContextData
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+ACDB_LEADEROBJECTCONTEXTDATA_CLASS
+  2
+AcDbLeaderObjectContextData
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+ACDB_MTEXTATTRIBUTEOBJECTCONTEXTDATA_CLASS
+  2
+AcDbMTextAttributeObjectContextData
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        0
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+MATERIAL
+  2
+AcDbMaterial
+  3
+ObjectDBX Classes
+ 90
+     1153
+ 91
+        3
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+ACDBSECTIONVIEWSTYLE
+  2
+AcDbSectionViewStyle
+  3
+ObjectDBX Classes
+ 90
+     1025
+ 91
+        1
+280
+     0
+281
+     0
+  0
+CLASS
+  1
+ACDBDETAILVIEWSTYLE
+  2
+AcDbDetailViewStyle
+  3
+ObjectDBX Classes
+ 90
+     1025
+ 91
+        1
+280
+     0
+281
+     0
+  0
+ENDSEC
+  0
+SECTION
+  2
+TABLES
+  0
+TABLE
+  2
+VPORT
+  5
+8
+330
+0
+100
+AcDbSymbolTable
+ 70
+     1
+  0
+VPORT
+  5
+14E
+330
+8
+100
+AcDbSymbolTableRecord
+100
+AcDbViewportTableRecord
+  2
+*Active
+ 70
+     0
+ 10
+0.0
+ 20
+0.0
+ 11
+1.0
+ 21
+1.0
+ 12
+1407.334062982922
+ 22
+367.0041415325669
+ 13
+0.0
+ 23
+0.0
+ 14
+1.0
+ 24
+1.0
+ 15
+0.0
+ 25
+0.0
+ 16
+0.0
+ 26
+0.0
+ 36
+1.0
+ 17
+0.0
+ 27
+0.0
+ 37
+0.0
+ 40
+1276.297875778247
+ 41
+1.80019398642095
+ 42
+50.0
+ 43
+0.0
+ 44
+0.0
+ 50
+0.0
+ 51
+0.0
+ 71
+     0
+ 72
+  1000
+ 73
+     1
+ 74
+     3
+ 75
+     0
+ 76
+     0
+ 77
+     0
+ 78
+     0
+281
+     0
+ 65
+     1
+110
+0.0
+120
+0.0
+130
+0.0
+111
+1.0
+121
+0.0
+131
+0.0
+112
+0.0
+122
+1.0
+132
+0.0
+ 79
+     0
+146
+0.0
+348
+131
+ 60
+     3
+ 61
+     5
+292
+     1
+282
+     1
+141
+0.0
+142
+0.0
+ 63
+   250
+421
+  3355443
+1001
+ACAD_NAV_VCDISPLAY
+1070
+     1
+  0
+ENDTAB
+  0
+TABLE
+  2
+LTYPE
+  5
+5
+330
+0
+100
+AcDbSymbolTable
+ 70
+     5
+  0
+LTYPE
+  5
+14
+330
+5
+100
+AcDbSymbolTableRecord
+100
+AcDbLinetypeTableRecord
+  2
+ByBlock
+ 70
+     0
+  3
+
+ 72
+    65
+ 73
+     0
+ 40
+0.0
+  0
+LTYPE
+  5
+15
+330
+5
+100
+AcDbSymbolTableRecord
+100
+AcDbLinetypeTableRecord
+  2
+ByLayer
+ 70
+     0
+  3
+
+ 72
+    65
+ 73
+     0
+ 40
+0.0
+  0
+LTYPE
+  5
+16
+330
+5
+100
+AcDbSymbolTableRecord
+100
+AcDbLinetypeTableRecord
+  2
+Continuous
+ 70
+     0
+  3
+Solid line
+ 72
+    65
+ 73
+     0
+ 40
+0.0
+  0
+ENDTAB
+  0
+TABLE
+  2
+LAYER
+  5
+2
+102
+{ACAD_XDICTIONARY
+360
+2C5
+102
+}
+330
+0
+100
+AcDbSymbolTable
+ 70
+    78
+  0
+LAYER
+  5
+10
+330
+2
+100
+AcDbSymbolTableRecord
+100
+AcDbLayerTableRecord
+  2
+0
+ 70
+     0
+ 62
+     7
+  6
+Continuous
+370
+    -3
+390
+F
+347
+124
+348
+0
+  0
+LAYER
+  5
+29
+330
+2
+100
+AcDbSymbolTableRecord
+100
+AcDbLayerTableRecord
+  2
+PENC4
+ 70
+     0
+ 62
+     7
+  6
+Continuous
+370
+    30
+390
+F
+347
+124
+348
+0
+  0
+LAYER
+  5
+31
+330
+2
+100
+AcDbSymbolTableRecord
+100
+AcDbLayerTableRecord
+  2
+DIM_LAY
+ 70
+     0
+ 62
+     8
+  6
+Continuous
+370
+    20
+390
+F
+347
+124
+348
+0
+  0
+LAYER
+  5
+38
+330
+2
+100
+AcDbSymbolTableRecord
+100
+AcDbLayerTableRecord
+  2
+DEFPOINTS
+ 70
+     0
+ 62
+     7
+  6
+Continuous
+290
+     0
+370
+    -3
+390
+F
+347
+124
+348
+0
+  0
+LAYER
+  5
+15E
+330
+2
+100
+AcDbSymbolTableRecord
+100
+AcDbLayerTableRecord
+  2
+YAZI (BEYKENT)
+ 70
+     0
+ 62
+   140
+  6
+Continuous
+370
+    20
+390
+F
+347
+124
+348
+0
+  0
+LAYER
+  5
+161
+330
+2
+100
+AcDbSymbolTableRecord
+100
+AcDbLayerTableRecord
+  2
+SUBASMAN (BEYKENT)
+ 70
+     0
+ 62
+   197
+  6
+Continuous
+370
+    30
+390
+F
+347
+124
+348
+0
+  0
+LAYER
+  5
+16E
+330
+2
+100
+AcDbSymbolTableRecord
+100
+AcDbLayerTableRecord
+  2
+KOLON ISMI (BEYKENT)
+ 70
+     0
+ 62
+    91
+  6
+Continuous
+370
+    20
+390
+F
+347
+124
+348
+0
+  0
+LAYER
+  5
+170
+330
+2
+100
+AcDbSymbolTableRecord
+100
+AcDbLayerTableRecord
+  2
+KIRIS ISMI (BEYKENT)
+ 70
+     0
+ 62
+    40
+  6
+Continuous
+370
+    20
+390
+F
+347
+124
+348
+0
+  0
+LAYER
+  5
+189
+330
+2
+100
+AcDbSymbolTableRecord
+100
+AcDbLayerTableRecord
+  2
+DONATI YAZISI (BEYKENT)
+ 70
+     0
+ 62
+     3
+  6
+Continuous
+370
+    20
+390
+F
+347
+124
+348
+0
+  0
+LAYER
+  5
+19D
+330
+2
+100
+AcDbSymbolTableRecord
+100
+AcDbLayerTableRecord
+  2
+donatiplus.com
+ 70
+     0
+ 62
+     7
+  6
+Continuous
+370
+    -3
+390
+F
+347
+124
+348
+0
+  0
+LAYER
+  5
+1B7
+330
+2
+100
+AcDbSymbolTableRecord
+100
+AcDbLayerTableRecord
+  2
+KOT (BEYKENT)
+ 70
+     0
+ 62
+     7
+  6
+Continuous
+370
+    -3
+390
+F
+347
+124
+348
+0
+  0
+ENDTAB
+  0
+TABLE
+  2
+STYLE
+  5
+3
+330
+0
+100
+AcDbSymbolTable
+ 70
+     7
+  0
+STYLE
+  5
+11
+330
+3
+100
+AcDbSymbolTableRecord
+100
+AcDbTextStyleTableRecord
+  2
+Standard
+ 70
+     0
+ 40
+0.0
+ 41
+1.0
+ 50
+0.0
+ 71
+     0
+ 42
+0.2
+  3
+txt.shx
+  4
+
+  0
+STYLE
+  5
+ED
+330
+3
+100
+AcDbSymbolTableRecord
+100
+AcDbTextStyleTableRecord
+  2
+stastyle
+ 70
+     0
+ 40
+0.0
+ 41
+1.0
+ 50
+0.0
+ 71
+     0
+ 42
+0.2
+  3
+RomanSTA.ttf
+  4
+
+1001
+ACAD
+1000
+RomanSTA
+1071
+       34
+  0
+STYLE
+  5
+196
+330
+3
+100
+AcDbSymbolTableRecord
+100
+AcDbTextStyleTableRecord
+  2
+DONATI YAZISI (BEYKENT)
+ 70
+     0
+ 40
+0.0
+ 41
+1.0
+ 50
+0.0
+ 71
+     0
+ 42
+0.2
+  3
+
+  4
+
+1001
+ACAD
+1000
+Bahnschrift Light Condensed
+1071
+     2564
+  0
+STYLE
+  5
+197
+330
+3
+100
+AcDbSymbolTableRecord
+100
+AcDbTextStyleTableRecord
+  2
+YAZI (BEYKENT)
+ 70
+     0
+ 40
+0.0
+ 41
+1.0
+ 50
+0.0
+ 71
+     0
+ 42
+0.2
+  3
+
+  4
+
+1001
+ACAD
+1000
+Bahnschrift Light Condensed
+1071
+     2564
+  0
+STYLE
+  5
+19A
+330
+3
+100
+AcDbSymbolTableRecord
+100
+AcDbTextStyleTableRecord
+  2
+KLNOLC-25
+ 70
+     0
+ 40
+10.0
+ 41
+0.75
+ 50
+0.0
+ 71
+     0
+ 42
+2.0
+  3
+Bahnschrift Light Condensed
+  4
+
+  0
+ENDTAB
+  0
+TABLE
+  2
+VIEW
+  5
+6
+330
+0
+100
+AcDbSymbolTable
+ 70
+     0
+  0
+ENDTAB
+  0
+TABLE
+  2
+UCS
+  5
+7
+330
+0
+100
+AcDbSymbolTable
+ 70
+     0
+  0
+ENDTAB
+  0
+TABLE
+  2
+APPID
+  5
+9
+330
+0
+100
+AcDbSymbolTable
+ 70
+     4
+  0
+APPID
+  5
+12
+330
+9
+100
+AcDbSymbolTableRecord
+100
+AcDbRegAppTableRecord
+  2
+ACAD
+ 70
+     0
+  0
+APPID
+  5
+110
+330
+9
+100
+AcDbSymbolTableRecord
+100
+AcDbRegAppTableRecord
+  2
+ACAD_MLEADERVER
+ 70
+     0
+  0
+APPID
+  5
+111
+330
+9
+100
+AcDbSymbolTableRecord
+100
+AcDbRegAppTableRecord
+  2
+sta4cad App2
+ 70
+     0
+1001
+sta4cad App2
+1040
+50.0
+  0
+APPID
+  5
+14D
+330
+9
+100
+AcDbSymbolTableRecord
+100
+AcDbRegAppTableRecord
+  2
+ACAD_NAV_VCDISPLAY
+ 70
+     0
+  0
+ENDTAB
+  0
+TABLE
+  2
+DIMSTYLE
+  5
+A
+330
+0
+100
+AcDbSymbolTable
+ 70
+     4
+100
+AcDbDimStyleTable
+ 71
+     0
+  0
+DIMSTYLE
+105
+F0
+330
+A
+100
+AcDbSymbolTableRecord
+100
+AcDbDimStyleTableRecord
+  2
+Standard
+ 70
+     0
+ 90
+        1
+143
+1.0
+274
+     0
+340
+11
+345
+14
+346
+14
+347
+14
+  0
+DIMSTYLE
+105
+F1
+330
+A
+100
+AcDbSymbolTableRecord
+100
+AcDbDimStyleTableRecord
+  2
+sta
+ 70
+     0
+ 40
+0.01
+ 73
+     0
+ 90
+        1
+143
+1.0
+144
+5000.0
+173
+     1
+176
+     8
+178
+     8
+271
+     0
+274
+     0
+340
+ED
+342
+39
+343
+39
+344
+39
+345
+14
+346
+14
+347
+14
+  0
+ENDTAB
+  0
+TABLE
+  2
+BLOCK_RECORD
+  5
+1
+330
+0
+100
+AcDbSymbolTable
+ 70
+     3
+  0
+BLOCK_RECORD
+  5
+1F
+330
+1
+100
+AcDbSymbolTableRecord
+100
+AcDbBlockTableRecord
+  2
+*Model_Space
+340
+22
+ 70
+     1
+280
+     1
+281
+     0
+  0
+BLOCK_RECORD
+  5
+EA
+330
+1
+100
+AcDbSymbolTableRecord
+100
+AcDbBlockTableRecord
+  2
+*Paper_Space
+340
+1E
+ 70
+     1
+280
+     1
+281
+     0
+  0
+BLOCK_RECORD
+  5
+39
+330
+1
+100
+AcDbSymbolTableRecord
+100
+AcDbBlockTableRecord
+  2
+arrowblock
+340
+0
+ 70
+     1
+280
+     1
+281
+     0
+  0
+ENDTAB
+  0
+ENDSEC
+  0
+SECTION
+  2
+BLOCKS
+  0
+BLOCK
+  5
+20
+330
+1F
+100
+AcDbEntity
+  8
+0
+100
+AcDbBlockBegin
+  2
+*Model_Space
+ 70
+     0
+ 10
+0.0
+ 20
+0.0
+ 30
+0.0
+  3
+*Model_Space
+  1
+
+  0
+ENDBLK
+  5
+21
+330
+1F
+100
+AcDbEntity
+  8
+0
+100
+AcDbBlockEnd
+  0
+BLOCK
+  5
+EB
+330
+EA
+100
+AcDbEntity
+ 67
+     1
+  8
+0
+100
+AcDbBlockBegin
+  2
+*Paper_Space
+ 70
+     0
+ 10
+0.0
+ 20
+0.0
+ 30
+0.0
+  3
+*Paper_Space
+  1
+
+  0
+ENDBLK
+  5
+EC
+330
+EA
+100
+AcDbEntity
+ 67
+     1
+  8
+0
+100
+AcDbBlockEnd
+  0
+BLOCK
+  5
+3A
+330
+39
+100
+AcDbEntity
+  8
+0
+100
+AcDbBlockBegin
+  2
+arrowblock
+ 70
+     0
+ 10
+0.0
+ 20
+0.0
+ 30
+0.0
+  3
+arrowblock
+  1
+
+  0
+LINE
+  5
+3B
+330
+39
+100
+AcDbEntity
+  8
+DIM_LAY
+100
+AcDbLine
+ 10
+-1.0
+ 20
+-0.4142135623730951
+ 30
+0.0
+ 11
+0.0
+ 21
+0.0
+ 31
+0.0
+  0
+LINE
+  5
+3C
+330
+39
+100
+AcDbEntity
+  8
+DIM_LAY
+100
+AcDbLine
+ 10
+-1.0
+ 20
+0.4142135623730951
+ 30
+0.0
+ 11
+0.0
+ 21
+0.0
+ 31
+0.0
+  0
+LINE
+  5
+3D
+330
+39
+100
+AcDbEntity
+  8
+DIM_LAY
+100
+AcDbLine
+ 10
+-1.0
+ 20
+0.0
+ 30
+0.0
+ 11
+0.0
+ 21
+0.0
+ 31
+0.0
+  0
+ENDBLK
+  5
+3E
+330
+39
+100
+AcDbEntity
+  8
+0
+100
+AcDbBlockEnd
+  0
+ENDSEC
+  0
+SECTION
+  2
+ENTITIES
+  0
+LINE
+  5
+19E
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1136.521324442871
+ 20
+799.7965632368764
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+799.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+19F
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1736.521324442871
+ 20
+799.7965632368764
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+749.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+1A0
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1736.521324442871
+ 20
+749.7965632368764
+ 30
+0.0
+ 11
+1136.521324442871
+ 21
+749.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+1A1
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1136.521324442871
+ 20
+749.7965632368764
+ 30
+0.0
+ 11
+1136.521324442871
+ 21
+799.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+1A2
+330
+1F
+100
+AcDbEntity
+  8
+PENC4
+100
+AcDbText
+ 10
+1146.521324442871
+ 20
+779.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+Kat no
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+1A4
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1286.521324442871
+ 20
+799.7965632368764
+ 30
+0.0
+ 11
+1286.521324442871
+ 21
+749.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+1A5
+330
+1F
+100
+AcDbEntity
+  8
+PENC4
+100
+AcDbText
+ 10
+1321.521324442871
+ 20
+774.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+1. NORMAL
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+1A6
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1436.521324442871
+ 20
+799.7965632368764
+ 30
+0.0
+ 11
+1436.521324442871
+ 21
+749.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+1A7
+330
+1F
+100
+AcDbEntity
+  8
+PENC4
+100
+AcDbText
+ 10
+1471.521324442871
+ 20
+774.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+2. NORMAL
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+1A8
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1586.521324442871
+ 20
+799.7965632368764
+ 30
+0.0
+ 11
+1586.521324442871
+ 21
+749.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+1A9
+330
+1F
+100
+AcDbEntity
+  8
+PENC4
+100
+AcDbText
+ 10
+1621.521324442871
+ 20
+774.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+3. NORMAL
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+1AA
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1136.521324442871
+ 20
+749.7965632368764
+ 30
+0.0
+ 11
+1136.521324442871
+ 21
+674.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+1AB
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1136.521324442871
+ 20
+674.7965632368764
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+674.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+1AC
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1736.521324442871
+ 20
+674.7965632368764
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+749.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+1AD
+330
+1F
+100
+AcDbEntity
+  8
+PENC4
+100
+AcDbText
+ 10
+1141.521324442871
+ 20
+704.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+S1
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+1AE
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1186.521324442871
+ 20
+749.7965632368764
+ 30
+0.0
+ 11
+1186.521324442871
+ 21
+674.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+1AF
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   251
+100
+AcDbLine
+ 10
+1186.521324442871
+ 20
+724.7965632368764
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+724.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+1B0
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   251
+100
+AcDbLine
+ 10
+1186.521324442871
+ 20
+699.7965632368764
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+699.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+1B1
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1286.521324442871
+ 20
+749.7965632368764
+ 30
+0.0
+ 11
+1286.521324442871
+ 21
+674.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+1B2
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   252
+100
+AcDbText
+ 10
+1191.521324442871
+ 20
+729.7965632368764
+ 30
+0.0
+ 40
+9.0
+  1
+ebad
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1B3
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   252
+100
+AcDbText
+ 10
+1191.521324442871
+ 20
+704.7965632368764
+ 30
+0.0
+ 40
+9.0
+  1
+donati
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1B4
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   252
+100
+AcDbText
+ 10
+1191.521324442871
+ 20
+679.7965632368764
+ 30
+0.0
+ 40
+9.0
+  1
+etriye
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1B5
+330
+1F
+100
+AcDbEntity
+  8
+YAZI (BEYKENT)
+100
+AcDbText
+ 10
+1231.521324442871
+ 20
+729.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+35
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1B6
+330
+1F
+100
+AcDbEntity
+  8
+SUBASMAN (BEYKENT)
+100
+AcDbText
+ 10
+1261.521324442871
+ 20
+729.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+70
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1B8
+330
+1F
+100
+AcDbEntity
+  8
+KOT (BEYKENT)
+100
+AcDbText
+ 10
+1346.521324442871
+ 20
+729.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+-55
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1B9
+330
+1F
+100
+AcDbEntity
+  8
+KOLON ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1291.521324442871
+ 20
+729.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ 60/60
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1BA
+330
+1F
+100
+AcDbEntity
+  8
+YAZI (BEYKENT)
+100
+AcDbText
+ 10
+1386.521324442871
+ 20
+729.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+55
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1BB
+330
+1F
+100
+AcDbEntity
+  8
+KIRIS ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1416.521324442871
+ 20
+729.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+15
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1BC
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+ 10
+1291.521324442871
+ 20
+704.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+2x4ø16+2x4ø16
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1BD
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+ 62
+    30
+100
+AcDbText
+ 10
+1291.521324442871
+ 20
+679.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ø10/20/9
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+1BE
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1436.521324442871
+ 20
+749.7965632368764
+ 30
+0.0
+ 11
+1436.521324442871
+ 21
+674.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+1BF
+330
+1F
+100
+AcDbEntity
+  8
+KOLON ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1441.521324442871
+ 20
+729.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ 60/60
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1C0
+330
+1F
+100
+AcDbEntity
+  8
+YAZI (BEYKENT)
+100
+AcDbText
+ 10
+1536.521324442871
+ 20
+729.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+55
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1C1
+330
+1F
+100
+AcDbEntity
+  8
+KIRIS ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1566.521324442871
+ 20
+729.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+15
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1C2
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+ 10
+1441.521324442871
+ 20
+704.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+2x4ø16+2x4ø16
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1C3
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+ 62
+    30
+100
+AcDbText
+ 10
+1441.521324442871
+ 20
+679.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ø10/20/20
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+1C4
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1586.521324442871
+ 20
+749.7965632368764
+ 30
+0.0
+ 11
+1586.521324442871
+ 21
+674.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+1C5
+330
+1F
+100
+AcDbEntity
+  8
+KOLON ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1591.521324442871
+ 20
+729.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ 60/60
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1C6
+330
+1F
+100
+AcDbEntity
+  8
+YAZI (BEYKENT)
+100
+AcDbText
+ 10
+1686.521324442871
+ 20
+729.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+55
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1C7
+330
+1F
+100
+AcDbEntity
+  8
+KIRIS ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1716.521324442871
+ 20
+729.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+15
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1C8
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+ 10
+1591.521324442871
+ 20
+704.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+2x4ø16+2x4ø16
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1C9
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+ 62
+    30
+100
+AcDbText
+ 10
+1591.521324442871
+ 20
+679.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ø10/20/20
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+1CA
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1136.521324442871
+ 20
+674.7965632368764
+ 30
+0.0
+ 11
+1136.521324442871
+ 21
+599.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+1CB
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1136.521324442871
+ 20
+599.7965632368764
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+599.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+1CC
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1736.521324442871
+ 20
+599.7965632368764
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+674.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+1CD
+330
+1F
+100
+AcDbEntity
+  8
+PENC4
+100
+AcDbText
+ 10
+1141.521324442871
+ 20
+629.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+S2
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+1CE
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1186.521324442871
+ 20
+674.7965632368764
+ 30
+0.0
+ 11
+1186.521324442871
+ 21
+599.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+1CF
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   251
+100
+AcDbLine
+ 10
+1186.521324442871
+ 20
+649.7965632368764
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+649.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+1D0
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   251
+100
+AcDbLine
+ 10
+1186.521324442871
+ 20
+624.7965632368764
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+624.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+1D1
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1286.521324442871
+ 20
+674.7965632368764
+ 30
+0.0
+ 11
+1286.521324442871
+ 21
+599.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+1D2
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   252
+100
+AcDbText
+ 10
+1191.521324442871
+ 20
+654.7965632368764
+ 30
+0.0
+ 40
+9.0
+  1
+ebad
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1D3
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   252
+100
+AcDbText
+ 10
+1191.521324442871
+ 20
+629.7965632368764
+ 30
+0.0
+ 40
+9.0
+  1
+donati
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1D4
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   252
+100
+AcDbText
+ 10
+1191.521324442871
+ 20
+604.7965632368764
+ 30
+0.0
+ 40
+9.0
+  1
+etriye
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1D5
+330
+1F
+100
+AcDbEntity
+  8
+YAZI (BEYKENT)
+100
+AcDbText
+ 10
+1231.521324442871
+ 20
+654.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+35
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1D6
+330
+1F
+100
+AcDbEntity
+  8
+SUBASMAN (BEYKENT)
+100
+AcDbText
+ 10
+1261.521324442871
+ 20
+654.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+70
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1D7
+330
+1F
+100
+AcDbEntity
+  8
+KOT (BEYKENT)
+100
+AcDbText
+ 10
+1346.521324442871
+ 20
+654.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+-55
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1D8
+330
+1F
+100
+AcDbEntity
+  8
+KOLON ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1291.521324442871
+ 20
+654.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ 60/60
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1D9
+330
+1F
+100
+AcDbEntity
+  8
+YAZI (BEYKENT)
+100
+AcDbText
+ 10
+1386.521324442871
+ 20
+654.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+55
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1DA
+330
+1F
+100
+AcDbEntity
+  8
+KIRIS ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1416.521324442871
+ 20
+654.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+15
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1DB
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+ 10
+1291.521324442871
+ 20
+629.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+2x4ø16+2x4ø16
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1DC
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+ 62
+    30
+100
+AcDbText
+ 10
+1291.521324442871
+ 20
+604.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ø10/20/9
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+1DD
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1436.521324442871
+ 20
+674.7965632368764
+ 30
+0.0
+ 11
+1436.521324442871
+ 21
+599.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+1DE
+330
+1F
+100
+AcDbEntity
+  8
+KOLON ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1441.521324442871
+ 20
+654.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ 60/60
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1DF
+330
+1F
+100
+AcDbEntity
+  8
+YAZI (BEYKENT)
+100
+AcDbText
+ 10
+1536.521324442871
+ 20
+654.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+55
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1E0
+330
+1F
+100
+AcDbEntity
+  8
+KIRIS ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1566.521324442871
+ 20
+654.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+15
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1E1
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+ 10
+1441.521324442871
+ 20
+629.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+2x4ø16+2x4ø16
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1E2
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+ 62
+    30
+100
+AcDbText
+ 10
+1441.521324442871
+ 20
+604.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ø10/20/20
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+1E3
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1586.521324442871
+ 20
+674.7965632368764
+ 30
+0.0
+ 11
+1586.521324442871
+ 21
+599.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+1E4
+330
+1F
+100
+AcDbEntity
+  8
+KOLON ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1591.521324442871
+ 20
+654.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ 60/60
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1E5
+330
+1F
+100
+AcDbEntity
+  8
+YAZI (BEYKENT)
+100
+AcDbText
+ 10
+1686.521324442871
+ 20
+654.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+55
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1E6
+330
+1F
+100
+AcDbEntity
+  8
+KIRIS ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1716.521324442871
+ 20
+654.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+15
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1E7
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+ 10
+1591.521324442871
+ 20
+629.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+2x4ø16+2x4ø16
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1E8
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+ 62
+    30
+100
+AcDbText
+ 10
+1591.521324442871
+ 20
+604.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ø10/20/20
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+1E9
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1136.521324442871
+ 20
+599.7965632368764
+ 30
+0.0
+ 11
+1136.521324442871
+ 21
+524.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+1EA
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1136.521324442871
+ 20
+524.7965632368764
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+524.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+1EB
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1736.521324442871
+ 20
+524.7965632368764
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+599.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+1EC
+330
+1F
+100
+AcDbEntity
+  8
+PENC4
+100
+AcDbText
+ 10
+1141.521324442871
+ 20
+554.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+S3
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+1ED
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1186.521324442871
+ 20
+599.7965632368764
+ 30
+0.0
+ 11
+1186.521324442871
+ 21
+524.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+1EE
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   251
+100
+AcDbLine
+ 10
+1186.521324442871
+ 20
+574.7965632368764
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+574.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+1EF
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   251
+100
+AcDbLine
+ 10
+1186.521324442871
+ 20
+549.7965632368764
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+549.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+1F0
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1286.521324442871
+ 20
+599.7965632368764
+ 30
+0.0
+ 11
+1286.521324442871
+ 21
+524.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+1F1
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   252
+100
+AcDbText
+ 10
+1191.521324442871
+ 20
+579.7965632368764
+ 30
+0.0
+ 40
+9.0
+  1
+ebad
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1F2
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   252
+100
+AcDbText
+ 10
+1191.521324442871
+ 20
+554.7965632368764
+ 30
+0.0
+ 40
+9.0
+  1
+donati
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1F3
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   252
+100
+AcDbText
+ 10
+1191.521324442871
+ 20
+529.7965632368764
+ 30
+0.0
+ 40
+9.0
+  1
+etriye
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1F4
+330
+1F
+100
+AcDbEntity
+  8
+YAZI (BEYKENT)
+100
+AcDbText
+ 10
+1231.521324442871
+ 20
+579.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+35
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1F5
+330
+1F
+100
+AcDbEntity
+  8
+SUBASMAN (BEYKENT)
+100
+AcDbText
+ 10
+1261.521324442871
+ 20
+579.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+70
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1F6
+330
+1F
+100
+AcDbEntity
+  8
+KOT (BEYKENT)
+100
+AcDbText
+ 10
+1346.521324442871
+ 20
+579.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+-55
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1F7
+330
+1F
+100
+AcDbEntity
+  8
+KOLON ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1291.521324442871
+ 20
+579.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ 60/60
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1F8
+330
+1F
+100
+AcDbEntity
+  8
+YAZI (BEYKENT)
+100
+AcDbText
+ 10
+1386.521324442871
+ 20
+579.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+55
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1F9
+330
+1F
+100
+AcDbEntity
+  8
+KIRIS ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1416.521324442871
+ 20
+579.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+15
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1FA
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+ 10
+1291.521324442871
+ 20
+554.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+2x4ø16+2x4ø16
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1FB
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+ 62
+    30
+100
+AcDbText
+ 10
+1291.521324442871
+ 20
+529.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ø10/20/9
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+1FC
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1436.521324442871
+ 20
+599.7965632368764
+ 30
+0.0
+ 11
+1436.521324442871
+ 21
+524.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+1FD
+330
+1F
+100
+AcDbEntity
+  8
+KOLON ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1441.521324442871
+ 20
+579.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ 60/60
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1FE
+330
+1F
+100
+AcDbEntity
+  8
+YAZI (BEYKENT)
+100
+AcDbText
+ 10
+1536.521324442871
+ 20
+579.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+55
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+1FF
+330
+1F
+100
+AcDbEntity
+  8
+KIRIS ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1566.521324442871
+ 20
+579.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+15
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+200
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+ 10
+1441.521324442871
+ 20
+554.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+2x4ø16+2x4ø16
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+201
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+ 62
+    30
+100
+AcDbText
+ 10
+1441.521324442871
+ 20
+529.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ø10/20/20
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+202
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1586.521324442871
+ 20
+599.7965632368764
+ 30
+0.0
+ 11
+1586.521324442871
+ 21
+524.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+203
+330
+1F
+100
+AcDbEntity
+  8
+KOLON ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1591.521324442871
+ 20
+579.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ 60/60
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+204
+330
+1F
+100
+AcDbEntity
+  8
+YAZI (BEYKENT)
+100
+AcDbText
+ 10
+1686.521324442871
+ 20
+579.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+55
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+205
+330
+1F
+100
+AcDbEntity
+  8
+KIRIS ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1716.521324442871
+ 20
+579.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+15
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+206
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+ 10
+1591.521324442871
+ 20
+554.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+2x4ø16+2x4ø16
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+207
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+ 62
+    30
+100
+AcDbText
+ 10
+1591.521324442871
+ 20
+529.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ø10/20/20
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+208
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1136.521324442871
+ 20
+524.7965632368764
+ 30
+0.0
+ 11
+1136.521324442871
+ 21
+449.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+209
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1136.521324442871
+ 20
+449.7965632368764
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+449.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+20A
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1736.521324442871
+ 20
+449.7965632368764
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+524.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+20B
+330
+1F
+100
+AcDbEntity
+  8
+PENC4
+100
+AcDbText
+ 10
+1141.521324442871
+ 20
+479.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+S4
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+20C
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1186.521324442871
+ 20
+524.7965632368764
+ 30
+0.0
+ 11
+1186.521324442871
+ 21
+449.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+20D
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   251
+100
+AcDbLine
+ 10
+1186.521324442871
+ 20
+499.7965632368764
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+499.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+20E
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   251
+100
+AcDbLine
+ 10
+1186.521324442871
+ 20
+474.7965632368764
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+474.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+20F
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1286.521324442871
+ 20
+524.7965632368764
+ 30
+0.0
+ 11
+1286.521324442871
+ 21
+449.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+210
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   252
+100
+AcDbText
+ 10
+1191.521324442871
+ 20
+504.7965632368764
+ 30
+0.0
+ 40
+9.0
+  1
+ebad
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+211
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   252
+100
+AcDbText
+ 10
+1191.521324442871
+ 20
+479.7965632368764
+ 30
+0.0
+ 40
+9.0
+  1
+donati
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+212
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   252
+100
+AcDbText
+ 10
+1191.521324442871
+ 20
+454.7965632368764
+ 30
+0.0
+ 40
+9.0
+  1
+etriye
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+213
+330
+1F
+100
+AcDbEntity
+  8
+YAZI (BEYKENT)
+100
+AcDbText
+ 10
+1231.521324442871
+ 20
+504.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+35
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+214
+330
+1F
+100
+AcDbEntity
+  8
+SUBASMAN (BEYKENT)
+100
+AcDbText
+ 10
+1261.521324442871
+ 20
+504.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+70
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+215
+330
+1F
+100
+AcDbEntity
+  8
+KOT (BEYKENT)
+100
+AcDbText
+ 10
+1346.521324442871
+ 20
+504.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+-55
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+216
+330
+1F
+100
+AcDbEntity
+  8
+KOLON ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1291.521324442871
+ 20
+504.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ 60/60
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+217
+330
+1F
+100
+AcDbEntity
+  8
+YAZI (BEYKENT)
+100
+AcDbText
+ 10
+1386.521324442871
+ 20
+504.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+55
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+218
+330
+1F
+100
+AcDbEntity
+  8
+KIRIS ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1416.521324442871
+ 20
+504.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+15
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+219
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+ 10
+1291.521324442871
+ 20
+479.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+2x4ø16+2x4ø16
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+21A
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+ 62
+    30
+100
+AcDbText
+ 10
+1291.521324442871
+ 20
+454.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ø10/20/9
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+21B
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1436.521324442871
+ 20
+524.7965632368764
+ 30
+0.0
+ 11
+1436.521324442871
+ 21
+449.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+21C
+330
+1F
+100
+AcDbEntity
+  8
+KOLON ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1441.521324442871
+ 20
+504.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ 60/60
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+21D
+330
+1F
+100
+AcDbEntity
+  8
+YAZI (BEYKENT)
+100
+AcDbText
+ 10
+1536.521324442871
+ 20
+504.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+55
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+21E
+330
+1F
+100
+AcDbEntity
+  8
+KIRIS ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1566.521324442871
+ 20
+504.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+15
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+21F
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+ 10
+1441.521324442871
+ 20
+479.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+2x4ø16+2x4ø16
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+220
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+ 62
+    30
+100
+AcDbText
+ 10
+1441.521324442871
+ 20
+454.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ø10/20/20
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+221
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1586.521324442871
+ 20
+524.7965632368764
+ 30
+0.0
+ 11
+1586.521324442871
+ 21
+449.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+222
+330
+1F
+100
+AcDbEntity
+  8
+KOLON ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1591.521324442871
+ 20
+504.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ 60/60
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+223
+330
+1F
+100
+AcDbEntity
+  8
+YAZI (BEYKENT)
+100
+AcDbText
+ 10
+1686.521324442871
+ 20
+504.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+55
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+224
+330
+1F
+100
+AcDbEntity
+  8
+KIRIS ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1716.521324442871
+ 20
+504.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+15
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+225
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+ 10
+1591.521324442871
+ 20
+479.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+2x4ø16+2x4ø16
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+226
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+ 62
+    30
+100
+AcDbText
+ 10
+1591.521324442871
+ 20
+454.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ø10/20/20
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+227
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1136.521324442871
+ 20
+449.7965632368764
+ 30
+0.0
+ 11
+1136.521324442871
+ 21
+374.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+228
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1136.521324442871
+ 20
+374.7965632368764
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+374.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+229
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1736.521324442871
+ 20
+374.7965632368764
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+449.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+22A
+330
+1F
+100
+AcDbEntity
+  8
+PENC4
+100
+AcDbText
+ 10
+1141.521324442871
+ 20
+404.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+S5
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+22B
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1186.521324442871
+ 20
+449.7965632368764
+ 30
+0.0
+ 11
+1186.521324442871
+ 21
+374.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+22C
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   251
+100
+AcDbLine
+ 10
+1186.521324442871
+ 20
+424.7965632368764
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+424.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+22D
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   251
+100
+AcDbLine
+ 10
+1186.521324442871
+ 20
+399.7965632368764
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+399.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+22E
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1286.521324442871
+ 20
+449.7965632368764
+ 30
+0.0
+ 11
+1286.521324442871
+ 21
+374.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+22F
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   252
+100
+AcDbText
+ 10
+1191.521324442871
+ 20
+429.7965632368764
+ 30
+0.0
+ 40
+9.0
+  1
+ebad
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+230
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   252
+100
+AcDbText
+ 10
+1191.521324442871
+ 20
+404.7965632368764
+ 30
+0.0
+ 40
+9.0
+  1
+donati
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+231
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   252
+100
+AcDbText
+ 10
+1191.521324442871
+ 20
+379.7965632368764
+ 30
+0.0
+ 40
+9.0
+  1
+etriye
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+232
+330
+1F
+100
+AcDbEntity
+  8
+YAZI (BEYKENT)
+100
+AcDbText
+ 10
+1231.521324442871
+ 20
+429.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+35
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+233
+330
+1F
+100
+AcDbEntity
+  8
+SUBASMAN (BEYKENT)
+100
+AcDbText
+ 10
+1261.521324442871
+ 20
+429.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+70
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+234
+330
+1F
+100
+AcDbEntity
+  8
+KOT (BEYKENT)
+100
+AcDbText
+ 10
+1346.521324442871
+ 20
+429.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+-55
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+235
+330
+1F
+100
+AcDbEntity
+  8
+KOLON ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1291.521324442871
+ 20
+429.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ 30/350
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+236
+330
+1F
+100
+AcDbEntity
+  8
+YAZI (BEYKENT)
+100
+AcDbText
+ 10
+1386.521324442871
+ 20
+429.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+55
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+237
+330
+1F
+100
+AcDbEntity
+  8
+KIRIS ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1416.521324442871
+ 20
+429.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+15
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+238
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+ 10
+1291.521324442871
+ 20
+404.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+2x11ø16+2x10ø12
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+239
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+ 62
+    30
+100
+AcDbText
+ 10
+1291.521324442871
+ 20
+379.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ø10/15/10
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+23A
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1436.521324442871
+ 20
+449.7965632368764
+ 30
+0.0
+ 11
+1436.521324442871
+ 21
+374.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+23B
+330
+1F
+100
+AcDbEntity
+  8
+KOLON ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1441.521324442871
+ 20
+429.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ 30/350
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+23C
+330
+1F
+100
+AcDbEntity
+  8
+YAZI (BEYKENT)
+100
+AcDbText
+ 10
+1536.521324442871
+ 20
+429.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+55
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+23D
+330
+1F
+100
+AcDbEntity
+  8
+KIRIS ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1566.521324442871
+ 20
+429.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+15
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+23E
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+ 10
+1441.521324442871
+ 20
+404.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+2x7ø16+2x13ø12
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+23F
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+ 62
+    30
+100
+AcDbText
+ 10
+1441.521324442871
+ 20
+379.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ø10/20/10
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+240
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1586.521324442871
+ 20
+449.7965632368764
+ 30
+0.0
+ 11
+1586.521324442871
+ 21
+374.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+241
+330
+1F
+100
+AcDbEntity
+  8
+KOLON ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1591.521324442871
+ 20
+429.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ 30/350
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+242
+330
+1F
+100
+AcDbEntity
+  8
+YAZI (BEYKENT)
+100
+AcDbText
+ 10
+1686.521324442871
+ 20
+429.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+55
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+243
+330
+1F
+100
+AcDbEntity
+  8
+KIRIS ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1716.521324442871
+ 20
+429.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+15
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+244
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+ 10
+1591.521324442871
+ 20
+404.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+2x7ø16+2x13ø12
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+245
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+ 62
+    30
+100
+AcDbText
+ 10
+1591.521324442871
+ 20
+379.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ø10/20/10
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+246
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1136.521324442871
+ 20
+374.7965632368764
+ 30
+0.0
+ 11
+1136.521324442871
+ 21
+299.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+247
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1136.521324442871
+ 20
+299.7965632368764
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+299.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+248
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1736.521324442871
+ 20
+299.7965632368764
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+374.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+249
+330
+1F
+100
+AcDbEntity
+  8
+PENC4
+100
+AcDbText
+ 10
+1141.521324442871
+ 20
+329.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+S6
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+24A
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1186.521324442871
+ 20
+374.7965632368764
+ 30
+0.0
+ 11
+1186.521324442871
+ 21
+299.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+24B
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   251
+100
+AcDbLine
+ 10
+1186.521324442871
+ 20
+349.7965632368764
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+349.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+24C
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   251
+100
+AcDbLine
+ 10
+1186.521324442871
+ 20
+324.7965632368764
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+324.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+24D
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1286.521324442871
+ 20
+374.7965632368764
+ 30
+0.0
+ 11
+1286.521324442871
+ 21
+299.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+24E
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   252
+100
+AcDbText
+ 10
+1191.521324442871
+ 20
+354.7965632368764
+ 30
+0.0
+ 40
+9.0
+  1
+ebad
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+24F
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   252
+100
+AcDbText
+ 10
+1191.521324442871
+ 20
+329.7965632368764
+ 30
+0.0
+ 40
+9.0
+  1
+donati
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+250
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   252
+100
+AcDbText
+ 10
+1191.521324442871
+ 20
+304.7965632368764
+ 30
+0.0
+ 40
+9.0
+  1
+etriye
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+251
+330
+1F
+100
+AcDbEntity
+  8
+YAZI (BEYKENT)
+100
+AcDbText
+ 10
+1231.521324442871
+ 20
+354.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+35
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+252
+330
+1F
+100
+AcDbEntity
+  8
+SUBASMAN (BEYKENT)
+100
+AcDbText
+ 10
+1261.521324442871
+ 20
+354.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+70
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+253
+330
+1F
+100
+AcDbEntity
+  8
+KOT (BEYKENT)
+100
+AcDbText
+ 10
+1346.521324442871
+ 20
+354.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+-55
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+254
+330
+1F
+100
+AcDbEntity
+  8
+KOLON ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1291.521324442871
+ 20
+354.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ 30/350
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+255
+330
+1F
+100
+AcDbEntity
+  8
+YAZI (BEYKENT)
+100
+AcDbText
+ 10
+1386.521324442871
+ 20
+354.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+55
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+256
+330
+1F
+100
+AcDbEntity
+  8
+KIRIS ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1416.521324442871
+ 20
+354.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+15
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+257
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+ 10
+1291.521324442871
+ 20
+329.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+2x11ø16+2x10ø12
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+258
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+ 62
+    30
+100
+AcDbText
+ 10
+1291.521324442871
+ 20
+304.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ø10/15/10
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+259
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1436.521324442871
+ 20
+374.7965632368764
+ 30
+0.0
+ 11
+1436.521324442871
+ 21
+299.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+25A
+330
+1F
+100
+AcDbEntity
+  8
+KOLON ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1441.521324442871
+ 20
+354.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ 30/350
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+25B
+330
+1F
+100
+AcDbEntity
+  8
+YAZI (BEYKENT)
+100
+AcDbText
+ 10
+1536.521324442871
+ 20
+354.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+55
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+25C
+330
+1F
+100
+AcDbEntity
+  8
+KIRIS ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1566.521324442871
+ 20
+354.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+15
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+25D
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+ 10
+1441.521324442871
+ 20
+329.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+2x7ø16+2x13ø12
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+25E
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+ 62
+    30
+100
+AcDbText
+ 10
+1441.521324442871
+ 20
+304.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ø10/20/10
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+25F
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1586.521324442871
+ 20
+374.7965632368764
+ 30
+0.0
+ 11
+1586.521324442871
+ 21
+299.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+260
+330
+1F
+100
+AcDbEntity
+  8
+KOLON ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1591.521324442871
+ 20
+354.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ 30/350
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+261
+330
+1F
+100
+AcDbEntity
+  8
+YAZI (BEYKENT)
+100
+AcDbText
+ 10
+1686.521324442871
+ 20
+354.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+55
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+262
+330
+1F
+100
+AcDbEntity
+  8
+KIRIS ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1716.521324442871
+ 20
+354.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+15
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+263
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+ 10
+1591.521324442871
+ 20
+329.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+2x7ø16+2x13ø12
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+264
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+ 62
+    30
+100
+AcDbText
+ 10
+1591.521324442871
+ 20
+304.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ø10/20/10
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+265
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1136.521324442871
+ 20
+299.7965632368764
+ 30
+0.0
+ 11
+1136.521324442871
+ 21
+224.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+266
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1136.521324442871
+ 20
+224.7965632368764
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+224.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+267
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1736.521324442871
+ 20
+224.7965632368764
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+299.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+268
+330
+1F
+100
+AcDbEntity
+  8
+PENC4
+100
+AcDbText
+ 10
+1141.521324442871
+ 20
+254.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+S7
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+269
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1186.521324442871
+ 20
+299.7965632368764
+ 30
+0.0
+ 11
+1186.521324442871
+ 21
+224.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+26A
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   251
+100
+AcDbLine
+ 10
+1186.521324442871
+ 20
+274.7965632368764
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+274.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+26B
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   251
+100
+AcDbLine
+ 10
+1186.521324442871
+ 20
+249.7965632368764
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+249.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+26C
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1286.521324442871
+ 20
+299.7965632368764
+ 30
+0.0
+ 11
+1286.521324442871
+ 21
+224.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+26D
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   252
+100
+AcDbText
+ 10
+1191.521324442871
+ 20
+279.7965632368764
+ 30
+0.0
+ 40
+9.0
+  1
+ebad
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+26E
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   252
+100
+AcDbText
+ 10
+1191.521324442871
+ 20
+254.7965632368764
+ 30
+0.0
+ 40
+9.0
+  1
+donati
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+26F
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   252
+100
+AcDbText
+ 10
+1191.521324442871
+ 20
+229.7965632368764
+ 30
+0.0
+ 40
+9.0
+  1
+etriye
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+270
+330
+1F
+100
+AcDbEntity
+  8
+YAZI (BEYKENT)
+100
+AcDbText
+ 10
+1231.521324442871
+ 20
+279.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+35
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+271
+330
+1F
+100
+AcDbEntity
+  8
+SUBASMAN (BEYKENT)
+100
+AcDbText
+ 10
+1261.521324442871
+ 20
+279.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+70
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+272
+330
+1F
+100
+AcDbEntity
+  8
+KOT (BEYKENT)
+100
+AcDbText
+ 10
+1346.521324442871
+ 20
+279.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+-55
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+273
+330
+1F
+100
+AcDbEntity
+  8
+KOLON ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1291.521324442871
+ 20
+279.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ 30/350
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+274
+330
+1F
+100
+AcDbEntity
+  8
+YAZI (BEYKENT)
+100
+AcDbText
+ 10
+1386.521324442871
+ 20
+279.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+55
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+275
+330
+1F
+100
+AcDbEntity
+  8
+KIRIS ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1416.521324442871
+ 20
+279.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+15
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+276
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+ 10
+1291.521324442871
+ 20
+254.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+2x11ø16+2x10ø12
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+277
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+ 62
+    30
+100
+AcDbText
+ 10
+1291.521324442871
+ 20
+229.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ø10/15/10
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+278
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1436.521324442871
+ 20
+299.7965632368764
+ 30
+0.0
+ 11
+1436.521324442871
+ 21
+224.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+279
+330
+1F
+100
+AcDbEntity
+  8
+KOLON ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1441.521324442871
+ 20
+279.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ 30/350
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+27A
+330
+1F
+100
+AcDbEntity
+  8
+YAZI (BEYKENT)
+100
+AcDbText
+ 10
+1536.521324442871
+ 20
+279.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+55
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+27B
+330
+1F
+100
+AcDbEntity
+  8
+KIRIS ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1566.521324442871
+ 20
+279.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+15
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+27C
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+ 10
+1441.521324442871
+ 20
+254.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+2x7ø16+2x13ø12
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+27D
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+ 62
+    30
+100
+AcDbText
+ 10
+1441.521324442871
+ 20
+229.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ø10/20/10
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+27E
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1586.521324442871
+ 20
+299.7965632368764
+ 30
+0.0
+ 11
+1586.521324442871
+ 21
+224.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+27F
+330
+1F
+100
+AcDbEntity
+  8
+KOLON ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1591.521324442871
+ 20
+279.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ 30/350
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+280
+330
+1F
+100
+AcDbEntity
+  8
+YAZI (BEYKENT)
+100
+AcDbText
+ 10
+1686.521324442871
+ 20
+279.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+55
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+281
+330
+1F
+100
+AcDbEntity
+  8
+KIRIS ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1716.521324442871
+ 20
+279.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+15
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+282
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+ 10
+1591.521324442871
+ 20
+254.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+2x7ø16+2x13ø12
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+283
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+ 62
+    30
+100
+AcDbText
+ 10
+1591.521324442871
+ 20
+229.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ø10/20/10
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+284
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1136.521324442871
+ 20
+224.7965632368764
+ 30
+0.0
+ 11
+1136.521324442871
+ 21
+149.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+285
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1136.521324442871
+ 20
+149.7965632368764
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+149.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+286
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1736.521324442871
+ 20
+149.7965632368764
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+224.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+287
+330
+1F
+100
+AcDbEntity
+  8
+PENC4
+100
+AcDbText
+ 10
+1141.521324442871
+ 20
+179.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+S8
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+288
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1186.521324442871
+ 20
+224.7965632368764
+ 30
+0.0
+ 11
+1186.521324442871
+ 21
+149.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+289
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   251
+100
+AcDbLine
+ 10
+1186.521324442871
+ 20
+199.7965632368764
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+199.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+28A
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   251
+100
+AcDbLine
+ 10
+1186.521324442871
+ 20
+174.7965632368764
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+174.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+28B
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1286.521324442871
+ 20
+224.7965632368764
+ 30
+0.0
+ 11
+1286.521324442871
+ 21
+149.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+28C
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   252
+100
+AcDbText
+ 10
+1191.521324442871
+ 20
+204.7965632368764
+ 30
+0.0
+ 40
+9.0
+  1
+ebad
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+28D
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   252
+100
+AcDbText
+ 10
+1191.521324442871
+ 20
+179.7965632368764
+ 30
+0.0
+ 40
+9.0
+  1
+donati
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+28E
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   252
+100
+AcDbText
+ 10
+1191.521324442871
+ 20
+154.7965632368764
+ 30
+0.0
+ 40
+9.0
+  1
+etriye
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+28F
+330
+1F
+100
+AcDbEntity
+  8
+YAZI (BEYKENT)
+100
+AcDbText
+ 10
+1231.521324442871
+ 20
+204.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+35
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+290
+330
+1F
+100
+AcDbEntity
+  8
+SUBASMAN (BEYKENT)
+100
+AcDbText
+ 10
+1261.521324442871
+ 20
+204.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+70
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+291
+330
+1F
+100
+AcDbEntity
+  8
+KOT (BEYKENT)
+100
+AcDbText
+ 10
+1346.521324442871
+ 20
+204.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+-55
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+292
+330
+1F
+100
+AcDbEntity
+  8
+KOLON ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1291.521324442871
+ 20
+204.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ 30/350
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+293
+330
+1F
+100
+AcDbEntity
+  8
+YAZI (BEYKENT)
+100
+AcDbText
+ 10
+1386.521324442871
+ 20
+204.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+55
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+294
+330
+1F
+100
+AcDbEntity
+  8
+KIRIS ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1416.521324442871
+ 20
+204.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+15
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+295
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+ 10
+1291.521324442871
+ 20
+179.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+2x11ø16+2x10ø12
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+296
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+ 62
+    30
+100
+AcDbText
+ 10
+1291.521324442871
+ 20
+154.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ø10/15/10
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+297
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1436.521324442871
+ 20
+224.7965632368764
+ 30
+0.0
+ 11
+1436.521324442871
+ 21
+149.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+298
+330
+1F
+100
+AcDbEntity
+  8
+KOLON ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1441.521324442871
+ 20
+204.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ 30/350
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+299
+330
+1F
+100
+AcDbEntity
+  8
+YAZI (BEYKENT)
+100
+AcDbText
+ 10
+1536.521324442871
+ 20
+204.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+55
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+29A
+330
+1F
+100
+AcDbEntity
+  8
+KIRIS ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1566.521324442871
+ 20
+204.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+15
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+29B
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+ 10
+1441.521324442871
+ 20
+179.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+2x7ø16+2x13ø12
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+29C
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+ 62
+    30
+100
+AcDbText
+ 10
+1441.521324442871
+ 20
+154.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ø10/20/10
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+29D
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1586.521324442871
+ 20
+224.7965632368764
+ 30
+0.0
+ 11
+1586.521324442871
+ 21
+149.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+29E
+330
+1F
+100
+AcDbEntity
+  8
+KOLON ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1591.521324442871
+ 20
+204.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ 30/350
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+29F
+330
+1F
+100
+AcDbEntity
+  8
+YAZI (BEYKENT)
+100
+AcDbText
+ 10
+1686.521324442871
+ 20
+204.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+55
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+2A0
+330
+1F
+100
+AcDbEntity
+  8
+KIRIS ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1716.521324442871
+ 20
+204.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+15
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+2A1
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+ 10
+1591.521324442871
+ 20
+179.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+2x7ø16+2x13ø12
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+2A2
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+ 62
+    30
+100
+AcDbText
+ 10
+1591.521324442871
+ 20
+154.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ø10/20/10
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+2A3
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1136.521324442871
+ 20
+149.7965632368764
+ 30
+0.0
+ 11
+1136.521324442871
+ 21
+74.79656323687641
+ 31
+0.0
+  0
+LINE
+  5
+2A4
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1136.521324442871
+ 20
+74.79656323687641
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+74.79656323687641
+ 31
+0.0
+  0
+LINE
+  5
+2A5
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1736.521324442871
+ 20
+74.79656323687641
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+149.7965632368764
+ 31
+0.0
+  0
+TEXT
+  5
+2A6
+330
+1F
+100
+AcDbEntity
+  8
+PENC4
+100
+AcDbText
+ 10
+1141.521324442871
+ 20
+104.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+S9
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+2A7
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1186.521324442871
+ 20
+149.7965632368764
+ 30
+0.0
+ 11
+1186.521324442871
+ 21
+74.79656323687641
+ 31
+0.0
+  0
+LINE
+  5
+2A8
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   251
+100
+AcDbLine
+ 10
+1186.521324442871
+ 20
+124.7965632368764
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+124.7965632368764
+ 31
+0.0
+  0
+LINE
+  5
+2A9
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   251
+100
+AcDbLine
+ 10
+1186.521324442871
+ 20
+99.79656323687642
+ 30
+0.0
+ 11
+1736.521324442871
+ 21
+99.79656323687642
+ 31
+0.0
+  0
+LINE
+  5
+2AA
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1286.521324442871
+ 20
+149.7965632368764
+ 30
+0.0
+ 11
+1286.521324442871
+ 21
+74.79656323687641
+ 31
+0.0
+  0
+TEXT
+  5
+2AB
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   252
+100
+AcDbText
+ 10
+1191.521324442871
+ 20
+129.7965632368764
+ 30
+0.0
+ 40
+9.0
+  1
+ebad
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+2AC
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   252
+100
+AcDbText
+ 10
+1191.521324442871
+ 20
+104.7965632368764
+ 30
+0.0
+ 40
+9.0
+  1
+donati
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+2AD
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+ 62
+   252
+100
+AcDbText
+ 10
+1191.521324442871
+ 20
+79.79656323687641
+ 30
+0.0
+ 40
+9.0
+  1
+etriye
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+2AE
+330
+1F
+100
+AcDbEntity
+  8
+YAZI (BEYKENT)
+100
+AcDbText
+ 10
+1231.521324442871
+ 20
+129.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+35
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+2AF
+330
+1F
+100
+AcDbEntity
+  8
+SUBASMAN (BEYKENT)
+100
+AcDbText
+ 10
+1261.521324442871
+ 20
+129.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+70
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+2B0
+330
+1F
+100
+AcDbEntity
+  8
+KOT (BEYKENT)
+100
+AcDbText
+ 10
+1346.521324442871
+ 20
+129.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+-55
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+2B1
+330
+1F
+100
+AcDbEntity
+  8
+KOLON ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1291.521324442871
+ 20
+129.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ 30/350
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+2B2
+330
+1F
+100
+AcDbEntity
+  8
+YAZI (BEYKENT)
+100
+AcDbText
+ 10
+1386.521324442871
+ 20
+129.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+55
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+2B3
+330
+1F
+100
+AcDbEntity
+  8
+KIRIS ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1416.521324442871
+ 20
+129.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+15
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+2B4
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+ 10
+1291.521324442871
+ 20
+104.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+2x11ø16+2x10ø12
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+2B5
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+ 62
+    30
+100
+AcDbText
+ 10
+1291.521324442871
+ 20
+79.79656323687641
+ 30
+0.0
+ 40
+11.5
+  1
+ø10/15/10
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+2B6
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1436.521324442871
+ 20
+149.7965632368764
+ 30
+0.0
+ 11
+1436.521324442871
+ 21
+74.79656323687641
+ 31
+0.0
+  0
+TEXT
+  5
+2B7
+330
+1F
+100
+AcDbEntity
+  8
+KOLON ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1441.521324442871
+ 20
+129.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ 30/350
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+2B8
+330
+1F
+100
+AcDbEntity
+  8
+YAZI (BEYKENT)
+100
+AcDbText
+ 10
+1536.521324442871
+ 20
+129.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+55
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+2B9
+330
+1F
+100
+AcDbEntity
+  8
+KIRIS ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1566.521324442871
+ 20
+129.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+15
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+2BA
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+ 10
+1441.521324442871
+ 20
+104.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+2x7ø16+2x13ø12
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+2BB
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+ 62
+    30
+100
+AcDbText
+ 10
+1441.521324442871
+ 20
+79.79656323687641
+ 30
+0.0
+ 40
+11.5
+  1
+ø10/20/10
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+LINE
+  5
+2BC
+330
+1F
+100
+AcDbEntity
+  8
+donatiplus.com
+100
+AcDbLine
+ 10
+1586.521324442871
+ 20
+149.7965632368764
+ 30
+0.0
+ 11
+1586.521324442871
+ 21
+74.79656323687641
+ 31
+0.0
+  0
+TEXT
+  5
+2BD
+330
+1F
+100
+AcDbEntity
+  8
+KOLON ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1591.521324442871
+ 20
+129.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+ 30/350
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+2BE
+330
+1F
+100
+AcDbEntity
+  8
+YAZI (BEYKENT)
+100
+AcDbText
+ 10
+1686.521324442871
+ 20
+129.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+55
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+2BF
+330
+1F
+100
+AcDbEntity
+  8
+KIRIS ISMI (BEYKENT)
+100
+AcDbText
+ 10
+1716.521324442871
+ 20
+129.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+15
+ 41
+0.7
+  7
+YAZI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+2C0
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+ 10
+1591.521324442871
+ 20
+104.7965632368764
+ 30
+0.0
+ 40
+11.5
+  1
+2x7ø16+2x13ø12
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+TEXT
+  5
+2C1
+330
+1F
+100
+AcDbEntity
+  8
+DONATI YAZISI (BEYKENT)
+ 62
+    30
+100
+AcDbText
+ 10
+1591.521324442871
+ 20
+79.79656323687641
+ 30
+0.0
+ 40
+11.5
+  1
+ø10/20/10
+ 41
+0.7
+  7
+DONATI YAZISI (BEYKENT)
+100
+AcDbText
+  0
+ENDSEC
+  0
+SECTION
+  2
+OBJECTS
+  0
+DICTIONARY
+  5
+C
+330
+0
+100
+AcDbDictionary
+281
+     1
+  3
+ACAD_CIP_PREVIOUS_PRODUCT_INFO
+350
+14F
+  3
+ACAD_COLOR
+350
+104
+  3
+ACAD_DETAILVIEWSTYLE
+350
+147
+  3
+ACAD_FIELDLIST
+350
+105
+  3
+ACAD_GROUP
+350
+D
+  3
+ACAD_IMAGE_DICT
+350
+106
+  3
+ACAD_LAYOUT
+350
+1A
+  3
+ACAD_MATERIAL
+350
+107
+  3
+ACAD_MLEADERSTYLE
+350
+108
+  3
+ACAD_MLINESTYLE
+350
+17
+  3
+ACAD_PLOTSETTINGS
+350
+19
+  3
+ACAD_PLOTSTYLENAME
+350
+E
+  3
+ACAD_SCALELIST
+350
+F2
+  3
+ACAD_SECTIONVIEWSTYLE
+350
+145
+  3
+ACAD_TABLESTYLE
+350
+109
+  3
+ACAD_VISUALSTYLE
+350
+10F
+  3
+ACDB_RECOMPOSE_DATA
+350
+2DE
+  3
+AcDbVariableDictionary
+350
+10C
+  0
+DICTIONARY
+  5
+2C5
+330
+2
+100
+AcDbDictionary
+280
+     1
+281
+     1
+  3
+ACAD_LAYERSTATES
+360
+2C6
+  0
+XRECORD
+  5
+14F
+102
+{ACAD_REACTORS
+330
+C
+102
+}
+330
+C
+100
+AcDbXrecord
+280
+     1
+300
+ACD
+300
+2023
+300
+
+  0
+DICTIONARY
+  5
+104
+102
+{ACAD_REACTORS
+330
+C
+102
+}
+330
+C
+100
+AcDbDictionary
+281
+     1
+  0
+DICTIONARY
+  5
+147
+102
+{ACAD_REACTORS
+330
+C
+102
+}
+330
+C
+100
+AcDbDictionary
+281
+     1
+  3
+Metric50
+350
+148
+  0
+FIELDLIST
+  5
+105
+102
+{ACAD_REACTORS
+330
+C
+102
+}
+330
+C
+100
+AcDbIdSet
+ 90
+        0
+100
+AcDbFieldList
+  0
+DICTIONARY
+  5
+D
+102
+{ACAD_REACTORS
+330
+C
+102
+}
+330
+C
+100
+AcDbDictionary
+281
+     1
+  0
+DICTIONARY
+  5
+106
+102
+{ACAD_REACTORS
+330
+C
+102
+}
+330
+C
+100
+AcDbDictionary
+281
+     1
+  0
+DICTIONARY
+  5
+1A
+102
+{ACAD_REACTORS
+330
+C
+102
+}
+330
+C
+100
+AcDbDictionary
+281
+     1
+  3
+Layout1
+350
+1E
+  3
+Model
+350
+22
+  0
+DICTIONARY
+  5
+107
+102
+{ACAD_REACTORS
+330
+C
+102
+}
+330
+C
+100
+AcDbDictionary
+281
+     1
+  3
+ByBlock
+350
+11C
+  3
+ByLayer
+350
+114
+  3
+Global
+350
+124
+  0
+DICTIONARY
+  5
+108
+102
+{ACAD_REACTORS
+330
+C
+102
+}
+330
+C
+100
+AcDbDictionary
+281
+     1
+  3
+Standard
+350
+144
+  0
+DICTIONARY
+  5
+17
+102
+{ACAD_REACTORS
+330
+C
+102
+}
+330
+C
+100
+AcDbDictionary
+281
+     1
+  3
+STANDARD
+350
+18
+  0
+DICTIONARY
+  5
+19
+102
+{ACAD_REACTORS
+330
+C
+102
+}
+330
+C
+100
+AcDbDictionary
+281
+     1
+  0
+ACDBDICTIONARYWDFLT
+  5
+E
+102
+{ACAD_REACTORS
+330
+C
+102
+}
+330
+C
+100
+AcDbDictionary
+281
+     1
+  3
+Normal
+350
+F
+100
+AcDbDictionaryWithDefault
+340
+F
+  0
+DICTIONARY
+  5
+F2
+102
+{ACAD_REACTORS
+330
+C
+102
+}
+330
+C
+100
+AcDbDictionary
+281
+     1
+  3
+A0
+350
+F3
+  3
+A1
+350
+F4
+  3
+A2
+350
+F5
+  3
+A3
+350
+F6
+  3
+A4
+350
+F7
+  3
+A5
+350
+F8
+  3
+A6
+350
+F9
+  3
+A7
+350
+FA
+  3
+A8
+350
+FB
+  3
+A9
+350
+FC
+  3
+B0
+350
+FD
+  3
+B1
+350
+FE
+  3
+B2
+350
+FF
+  3
+B3
+350
+100
+  3
+B4
+350
+101
+  3
+B5
+350
+102
+  3
+B6
+350
+103
+  0
+DICTIONARY
+  5
+145
+102
+{ACAD_REACTORS
+330
+C
+102
+}
+330
+C
+100
+AcDbDictionary
+281
+     1
+  3
+Metric50
+350
+146
+  0
+DICTIONARY
+  5
+109
+102
+{ACAD_REACTORS
+330
+C
+102
+}
+330
+C
+100
+AcDbDictionary
+281
+     1
+  3
+Standard
+350
+10A
+  0
+DICTIONARY
+  5
+10F
+102
+{ACAD_REACTORS
+330
+C
+102
+}
+330
+C
+100
+AcDbDictionary
+281
+     1
+  3
+2dWireframe
+350
+131
+  3
+Basic
+350
+130
+  3
+Brighten
+350
+137
+  3
+ColorChange
+350
+13B
+  3
+Conceptual
+350
+134
+  3
+Dim
+350
+136
+  3
+EdgeColorOff
+350
+143
+  3
+Facepattern
+350
+13A
+  3
+Flat
+350
+12C
+  3
+FlatWithEdges
+350
+12D
+  3
+Gouraud
+350
+12E
+  3
+GouraudWithEdges
+350
+12F
+  3
+Hidden
+350
+133
+  3
+JitterOff
+350
+141
+  3
+Linepattern
+350
+139
+  3
+OverhangOff
+350
+142
+  3
+Realistic
+350
+135
+  3
+Shaded
+350
+140
+  3
+Shaded with edges
+350
+13F
+  3
+Shades of Gray
+350
+13C
+  3
+Sketchy
+350
+13D
+  3
+Thicken
+350
+138
+  3
+Wireframe
+350
+132
+  3
+X-Ray
+350
+13E
+  0
+XRECORD
+  5
+2DE
+102
+{ACAD_REACTORS
+330
+C
+102
+}
+330
+C
+100
+AcDbXrecord
+280
+     1
+ 90
+        1
+330
+10A
+  0
+DICTIONARY
+  5
+10C
+102
+{ACAD_REACTORS
+330
+C
+102
+}
+330
+C
+100
+AcDbDictionary
+281
+     1
+  3
+CANNOSCALE
+350
+2CF
+  3
+CMLEADERSTYLE
+350
+2CC
+  3
+CTABLESTYLE
+350
+2CB
+  3
+CVIEWDETAILSTYLE
+350
+2CD
+  3
+CVIEWSECTIONSTYLE
+350
+2CE
+  3
+DIMASSOC
+350
+10D
+  3
+HIDETEXT
+350
+10E
+  0
+DICTIONARY
+  5
+2C6
+102
+{ACAD_REACTORS
+330
+2C5
+102
+}
+330
+2C5
+100
+AcDbDictionary
+281
+     1
+  0
+ACDBDETAILVIEWSTYLE
+  5
+148
+102
+{ACAD_REACTORS
+330
+147
+102
+}
+330
+147
+100
+AcDbModelDocViewStyle
+ 70
+     0
+  3
+Metric50
+290
+     1
+300
+Metric50
+ 90
+        0
+100
+AcDbDetailViewStyle
+ 70
+     0
+ 71
+     0
+ 90
+        3
+ 71
+     1
+340
+11
+ 62
+   256
+ 40
+5.0
+340
+0
+ 62
+   256
+ 40
+5.0
+300
+
+ 40
+0.0
+280
+     1
+ 71
+     2
+340
+16
+ 90
+       25
+ 62
+   256
+ 71
+     3
+340
+11
+ 62
+   256
+ 40
+5.0
+ 90
+        0
+ 40
+15.0
+ 90
+        1
+300
+%<\AcVar ViewDetailId>% (%<\AcVar ViewScale \f "%sn">%)
+ 71
+     4
+340
+16
+ 90
+       25
+ 62
+   256
+340
+16
+ 90
+       25
+ 62
+   256
+280
+     0
+  0
+LAYOUT
+  5
+1E
+102
+{ACAD_REACTORS
+330
+1A
+102
+}
+330
+1A
+100
+AcDbPlotSettings
+  1
+
+  2
+C:\Program Files\AutoCAD 2002\plotters\DWF ePlot (optimized for plotting).pc3
+  4
+
+  6
+
+ 40
+0.0
+ 41
+0.0
+ 42
+0.0
+ 43
+0.0
+ 44
+0.0
+ 45
+0.0
+ 46
+0.0
+ 47
+0.0
+ 48
+0.0
+ 49
+0.0
+140
+0.0
+141
+0.0
+142
+1.0
+143
+1.0
+ 70
+   688
+ 72
+     1
+ 73
+     1
+ 74
+     1
+  7
+acad.stb
+ 75
+    16
+147
+1.0
+ 76
+     0
+ 77
+     0
+ 78
+     0
+148
+0.0
+149
+0.0
+100
+AcDbLayout
+  1
+Layout1
+ 70
+     1
+ 71
+     1
+ 10
+0.0
+ 20
+0.0
+ 11
+0.0
+ 21
+0.0
+ 12
+0.0
+ 22
+0.0
+ 32
+0.0
+ 14
+1.000000000000000E+20
+ 24
+1.000000000000000E+20
+ 34
+1.000000000000000E+20
+ 15
+-1.000000000000000E+20
+ 25
+-1.000000000000000E+20
+ 35
+-1.000000000000000E+20
+146
+0.0
+ 13
+0.0
+ 23
+0.0
+ 33
+0.0
+ 16
+1.0
+ 26
+0.0
+ 36
+0.0
+ 17
+0.0
+ 27
+1.0
+ 37
+0.0
+ 76
+     0
+330
+EA
+  0
+LAYOUT
+  5
+22
+102
+{ACAD_REACTORS
+330
+1A
+102
+}
+330
+1A
+100
+AcDbPlotSettings
+  1
+
+  2
+C:\Program Files\AutoCAD 2002\plotters\DWF ePlot (optimized for plotting).pc3
+  4
+
+  6
+
+ 40
+0.0
+ 41
+0.0
+ 42
+0.0
+ 43
+0.0
+ 44
+0.0
+ 45
+0.0
+ 46
+0.0
+ 47
+0.0
+ 48
+0.0
+ 49
+0.0
+140
+0.0
+141
+0.0
+142
+1.0
+143
+1.0
+ 70
+  1712
+ 72
+     1
+ 73
+     1
+ 74
+     0
+  7
+acad.stb
+ 75
+     0
+147
+1.0
+ 76
+     0
+ 77
+     0
+ 78
+     0
+148
+0.0
+149
+0.0
+100
+AcDbLayout
+  1
+Model
+ 70
+     1
+ 71
+     0
+ 10
+0.0
+ 20
+0.0
+ 11
+12.0
+ 21
+9.0
+ 12
+0.0
+ 22
+0.0
+ 32
+0.0
+ 14
+0.0
+ 24
+0.0
+ 34
+0.0
+ 15
+0.0
+ 25
+0.0
+ 35
+0.0
+146
+0.0
+ 13
+0.0
+ 23
+0.0
+ 33
+0.0
+ 16
+1.0
+ 26
+0.0
+ 36
+0.0
+ 17
+0.0
+ 27
+1.0
+ 37
+0.0
+ 76
+     0
+330
+1F
+331
+14E
+  0
+MATERIAL
+  5
+11C
+102
+{ACAD_XDICTIONARY
+360
+11D
+102
+}
+102
+{ACAD_REACTORS
+330
+107
+102
+}
+330
+107
+100
+AcDbMaterial
+  1
+ByBlock
+ 72
+     0
+ 43
+0.0208333333333333
+ 43
+0.0
+ 43
+0.0
+ 43
+0.0
+ 43
+0.0
+ 43
+0.0208333333333333
+ 43
+0.0
+ 43
+0.0
+ 43
+0.0
+ 43
+0.0
+ 43
+1.0
+ 43
+0.0
+ 43
+0.0
+ 43
+0.0
+ 43
+0.0
+ 43
+1.0
+ 77
+     0
+ 47
+0.0208333333333333
+ 47
+0.0
+ 47
+0.0
+ 47
+0.0
+ 47
+0.0
+ 47
+0.0208333333333333
+ 47
+0.0
+ 47
+0.0
+ 47
+0.0
+ 47
+0.0
+ 47
+1.0
+ 47
+0.0
+ 47
+0.0
+ 47
+0.0
+ 47
+0.0
+ 47
+1.0
+171
+     0
+ 49
+0.0208333333333333
+ 49
+0.0
+ 49
+0.0
+ 49
+0.0
+ 49
+0.0
+ 49
+0.0208333333333333
+ 49
+0.0
+ 49
+0.0
+ 49
+0.0
+ 49
+0.0
+ 49
+1.0
+ 49
+0.0
+ 49
+0.0
+ 49
+0.0
+ 49
+0.0
+ 49
+1.0
+175
+     0
+142
+0.0208333333333333
+142
+0.0
+142
+0.0
+142
+0.0
+142
+0.0
+142
+0.0208333333333333
+142
+0.0
+142
+0.0
+142
+0.0
+142
+0.0
+142
+1.0
+142
+0.0
+142
+0.0
+142
+0.0
+142
+0.0
+142
+1.0
+179
+     0
+144
+0.0208333333333333
+144
+0.0
+144
+0.0
+144
+0.0
+144
+0.0
+144
+0.0208333333333333
+144
+0.0
+144
+0.0
+144
+0.0
+144
+0.0
+144
+1.0
+144
+0.0
+144
+0.0
+144
+0.0
+144
+0.0
+144
+1.0
+147
+0.0208333333333333
+147
+0.0
+147
+0.0
+147
+0.0
+147
+0.0
+147
+0.0208333333333333
+147
+0.0
+147
+0.0
+147
+0.0
+147
+0.0
+147
+1.0
+147
+0.0
+147
+0.0
+147
+0.0
+147
+0.0
+147
+1.0
+  0
+MATERIAL
+  5
+114
+102
+{ACAD_XDICTIONARY
+360
+115
+102
+}
+102
+{ACAD_REACTORS
+330
+107
+102
+}
+330
+107
+100
+AcDbMaterial
+  1
+ByLayer
+ 72
+     0
+ 43
+0.0208333333333333
+ 43
+0.0
+ 43
+0.0
+ 43
+0.0
+ 43
+0.0
+ 43
+0.0208333333333333
+ 43
+0.0
+ 43
+0.0
+ 43
+0.0
+ 43
+0.0
+ 43
+1.0
+ 43
+0.0
+ 43
+0.0
+ 43
+0.0
+ 43
+0.0
+ 43
+1.0
+ 77
+     0
+ 47
+0.0208333333333333
+ 47
+0.0
+ 47
+0.0
+ 47
+0.0
+ 47
+0.0
+ 47
+0.0208333333333333
+ 47
+0.0
+ 47
+0.0
+ 47
+0.0
+ 47
+0.0
+ 47
+1.0
+ 47
+0.0
+ 47
+0.0
+ 47
+0.0
+ 47
+0.0
+ 47
+1.0
+171
+     0
+ 49
+0.0208333333333333
+ 49
+0.0
+ 49
+0.0
+ 49
+0.0
+ 49
+0.0
+ 49
+0.0208333333333333
+ 49
+0.0
+ 49
+0.0
+ 49
+0.0
+ 49
+0.0
+ 49
+1.0
+ 49
+0.0
+ 49
+0.0
+ 49
+0.0
+ 49
+0.0
+ 49
+1.0
+175
+     0
+142
+0.0208333333333333
+142
+0.0
+142
+0.0
+142
+0.0
+142
+0.0
+142
+0.0208333333333333
+142
+0.0
+142
+0.0
+142
+0.0
+142
+0.0
+142
+1.0
+142
+0.0
+142
+0.0
+142
+0.0
+142
+0.0
+142
+1.0
+179
+     0
+144
+0.0208333333333333
+144
+0.0
+144
+0.0
+144
+0.0
+144
+0.0
+144
+0.0208333333333333
+144
+0.0
+144
+0.0
+144
+0.0
+144
+0.0
+144
+1.0
+144
+0.0
+144
+0.0
+144
+0.0
+144
+0.0
+144
+1.0
+147
+0.0208333333333333
+147
+0.0
+147
+0.0
+147
+0.0
+147
+0.0
+147
+0.0208333333333333
+147
+0.0
+147
+0.0
+147
+0.0
+147
+0.0
+147
+1.0
+147
+0.0
+147
+0.0
+147
+0.0
+147
+0.0
+147
+1.0
+  0
+MATERIAL
+  5
+124
+102
+{ACAD_XDICTIONARY
+360
+125
+102
+}
+102
+{ACAD_REACTORS
+330
+107
+102
+}
+330
+107
+100
+AcDbMaterial
+  1
+Global
+ 72
+     0
+ 43
+0.0208333333333333
+ 43
+0.0
+ 43
+0.0
+ 43
+0.0
+ 43
+0.0
+ 43
+0.0208333333333333
+ 43
+0.0
+ 43
+0.0
+ 43
+0.0
+ 43
+0.0
+ 43
+1.0
+ 43
+0.0
+ 43
+0.0
+ 43
+0.0
+ 43
+0.0
+ 43
+1.0
+ 77
+     0
+ 47
+0.0208333333333333
+ 47
+0.0
+ 47
+0.0
+ 47
+0.0
+ 47
+0.0
+ 47
+0.0208333333333333
+ 47
+0.0
+ 47
+0.0
+ 47
+0.0
+ 47
+0.0
+ 47
+1.0
+ 47
+0.0
+ 47
+0.0
+ 47
+0.0
+ 47
+0.0
+ 47
+1.0
+171
+     0
+ 49
+0.0208333333333333
+ 49
+0.0
+ 49
+0.0
+ 49
+0.0
+ 49
+0.0
+ 49
+0.0208333333333333
+ 49
+0.0
+ 49
+0.0
+ 49
+0.0
+ 49
+0.0
+ 49
+1.0
+ 49
+0.0
+ 49
+0.0
+ 49
+0.0
+ 49
+0.0
+ 49
+1.0
+175
+     0
+142
+0.0208333333333333
+142
+0.0
+142
+0.0
+142
+0.0
+142
+0.0
+142
+0.0208333333333333
+142
+0.0
+142
+0.0
+142
+0.0
+142
+0.0
+142
+1.0
+142
+0.0
+142
+0.0
+142
+0.0
+142
+0.0
+142
+1.0
+179
+     0
+144
+0.0208333333333333
+144
+0.0
+144
+0.0
+144
+0.0
+144
+0.0
+144
+0.0208333333333333
+144
+0.0
+144
+0.0
+144
+0.0
+144
+0.0
+144
+1.0
+144
+0.0
+144
+0.0
+144
+0.0
+144
+0.0
+144
+1.0
+147
+0.0208333333333333
+147
+0.0
+147
+0.0
+147
+0.0
+147
+0.0
+147
+0.0208333333333333
+147
+0.0
+147
+0.0
+147
+0.0
+147
+0.0
+147
+1.0
+147
+0.0
+147
+0.0
+147
+0.0
+147
+0.0
+147
+1.0
+  0
+MLEADERSTYLE
+  5
+144
+102
+{ACAD_REACTORS
+330
+108
+102
+}
+330
+108
+100
+AcDbMLeaderStyle
+179
+     2
+170
+     2
+171
+     1
+172
+     0
+ 90
+        2
+ 40
+0.0
+ 41
+0.0
+173
+     1
+ 91
+-1056964608
+340
+14
+ 92
+       -2
+290
+     1
+ 42
+2.0
+291
+     1
+ 43
+0.36
+  3
+Standard
+ 44
+4.0
+300
+
+342
+11
+174
+     1
+178
+     6
+175
+     1
+176
+     0
+ 93
+-1056964608
+ 45
+4.0
+292
+     0
+297
+     0
+ 46
+4.0
+ 94
+-1056964608
+ 47
+1.0
+ 49
+1.0
+140
+1.0
+293
+     1
+141
+0.0
+294
+     1
+177
+     0
+142
+1.0
+295
+     1
+296
+     0
+143
+0.125
+271
+     0
+272
+     9
+273
+     9
+298
+     1
+  0
+MLINESTYLE
+  5
+18
+102
+{ACAD_REACTORS
+330
+17
+102
+}
+330
+17
+100
+AcDbMlineStyle
+  2
+STANDARD
+ 70
+     0
+  3
+
+ 62
+   256
+ 51
+90.0
+ 52
+90.0
+ 71
+     2
+ 49
+0.5
+ 62
+     0
+  6
+BYLAYER
+ 49
+-0.5
+ 62
+     0
+  6
+BYLAYER
+  0
+ACDBPLACEHOLDER
+  5
+F
+102
+{ACAD_REACTORS
+330
+E
+102
+}
+330
+E
+  0
+SCALE
+  5
+F3
+102
+{ACAD_REACTORS
+330
+F2
+102
+}
+330
+F2
+100
+AcDbScale
+ 70
+     0
+300
+1:1
+140
+1.0
+141
+1.0
+290
+     1
+  0
+SCALE
+  5
+F4
+102
+{ACAD_REACTORS
+330
+F2
+102
+}
+330
+F2
+100
+AcDbScale
+ 70
+     0
+300
+1:2
+140
+1.0
+141
+2.0
+290
+     0
+  0
+SCALE
+  5
+F5
+102
+{ACAD_REACTORS
+330
+F2
+102
+}
+330
+F2
+100
+AcDbScale
+ 70
+     0
+300
+1:4
+140
+1.0
+141
+4.0
+290
+     0
+  0
+SCALE
+  5
+F6
+102
+{ACAD_REACTORS
+330
+F2
+102
+}
+330
+F2
+100
+AcDbScale
+ 70
+     0
+300
+1:5
+140
+1.0
+141
+5.0
+290
+     0
+  0
+SCALE
+  5
+F7
+102
+{ACAD_REACTORS
+330
+F2
+102
+}
+330
+F2
+100
+AcDbScale
+ 70
+     0
+300
+1:8
+140
+1.0
+141
+8.0
+290
+     0
+  0
+SCALE
+  5
+F8
+102
+{ACAD_REACTORS
+330
+F2
+102
+}
+330
+F2
+100
+AcDbScale
+ 70
+     0
+300
+1:10
+140
+1.0
+141
+10.0
+290
+     0
+  0
+SCALE
+  5
+F9
+102
+{ACAD_REACTORS
+330
+F2
+102
+}
+330
+F2
+100
+AcDbScale
+ 70
+     0
+300
+1:16
+140
+1.0
+141
+16.0
+290
+     0
+  0
+SCALE
+  5
+FA
+102
+{ACAD_REACTORS
+330
+F2
+102
+}
+330
+F2
+100
+AcDbScale
+ 70
+     0
+300
+1:20
+140
+1.0
+141
+20.0
+290
+     0
+  0
+SCALE
+  5
+FB
+102
+{ACAD_REACTORS
+330
+F2
+102
+}
+330
+F2
+100
+AcDbScale
+ 70
+     0
+300
+1:30
+140
+1.0
+141
+30.0
+290
+     0
+  0
+SCALE
+  5
+FC
+102
+{ACAD_REACTORS
+330
+F2
+102
+}
+330
+F2
+100
+AcDbScale
+ 70
+     0
+300
+1:40
+140
+1.0
+141
+40.0
+290
+     0
+  0
+SCALE
+  5
+FD
+102
+{ACAD_REACTORS
+330
+F2
+102
+}
+330
+F2
+100
+AcDbScale
+ 70
+     0
+300
+1:50
+140
+1.0
+141
+50.0
+290
+     0
+  0
+SCALE
+  5
+FE
+102
+{ACAD_REACTORS
+330
+F2
+102
+}
+330
+F2
+100
+AcDbScale
+ 70
+     0
+300
+1:100
+140
+1.0
+141
+100.0
+290
+     0
+  0
+SCALE
+  5
+FF
+102
+{ACAD_REACTORS
+330
+F2
+102
+}
+330
+F2
+100
+AcDbScale
+ 70
+     0
+300
+2:1
+140
+2.0
+141
+1.0
+290
+     0
+  0
+SCALE
+  5
+100
+102
+{ACAD_REACTORS
+330
+F2
+102
+}
+330
+F2
+100
+AcDbScale
+ 70
+     0
+300
+4:1
+140
+4.0
+141
+1.0
+290
+     0
+  0
+SCALE
+  5
+101
+102
+{ACAD_REACTORS
+330
+F2
+102
+}
+330
+F2
+100
+AcDbScale
+ 70
+     0
+300
+8:1
+140
+8.0
+141
+1.0
+290
+     0
+  0
+SCALE
+  5
+102
+102
+{ACAD_REACTORS
+330
+F2
+102
+}
+330
+F2
+100
+AcDbScale
+ 70
+     0
+300
+10:1
+140
+10.0
+141
+1.0
+290
+     0
+  0
+SCALE
+  5
+103
+102
+{ACAD_REACTORS
+330
+F2
+102
+}
+330
+F2
+100
+AcDbScale
+ 70
+     0
+300
+100:1
+140
+100.0
+141
+1.0
+290
+     0
+  0
+ACDBSECTIONVIEWSTYLE
+  5
+146
+102
+{ACAD_REACTORS
+330
+145
+102
+}
+330
+145
+100
+AcDbModelDocViewStyle
+ 70
+     0
+  3
+Metric50
+290
+     1
+300
+Metric50
+ 90
+        0
+100
+AcDbSectionViewStyle
+ 70
+     0
+ 71
+     0
+ 90
+      102
+ 71
+     1
+340
+11
+ 62
+   256
+ 40
+5.0
+340
+0
+340
+0
+ 62
+   256
+ 40
+5.0
+300
+I, O, Q, S, X, Z
+ 40
+10.0
+ 90
+        0
+ 40
+2.5
+ 90
+        0
+ 71
+     2
+340
+16
+ 90
+       25
+ 62
+   256
+340
+16
+ 90
+       50
+ 62
+   256
+ 40
+5.0
+ 40
+2.5
+ 40
+5.0
+ 71
+     3
+340
+11
+ 62
+   256
+ 40
+5.0
+ 90
+        0
+ 40
+15.0
+ 90
+        1
+300
+%<\AcVar ViewSectionStartId>%-%<\AcVar ViewSectionEndId>% (%<\AcVar ViewScale \f "%sn">%)
+ 71
+     4
+ 62
+   256
+ 62
+   257
+300
+ANSI31
+ 40
+1.0
+ 90
+        0
+290
+     0
+290
+     0
+ 90
+        6
+ 40
+0.0
+ 40
+1.570796326794896
+ 40
+0.2617993877991494
+ 40
+1.308996938995747
+ 40
+-0.2617993877991494
+ 40
+1.832595714594046
+  0
+TABLESTYLE
+  5
+10A
+102
+{ACAD_XDICTIONARY
+360
+2DC
+102
+}
+102
+{ACAD_REACTORS
+330
+109
+102
+}
+330
+109
+100
+AcDbTableStyle
+280
+     0
+  3
+
+ 70
+     0
+ 71
+     0
+ 40
+0.06
+ 41
+0.06
+280
+     0
+281
+     0
+140
+0.18
+170
+     1
+ 62
+     0
+ 63
+     7
+283
+     0
+ 90
+      512
+ 91
+        0
+  1
+
+274
+    -2
+284
+     1
+ 64
+     0
+275
+    -2
+285
+     1
+ 65
+     0
+276
+    -2
+286
+     1
+ 66
+     0
+277
+    -2
+287
+     1
+ 67
+     0
+278
+    -2
+288
+     1
+ 68
+     0
+279
+    -2
+289
+     1
+ 69
+     0
+140
+0.18
+170
+     1
+ 62
+     0
+ 63
+     7
+283
+     0
+ 90
+      512
+ 91
+        0
+  1
+
+274
+    -2
+284
+     1
+ 64
+     0
+275
+    -2
+285
+     1
+ 65
+     0
+276
+    -2
+286
+     1
+ 66
+     0
+277
+    -2
+287
+     1
+ 67
+     0
+278
+    -2
+288
+     1
+ 68
+     0
+279
+    -2
+289
+     1
+ 69
+     0
+140
+0.18
+170
+     1
+ 62
+     0
+ 63
+     7
+283
+     0
+ 90
+      512
+ 91
+        0
+  1
+
+274
+    -2
+284
+     1
+ 64
+     0
+275
+    -2
+285
+     1
+ 65
+     0
+276
+    -2
+286
+     1
+ 66
+     0
+277
+    -2
+287
+     1
+ 67
+     0
+278
+    -2
+288
+     1
+ 68
+     0
+279
+    -2
+289
+     1
+ 69
+     0
+  0
+VISUALSTYLE
+  5
+131
+102
+{ACAD_REACTORS
+330
+10F
+102
+}
+330
+10F
+100
+AcDbVisualStyle
+  2
+2dWireframe
+ 70
+     4
+177
+     3
+291
+     0
+ 70
+    58
+ 90
+        0
+176
+     1
+ 90
+        2
+176
+     1
+ 90
+        0
+176
+     1
+ 90
+        0
+176
+     1
+ 40
+0.6
+176
+     1
+ 40
+30.0
+176
+     1
+ 62
+     7
+420
+ 16777215
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        4
+176
+     1
+ 62
+     7
+176
+     1
+ 62
+   257
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        1
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        0
+176
+     1
+ 62
+   257
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        6
+176
+     1
+ 90
+        2
+176
+     1
+ 62
+     7
+176
+     1
+ 90
+        5
+176
+     1
+ 90
+        0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+ 90
+        1
+176
+     1
+ 40
+0.0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     1
+176
+     1
+290
+     1
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 40
+0.0
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        0
+176
+     1
+ 62
+    18
+420
+        0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+        3
+176
+     1
+ 62
+     5
+420
+      255
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 62
+   256
+176
+     0
+ 40
+1.0
+176
+     0
+ 90
+        2
+176
+     1
+  1
+strokes_ogs.tif
+176
+     1
+290
+     0
+176
+     1
+ 40
+1.0
+176
+     1
+ 40
+1.0
+176
+     1
+  0
+VISUALSTYLE
+  5
+130
+102
+{ACAD_REACTORS
+330
+10F
+102
+}
+330
+10F
+100
+AcDbVisualStyle
+  2
+Basic
+ 70
+     7
+177
+     3
+291
+     1
+ 70
+    58
+ 90
+        1
+176
+     1
+ 90
+        0
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        0
+176
+     1
+ 40
+0.6
+176
+     1
+ 40
+30.0
+176
+     1
+ 62
+     7
+420
+ 16777215
+176
+     1
+ 90
+        0
+176
+     1
+ 90
+        4
+176
+     1
+ 62
+     7
+176
+     1
+ 62
+   257
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        1
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        8
+176
+     1
+ 62
+     7
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        6
+176
+     1
+ 90
+        2
+176
+     1
+ 62
+     7
+176
+     1
+ 90
+        5
+176
+     1
+ 90
+        0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+ 90
+        1
+176
+     1
+ 40
+0.0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+290
+     1
+176
+     1
+290
+     1
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 40
+0.0
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        0
+176
+     1
+ 62
+    18
+420
+        0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+        3
+176
+     1
+ 62
+     5
+420
+      255
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 62
+   256
+176
+     0
+ 40
+1.0
+176
+     0
+ 90
+        2
+176
+     1
+  1
+strokes_ogs.tif
+176
+     1
+290
+     0
+176
+     1
+ 40
+1.0
+176
+     1
+ 40
+1.0
+176
+     1
+  0
+VISUALSTYLE
+  5
+137
+102
+{ACAD_REACTORS
+330
+10F
+102
+}
+330
+10F
+100
+AcDbVisualStyle
+  2
+Brighten
+ 70
+    12
+177
+     3
+291
+     1
+ 70
+    58
+ 90
+        2
+176
+     1
+ 90
+        2
+176
+     1
+ 90
+        0
+176
+     1
+ 90
+        0
+176
+     1
+ 40
+0.6
+176
+     1
+ 40
+30.0
+176
+     1
+ 62
+     7
+420
+ 16777215
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        4
+176
+     1
+ 62
+     7
+176
+     1
+ 62
+   257
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        1
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        8
+176
+     1
+ 62
+     7
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        6
+176
+     1
+ 90
+        2
+176
+     1
+ 62
+     7
+176
+     1
+ 90
+        5
+176
+     1
+ 90
+        0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+ 90
+        1
+176
+     1
+ 40
+50.0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+290
+     1
+176
+     1
+290
+     1
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 40
+0.0
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        0
+176
+     1
+ 62
+    18
+420
+        0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+        3
+176
+     1
+ 62
+     5
+420
+      255
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 62
+   256
+176
+     0
+ 40
+1.0
+176
+     0
+ 90
+        2
+176
+     1
+  1
+strokes_ogs.tif
+176
+     1
+290
+     0
+176
+     1
+ 40
+1.0
+176
+     1
+ 40
+1.0
+176
+     1
+  0
+VISUALSTYLE
+  5
+13B
+102
+{ACAD_REACTORS
+330
+10F
+102
+}
+330
+10F
+100
+AcDbVisualStyle
+  2
+ColorChange
+ 70
+    16
+177
+     3
+291
+     1
+ 70
+    58
+ 90
+        2
+176
+     1
+ 90
+        2
+176
+     1
+ 90
+        3
+176
+     1
+ 90
+        0
+176
+     1
+ 40
+0.6
+176
+     1
+ 40
+30.0
+176
+     1
+ 62
+     8
+420
+  8421504
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        4
+176
+     1
+ 62
+     7
+176
+     1
+ 62
+   257
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        1
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        8
+176
+     1
+ 62
+     8
+420
+  8421504
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        6
+176
+     1
+ 90
+        2
+176
+     1
+ 62
+     7
+176
+     1
+ 90
+        5
+176
+     1
+ 90
+        0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+ 90
+        1
+176
+     1
+ 40
+0.0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+290
+     1
+176
+     1
+290
+     1
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 40
+0.0
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        0
+176
+     1
+ 62
+    18
+420
+        0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+        3
+176
+     1
+ 62
+     5
+420
+      255
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 62
+   256
+176
+     0
+ 40
+1.0
+176
+     0
+ 90
+        2
+176
+     1
+  1
+strokes_ogs.tif
+176
+     1
+290
+     0
+176
+     1
+ 40
+1.0
+176
+     1
+ 40
+1.0
+176
+     1
+  0
+VISUALSTYLE
+  5
+134
+102
+{ACAD_REACTORS
+330
+10F
+102
+}
+330
+10F
+100
+AcDbVisualStyle
+  2
+Conceptual
+ 70
+     9
+177
+     3
+291
+     0
+ 70
+    58
+ 90
+        3
+176
+     1
+ 90
+        2
+176
+     1
+ 90
+        0
+176
+     1
+ 90
+        0
+176
+     1
+ 40
+0.6
+176
+     1
+ 40
+30.0
+176
+     1
+ 62
+     7
+420
+ 16777215
+176
+     1
+ 90
+        2
+176
+     1
+ 90
+        2
+176
+     1
+ 62
+     7
+176
+     1
+ 62
+   257
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        1
+176
+     1
+ 40
+179.0
+176
+     1
+ 90
+        8
+176
+     1
+ 62
+     7
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        6
+176
+     1
+ 90
+        2
+176
+     1
+ 62
+     7
+176
+     1
+ 90
+        3
+176
+     1
+ 90
+        0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+ 90
+        1
+176
+     1
+ 40
+0.0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+290
+     1
+176
+     1
+290
+     1
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 40
+0.0
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        0
+176
+     1
+ 62
+    18
+420
+        0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+        3
+176
+     1
+ 62
+     5
+420
+      255
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 62
+   256
+176
+     0
+ 40
+1.0
+176
+     0
+ 90
+        2
+176
+     1
+  1
+strokes_ogs.tif
+176
+     1
+290
+     0
+176
+     1
+ 40
+1.0
+176
+     1
+ 40
+1.0
+176
+     1
+  0
+VISUALSTYLE
+  5
+136
+102
+{ACAD_REACTORS
+330
+10F
+102
+}
+330
+10F
+100
+AcDbVisualStyle
+  2
+Dim
+ 70
+    11
+177
+     3
+291
+     1
+ 70
+    58
+ 90
+        2
+176
+     1
+ 90
+        2
+176
+     1
+ 90
+        0
+176
+     1
+ 90
+        0
+176
+     1
+ 40
+0.6
+176
+     1
+ 40
+30.0
+176
+     1
+ 62
+     7
+420
+ 16777215
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        4
+176
+     1
+ 62
+     7
+176
+     1
+ 62
+   257
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        1
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        8
+176
+     1
+ 62
+     7
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        6
+176
+     1
+ 90
+        2
+176
+     1
+ 62
+     7
+176
+     1
+ 90
+        5
+176
+     1
+ 90
+        0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+ 90
+        1
+176
+     1
+ 40
+-50.0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+290
+     1
+176
+     1
+290
+     1
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 40
+0.0
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        0
+176
+     1
+ 62
+    18
+420
+        0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+        3
+176
+     1
+ 62
+     5
+420
+      255
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 62
+   256
+176
+     0
+ 40
+1.0
+176
+     0
+ 90
+        2
+176
+     1
+  1
+strokes_ogs.tif
+176
+     1
+290
+     0
+176
+     1
+ 40
+1.0
+176
+     1
+ 40
+1.0
+176
+     1
+  0
+VISUALSTYLE
+  5
+143
+102
+{ACAD_REACTORS
+330
+10F
+102
+}
+330
+10F
+100
+AcDbVisualStyle
+  2
+EdgeColorOff
+ 70
+    22
+177
+     3
+291
+     1
+ 70
+    58
+ 90
+        2
+176
+     0
+ 90
+        2
+176
+     0
+ 90
+        0
+176
+     0
+ 90
+        0
+176
+     0
+ 40
+0.6
+176
+     0
+ 40
+30.0
+176
+     0
+ 62
+     7
+420
+ 16777215
+176
+     0
+ 90
+        1
+176
+     0
+ 90
+        4
+176
+     0
+ 62
+     7
+176
+     0
+ 62
+   257
+176
+     0
+ 90
+        1
+176
+     0
+ 90
+        1
+176
+     0
+ 40
+1.0
+176
+     0
+ 90
+        8
+176
+     2
+ 62
+     7
+176
+     0
+ 40
+1.0
+176
+     0
+ 90
+        1
+176
+     0
+ 90
+        6
+176
+     0
+ 90
+        2
+176
+     0
+ 62
+     7
+176
+     0
+ 90
+        5
+176
+     0
+ 90
+        0
+176
+     0
+ 90
+        0
+176
+     0
+290
+     0
+176
+     0
+ 90
+        1
+176
+     0
+ 40
+0.0
+176
+     0
+ 90
+        0
+176
+     0
+290
+     0
+176
+     0
+290
+     1
+176
+     0
+290
+     1
+176
+     0
+290
+     0
+176
+     0
+290
+     0
+176
+     0
+290
+     0
+176
+     0
+290
+     0
+176
+     0
+290
+     0
+176
+     0
+290
+     0
+176
+     0
+ 90
+       50
+176
+     0
+ 40
+0.0
+176
+     0
+ 40
+1.0
+176
+     0
+ 90
+        0
+176
+     0
+ 62
+    18
+420
+        0
+176
+     0
+ 90
+       50
+176
+     0
+ 90
+        3
+176
+     0
+ 62
+     5
+420
+      255
+176
+     0
+290
+     0
+176
+     0
+ 90
+       50
+176
+     0
+ 90
+       50
+176
+     0
+ 90
+       50
+176
+     0
+290
+     0
+176
+     0
+ 90
+       50
+176
+     0
+ 62
+   256
+176
+     0
+ 40
+1.0
+176
+     0
+ 90
+        2
+176
+     0
+  1
+strokes_ogs.tif
+176
+     0
+290
+     0
+176
+     0
+ 40
+1.0
+176
+     0
+ 40
+1.0
+176
+     0
+  0
+VISUALSTYLE
+  5
+13A
+102
+{ACAD_REACTORS
+330
+10F
+102
+}
+330
+10F
+100
+AcDbVisualStyle
+  2
+Facepattern
+ 70
+    15
+177
+     3
+291
+     1
+ 70
+    58
+ 90
+        2
+176
+     1
+ 90
+        2
+176
+     1
+ 90
+        0
+176
+     1
+ 90
+        0
+176
+     1
+ 40
+0.6
+176
+     1
+ 40
+30.0
+176
+     1
+ 62
+     7
+420
+ 16777215
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        4
+176
+     1
+ 62
+     7
+176
+     1
+ 62
+   257
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        1
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        8
+176
+     1
+ 62
+     7
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        6
+176
+     1
+ 90
+        2
+176
+     1
+ 62
+     7
+176
+     1
+ 90
+        5
+176
+     1
+ 90
+        0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+ 90
+        1
+176
+     1
+ 40
+0.0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+290
+     1
+176
+     1
+290
+     1
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 40
+0.0
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        0
+176
+     1
+ 62
+    18
+420
+        0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+        3
+176
+     1
+ 62
+     5
+420
+      255
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 62
+   256
+176
+     0
+ 40
+1.0
+176
+     0
+ 90
+        2
+176
+     1
+  1
+strokes_ogs.tif
+176
+     1
+290
+     0
+176
+     1
+ 40
+1.0
+176
+     1
+ 40
+1.0
+176
+     1
+  0
+VISUALSTYLE
+  5
+12C
+102
+{ACAD_REACTORS
+330
+10F
+102
+}
+330
+10F
+100
+AcDbVisualStyle
+  2
+Flat
+ 70
+     0
+177
+     3
+291
+     1
+ 70
+    58
+ 90
+        2
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        2
+176
+     1
+ 40
+0.6
+176
+     1
+ 40
+30.0
+176
+     1
+ 62
+     7
+420
+ 16777215
+176
+     1
+ 90
+        0
+176
+     1
+ 90
+        0
+176
+     1
+ 62
+     7
+176
+     1
+ 62
+   257
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        1
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        8
+176
+     1
+ 62
+     7
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        6
+176
+     1
+ 90
+        2
+176
+     1
+ 62
+     7
+176
+     1
+ 90
+        5
+176
+     1
+ 90
+        0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+ 90
+       13
+176
+     1
+ 40
+0.0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+290
+     1
+176
+     1
+290
+     1
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 40
+0.0
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        0
+176
+     1
+ 62
+    18
+420
+        0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+        3
+176
+     1
+ 62
+     5
+420
+      255
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 62
+   256
+176
+     0
+ 40
+1.0
+176
+     0
+ 90
+        2
+176
+     1
+  1
+strokes_ogs.tif
+176
+     1
+290
+     0
+176
+     1
+ 40
+1.0
+176
+     1
+ 40
+1.0
+176
+     1
+  0
+VISUALSTYLE
+  5
+12D
+102
+{ACAD_REACTORS
+330
+10F
+102
+}
+330
+10F
+100
+AcDbVisualStyle
+  2
+FlatWithEdges
+ 70
+     1
+177
+     3
+291
+     1
+ 70
+    58
+ 90
+        2
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        2
+176
+     1
+ 40
+0.6
+176
+     1
+ 40
+30.0
+176
+     1
+ 62
+     7
+420
+ 16777215
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        0
+176
+     1
+ 62
+     7
+176
+     1
+ 62
+   257
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        1
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        0
+176
+     1
+ 62
+   257
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        6
+176
+     1
+ 90
+        2
+176
+     1
+ 62
+     7
+176
+     1
+ 90
+        5
+176
+     1
+ 90
+        0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+ 90
+       13
+176
+     1
+ 40
+0.0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+290
+     1
+176
+     1
+290
+     1
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 40
+0.0
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        0
+176
+     1
+ 62
+    18
+420
+        0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+        3
+176
+     1
+ 62
+     5
+420
+      255
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 62
+   256
+176
+     0
+ 40
+1.0
+176
+     0
+ 90
+        2
+176
+     1
+  1
+strokes_ogs.tif
+176
+     1
+290
+     0
+176
+     1
+ 40
+1.0
+176
+     1
+ 40
+1.0
+176
+     1
+  0
+VISUALSTYLE
+  5
+12E
+102
+{ACAD_REACTORS
+330
+10F
+102
+}
+330
+10F
+100
+AcDbVisualStyle
+  2
+Gouraud
+ 70
+     2
+177
+     3
+291
+     1
+ 70
+    58
+ 90
+        2
+176
+     1
+ 90
+        2
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        2
+176
+     1
+ 40
+0.6
+176
+     1
+ 40
+30.0
+176
+     1
+ 62
+     7
+420
+ 16777215
+176
+     1
+ 90
+        0
+176
+     1
+ 90
+        0
+176
+     1
+ 62
+     7
+176
+     1
+ 62
+   257
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        1
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        0
+176
+     1
+ 62
+     7
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        6
+176
+     1
+ 90
+        2
+176
+     1
+ 62
+     7
+176
+     1
+ 90
+        5
+176
+     1
+ 90
+        0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+ 90
+       13
+176
+     1
+ 40
+0.0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+290
+     1
+176
+     1
+290
+     1
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 40
+0.0
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        0
+176
+     1
+ 62
+    18
+420
+        0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+        3
+176
+     1
+ 62
+     5
+420
+      255
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 62
+   256
+176
+     0
+ 40
+1.0
+176
+     0
+ 90
+        2
+176
+     1
+  1
+strokes_ogs.tif
+176
+     1
+290
+     0
+176
+     1
+ 40
+1.0
+176
+     1
+ 40
+1.0
+176
+     1
+  0
+VISUALSTYLE
+  5
+12F
+102
+{ACAD_REACTORS
+330
+10F
+102
+}
+330
+10F
+100
+AcDbVisualStyle
+  2
+GouraudWithEdges
+ 70
+     3
+177
+     3
+291
+     1
+ 70
+    58
+ 90
+        2
+176
+     1
+ 90
+        2
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        2
+176
+     1
+ 40
+0.6
+176
+     1
+ 40
+30.0
+176
+     1
+ 62
+     7
+420
+ 16777215
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        0
+176
+     1
+ 62
+     7
+176
+     1
+ 62
+   257
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        1
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        0
+176
+     1
+ 62
+   257
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        6
+176
+     1
+ 90
+        2
+176
+     1
+ 62
+     7
+176
+     1
+ 90
+        5
+176
+     1
+ 90
+        0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+ 90
+       13
+176
+     1
+ 40
+0.0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+290
+     1
+176
+     1
+290
+     1
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 40
+0.0
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        0
+176
+     1
+ 62
+    18
+420
+        0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+        3
+176
+     1
+ 62
+     5
+420
+      255
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 62
+   256
+176
+     0
+ 40
+1.0
+176
+     0
+ 90
+        2
+176
+     1
+  1
+strokes_ogs.tif
+176
+     1
+290
+     0
+176
+     1
+ 40
+1.0
+176
+     1
+ 40
+1.0
+176
+     1
+  0
+VISUALSTYLE
+  5
+133
+102
+{ACAD_REACTORS
+330
+10F
+102
+}
+330
+10F
+100
+AcDbVisualStyle
+  2
+Hidden
+ 70
+     6
+177
+     3
+291
+     0
+ 70
+    58
+ 90
+        1
+176
+     1
+ 90
+        2
+176
+     1
+ 90
+        2
+176
+     1
+ 90
+        0
+176
+     1
+ 40
+0.6
+176
+     1
+ 40
+30.0
+176
+     1
+ 62
+     7
+420
+ 16777215
+176
+     1
+ 90
+        2
+176
+     1
+ 90
+        2
+176
+     1
+ 62
+     7
+176
+     1
+ 62
+   257
+176
+     1
+ 90
+        2
+176
+     1
+ 90
+        1
+176
+     1
+ 40
+40.0
+176
+     1
+ 90
+        0
+176
+     1
+ 62
+   257
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        6
+176
+     1
+ 90
+        2
+176
+     1
+ 62
+     7
+176
+     1
+ 90
+        3
+176
+     1
+ 90
+        0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+ 90
+        1
+176
+     1
+ 40
+0.0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+290
+     1
+176
+     1
+290
+     1
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 40
+0.0
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        0
+176
+     1
+ 62
+    18
+420
+        0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+        3
+176
+     1
+ 62
+     5
+420
+      255
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 62
+   256
+176
+     0
+ 40
+1.0
+176
+     0
+ 90
+        2
+176
+     1
+  1
+strokes_ogs.tif
+176
+     1
+290
+     0
+176
+     1
+ 40
+1.0
+176
+     1
+ 40
+1.0
+176
+     1
+  0
+VISUALSTYLE
+  5
+141
+102
+{ACAD_REACTORS
+330
+10F
+102
+}
+330
+10F
+100
+AcDbVisualStyle
+  2
+JitterOff
+ 70
+    20
+177
+     3
+291
+     1
+ 70
+    58
+ 90
+        2
+176
+     0
+ 90
+        2
+176
+     0
+ 90
+        0
+176
+     0
+ 90
+        0
+176
+     0
+ 40
+0.6
+176
+     0
+ 40
+30.0
+176
+     0
+ 62
+     7
+420
+ 16777215
+176
+     0
+ 90
+        1
+176
+     0
+ 90
+        4
+176
+     0
+ 62
+     7
+176
+     0
+ 62
+   257
+176
+     0
+ 90
+        1
+176
+     0
+ 90
+        1
+176
+     0
+ 40
+1.0
+176
+     0
+ 90
+       10
+176
+     2
+ 62
+     7
+176
+     0
+ 40
+1.0
+176
+     0
+ 90
+        1
+176
+     0
+ 90
+        6
+176
+     0
+ 90
+        2
+176
+     0
+ 62
+     7
+176
+     0
+ 90
+        5
+176
+     0
+ 90
+        0
+176
+     0
+ 90
+        0
+176
+     0
+290
+     0
+176
+     0
+ 90
+        1
+176
+     0
+ 40
+0.0
+176
+     0
+ 90
+        0
+176
+     0
+290
+     0
+176
+     0
+290
+     1
+176
+     0
+290
+     1
+176
+     0
+290
+     0
+176
+     0
+290
+     0
+176
+     0
+290
+     0
+176
+     0
+290
+     0
+176
+     0
+290
+     0
+176
+     0
+290
+     0
+176
+     0
+ 90
+       50
+176
+     0
+ 40
+0.0
+176
+     0
+ 40
+1.0
+176
+     0
+ 90
+        0
+176
+     0
+ 62
+    18
+420
+        0
+176
+     0
+ 90
+       50
+176
+     0
+ 90
+        3
+176
+     0
+ 62
+     5
+420
+      255
+176
+     0
+290
+     0
+176
+     0
+ 90
+       50
+176
+     0
+ 90
+       50
+176
+     0
+ 90
+       50
+176
+     0
+290
+     0
+176
+     0
+ 90
+       50
+176
+     0
+ 62
+   256
+176
+     0
+ 40
+1.0
+176
+     0
+ 90
+        2
+176
+     0
+  1
+strokes_ogs.tif
+176
+     0
+290
+     0
+176
+     0
+ 40
+1.0
+176
+     0
+ 40
+1.0
+176
+     0
+  0
+VISUALSTYLE
+  5
+139
+102
+{ACAD_REACTORS
+330
+10F
+102
+}
+330
+10F
+100
+AcDbVisualStyle
+  2
+Linepattern
+ 70
+    14
+177
+     3
+291
+     1
+ 70
+    58
+ 90
+        2
+176
+     1
+ 90
+        2
+176
+     1
+ 90
+        0
+176
+     1
+ 90
+        0
+176
+     1
+ 40
+0.6
+176
+     1
+ 40
+30.0
+176
+     1
+ 62
+     7
+420
+ 16777215
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        4
+176
+     1
+ 62
+     7
+176
+     1
+ 62
+   257
+176
+     1
+ 90
+        7
+176
+     1
+ 90
+        7
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        8
+176
+     1
+ 62
+     7
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        6
+176
+     1
+ 90
+        2
+176
+     1
+ 62
+     7
+176
+     1
+ 90
+        5
+176
+     1
+ 90
+        0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+ 90
+        1
+176
+     1
+ 40
+0.0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+290
+     1
+176
+     1
+290
+     1
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 40
+0.0
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        0
+176
+     1
+ 62
+    18
+420
+        0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+        3
+176
+     1
+ 62
+     5
+420
+      255
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 62
+   256
+176
+     0
+ 40
+1.0
+176
+     0
+ 90
+        2
+176
+     1
+  1
+strokes_ogs.tif
+176
+     1
+290
+     0
+176
+     1
+ 40
+1.0
+176
+     1
+ 40
+1.0
+176
+     1
+  0
+VISUALSTYLE
+  5
+142
+102
+{ACAD_REACTORS
+330
+10F
+102
+}
+330
+10F
+100
+AcDbVisualStyle
+  2
+OverhangOff
+ 70
+    21
+177
+     3
+291
+     1
+ 70
+    58
+ 90
+        2
+176
+     0
+ 90
+        2
+176
+     0
+ 90
+        0
+176
+     0
+ 90
+        0
+176
+     0
+ 40
+0.6
+176
+     0
+ 40
+30.0
+176
+     0
+ 62
+     7
+420
+ 16777215
+176
+     0
+ 90
+        1
+176
+     0
+ 90
+        4
+176
+     0
+ 62
+     7
+176
+     0
+ 62
+   257
+176
+     0
+ 90
+        1
+176
+     0
+ 90
+        1
+176
+     0
+ 40
+1.0
+176
+     0
+ 90
+        9
+176
+     2
+ 62
+     7
+176
+     0
+ 40
+1.0
+176
+     0
+ 90
+        1
+176
+     0
+ 90
+        6
+176
+     0
+ 90
+        2
+176
+     0
+ 62
+     7
+176
+     0
+ 90
+        5
+176
+     0
+ 90
+        0
+176
+     0
+ 90
+        0
+176
+     0
+290
+     0
+176
+     0
+ 90
+        1
+176
+     0
+ 40
+0.0
+176
+     0
+ 90
+        0
+176
+     0
+290
+     0
+176
+     0
+290
+     1
+176
+     0
+290
+     1
+176
+     0
+290
+     0
+176
+     0
+290
+     0
+176
+     0
+290
+     0
+176
+     0
+290
+     0
+176
+     0
+290
+     0
+176
+     0
+290
+     0
+176
+     0
+ 90
+       50
+176
+     0
+ 40
+0.0
+176
+     0
+ 40
+1.0
+176
+     0
+ 90
+        0
+176
+     0
+ 62
+    18
+420
+        0
+176
+     0
+ 90
+       50
+176
+     0
+ 90
+        3
+176
+     0
+ 62
+     5
+420
+      255
+176
+     0
+290
+     0
+176
+     0
+ 90
+       50
+176
+     0
+ 90
+       50
+176
+     0
+ 90
+       50
+176
+     0
+290
+     0
+176
+     0
+ 90
+       50
+176
+     0
+ 62
+   256
+176
+     0
+ 40
+1.0
+176
+     0
+ 90
+        2
+176
+     0
+  1
+strokes_ogs.tif
+176
+     0
+290
+     0
+176
+     0
+ 40
+1.0
+176
+     0
+ 40
+1.0
+176
+     0
+  0
+VISUALSTYLE
+  5
+135
+102
+{ACAD_REACTORS
+330
+10F
+102
+}
+330
+10F
+100
+AcDbVisualStyle
+  2
+Realistic
+ 70
+     8
+177
+     3
+291
+     0
+ 70
+    58
+ 90
+        2
+176
+     1
+ 90
+        3
+176
+     1
+ 90
+        0
+176
+     1
+ 90
+        2
+176
+     1
+ 40
+0.6
+176
+     1
+ 40
+30.0
+176
+     1
+ 62
+     7
+420
+ 16777215
+176
+     1
+ 90
+        0
+176
+     1
+ 90
+        0
+176
+     1
+ 62
+     7
+176
+     1
+ 62
+   257
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        1
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        8
+176
+     1
+ 62
+   257
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        6
+176
+     1
+ 90
+        2
+176
+     1
+ 62
+     7
+176
+     1
+ 90
+        3
+176
+     1
+ 90
+        0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+ 90
+       13
+176
+     1
+ 40
+0.0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+290
+     1
+176
+     1
+290
+     1
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 40
+0.0
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        0
+176
+     1
+ 62
+    18
+420
+        0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+        3
+176
+     1
+ 62
+     5
+420
+      255
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 62
+   256
+176
+     0
+ 40
+1.0
+176
+     0
+ 90
+        2
+176
+     1
+  1
+strokes_ogs.tif
+176
+     1
+290
+     0
+176
+     1
+ 40
+1.0
+176
+     1
+ 40
+1.0
+176
+     1
+  0
+VISUALSTYLE
+  5
+140
+102
+{ACAD_REACTORS
+330
+10F
+102
+}
+330
+10F
+100
+AcDbVisualStyle
+  2
+Shaded
+ 70
+    27
+177
+     3
+291
+     0
+ 70
+    58
+ 90
+        2
+176
+     1
+ 90
+        2
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        2
+176
+     1
+ 40
+0.6
+176
+     1
+ 40
+30.0
+176
+     1
+ 62
+     7
+420
+ 16777215
+176
+     1
+ 90
+        0
+176
+     1
+ 90
+        4
+176
+     1
+ 62
+     7
+176
+     1
+ 62
+   257
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        1
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        8
+176
+     1
+ 62
+   257
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        6
+176
+     1
+ 90
+        2
+176
+     1
+ 62
+     8
+420
+  7895160
+176
+     1
+ 90
+        3
+176
+     1
+ 90
+        0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+ 90
+        5
+176
+     1
+ 40
+0.0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+290
+     1
+176
+     1
+290
+     1
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 40
+0.0
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        0
+176
+     1
+ 62
+    18
+420
+        0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+        3
+176
+     1
+ 62
+     5
+420
+      255
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 62
+   256
+176
+     0
+ 40
+1.0
+176
+     0
+ 90
+        2
+176
+     1
+  1
+strokes_ogs.tif
+176
+     1
+290
+     0
+176
+     1
+ 40
+1.0
+176
+     1
+ 40
+1.0
+176
+     1
+  0
+VISUALSTYLE
+  5
+13F
+102
+{ACAD_REACTORS
+330
+10F
+102
+}
+330
+10F
+100
+AcDbVisualStyle
+  2
+Shaded with edges
+ 70
+    26
+177
+     3
+291
+     0
+ 70
+    58
+ 90
+        2
+176
+     1
+ 90
+        2
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        2
+176
+     1
+ 40
+0.6
+176
+     1
+ 40
+30.0
+176
+     1
+ 62
+     7
+420
+ 16777215
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        2
+176
+     1
+ 62
+     7
+176
+     1
+ 62
+   257
+176
+     1
+ 90
+        2
+176
+     1
+ 90
+        1
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        8
+176
+     1
+ 62
+   257
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        6
+176
+     1
+ 90
+        2
+176
+     1
+ 62
+     7
+176
+     1
+ 90
+        3
+176
+     1
+ 90
+        0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+ 90
+        5
+176
+     1
+ 40
+0.0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+290
+     1
+176
+     1
+290
+     1
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 40
+0.0
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        0
+176
+     1
+ 62
+    18
+420
+        0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+        3
+176
+     1
+ 62
+     5
+420
+      255
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 62
+   256
+176
+     0
+ 40
+1.0
+176
+     0
+ 90
+        2
+176
+     1
+  1
+strokes_ogs.tif
+176
+     1
+290
+     0
+176
+     1
+ 40
+1.0
+176
+     1
+ 40
+1.0
+176
+     1
+  0
+VISUALSTYLE
+  5
+13C
+102
+{ACAD_REACTORS
+330
+10F
+102
+}
+330
+10F
+100
+AcDbVisualStyle
+  2
+Shades of Gray
+ 70
+    23
+177
+     3
+291
+     0
+ 70
+    58
+ 90
+        2
+176
+     1
+ 90
+        2
+176
+     1
+ 90
+        3
+176
+     1
+ 90
+        0
+176
+     1
+ 40
+0.6
+176
+     1
+ 40
+30.0
+176
+     1
+ 62
+     7
+420
+ 16777215
+176
+     1
+ 90
+        2
+176
+     1
+ 90
+        2
+176
+     1
+ 62
+     7
+176
+     1
+ 62
+     7
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        1
+176
+     1
+ 40
+40.0
+176
+     1
+ 90
+        8
+176
+     1
+ 62
+     7
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        6
+176
+     1
+ 90
+        2
+176
+     1
+ 62
+     7
+176
+     1
+ 90
+        3
+176
+     1
+ 90
+        0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+ 90
+        1
+176
+     1
+ 40
+0.0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+290
+     1
+176
+     1
+290
+     1
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 40
+0.0
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        0
+176
+     1
+ 62
+    18
+420
+        0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+        3
+176
+     1
+ 62
+     5
+420
+      255
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 62
+   256
+176
+     0
+ 40
+1.0
+176
+     0
+ 90
+        2
+176
+     1
+  1
+strokes_ogs.tif
+176
+     1
+290
+     0
+176
+     1
+ 40
+1.0
+176
+     1
+ 40
+1.0
+176
+     1
+  0
+VISUALSTYLE
+  5
+13D
+102
+{ACAD_REACTORS
+330
+10F
+102
+}
+330
+10F
+100
+AcDbVisualStyle
+  2
+Sketchy
+ 70
+    24
+177
+     3
+291
+     0
+ 70
+    58
+ 90
+        1
+176
+     1
+ 90
+        2
+176
+     1
+ 90
+        2
+176
+     1
+ 90
+        0
+176
+     1
+ 40
+0.6
+176
+     1
+ 40
+30.0
+176
+     1
+ 62
+     7
+420
+ 16777215
+176
+     1
+ 90
+        2
+176
+     1
+ 90
+        2
+176
+     1
+ 62
+     7
+176
+     1
+ 62
+     7
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        1
+176
+     1
+ 40
+40.0
+176
+     1
+ 90
+       11
+176
+     1
+ 62
+     7
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        6
+176
+     1
+ 90
+        2
+176
+     1
+ 62
+     7
+176
+     1
+ 90
+        6
+176
+     1
+ 90
+        0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+ 90
+        1
+176
+     1
+ 40
+0.0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+290
+     1
+176
+     1
+290
+     1
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 40
+0.0
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        0
+176
+     1
+ 62
+    18
+420
+        0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+        3
+176
+     1
+ 62
+     5
+420
+      255
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 62
+   256
+176
+     0
+ 40
+1.0
+176
+     0
+ 90
+        2
+176
+     1
+  1
+strokes_ogs.tif
+176
+     1
+290
+     0
+176
+     1
+ 40
+1.0
+176
+     1
+ 40
+1.0
+176
+     1
+  0
+VISUALSTYLE
+  5
+138
+102
+{ACAD_REACTORS
+330
+10F
+102
+}
+330
+10F
+100
+AcDbVisualStyle
+  2
+Thicken
+ 70
+    13
+177
+     3
+291
+     1
+ 70
+    58
+ 90
+        2
+176
+     1
+ 90
+        2
+176
+     1
+ 90
+        0
+176
+     1
+ 90
+        0
+176
+     1
+ 40
+0.6
+176
+     1
+ 40
+30.0
+176
+     1
+ 62
+     7
+420
+ 16777215
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        4
+176
+     1
+ 62
+     7
+176
+     1
+ 62
+   257
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        1
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+       12
+176
+     1
+ 62
+     7
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        6
+176
+     1
+ 90
+        2
+176
+     1
+ 62
+     7
+176
+     1
+ 90
+        5
+176
+     1
+ 90
+        0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+ 90
+        1
+176
+     1
+ 40
+0.0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+290
+     1
+176
+     1
+290
+     1
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 40
+0.0
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        0
+176
+     1
+ 62
+    18
+420
+        0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+        3
+176
+     1
+ 62
+     5
+420
+      255
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 62
+   256
+176
+     0
+ 40
+1.0
+176
+     0
+ 90
+        2
+176
+     1
+  1
+strokes_ogs.tif
+176
+     1
+290
+     0
+176
+     1
+ 40
+1.0
+176
+     1
+ 40
+1.0
+176
+     1
+  0
+VISUALSTYLE
+  5
+132
+102
+{ACAD_REACTORS
+330
+10F
+102
+}
+330
+10F
+100
+AcDbVisualStyle
+  2
+Wireframe
+ 70
+     5
+177
+     3
+291
+     0
+ 70
+    58
+ 90
+        0
+176
+     1
+ 90
+        2
+176
+     1
+ 90
+        0
+176
+     1
+ 90
+        0
+176
+     1
+ 40
+0.6
+176
+     1
+ 40
+30.0
+176
+     1
+ 62
+     7
+420
+ 16777215
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        4
+176
+     1
+ 62
+     7
+176
+     1
+ 62
+   257
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        1
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        0
+176
+     1
+ 62
+   257
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        6
+176
+     1
+ 90
+        2
+176
+     1
+ 62
+     7
+176
+     1
+ 90
+        3
+176
+     1
+ 90
+        0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+ 90
+        1
+176
+     1
+ 40
+0.0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+290
+     1
+176
+     1
+290
+     1
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 40
+0.0
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        0
+176
+     1
+ 62
+    18
+420
+        0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+        3
+176
+     1
+ 62
+     5
+420
+      255
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 62
+   256
+176
+     0
+ 40
+1.0
+176
+     0
+ 90
+        2
+176
+     1
+  1
+strokes_ogs.tif
+176
+     1
+290
+     0
+176
+     1
+ 40
+1.0
+176
+     1
+ 40
+1.0
+176
+     1
+  0
+VISUALSTYLE
+  5
+13E
+102
+{ACAD_REACTORS
+330
+10F
+102
+}
+330
+10F
+100
+AcDbVisualStyle
+  2
+X-Ray
+ 70
+    25
+177
+     3
+291
+     0
+ 70
+    58
+ 90
+        2
+176
+     1
+ 90
+        2
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        1
+176
+     1
+ 40
+0.5
+176
+     1
+ 40
+30.0
+176
+     1
+ 62
+     7
+420
+ 16777215
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        0
+176
+     1
+ 62
+     7
+176
+     1
+ 62
+   257
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        1
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        8
+176
+     1
+ 62
+     7
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        1
+176
+     1
+ 90
+        6
+176
+     1
+ 90
+        2
+176
+     1
+ 62
+     7
+176
+     1
+ 90
+        3
+176
+     1
+ 90
+        0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+ 90
+       13
+176
+     1
+ 40
+0.0
+176
+     1
+ 90
+        0
+176
+     1
+290
+     0
+176
+     1
+290
+     1
+176
+     1
+290
+     1
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 40
+0.0
+176
+     1
+ 40
+1.0
+176
+     1
+ 90
+        0
+176
+     1
+ 62
+    18
+420
+        0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+        3
+176
+     1
+ 62
+     5
+420
+      255
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+ 90
+       50
+176
+     1
+290
+     0
+176
+     1
+ 90
+       50
+176
+     1
+ 62
+   256
+176
+     0
+ 40
+1.0
+176
+     0
+ 90
+        2
+176
+     1
+  1
+strokes_ogs.tif
+176
+     1
+290
+     0
+176
+     1
+ 40
+1.0
+176
+     1
+ 40
+1.0
+176
+     1
+  0
+DICTIONARYVAR
+  5
+2CF
+102
+{ACAD_REACTORS
+330
+10C
+102
+}
+330
+10C
+100
+DictionaryVariables
+280
+     0
+  1
+1:1
+  0
+DICTIONARYVAR
+  5
+2CC
+102
+{ACAD_REACTORS
+330
+10C
+102
+}
+330
+10C
+100
+DictionaryVariables
+280
+     0
+  1
+STANDARD
+  0
+DICTIONARYVAR
+  5
+2CB
+102
+{ACAD_REACTORS
+330
+10C
+102
+}
+330
+10C
+100
+DictionaryVariables
+280
+     0
+  1
+STANDARD
+  0
+DICTIONARYVAR
+  5
+2CD
+102
+{ACAD_REACTORS
+330
+10C
+102
+}
+330
+10C
+100
+DictionaryVariables
+280
+     0
+  1
+Metric50
+  0
+DICTIONARYVAR
+  5
+2CE
+102
+{ACAD_REACTORS
+330
+10C
+102
+}
+330
+10C
+100
+DictionaryVariables
+280
+     0
+  1
+Metric50
+  0
+DICTIONARYVAR
+  5
+10D
+102
+{ACAD_REACTORS
+330
+10C
+102
+}
+330
+10C
+100
+DictionaryVariables
+280
+     0
+  1
+1
+  0
+DICTIONARYVAR
+  5
+10E
+102
+{ACAD_REACTORS
+330
+10C
+102
+}
+330
+10C
+100
+DictionaryVariables
+280
+     0
+  1
+2
+  0
+DICTIONARY
+  5
+11D
+330
+11C
+100
+AcDbDictionary
+280
+     1
+281
+     1
+  3
+BUMPTILE
+360
+11F
+  3
+DIFFUSETILE
+360
+11E
+  3
+OPACITYTILE
+360
+122
+  3
+REFLECTIONTILE
+360
+121
+  3
+REFRACTIONTILE
+360
+123
+  3
+SPECULARTILE
+360
+120
+  0
+DICTIONARY
+  5
+115
+330
+114
+100
+AcDbDictionary
+280
+     1
+281
+     1
+  3
+BUMPTILE
+360
+117
+  3
+DIFFUSETILE
+360
+116
+  3
+OPACITYTILE
+360
+11A
+  3
+REFLECTIONTILE
+360
+119
+  3
+REFRACTIONTILE
+360
+11B
+  3
+SPECULARTILE
+360
+118
+  0
+DICTIONARY
+  5
+125
+330
+124
+100
+AcDbDictionary
+280
+     1
+281
+     1
+  3
+BUMPTILE
+360
+127
+  3
+DIFFUSETILE
+360
+126
+  3
+OPACITYTILE
+360
+12A
+  3
+REFLECTIONTILE
+360
+129
+  3
+REFRACTIONTILE
+360
+12B
+  3
+SPECULARTILE
+360
+128
+  0
+DICTIONARY
+  5
+2DC
+330
+10A
+100
+AcDbDictionary
+280
+     1
+281
+     1
+  3
+ACAD_ROUNDTRIP_2008_TABLESTYLE_CELLSTYLEMAP
+360
+2DD
+  0
+XRECORD
+  5
+11F
+102
+{ACAD_REACTORS
+330
+11D
+102
+}
+330
+11D
+100
+AcDbXrecord
+280
+     1
+270
+     1
+271
+     1
+  0
+XRECORD
+  5
+11E
+102
+{ACAD_REACTORS
+330
+11D
+102
+}
+330
+11D
+100
+AcDbXrecord
+280
+     1
+270
+     1
+271
+     1
+  0
+XRECORD
+  5
+122
+102
+{ACAD_REACTORS
+330
+11D
+102
+}
+330
+11D
+100
+AcDbXrecord
+280
+     1
+270
+     1
+271
+     1
+  0
+XRECORD
+  5
+121
+102
+{ACAD_REACTORS
+330
+11D
+102
+}
+330
+11D
+100
+AcDbXrecord
+280
+     1
+270
+     1
+271
+     1
+  0
+XRECORD
+  5
+123
+102
+{ACAD_REACTORS
+330
+11D
+102
+}
+330
+11D
+100
+AcDbXrecord
+280
+     1
+270
+     1
+271
+     1
+  0
+XRECORD
+  5
+120
+102
+{ACAD_REACTORS
+330
+11D
+102
+}
+330
+11D
+100
+AcDbXrecord
+280
+     1
+270
+     1
+271
+     1
+  0
+XRECORD
+  5
+117
+102
+{ACAD_REACTORS
+330
+115
+102
+}
+330
+115
+100
+AcDbXrecord
+280
+     1
+270
+     1
+271
+     1
+  0
+XRECORD
+  5
+116
+102
+{ACAD_REACTORS
+330
+115
+102
+}
+330
+115
+100
+AcDbXrecord
+280
+     1
+270
+     1
+271
+     1
+  0
+XRECORD
+  5
+11A
+102
+{ACAD_REACTORS
+330
+115
+102
+}
+330
+115
+100
+AcDbXrecord
+280
+     1
+270
+     1
+271
+     1
+  0
+XRECORD
+  5
+119
+102
+{ACAD_REACTORS
+330
+115
+102
+}
+330
+115
+100
+AcDbXrecord
+280
+     1
+270
+     1
+271
+     1
+  0
+XRECORD
+  5
+11B
+102
+{ACAD_REACTORS
+330
+115
+102
+}
+330
+115
+100
+AcDbXrecord
+280
+     1
+270
+     1
+271
+     1
+  0
+XRECORD
+  5
+118
+102
+{ACAD_REACTORS
+330
+115
+102
+}
+330
+115
+100
+AcDbXrecord
+280
+     1
+270
+     1
+271
+     1
+  0
+XRECORD
+  5
+127
+102
+{ACAD_REACTORS
+330
+125
+102
+}
+330
+125
+100
+AcDbXrecord
+280
+     1
+270
+     1
+271
+     1
+  0
+XRECORD
+  5
+126
+102
+{ACAD_REACTORS
+330
+125
+102
+}
+330
+125
+100
+AcDbXrecord
+280
+     1
+270
+     1
+271
+     1
+  0
+XRECORD
+  5
+12A
+102
+{ACAD_REACTORS
+330
+125
+102
+}
+330
+125
+100
+AcDbXrecord
+280
+     1
+270
+     1
+271
+     1
+  0
+XRECORD
+  5
+129
+102
+{ACAD_REACTORS
+330
+125
+102
+}
+330
+125
+100
+AcDbXrecord
+280
+     1
+270
+     1
+271
+     1
+  0
+XRECORD
+  5
+12B
+102
+{ACAD_REACTORS
+330
+125
+102
+}
+330
+125
+100
+AcDbXrecord
+280
+     1
+270
+     1
+271
+     1
+  0
+XRECORD
+  5
+128
+102
+{ACAD_REACTORS
+330
+125
+102
+}
+330
+125
+100
+AcDbXrecord
+280
+     1
+270
+     1
+271
+     1
+  0
+CELLSTYLEMAP
+  5
+2DD
+102
+{ACAD_REACTORS
+330
+2DC
+102
+}
+330
+2DC
+100
+AcDbCellStyleMap
+ 90
+        3
+300
+CELLSTYLE
+  1
+TABLEFORMAT_BEGIN
+ 90
+        5
+170
+     0
+309
+TABLEFORMAT_END
+  1
+CELLSTYLE_BEGIN
+ 90
+        1
+ 91
+        2
+300
+_TITLE
+309
+CELLSTYLE_END
+300
+CELLSTYLE
+  1
+TABLEFORMAT_BEGIN
+ 90
+        5
+170
+     0
+309
+TABLEFORMAT_END
+  1
+CELLSTYLE_BEGIN
+ 90
+        2
+ 91
+        2
+300
+_HEADER
+309
+CELLSTYLE_END
+300
+CELLSTYLE
+  1
+TABLEFORMAT_BEGIN
+ 90
+        5
+170
+     0
+309
+TABLEFORMAT_END
+  1
+CELLSTYLE_BEGIN
+ 90
+        3
+ 91
+        2
+300
+_DATA
+309
+CELLSTYLE_END
+  0
+ENDSEC
+  0
+SECTION
+  2
+ACDSDATA
+ 70
+     2
+ 71
+     8
+  0
+ACDSSCHEMA
+ 90
+        0
+  1
+AcDb3DSolid_ASM_Data
+  2
+AcDbDs::ID
+280
+    10
+ 91
+        8
+  2
+ASM_Data
+280
+    15
+ 91
+        0
+101
+ACDSRECORD
+ 95
+        0
+ 90
+        1
+  2
+AcDbDs::TreatedAsObjectData
+280
+     1
+291
+     1
+101
+ACDSRECORD
+ 95
+        0
+ 90
+        2
+  2
+AcDbDs::Legacy
+280
+     1
+291
+     1
+101
+ACDSRECORD
+  1
+AcDbDs::ID
+ 90
+        3
+  2
+AcDs:Indexable
+280
+     1
+291
+     1
+101
+ACDSRECORD
+  1
+AcDbDs::ID
+ 90
+        4
+  2
+AcDbDs::HandleAttribute
+280
+     7
+282
+     1
+  0
+ACDSSCHEMA
+ 90
+        1
+  1
+AcDbDs::TreatedAsObjectDataSchema
+  2
+AcDbDs::TreatedAsObjectData
+280
+     1
+ 91
+        0
+  0
+ACDSSCHEMA
+ 90
+        2
+  1
+AcDbDs::LegacySchema
+  2
+AcDbDs::Legacy
+280
+     1
+ 91
+        0
+  0
+ACDSSCHEMA
+ 90
+        3
+  1
+AcDbDs::IndexedPropertySchema
+  2
+AcDs:Indexable
+280
+     1
+ 91
+        0
+  0
+ACDSSCHEMA
+ 90
+        4
+  1
+AcDbDs::HandleAttributeSchema
+  2
+AcDbDs::HandleAttribute
+280
+     7
+ 91
+        1
+284
+     1
+  0
+ACDSSCHEMA
+ 90
+        5
+  1
+AcDb_Thumbnail_Schema
+  2
+AcDbDs::ID
+280
+    10
+ 91
+        8
+  2
+Thumbnail_Data
+280
+    15
+ 91
+        0
+101
+ACDSRECORD
+ 95
+        5
+ 90
+        1
+  2
+AcDbDs::TreatedAsObjectData
+280
+     1
+291
+     1
+101
+ACDSRECORD
+ 95
+        5
+ 90
+        2
+  2
+AcDbDs::Legacy
+280
+     1
+291
+     1
+101
+ACDSRECORD
+  1
+AcDbDs::ID
+ 90
+        3
+  2
+AcDs:Indexable
+280
+     1
+291
+     1
+101
+ACDSRECORD
+  1
+AcDbDs::ID
+ 90
+        4
+  2
+AcDbDs::HandleAttribute
+280
+     7
+282
+     1
+  0
+ACDSRECORD
+ 90
+        5
+  2
+AcDbDs::ID
+280
+    10
+320
+22
+  2
+Thumbnail_Data
+280
+    15
+ 94
+     1340
+310
+89504E470D0A1A0A0000000D49484452000001000000005508030000009198CAA400000300504C5445212830FFFFFF2128300000000000000000000000000000000000000000000000000000330000660000990000CC0000FF0033000033330033660033990033CC0033FF0066000066330066660066990066CC0066FF0099
+310
+000099330099660099990099CC0099FF00CC0000CC3300CC6600CC9900CCCC00CCFF00FF0000FF3300FF6600FF9900FFCC00FFFF3300003300333300663300993300CC3300FF3333003333333333663333993333CC3333FF3366003366333366663366993366CC3366FF3399003399333399663399993399CC3399FF33CC00
+310
+33CC3333CC6633CC9933CCCC33CCFF33FF0033FF3333FF6633FF9933FFCC33FFFF6600006600336600666600996600CC6600FF6633006633336633666633996633CC6633FF6666006666336666666666996666CC6666FF6699006699336699666699996699CC6699FF66CC0066CC3366CC6666CC9966CCCC66CCFF66FF0066
+310
+FF3366FF6666FF9966FFCC66FFFF9900009900339900669900999900CC9900FF9933009933339933669933999933CC9933FF9966009966339966669966999966CC9966FF9999009999339999669999999999CC9999FF99CC0099CC3399CC6699CC9999CCCC99CCFF99FF0099FF3399FF6699FF9999FFCC99FFFFCC0000CC00
+310
+33CC0066CC0099CC00CCCC00FFCC3300CC3333CC3366CC3399CC33CCCC33FFCC6600CC6633CC6666CC6699CC66CCCC66FFCC9900CC9933CC9966CC9999CC99CCCC99FFCCCC00CCCC33CCCC66CCCC99CCCCCCCCCCFFCCFF00CCFF33CCFF66CCFF99CCFFCCCCFFFFFF0000FF0033FF0066FF0099FF00CCFF00FFFF3300FF3333
+310
+FF3366FF3399FF33CCFF33FFFF6600FF6633FF6666FF6699FF66CCFF66FFFF9900FF9933FF9966FF9999FF99CCFF99FFFFCC00FFCC33FFCC66FFCC99FFCCCCFFCCFFFFFF00FFFF33FFFF66FFFF99FFFFCCFFFFFF0000000D0D0D1A1A1A2828283535354343435050505D5D5D6B6B6B787878868686939393A1A1A1AEAEAEBB
+310
+BBBBC9C9C9D6D6D6E4E4E4F1F1F1FFFFFF0000000000000000000000000000000000000000000000000000000000002E4550F1000001F74944415478DAED9A4D8EC3200C85B94D39410F9603E6001CA02B2E40F6EC87F0EB4E336992D211E0F74923BD71AB4AD8CE2B980A0100000000000000005C44FEE2CA67D8C30C9B80
+310
+AC487057B5B9F81DF6134055CA8615A9E254B59B009196297D3CBC2ED2EAE5988F00A9ED6709C8B5E5FB082CC6DCCCDD4C933176950F2F0351ADC1D612B0FECD5E6AAD5390C8A7771EE900922BD25D59D92613E071AB0E629644CE89F71DB0F82AAF6B8D752F92049B7B04B613309F4D8063092EA754363CA254AB26589A7B
+310
+B3DBCF3F023D9AA02BAFC375808E7E47247713DCB24356264882439B602CB60E059759D1E0FB0478A5944A41AA54B31E403B408782CBAC68F0E856B8B36F812713942F2648EC70601364FD350813AC6682567037C1052608131CCF04B91C87FF34C1F31D309809F29807940E28A7417DDA03DC51E026EE629AFC7F37F1F032
+310
+10950B0E3C0F301DCF036AEF04656726C87B24B63F143DDC014398A0282331914762673AA0771394652BFCAA861E8A5632C192D28E86A2F54C3016DB9A8CDD506DDF0C713C0EBFD9096EED09C735C18D9D208F79409DEBF14E4DB0DE3C800C0164AFD7E35C8FC3BCCF02B81EFFC2F5F84026C8631E506327D8F5F5780D13EC
+310
+FA97A2D809D634415C8F776982E9E087DF087D300F5896B8E955AFFB5FD5C9F5F87513040000000000000000000000FC033FE35B98F8EF5496570000000049454E44AE426082
+  0
+ENDSEC
+  0
+EOF

@@ -1,0 +1,276 @@
+# Kalıp Donatı Planı Çizim Kuralları (BEYKENT Konvansiyonu + Genel Kurallar)
+
+Bu dosya, kullanıcının 21 adet kalıp donatı planı DXF çiziminden çıkarılan çizim kalıpları ile PDF kaynaklarından öğrenilen genel betonarme donatı çizim kurallarını birleştirir.
+
+---
+
+## 1. KATMAN (LAYER) YAPISI
+
+| Katman | Varlık Tipi | Açıklama |
+|---|---|---|
+| **DONATI (BEYKENT)** | LWPOLYLINE, LINE | Donatı çizgileri (düz ve pilye) |
+| **DONATI YAZISI (BEYKENT)** | TEXT | Donatı etiket yazıları |
+| **POZ NO (BEYKENT)** | TEXT | Poz numaraları (tamsayı) |
+| **POZ BALON (BEYKENT)** | CIRCLE / ARC+LINE | Poz numarası balonları (r=7-11) |
+| **HASIR CIZGI (BEYKENT)** | TEXT (gizli) | Hasır donatı kodlaması (stastyle, yükseklik≈0.0005) |
+| **DOSEME ISMI (BEYKENT)** | TEXT | Döşeme adı ve kalınlığı (örn. "DZ-01 d=15cm") |
+| **DOSEME SINIRI (BEYKENT)** | LWPOLYLINE | Döşeme sınır çizgileri |
+| **DOSEME PAFTA (BEYKENT)** | LWPOLYLINE/HATCH | Döşeme panel taramaları |
+| **KIRIS (BEYKENT)** | LWPOLYLINE | Kiriş geometrisi |
+| **KIRIS ISMI (BEYKENT)** | TEXT | Kiriş adı ve ölçüsü |
+| **KOLON (BEYKENT)** | LWPOLYLINE | Kolon geometrisi |
+| **PERDE (BEYKENT)** | LWPOLYLINE | Perde geometrisi |
+| **MERDIVEN (BEYKENT)** | LWPOLYLINE | Merdiven geometrisi |
+
+---
+
+## 2. DONATI ETİKET FORMATI
+
+### Standart Format
+```
+{adet}ø{çap}/{aralık}  {l veya L}={boy}
+```
+
+- **adet**: Paralel donatı sayısı
+- **ø**: Çap sembolü
+- **çap**: mm cinsinden donatı çapı (8, 10, 12, 14, 16)
+- **aralık**: cm cinsinden donatı aralığı (10-40 arası)
+- **l= veya L=**: Toplam donatı boyu (cm)
+
+### Küçük/Büyük Harf Ayrımı
+- **Küçük `l=`**: Alt (açıklık) donatısı
+- **Büyük `L=`**: Üst (mesnet/pilye) donatısı
+
+> Not: Tüm dosyalarda tutarlı değil; dosya 001-005 büyük `L=` kullanırken, dosya 006-007 küçük `l=` kullanıyor. Ancak pilye çiftlerinde genellikle bu ayrım geçerli.
+
+### Örnekler
+```
+14ø8/20  l=150      → 14 adet, ø8mm, 20cm aralık, alt donatı, 150cm boy
+14ø14/20 L=385      → 14 adet, ø14mm, 20cm aralık, üst/pilye donatı, 385cm boy
+77ø10/20 l=170      → 77 adet, ø10mm, 20cm aralık, alt donatı, 170cm boy
+42ø16/20 l=765      → 42 adet, ø16mm, 20cm aralık, alt donatı, 765cm boy
+```
+
+### Metin Özellikleri
+- Yazı yüksekliği: **10.0** (standart), bazı dosyalarda **15.0**
+- Yazı stili: **DONATI YAZISI (BEYKENT)** (hem layer hem style)
+- Hizalama: Yatay **ortala** (72=1), Dikey **orta** (73=2)
+- Dönme: **0°** (yatay donatı), **90°** (düşey donatı), **315°** (çapraz donatı)
+- Konum: Donatı çizgisinden ~5cm uzakta
+
+---
+
+## 3. DONATI ÇİZGİ TİPLERİ
+
+### Düz Donatı (Alt veya Üst)
+- **LWPOLYLINE** — 2 köşe noktası (düz çizgi)
+- Yatay donatı: aynı Y koordinatı, farklı X
+- Düşey donatı: aynı X koordinatı, farklı Y
+
+### Pilye Donatı (Kalkık/Bükülen)
+- **LWPOLYLINE** — 4 köşe noktası, ark bükülmeleri ile
+- Ark bulge değeri: **-0.4142135623730951** (tam 90° çeyrek daire)
+- Ark yarıçapı: **3 cm** (köşe noktaları arası fark)
+- Şekil: yatay segment → 90° ark dönüşü → dik segment
+
+### Pilye Üçlü Düzeni (DXF'te sıralama)
+```
+TEXT    → "{adet}ø{küçük_çap}/{aralık} l={kısa_boy}"   (alt donatı etiketi)
+LWPOLYLINE → 4 köşe + ark bulge                         (pilye çizgisi)
+TEXT    → "{adet}ø{büyük_çap}/{aralık} L={uzun_boy}"    (pilye/üst etiketi)
+```
+
+### Pilye Çift Kuralları
+- Aynı **adet** ve **aralık** paylaşılır
+- Alt donatı çapı < pilye çapı (örn. ø8 → ø14, ø10 → ø14, ø8 → ø10)
+- Pilye boyu > alt donatı boyu (bükülen kısım daha uzun)
+
+| Alt ø | Pilye ø | Örnek Çift |
+|---|---|---|
+| ø8 | ø10 | 35ø8/20 l=105 + 35ø10/20 L=145 |
+| ø8 | ø12 | 15ø8/20 l=80 + 15ø12/20 L=138 |
+| ø8 | ø14 | 13ø8/15 l=230 + 13ø14/15 L=310 |
+| ø10 | ø14 | 40ø10/20 l=180 + 40ø14/20 L=355 |
+| ø10 | ø16 | 3ø10/20 l=... + 3ø16/40 L=... |
+
+---
+
+## 4. DÖŞEME İSİMLENDİRME
+
+### Format
+```
+{ÖnEk}-{numara}  d={kalınlık}cm
+```
+
+### Ön Ek Türleri
+| Ön Ek | Anlam | Tipik Kalınlık |
+|---|---|---|
+| **DZ-** | Zemin kat döşemesi | 15cm |
+| **DA-** | A bloku döşemesi | 15cm |
+| **DB-** | B bloku / standart döşeme | 20cm |
+| **DC-** | C bloku döşemesi | 20cm |
+| **D1-** | 1. kat döşemesi | 16cm |
+| **DDA-**, **DDB-** | Kalın (20cm) özel döşeme | 20cm |
+| **DD** | Düşük döşeme (banyo/WC) | - |
+
+### Numaralama
+- 2 haneli: DZ-01, DB-35 (küçük projeler)
+- 3 haneli: DB-001, DB-113 (büyük projeler, dosya 021)
+
+---
+
+## 5. POZ NUMARASI SİSTEMİ
+
+- **POZ NO (BEYKENT)** katmanında tamsayı metin (1, 2, 3...)
+- **POZ BALON (BEYKENT)** katmanında:
+  - Tek haneli: **CIRCLE** (r=7-11)
+  - Çok haneli: **ARC + LINE** (D şekilli balon)
+- POZ numaraları aynı donatı düzenini paylaşan döşemeler arasında tekrar eder
+- Sadece bazı dosyalarda mevcut (006, 007, 008, 010, 011, 020, 021)
+
+---
+
+## 6. DÖŞEME TİPİNE GÖRE DONATI KURALLARI
+
+### Hurdi (Tek Yönlü) Döşeme
+- **Koşul:** Uzun kenar / kısa kenar > 2
+- **Kısa doğrultu:** Ana donatı + pilye (birer atlayarak: 1 düz, 1 pilye)
+- **Uzun doğrultu:** Yalnızca dağıtma donatısı (düz, ø8/20-30)
+- **Min kalınlık:** Basit l/25, sürekli l/30, konsol l/12; min 80mm (depremde 100mm)
+
+### Dal (Çift Yönlü) Döşeme
+- **Koşul:** Uzun kenar / kısa kenar ≤ 2
+- **Her iki doğrultu:** Ana donatı + pilye
+- **Kısa doğrultu** demirler **alta**, uzun doğrultu **üste** konulur
+- **Min donatı:** Her doğrultu ρ ≥ 0.0015; toplam ρ ≥ 0.0035
+
+### Konsol Döşeme
+- Esas donatı **üstte** (çekme üstte)
+- Pilye devam eden döşemeye **L/4** uzatılır
+- Max konsol uzunluğu ~150cm
+
+### Asmolen (Dişli) Döşeme
+- Pilye **konulmaz** (plak kalınlığı yetersiz)
+- Sadece düz donatı: kısa yön esas + uzun yön dağıtma (min ø8/250)
+- Diş donatısında pilye yapılabilir (diş yüksekliği yeterli)
+
+---
+
+## 7. PİLYE YERLEŞİM KURALLARI
+
+### Kırım Noktaları
+- **Komşu döşeme varsa:** Pilye L1/5 mesafede kırılır, komşu döşemeye L2/4 uzatılır
+- **Komşu döşeme yoksa:** Pilye L1/7 mesafede kırılır, kiriş içine h/2 gönye yapılır
+- **Düşük döşemeye** pilye geçirilmez; gönye olarak kiriş içine gömülür
+
+### Pilye Boy Hesabı (45° için)
+```
+h_eff = Döşeme kalınlığı − (2 × pas payı)
+Eğik kısım (c) = h_eff × 1.41
+Boy = L2/4 + kiriş_gen + L1/5 + 2c + a + L1/7 + kiriş_gen + gönye
+```
+
+### Büküm Açıları
+- Döşeme: **45°** (standart)
+- Temel kirişi: **60°** (özel)
+- Eğik yüzey katsayıları: 30°→1.58h, **45°→1.41h**, 60°→1.27h
+
+---
+
+## 8. DONATI ARALIKLARI VE MİNİMUM KURALLAR
+
+### Döşeme Donatı Aralıkları
+| Durum | Maks Aralık |
+|---|---|
+| Tek yön asal donatı | ≤ 1.5h ve ≤ 200mm |
+| Tek yön dağıtma | ≤ 300mm |
+| İki yön kısa yön | ≤ 200mm |
+| İki yön uzun yön | ≤ 250mm |
+
+### Yaygın Çap/Aralık Kombinasyonları (DXF'lerden)
+| Döşeme Kalınlığı | Yaygın Alt Donatı | Yaygın Pilye |
+|---|---|---|
+| 12cm | ø8/30-36 | ø8→ø14 |
+| 15cm | ø8/18-20 | ø8→ø14, ø8→ø10 |
+| 16cm | ø8/20 | ø8→ø14 |
+| 20cm | ø10/20 | ø10→ø14, ø10→ø16 |
+
+### Pas Payı
+- Döşeme iç: **15mm**
+- Döşeme dış: **20-25mm**
+- Kiriş: **25mm** (iç), **40mm** (hesap)
+- Kolon: **25mm** (iç), **40-50mm** (hesap)
+- Temel: **50mm**
+
+---
+
+## 9. ÇİZİM AKIŞI (OTOMATİK DONATI ÇİZİMİ İÇİN)
+
+1. **Döşeme türünü belirle:** Ly/Lx oranına göre hurdi/dal
+2. **Kısa ve uzun doğrultuyu belirle**
+3. **Alt donatı çiz:** Kısa doğrultuda düz çizgiler (LWPOLYLINE, 2 köşe)
+4. **Pilye donatı çiz:** Birer atlayarak (LWPOLYLINE, 4 köşe + ark)
+5. **Dağıtma donatısı çiz:** Uzun doğrultuda düz çizgiler (hurdi ise yalnızca bu)
+6. **Üst ilave donatı çiz:** Mesnet bölgelerinde
+7. **Etiketleme:** Her donatı çizgisinin yanına TEXT varlığı
+8. **POZ numarası:** Gerekli ise balon + numara ekle
+
+### Etiket Yerleşimi
+- Yatay donatı: etiket donatının **üstünde** (~5cm Y offset)
+- Düşey donatı: etiket donatının **solunda** (~5cm X offset), 90° döndürülmüş
+- Pilye: alt etiket altında, üst etiket üstünde
+
+---
+
+## 10. KİRİŞ DONATI ÇİZİM KURALLARI
+
+### Kiriş Açılımı (1/20 ölçek)
+- Boy kesit: etriyeler düşey çizgi, boyuna demirler yatay, pilyeler eğik
+- En kesit: etriye dikdörtgen, boyuna demirler dolu daire
+- Sıklaştırma bölgesi: kolon yüzünden 2h mesafe; etriye aralığı ≤ h/4, 8ø_min, 150mm
+
+### Etriye Detayları
+- Min çap: ø8
+- Kanca: **135°**, serbest uç ≥ 6ø ve ≥ 80mm
+- Sıklaştırma bölgesinde: ilk etriye kolon yüzünden ≤ 50mm
+- Normal bölge: aralık ≤ h/2 ve ≤ 200mm
+
+### Pilye Kuralları (Kirişte)
+- Dış mesnette: açıklığın 1/7'si mesafede kırılma
+- Orta mesnette: açıklığın 1/5'i mesafede kırılma
+- 2007 sonrası: Pilye yerine ilave düz donatı kullanımı yaygınlaştı
+
+---
+
+## 11. BS EN ISO 3766 NOTASYON STANDARDI
+
+### Şekil Kodları
+| Kod | Şekil | Açıklama |
+|---|---|---|
+| 00 | Düz çubuk | Bükme yok |
+| 11 | L şekli | Tek 90° bükme |
+| 13 | U şekli | 3 segmentli |
+| 21 | Z/pilye | 2 bükme (zıt yönler) |
+| 44 | Dikdörtgen etriye | 4 bükme |
+| 77 | Tam helis | Spiral/fret |
+
+### Katman Gösterimi
+- **B** = Bottom (alt), **T** = Top (üst)
+- **1** = Betona en yakın, **2** = İkinci kat
+- **N** = Yakın yüz, **F** = Uzak yüz
+
+---
+
+## 12. STA4CAD XDATA KODLAMASI
+
+Tüm DONATI varlıkları `sta4cad App2` XData taşır:
+```
+1001: sta4cad App2
+1004: {tip_kodu}     → "02" DONATI, "0A" HASIR
+1071: {döşeme_index} → döşeme numarası (1, 2, 3...)
+1070: {ölçek}        → 50 veya 60
+```
+
+Bazı dosyalarda (014) görünmez marker TEXT varlıkları mevcut:
+- Katman: DONATI (BEYKENT), stil: stastyle, yükseklik: ~0.0005
+- Format: `& {bayrak}-.2- 1- {değer1}- {değer2}`

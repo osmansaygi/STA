@@ -1,0 +1,401 @@
+# Yönetmelik ve Statik Proje Çizim Kuralları
+
+Bu kural dosyası TBDY 2018, TS 498:2021 ve TS 500 yönetmeliklerinden derlenen, statik proje çizimlerinde kullanılacak temel bilgileri içerir.
+
+---
+
+## 1. PAFTA DÜZENİ VE ÇİZİM ÖLÇEKLERİ
+
+| Pafta | Ölçek | İçerik |
+|-------|-------|--------|
+| Temel Planı | 1:50 | Temel boyutları, aks ölçüleri, kot bilgileri |
+| Temel Detayı | 1:20 | Temel kesitleri, donatı detayları, bağ kiriş detayları |
+| Kolon Aplikasyon | 1:50 + 1:20 | Kolon/perde yerleşimi, boyutları, donatı detayları |
+| Kalıp Planı | 1:50 (veya 1:100) | Kiriş/döşeme boyutları, kesitler, aks ölçüleri |
+| Kiriş Açılımı | 1:20 | Kiriş donatısı, etriye düzeni, bindirme boyları |
+| Merdiven Detayı | 1:20 | Merdiven donatısı |
+
+### Çizgi Kalınlıkları
+- Görünen çizgiler: 0.35 mm
+- Kesit çizgileri: 0.50 mm
+- Ölçü çizgileri: 0.25 mm
+- Donatı çizgileri: 0.60 mm
+
+### Her Paftada Gösterilmesi Gereken Bilgiler (TBDY 7.13)
+- Beton dayanım sınıfı ve donatı sınıfı
+- Çevresel etki sınıfı (TS EN 206)
+- SS ve S1 harita spektral ivme katsayıları
+- Yerel zemin sınıfı (ZA-ZF)
+- Bina kullanım sınıfı (BKS) ve önem katsayısı (I)
+- Bina yükseklik sınıfı (BYS) ve deprem tasarım sınıfı (DTS)
+- Taşıyıcı sistem davranış katsayısı (R) ve dayanım fazlalığı katsayısı (D)
+
+---
+
+## 2. TBDY 2018 — DEPREM YÖNETMELİĞİ ÖZETİ
+
+### Minimum Beton Sınıfı
+- Yerinde dökme betonarme: **C25**
+- Önüretimli: **C30**
+- Donatı çeliği: **B420C** veya **B500C**
+
+### Önem Katsayıları (Tablo 3.1)
+- BKS=1 (hastane, okul): I = **1.5**
+- BKS=2 (AVM, sinema): I = **1.2**
+- BKS=3 (konut, işyeri): I = **1.0**
+
+### SDY Kolon Kuralları (7.3)
+- Minimum boyut: **300 mm**
+- En küçük kenar ≥ kat yüksekliği / **30**
+- Boyuna donatı: min **%1**, maks **%4**, çap ≥ **φ14**
+- Sarılma bölgesi: max(h_net/6, 1.5×büyük_boyut, 500 mm)
+- Sarılma etriyesi: ≤ min(küçük_boyut/3, 150 mm, 6φ_boyuna)
+- Orta bölge etriye: ≤ min(küçük_boyut/2, 200 mm)
+- Güçlü kolon-zayıf kiriş: ΣM_kolon ≥ **1.2** × ΣM_kiriş
+
+### SDY Kiriş Kuralları (7.4)
+- Gövde genişliği ≥ **250 mm**
+- Yükseklik ≥ max(3×döşeme_kal., 300 mm), ≤ 3.5×genişlik
+- Donatı çapı ≥ **φ12**, maks çekme oranı **%2**
+- Alt donatı ≥ **%50** × üst donatı (DTS=1,1a,2,2a)
+- Sarılma bölgesi: **2h** uzunluk
+- Sarılma etriyesi: ≤ min(d/4, 8φ_min, 150 mm), ilk etriye ≤ 50 mm
+
+### SDY Perde Kuralları (7.6)
+- Perde: uzun_kenar/kalınlık ≥ **6**
+- Gövde kalınlığı ≥ max(kat_yüksekliği/16, **250 mm**)
+- Yatay/düşey donatı oranı ≥ **%0.25**, aralık ≤ **250 mm**
+- Uç bölge uzunluğu ≥ max(%20×ℓw, 1.5×kalınlık)
+
+### Temel ve Bağ Kirişi (Bölüm 16)
+- Bağ kirişi minimum boyut: **300×300 mm**
+- Bağ kirişi donatı oranı ≥ **%0.5**, etriye φ8/200
+- Bağ kirişi eksenel: Nb = 0.10 × SDS × Nk
+
+### Göreceli Kat Ötelemesi (4.9.1)
+- Dolgu duvar bitişik: λ × δmax/hi ≤ **0.008κ**
+- Esnek derzli: λ × δmax/hi ≤ **0.016κ**
+
+### Deprem Derzi (4.9.3)
+- 6 m'ye kadar **30 mm**, sonra her 3 m için +10 mm
+
+### Etriye Kanca Detayı (7.13.1.3)
+- **135° kanca**, serbest uç ≥ 6φ ve ≥ **80 mm**
+
+---
+
+## 3. TS 498:2021 — YAPI YÜKLERİ ÖZETİ
+
+### Hareketli Yükler (kN/m²)
+| Kullanım | Yük |
+|----------|-----|
+| Konut döşeme/koridor | **2.0** |
+| Konut merdiveni | **3.5** |
+| Balkon (≤10 m²) | **5.0** |
+| Mağaza, lokanta, toplantı salonu | **5.0** |
+| Garaj (≤2.5 ton araç) | **5.0** |
+| Tribün (sabit olmayan) | **7.5** |
+| Çatı (zaman zaman kullanılan) | **2.0** |
+| Çatı arası | **1.5** |
+
+### Rüzgar Basıncı (kN/m²)
+| Yükseklik | q |
+|-----------|---|
+| 0-8 m | **0.50** |
+| 9-20 m | **0.80** |
+| 21-100 m | **1.10** |
+| >100 m | **1.30** |
+
+### Yük Kombinasyonları
+- Düşey: Fd = **1.4G + 1.6Q**
+- Deprem: Fd = **1.0G + 1.0Q + 1.0E**
+
+---
+
+## 4. TS 500 — BETONARME TASARIM ÖZETİ
+
+### Pas Payı (Net Beton Örtüsü)
+| Durum | Minimum |
+|-------|---------|
+| Temel (tüm tipler) | **50 mm** |
+| Zemin temas eden eleman | **50 mm** |
+| Dış kolon/kiriş | **25 mm** |
+| İç kolon/kiriş | **20 mm** |
+| Döşeme/perde | **15 mm** |
+
+### Kiriş Boyutlandırma
+- Min yükseklik: **300 mm** ve ≥ 3×döşeme_kalınlığı
+- Min genişlik: **200 mm**
+- Çekme donatısı min: ρ ≥ 0.8×fctd/fyd, maks: **%2**
+- Gövde > 600 mm: gövde donatısı zorunlu (min φ10, ≤ 300 mm)
+
+### Kolon Boyutlandırma
+- Min genişlik: **250 mm** (dikdörtgen), **300 mm** (daire çap)
+- Boyuna donatı: min **%1**, maks **%4** (bindirme dışı), **%6** (bindirme)
+- Min çap: **φ14**
+- Etriye aralığı: ≤ 12×φ_min ve ≤ **200 mm**
+
+### Döşeme Boyutlandırma
+- Tek yön basit: h ≥ l/**25**, sürekli: h ≥ l/**30**, konsol: h ≥ l/**12**
+- Min kalınlık: **80 mm** (genel), **120 mm** (taşıt geçen)
+- İki yön kirişsiz tablasız: h ≥ ln/**30** ve ≥ **180 mm**
+- Donatı aralığı: kısa yön ≤ **200 mm**, uzun yön ≤ **250 mm**
+
+### Kenetlenme ve Bindirme Boyları
+- Çekme kenetlenme: lb = 0.12×(fyd/fctd)×φ ≥ 20φ
+- Kancalı: lbk = 3/4 × lb
+- Basınç: 3/4 × lb
+- Bindirme: l0 = α1 × lb (α1 = 1 + 0.5r)
+- Konum II (üst donatı): × **1.4** çarpanı
+
+### Standart Kanca Detayları
+- 180° kanca: serbest uç ≥ 4φ ve ≥ 60 mm
+- 90° kanca: serbest uç ≥ 12φ
+- Etriye 135° kanca: serbest uç ≥ 6φ ve ≥ 50 mm
+- Etriye 90° kanca: serbest uç ≥ 10φ ve ≥ 70 mm
+
+### Kesme Donatısı
+- Min etriye: Asw/s ≥ 0.3×(fctd/fywd)×bw
+- Genel aralık: s ≤ d/2
+- Vd > 3Vcr: s ≤ d/4
+- Kiriş uçları (2h bölge): s ≤ min(d/4, 8φ_min, 150 mm)
+
+### Sehim Sınırları (h/l — sehim hesabı gerektirmeyen)
+| Eleman | Basit | Sürekli kenar | Sürekli iç | Konsol |
+|--------|-------|---------------|------------|--------|
+| Tek yön döşeme | 1/20 | 1/25 | 1/30 | 1/10 |
+| Kiriş | 1/10 | 1/12 | 1/15 | 1/5 |
+
+### Çatlak Genişliği Sınırları
+- Yapı içi normal: **0.4 mm**
+- Yapı içi nemli / dış normal: **0.3 mm**
+- Yapı dışı nemli: **0.2 mm**
+- Agresif ortam: **0.1 mm**
+
+### Temel Kuralları
+- Tekil temel min boyut: **0.7 m**, alan ≥ **1.0 m²**, kalınlık ≥ **250 mm**
+- Sürekli temel kirişli: yükseklik ≥ açıklık/**10**, plak ≥ **200 mm**
+- Sürekli temel kirişsiz: kalınlık ≥ **300 mm**
+- Donatı oranı ≥ **0.002**, aralık ≤ **250 mm**
+
+---
+
+## 5. MALZEME DAYANIMLARI REFERANS
+
+### Beton Sınıfları
+| Sınıf | fck (MPa) | fctk (MPa) | Ec (MPa) |
+|-------|-----------|------------|----------|
+| C25 | 25 | 1.8 | 30000 |
+| C30 | 30 | 1.9 | 32000 |
+| C35 | 35 | 2.1 | 33000 |
+| C40 | 40 | 2.2 | 34000 |
+
+### Malzeme Güvenlik Katsayıları
+- Beton: γmc = **1.5** (yerinde dökme)
+- Donatı: γms = **1.15**
+- Güçlendirme (Eurocode 1998-1-4, hasarsız mevcut): Beton γc=**1.20**, Çelik γs=**1.05**
+- Güçlendirme (yeni eleman): Beton γc=**1.50**, Çelik γs=**1.15**
+
+### Beklenen Dayanımlar (TBDY Tablo 5.1)
+- Beton: fce = **1.3** × fck
+- Donatı: fye = **1.2** × fyk
+
+---
+
+## 6. YANGIN YÖNETMELİĞİ — PAS PAYI ETKİSİ
+
+### Net Beton Örtüsü (120 dk yangın dayanımı — H > 30.5 m yapılar)
+| Eleman | TS500 (60-90 dk) | Yangın Yönetmeliği (120 dk) |
+|---|---|---|
+| Döşemeler | 15 mm | **20 mm** |
+| Kirişler | 25 mm | **25 mm** |
+| Kolon ve perdeler | 25 mm | **35 mm** |
+
+### STA4CAD Hesap Paspayları
+| Eleman | H ≤ 30.5m | H > 30.5m (120 dk) |
+|---|---|---|
+| Döşemeler | 20 mm | 25 mm |
+| Kirişler | 40 mm | 40 mm |
+| Kolon ve perdeler | 40 mm | **50 mm** |
+
+- 35 mm net paspayında hesap paspayı = 35 + 20 = **55 mm** → sarılma koşullarını sağlamak zorlaşır (enine donatı %54 artabilir)
+
+---
+
+## 7. KOLON SARILMA BÖLGESİ DETAY KURALLARI
+
+### Sarılma Bölgesi Uzunluğu (TBDY 7.3.4.1)
+- Kolon serbest yüksekliğinin **1/6**
+- Kolon en büyük kesit boyutunun **1.5 katı**
+- Minimum **500 mm**
+- Konsol kolonlarda: büyük boyutun **2 katı**
+
+### Enine Donatı Kuralları
+- Minimum çap: **φ8**
+- Etriye aralığı: ≤ min(küçük_boyut/3, 150 mm, 6×φ_boyuna); min **50 mm**
+- Etriye kolu/çiroz yatay mesafe: ≤ **25×etriye_çapı**
+- Nd > 0.20 Ac fck → Denklem 7.1 ve 7.2 ile min. enine donatı hesaplanır
+- Beton sınıfı yükseldikçe veya paspayı arttıkça enine donatı oranı artar
+
+### Optimizasyon İpuçları
+- 5 cm etriye aralığında etriye çapı φ10'a indirilebilir
+- Kenar pursantajı 0.0025'ten 0.002'ye indirilerek donatı gövdeye kaydırılabilir
+
+---
+
+## 8. KOLON-KİRİŞ BİRLEŞİM KESMESİ
+
+### Formül
+- `Ve = 1.25(fyk·As1 + fyk·As2) − Vkol`
+- Kuşatılmış birleşim: `Ve ≤ 1.7 × bj × h × √fck`
+- Kuşatılmamış birleşim: `Ve ≤ 1.0 × bj × h × √fck`
+
+### Perde Moment Oranı Kuralı
+- Mdev/Mo > 0.75 → birleşim kontrolü **yapılmaz** (perdeler taşır)
+- Mdev/Mo < 0.40 → birleşim kontrolü **zorunlu**
+- 0.40–0.75 arası: T = Md/(0.9h) ile kontrol önerilir
+
+---
+
+## 9. ZIMBALAMA HESABI (KİRİŞSİZ DÖŞEME)
+
+- Zımbalama çevresi: Kolon çevresinde d/2 uzaklıktaki kesme yüzeyi
+- `Vpr = γ × fctd × Up × d` (γ=1.0 eksenel, <1.0 dışmerkezli)
+- Zımbalama donatısı ile artırılmış max: **1.5 × Vpr**
+- Minimum plak kalınlığı (donatılı): **250 mm**
+- Kolon başlığı/tabla çözümü mümkün
+- Mantar plakta **3 kat kalıp dikmesi** sürekli bulundurulmalı
+
+---
+
+## 10. DEPREM YÖNETMELİKLERİ KARŞILAŞTIRMASI
+
+### R Katsayıları (TDY97/TDY2007/TBDY2018)
+| Sistem | R (Yüksek Sünek) | R (Normal Sünek) |
+|---|---|---|
+| BA çerçeve | 8 | 4 |
+| Boşluklu perde | 7 | 4 |
+| Boşluksuz perde | 6 | 4 |
+| Çerçeve + perde | 7 | 4 |
+
+### Boşluklu Perde
+- R_boşluklu = R_boşluksuz + 1 (daha sünek)
+- Bağ kirişi koşulları (TBDY 7.6.8): Ln > 2hk ve Vd < 1.5 bw·d·fctd
+- Sağlanmazsa çapraz donatı hesabı gerekir
+
+### Kirişsiz Döşemeli Sistem (TBDY 4.3.4.4)
+- Yalnızca A12, A13, A32 taşıyıcı sistemlerde yapılabilir
+- Deprem etkileri tamamen SDY perdeler tarafından karşılanmalı
+- 2 aşamalı deprem analizi gerekir
+
+### Dişli Döşeme Sınırlamaları (TBDY 4.3.4.3)
+- A23/A24 karma taşıyıcı sistem
+- Mdev/Mo > 0.75 koşulu sağlanmalı
+- DTS=1,2 (Sds>0.5) → asmolen dolgulu dişli **yapılamaz** → boşluklu kaset alternatifi
+
+---
+
+## 11. SNIP REFERANS (RUS YÖNETMELİKLERİ)
+
+### Döşeme Yükleri (kPa)
+| Kullanım | Tam | Azaltılmış |
+|---|---|---|
+| Konut | 1.5 | 0.3 |
+| Ofis | 2.0 | 0.7 |
+| Ticari alan | ≥4.0 | ≥1.4 |
+
+### Paspayı (SNiP)
+| Eleman | Değer |
+|---|---|
+| Plaklar ≥100mm | 10 mm |
+| Kirişler <250mm | 15 mm |
+| Kirişler ≥250mm | 20 mm |
+| Kolonlar | 20 mm |
+| Temel kirişleri | 30 mm |
+| Monolitik temel (hazırlıklı) | 35 mm |
+| Monolitik temel (hazırlıksız) | 70 mm |
+
+### Sehim Sınırları (SNiP)
+| Eleman | Sınır |
+|---|---|
+| Vinç kirişi | l/400 |
+| Döşeme/çatı (l=6m) | l/200 |
+| Döşeme/çatı (l≥36m) | l/300 |
+
+---
+
+## 12. PERFORMANS DEĞERLENDİRME KURALLARI
+
+### Performans Düzeyleri ve Hasar Sınıfları
+- **MH** (Minimum Hasar): Çatlak genişliği < 1 mm
+- **BH** (Belirgin Hasar): Çatlak < 5 mm
+- **IH** (İleri Hasar): Çatlak > 5 mm
+- **GB** (Göçme Bölgesi)
+
+### Göreceli Kat Ötelemesi Sınırları
+| Düzey | Sınır |
+|---|---|
+| Minimum (MN) | 0.01 |
+| Güvenlik (GV) | 0.03 |
+| Göçme (GÇ) | 0.04 |
+
+### Hasarlı Eleman Katılım Oranları
+- Hafif hasar (Wk < 1mm): **%100** katılım
+- Orta hasar (Wk < 5mm): **%70** katılım
+- Ağır hasar (Wk > 5mm): **%0** katılım (sadece düşey yük)
+
+### Mevcut Yapı Beton Dayanımı
+- Numune ortalamasının **%85**'i
+- Ecm = 5000√fcm (MPa)
+
+### Etkin Eğilme Rijitlikleri (Mevcut Yapı)
+- Kirişler/perdeler: (EI)e = **0.30** × Ecm·Io
+- Kolonlar: (EI)e = **0.50** × Ecm·Io
+
+### Riskli Bina Tespiti — Kolon Sınıflandırma
+- **A grubu:** Ve/Vr ≤ 0.7, 100mm etriye, 135° kanca
+- **B grubu:** 0.7 < Ve/Vr ≤ 1.1
+- **C grubu:** Ve/Vr > 1.1
+
+---
+
+## 13. GÜÇLENDİRME KURALLARI
+
+### Perde Tasarımı
+- Perdeler deprem tesirlerinin en az **%70**'ini almalı
+- 200 cm'den büyük perdeler tercih edilmeli
+- Rijitlik merkezi ≈ ağırlık merkezi
+- İnşaat derzlerinde mutlaka **diş** oluşturulmalı
+- Panel perde başlık bölgesi: min BS16, donatı > %1, perde alanının min %10'u
+
+### Manto Kullanımı
+- Manto güçlendirme elemanı DEĞİL, tamir/takviye elemanı
+- Önce perdelerle güçlendirme, sonra gerekirse manto
+- Kapasite: Ndc+Ndj < Nrc+Nrj
+
+### FRP Güçlendirme
+- D/B < 3 kolonlarda: Basınç dayanımı artırılır → eğilme+kesme dayanımı artar
+- D/B > 3 kolon/perdelerde: SADECE kesme kapasitesi artırılır
+- Minimum plak kalınlığı: 250 mm
+
+### Temel Güçlendirme
+- Mevcut tekil/sürekli → radye plak ile bağlama
+- Epoksi ankraj + aderans sağlayıcı kimyasal
+- 2 aşamalı analiz: 1) Mevcut 0.6×(1.4G+1.6Q), 2) Mevcut+Yeni 0.4×(1.4G+1.6Q)+E
+
+---
+
+## 14. YÜKSEK BİNA (BYS=1) KURALLARI
+
+### 30+ Kat Performans Analizi
+- 3 aşamalı: DGT(DD-2) → Nonlineer(DD-1) → DGT(DD-4)
+- DD-1: Zaman tanım alanında 11 deprem kaydı × 2 doğrultu
+- Sönüm: %2.5
+- Ortalama göreli kat ötelemesi ≤ 0.03, tek depremde ≤ 0.045
+- Min taban kesme: Vt,min = 0.04 αH mt SDS g
+
+### Deprem İzolatörleri (TBDY Bölüm 14)
+- Modal analiz zorunlu (eşdeğer yok)
+- Etkin sönüm oranı: 0.30
+- Performans: sadece zaman tanım alanında
+- Etkin deprem yöntemi: yalnızca ≤4 katlı yapılar

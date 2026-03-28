@@ -29,7 +29,17 @@
 
   <ItemGroup>
     <!-- DWG: DxfIn DXF bazi sembol tablolarinda eInvalidSymbolTableName verebilir; ReadDwgFile ile acilir. -->
-    <EmbeddedResource Include="..\antet_02.dwg" LogicalName="ST4PlanIdCiz.TemelAntet.antet_02.dwg" />
+    <EmbeddedResource Include="..\antet_02.dwg" LogicalName="ST4PlanIdCiz.TemelAntet.antet_02.dwg" Condition="Exists('$(MSBuildProjectDirectory)\..\antet_02.dwg')" />
+    <EmbeddedResource Include="..\dosyalar\antet_02.dwg" LogicalName="ST4PlanIdCiz.TemelAntet.antet_02.dwg" Condition="!Exists('$(MSBuildProjectDirectory)\..\antet_02.dwg') and Exists('$(MSBuildProjectDirectory)\..\dosyalar\antet_02.dwg')" />
+  </ItemGroup>
+
+  <!-- ISKELEKESIT: şablonlar DLL içinde; diskte silinse bile çizim devam eder. Üstünlük: DLL yanındaki dosya. -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\dosyalar\ISKELE_TABAN.dxf" LogicalName="ST4PlanIdCiz.IskeleKesitTemplates.ISKELE_TABAN.dxf" Condition="Exists('$(MSBuildProjectDirectory)\..\dosyalar\ISKELE_TABAN.dxf')" />
+    <EmbeddedResource Include="..\dosyalar\ISKELE_D1.dxf" LogicalName="ST4PlanIdCiz.IskeleKesitTemplates.ISKELE_D1.dxf" Condition="Exists('$(MSBuildProjectDirectory)\..\dosyalar\ISKELE_D1.dxf')" />
+    <EmbeddedResource Include="..\dosyalar\ISKELE_D2.dxf" LogicalName="ST4PlanIdCiz.IskeleKesitTemplates.ISKELE_D2.dxf" Condition="Exists('$(MSBuildProjectDirectory)\..\dosyalar\ISKELE_D2.dxf')" />
+    <EmbeddedResource Include="..\dosyalar\ISKELE_C1.dxf" LogicalName="ST4PlanIdCiz.IskeleKesitTemplates.ISKELE_C1.dxf" Condition="Exists('$(MSBuildProjectDirectory)\..\dosyalar\ISKELE_C1.dxf')" />
+    <EmbeddedResource Include="..\dosyalar\ISKELE_KESIT.dxf" LogicalName="ST4PlanIdCiz.IskeleKesitTemplates.ISKELE_KESIT.dxf" Condition="Exists('$(MSBuildProjectDirectory)\..\dosyalar\ISKELE_KESIT.dxf')" />
   </ItemGroup>
 
   <ItemGroup Condition="Exists('$(AutoCADInstallDir)\acdbmgd.dll') and Exists('$(AutoCADInstallDir)\acmgd.dll')">
@@ -68,5 +78,14 @@
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\iskele_plan.lsp" DestinationFolder="$(OutputPath)" Condition="Exists('$(MSBuildProjectDirectory)\..\iskele_plan.lsp')" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ISKELE_KESIT.dxf" DestinationFolder="$(OutputPath)" Condition="Exists('$(MSBuildProjectDirectory)\..\ISKELE_KESIT.dxf')" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ISKELE_KESIT.dwg" DestinationFolder="$(OutputPath)" Condition="Exists('$(MSBuildProjectDirectory)\..\ISKELE_KESIT.dwg')" />
+    <!-- ISKELEKESIT: taban / dikme / çapraz şablonları (köke veya dosyalar\ altına konabilir) -->
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\dosyalar\ISKELE_TABAN.dxf" DestinationFolder="$(OutputPath)" Condition="Exists('$(MSBuildProjectDirectory)\..\dosyalar\ISKELE_TABAN.dxf')" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\dosyalar\ISKELE_D1.dxf" DestinationFolder="$(OutputPath)" Condition="Exists('$(MSBuildProjectDirectory)\..\dosyalar\ISKELE_D1.dxf')" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\dosyalar\ISKELE_D2.dxf" DestinationFolder="$(OutputPath)" Condition="Exists('$(MSBuildProjectDirectory)\..\dosyalar\ISKELE_D2.dxf')" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\dosyalar\ISKELE_C1.dxf" DestinationFolder="$(OutputPath)" Condition="Exists('$(MSBuildProjectDirectory)\..\dosyalar\ISKELE_C1.dxf')" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ISKELE_TABAN.dxf" DestinationFolder="$(OutputPath)" Condition="Exists('$(MSBuildProjectDirectory)\..\ISKELE_TABAN.dxf')" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ISKELE_D1.dxf" DestinationFolder="$(OutputPath)" Condition="Exists('$(MSBuildProjectDirectory)\..\ISKELE_D1.dxf')" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ISKELE_D2.dxf" DestinationFolder="$(OutputPath)" Condition="Exists('$(MSBuildProjectDirectory)\..\ISKELE_D2.dxf')" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ISKELE_C1.dxf" DestinationFolder="$(OutputPath)" Condition="Exists('$(MSBuildProjectDirectory)\..\ISKELE_C1.dxf')" />
   </Target>
 </Project>
