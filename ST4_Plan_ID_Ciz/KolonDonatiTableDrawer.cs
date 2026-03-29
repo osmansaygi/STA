@@ -263,28 +263,44 @@ namespace ST4PlanIdCiz
             return ReplaceTimesWithAsciiX(NormalizeDiameterSymbol(StripGovdeSuffix(raw)));
         }
 
-        /// <summary>Kısa adda tire var: SB-21; yok: SB01. Sayısal kat: S1-02.</summary>
+        /// <summary>
+        /// STA4CAD çoklu bodrum GPR: S4B-01 (kısaltma 4B-). Eski/alternatif: SB4-01. Tek bodrum: SB-01 ↔ S1B/SB1.
+        /// </summary>
         private static List<string> GprDataKeysForFloorColumn(string storyPrefix, bool hyphenBeforeColNo, int colNo)
         {
             var keys = new List<string>();
             if (string.IsNullOrEmpty(storyPrefix)) return keys;
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             void Add(string k) { if (seen.Add(k)) keys.Add(k); }
-            string n = colNo.ToString(CultureInfo.InvariantCulture);
-            string d2 = colNo.ToString("D2", CultureInfo.InvariantCulture);
-            string d3 = colNo.ToString("D3", CultureInfo.InvariantCulture);
-            if (hyphenBeforeColNo)
+            void AddForPrefix(string p)
             {
-                Add(storyPrefix + "-" + n);
-                Add(storyPrefix + "-" + d2);
-                if (colNo < 1000) Add(storyPrefix + "-" + d3);
+                if (string.IsNullOrEmpty(p)) return;
+                string n = colNo.ToString(CultureInfo.InvariantCulture);
+                string d2 = colNo.ToString("D2", CultureInfo.InvariantCulture);
+                string d3 = colNo.ToString("D3", CultureInfo.InvariantCulture);
+                if (hyphenBeforeColNo)
+                {
+                    Add(p + "-" + n);
+                    Add(p + "-" + d2);
+                    if (colNo < 1000) Add(p + "-" + d3);
+                }
+                else
+                {
+                    Add(p + n);
+                    Add(p + d2);
+                    Add(p + d3);
+                }
             }
-            else
-            {
-                Add(storyPrefix + n);
-                Add(storyPrefix + d2);
-                Add(storyPrefix + d3);
-            }
+            AddForPrefix(storyPrefix);
+            var mSnb = Regex.Match(storyPrefix, @"^S(\d+)B$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (mSnb.Success)
+                AddForPrefix("SB" + mSnb.Groups[1].Value);
+            var mSbn = Regex.Match(storyPrefix, @"^SB(\d+)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (mSbn.Success)
+                AddForPrefix("S" + mSbn.Groups[1].Value + "B");
+            if (storyPrefix.Equals("S1B", StringComparison.OrdinalIgnoreCase) ||
+                storyPrefix.Equals("SB1", StringComparison.OrdinalIgnoreCase))
+                AddForPrefix("SB");
             return keys;
         }
 
@@ -318,14 +334,27 @@ namespace ST4PlanIdCiz
             return false;
         }
 
-        /// <summary>GPR anahtarından kat öneği ve kolon no (SB01, SB-21, S1-02).</summary>
+        /// <summary>GPR anahtarından kat öneği ve kolon no (S4B-01 STA4CAD, SB01, SB2-01, SB-21, S1-02).</summary>
         private static bool TryParseGprStoryKey(string key, out string storyPrefix, out int columnNo)
         {
             storyPrefix = null;
             columnNo = 0;
             if (string.IsNullOrWhiteSpace(key)) return false;
             key = key.Trim().ToUpperInvariant();
-            var m = Regex.Match(key, @"^(SB|SZ|SA|SC)(\d+)$");
+            var m = Regex.Match(key, @"^(S\d+)B-(\d+)$");
+            if (m.Success)
+            {
+                storyPrefix = m.Groups[1].Value + "B";
+                return int.TryParse(m.Groups[2].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out columnNo);
+            }
+            // Çoklu bodrum / kat: SB2-01 → önek SB2 (önce tireli çok haneli biçim)
+            m = Regex.Match(key, @"^(SB|SZ|SA|SC)(\d+)-(\d+)$");
+            if (m.Success)
+            {
+                storyPrefix = m.Groups[1].Value + m.Groups[2].Value;
+                return int.TryParse(m.Groups[3].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out columnNo);
+            }
+            m = Regex.Match(key, @"^(SB|SZ|SA|SC)(\d+)$");
             if (m.Success)
             {
                 storyPrefix = m.Groups[1].Value;
@@ -459,7 +488,26 @@ namespace ST4PlanIdCiz
             return false;
         }
 
-        /// <summary>Kolon id (örn. SB-01) -> (ebat, donati, etriye). GPR: yalnızca ilk KOLON BETONARME HESAP ile ilk Kolon Moment b… satırı arası.</summary>
+        /// <summary>
+        /// Ardışık GPR kolon tablolarında hep SB-01 kullanılıyorsa bir önceki bloğun SB-* anahtarlarını SB{n}-* olarak saklar (üzerine yazılmadan önce).
+        /// </summary>
+        private static void GprPromoteGenericSbKeysToIndexedBasement(
+            Dictionary<string, (string ebat, string donati, string etriye)> result,
+            int previousSectionIndex)
+        {
+            if (result == null || result.Count == 0 || previousSectionIndex < 1) return;
+            string idx = previousSectionIndex.ToString(CultureInfo.InvariantCulture);
+            foreach (var kv in result.ToList())
+            {
+                var m = Regex.Match(kv.Key ?? string.Empty, @"^SB-(\d+)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+                if (!m.Success) continue;
+                string nk = "SB" + idx + "-" + m.Groups[1].Value;
+                if (result.ContainsKey(nk)) continue;
+                result[nk] = kv.Value;
+            }
+        }
+
+        /// <summary>Kolon id (örn. SB-01) -> (ebat, donati, etriye). GPR: birden fazla bodrumda ardışık KOLON BETONARME blokları; her blok ayrı okunur (.prn ile aynı mantık).</summary>
         public static Dictionary<string, (string ebat, string donati, string etriye)> ParseKolonBetonarmeFromFile(string filePath, out string error)
         {
             error = null;
@@ -482,53 +530,78 @@ namespace ST4PlanIdCiz
 
             if (isGpr && gprRawLines != null)
             {
-                int iKolon = -1;
-                for (int j = 0; j < lines.Length; j++)
+                int gprSearchFrom = 0;
+                int gprSectionCount = 0;
+                while (gprSearchFrom < lines.Length)
                 {
-                    string c = StripGprLinePrefix(lines[j] ?? string.Empty);
-                    if (c.IndexOf("KOLON BETONARME HESAP", StringComparison.OrdinalIgnoreCase) >= 0)
-                    {
-                        iKolon = j;
-                        break;
-                    }
-                    if (j < gprRawLines.Length && GprRawLineContainsKolonHeader(gprRawLines[j]))
-                    {
-                        iKolon = j;
-                        break;
-                    }
-                }
-                if (iKolon < 0)
-                {
-                    error = "KOLON BETONARME HESAP SONUCLARI bolumu bulunamadi.";
-                    return result;
-                }
-                int iEnd = lines.Length;
-                bool foundMoment = false;
-                for (int j = iKolon + 1; j < lines.Length; j++)
-                {
-                    byte[] rb = j < gprRawLines.Length ? gprRawLines[j] : null;
-                    string raw = lines[j] ?? string.Empty;
-                    if (IsGprKolonMomentBuyutmeFootnoteLine(raw, rb))
-                    {
-                        iEnd = j;
-                        foundMoment = true;
-                        break;
-                    }
-                }
-                if (!foundMoment)
-                {
-                    for (int j = iKolon + 1; j < lines.Length; j++)
+                    int iKolon = -1;
+                    for (int j = gprSearchFrom; j < lines.Length; j++)
                     {
                         string c = StripGprLinePrefix(lines[j] ?? string.Empty);
-                        byte[] rb = j < gprRawLines.Length ? gprRawLines[j] : null;
-                        if (IsGprTemelBetonarmeSectionHeader(c, rb))
+                        if (c.IndexOf("KOLON BETONARME HESAP", StringComparison.OrdinalIgnoreCase) >= 0)
                         {
-                            iEnd = j;
+                            iKolon = j;
+                            break;
+                        }
+                        if (j < gprRawLines.Length && GprRawLineContainsKolonHeader(gprRawLines[j]))
+                        {
+                            iKolon = j;
                             break;
                         }
                     }
+                    if (iKolon < 0)
+                    {
+                        if (gprSectionCount == 0)
+                            error = "KOLON BETONARME HESAP SONUCLARI bolumu bulunamadi.";
+                        break;
+                    }
+                    gprSectionCount++;
+                    if (gprSectionCount >= 2)
+                        GprPromoteGenericSbKeysToIndexedBasement(result, gprSectionCount - 1);
+                    int iEnd = lines.Length;
+                    bool foundEnd = false;
+                    for (int j = iKolon + 1; j < lines.Length; j++)
+                    {
+                        byte[] rb = j < gprRawLines.Length ? gprRawLines[j] : null;
+                        string raw = lines[j] ?? string.Empty;
+                        string c = StripGprLinePrefix(raw);
+                        if (IsGprKolonMomentBuyutmeFootnoteLine(raw, rb))
+                        {
+                            iEnd = j;
+                            foundEnd = true;
+                            break;
+                        }
+                        // İkinci ve sonraki bodrum tabloları: yeni başlık (dipnottan önce de gelebilir)
+                        if (j > iKolon + 1 &&
+                            (c.IndexOf("KOLON BETONARME HESAP", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                             (rb != null && GprRawLineContainsKolonHeader(rb))))
+                        {
+                            iEnd = j;
+                            foundEnd = true;
+                            break;
+                        }
+                    }
+                    if (!foundEnd)
+                    {
+                        for (int j = iKolon + 1; j < lines.Length; j++)
+                        {
+                            string c = StripGprLinePrefix(lines[j] ?? string.Empty);
+                            byte[] rb = j < gprRawLines.Length ? gprRawLines[j] : null;
+                            if (IsGprTemelBetonarmeSectionHeader(c, rb))
+                            {
+                                iEnd = j;
+                                break;
+                            }
+                        }
+                    }
+                    AppendKolonBetonarmeSection(lines, iKolon + 1, isGpr, result, gprRawLines, iEnd, true);
+                    int nextFrom = iEnd;
+                    if (nextFrom <= iKolon)
+                        nextFrom = iKolon + 1;
+                    gprSearchFrom = nextFrom;
                 }
-                AppendKolonBetonarmeSection(lines, iKolon + 1, isGpr, result, gprRawLines, iEnd, true);
+                if (gprSectionCount > 0)
+                    GprPromoteGenericSbKeysToIndexedBasement(result, gprSectionCount);
                 return result;
             }
 
@@ -633,7 +706,9 @@ namespace ST4PlanIdCiz
         /// <summary>Panel / POLIGON KOLON veya dosya sonuna kadar. GPR penceresi: [startIdx, lineEndExclusive).</summary>
         private static int AppendKolonBetonarmeSection(string[] lines, int startIdx, bool isGpr, Dictionary<string, (string ebat, string donati, string etriye)> result, byte[][] gprRawLines = null, int lineEndExclusive = int.MaxValue, bool gprKolonWindowOnly = false)
         {
-            var colIdRegex = new Regex(@"\b(S[BZAC]-\d+|S[BZAC]\d{1,4}|S\d+-\d+)\b", RegexOptions.IgnoreCase);
+            // Çoklu bodrum: SB2-01 önce yakalanmalı; aksi halde S[BZAC]\d{1,4} yalnızca SB2 (kolon 2 sanılır).
+            // S2B-01: STA4CAD çoklu bodrum; S2-01 normal kat — S\d+B-\d+ önce olmalı
+            var colIdRegex = new Regex(@"\b(S\d+B-\d+|S[BZAC]\d+-\d+|S\d+-\d+|S[BZAC]-\d+|S[BZAC]\d{1,4})\b", RegexOptions.IgnoreCase);
             var bxRegex = new Regex(@"Bx[=\s]*(\d+)", RegexOptions.IgnoreCase);
             var byRegex = new Regex(@"By[=\s]*(\d+)", RegexOptions.IgnoreCase);
             var polygonRegex = new Regex(@"Polygon", RegexOptions.IgnoreCase);
@@ -836,6 +911,12 @@ namespace ST4PlanIdCiz
                 string p = c == 'B' ? "SB" : c == 'Z' ? "SZ" : c == 'A' ? "SA" : c == 'C' ? "SC" : "S1";
                 return new GprFloorKeyFmt { StoryPrefix = p, HyphenBeforeColNo = endsWithDash };
             }
+            var mBodIdx = Regex.Match(token, @"^B(\d+)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (mBodIdx.Success && int.TryParse(mBodIdx.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int bLev) && bLev > 0)
+                return new GprFloorKeyFmt { StoryPrefix = "S" + bLev.ToString(CultureInfo.InvariantCulture) + "B", HyphenBeforeColNo = true };
+            mBodIdx = Regex.Match(token, @"^(\d+)B$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (mBodIdx.Success && int.TryParse(mBodIdx.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int bLev2) && bLev2 > 0)
+                return new GprFloorKeyFmt { StoryPrefix = "S" + bLev2.ToString(CultureInfo.InvariantCulture) + "B", HyphenBeforeColNo = true };
             if (int.TryParse(token, NumberStyles.Integer, CultureInfo.InvariantCulture, out int n) && n > 0)
                 return new GprFloorKeyFmt { StoryPrefix = "S" + n.ToString(CultureInfo.InvariantCulture), HyphenBeforeColNo = true };
             return new GprFloorKeyFmt { StoryPrefix = GprPrefixFromFloorNameFallback(floorName), HyphenBeforeColNo = true };
@@ -844,6 +925,18 @@ namespace ST4PlanIdCiz
         private static string GprPrefixFromFloorNameFallback(string floorName)
         {
             string nu = (floorName ?? string.Empty).Trim().ToUpperInvariant();
+            var mBod = Regex.Match(nu, @"(\d+)\s*\.\s*BODRUM", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (mBod.Success && int.TryParse(mBod.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int bodNo) && bodNo > 0)
+                return "S" + bodNo.ToString(CultureInfo.InvariantCulture) + "B";
+            mBod = Regex.Match(nu, @"(\d+)\s*\.\s*NORMAL\s*BODRUM", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (mBod.Success && int.TryParse(mBod.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int bn2) && bn2 > 0)
+                return "S" + bn2.ToString(CultureInfo.InvariantCulture) + "B";
+            mBod = Regex.Match(nu, @"(\d+)\s*\.\s*N\s*BODRUM", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (mBod.Success && int.TryParse(mBod.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int bn3) && bn3 > 0)
+                return "S" + bn3.ToString(CultureInfo.InvariantCulture) + "B";
+            mBod = Regex.Match(nu, @"BODRUM\D*(\d+)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (mBod.Success && int.TryParse(mBod.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int bn4) && bn4 > 0)
+                return "S" + bn4.ToString(CultureInfo.InvariantCulture) + "B";
             if (nu.IndexOf("BODRUM", StringComparison.Ordinal) >= 0) return "SB";
             if (nu.IndexOf("ZEMIN", StringComparison.Ordinal) >= 0 || nu.IndexOf("ZEMİN", StringComparison.Ordinal) >= 0) return "SZ";
             if (nu.Equals("ASMA", StringComparison.OrdinalIgnoreCase) || nu.StartsWith("ASMA ", StringComparison.OrdinalIgnoreCase)) return "SA";
@@ -858,7 +951,13 @@ namespace ST4PlanIdCiz
         private static int GprStoryRank(string prefix)
         {
             if (string.IsNullOrEmpty(prefix)) return 50;
+            // Tüm bodrum önekleri (SB, SB1…SB4) aynı bant: aksi halde GPR'de yalnızca SB-01 varken SB2 katı minGprRank ile yanlış atlanırdı.
             if (prefix.Equals("SB", StringComparison.OrdinalIgnoreCase)) return 0;
+            if (prefix.Length > 2 && prefix.StartsWith("SB", StringComparison.OrdinalIgnoreCase) &&
+                int.TryParse(prefix.Substring(2), NumberStyles.Integer, CultureInfo.InvariantCulture, out int sbN) && sbN > 0)
+                return 0;
+            if (Regex.IsMatch(prefix, @"^S\d+B$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+                return 0;
             if (prefix.Equals("SZ", StringComparison.OrdinalIgnoreCase)) return 1;
             if (prefix.Equals("SA", StringComparison.OrdinalIgnoreCase)) return 2;
             if (prefix.Equals("SC", StringComparison.OrdinalIgnoreCase)) return 200;

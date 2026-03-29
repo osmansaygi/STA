@@ -24,13 +24,16 @@ namespace ST4PlanIdCiz
     /// </summary>
     public static class GprDosemeDonatiParser
     {
+        /// <summary>
+        /// Çoklu bodrum: ST4 kısaltması 2B- → D2B-01; tek bodrum DB-01, DB2-01. Önceki [A-Z]{1,2}\d? D2B ile eşleşmezdi.
+        /// </summary>
         private static readonly Regex RxSlabIdX = new Regex(
-            @"([A-Z]{1,2}\d?-\d+)\s+X\b",
+            @"(D(?:\d+[A-Z]{1,2}|[A-Z]{1,2}\d?)-\d+)\s+X\b",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
         /// <summary>\b bazı GPR satırlarında X sonrası özel karakterde başarısız olabiliyor.</summary>
         private static readonly Regex RxSlabIdXLoose = new Regex(
-            @"([A-Z]{1,2}\d?-\d+)\s+X",
+            @"(D(?:\d+[A-Z]{1,2}|[A-Z]{1,2}\d?)-\d+)\s+X",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
         private static readonly Regex RxSlabY = new Regex(
