@@ -41,6 +41,53 @@ namespace ST4PlanIdCiz
     }
 
     /// <summary>
+    /// <see cref="PlanIdDrawingManager.DrawFormworkPlan50"/> için isteğe bağlı sade yerleşim (varsayılan tüm alanlar false = tam KALIP50).
+    /// </summary>
+    public readonly struct Kalip50LayoutFlags
+    {
+        /// <summary>Kullanıcı noktası = ilk kat aks sınırı sol-alt (Xmin,Ymin); antet/kesit ofseti yok.</summary>
+        public bool PlainInsertPoint { get; }
+        /// <summary>Kat başına tek plan (ölçü+donatı çift kopya yok, GPR döşeme yazısı yok).</summary>
+        public bool SingleCopyPerFloor { get; }
+        /// <summary>Gömülü antet ve antet üstü bina şeması çizilmez.</summary>
+        public bool NoAntetAndBinaSema { get; }
+        /// <summary>Aks çizgileri ve balonları çizilmez.</summary>
+        public bool NoAxes { get; }
+        /// <summary>Kesit çizgileri ve kesit balonları çizilmez.</summary>
+        public bool NoSections { get; }
+        /// <summary>DENEME1: kesilmiş döşeme sınırları polyline ile <c>DOSEME HATTI (BEYKENT)</c> katmanında (diğer komutlarda kapalı).</summary>
+        public bool DrawSlabBoundaryPolylinesOnDosemeHattiLayer { get; }
+        /// <summary>DENEME1: merdiven döşemeleri (StairSlabIds) çizilmez; kat kotunun altında (OffsetFromFloorCm &lt; 0) olup merdiven eksen paneliyle kesişen döşemeler çizilmez; diğer alt kotlu döşemeler çizilir.</summary>
+        public bool ExcludeStairAdjacentSlabsAndSlabsBelowFloorKot { get; }
+        /// <summary>DENEME1: KALIP BOSLUK çizilmez; komut başında BOS katmanı temizlenir; DrawUnifiedLayer sonrası çizilen eleman birleşiminin iç boşlukları BOS’ta yeniden çizilir.</summary>
+        public bool DrawInteriorVoidsOnBosLayerNotKalipBosluk { get; }
+        /// <summary>DENEME1: döşeme hattı 1–4 katmanlarına ayrılır (KAT SINIRI / yalnız / komşu döşeme / BOS teması); DrawSlabBoundaryPolylinesOnDosemeHattiLayer ile birlikte kullanılır.</summary>
+        public bool ClassifyDosemeHattiIntoTopologyLayers { get; }
+
+        public Kalip50LayoutFlags(
+            bool plainInsertPoint = false,
+            bool singleCopyPerFloor = false,
+            bool noAntetAndBinaSema = false,
+            bool noAxes = false,
+            bool noSections = false,
+            bool drawSlabBoundaryPolylinesOnDosemeHattiLayer = false,
+            bool excludeStairAdjacentSlabsAndSlabsBelowFloorKot = false,
+            bool drawInteriorVoidsOnBosLayerNotKalipBosluk = false,
+            bool classifyDosemeHattiIntoTopologyLayers = false)
+        {
+            PlainInsertPoint = plainInsertPoint;
+            SingleCopyPerFloor = singleCopyPerFloor;
+            NoAntetAndBinaSema = noAntetAndBinaSema;
+            NoAxes = noAxes;
+            NoSections = noSections;
+            DrawSlabBoundaryPolylinesOnDosemeHattiLayer = drawSlabBoundaryPolylinesOnDosemeHattiLayer;
+            ExcludeStairAdjacentSlabsAndSlabsBelowFloorKot = excludeStairAdjacentSlabsAndSlabsBelowFloorKot;
+            DrawInteriorVoidsOnBosLayerNotKalipBosluk = drawInteriorVoidsOnBosLayerNotKalipBosluk;
+            ClassifyDosemeHattiIntoTopologyLayers = classifyDosemeHattiIntoTopologyLayers;
+        }
+    }
+
+    /// <summary>
     /// Akslar, kolonlar (dikdörtgen + daire + poligon), kirişler, perdeler ve döşemeleri
     /// tüm eleman ID'leriyle çizer; katlar yan yana dizilir.
     /// </summary>
@@ -70,6 +117,18 @@ namespace ST4PlanIdCiz
         private bool _isKolon50Mode;
         /// <summary>KALIP50ST4 / KALIP100ST4 kalıp planı modu.</summary>
         private bool _isKalip50Mode;
+        /// <summary>DENEME1: kiriş/perde/kolon/döşeme yazı etiketleri ve kiriş-perde kot blokları çizilmez.</summary>
+        private bool _kalip50SuppressKirisPerdeKolonDosemeLabels;
+        /// <summary>DENEME1: döşeme sınırı polyline DOSEME HATTI katmanında; KALIP50 vb. için false.</summary>
+        private bool _kalip50DrawSlabBoundaryPolylinesOnDosemeHatti;
+        /// <summary>DENEME1: merdiven döşemesi çizilmez; kat altında olup merdiven paneliyle kesişen döşeme çizilmez.</summary>
+        private bool _kalip50ExcludeStairAdjacentAndBelowFloorSlabs;
+        /// <summary>DENEME1: boşlukları BOS katmanında çiz, KALIP BOSLUK kullanma.</summary>
+        private bool _kalip50DrawInteriorVoidsOnBosLayer;
+        /// <summary>DENEME1: döşeme sınırı DOSEME HATTI 1–4 katmanlarına bölünür.</summary>
+        private bool _kalip50ClassifyDosemeHattiTopologyLayers;
+        /// <summary>DENEME1: DrawSlabs sonrası DrawBos’ta sınıflandırılacak kesilmiş döşeme geometrileri.</summary>
+        private List<Geometry> _kalip50Deneme1DosemeHattiGeoms;
         /// <summary>KALIP50 bina şema kesiti: blok tanımı bir kez; her antet üstüne ayrı INSERT.</summary>
         private ObjectId _kalip50BinaSemaBlockId = ObjectId.Null;
         private double _kalip50BinaSemaAminT;
@@ -591,10 +650,19 @@ namespace ST4PlanIdCiz
         /// 1/50 kalıp planı için temel planı çizmeden sadece kat planlarını çizer.
         /// Benzer katlar gruplanır; her gruptan yalnızca bir plan çizilir.
         /// </summary>
-        public void DrawFormworkPlan50(Database db, Editor ed, Point3d baseInsertPoint, string st4SourcePath = null, KalipPlanScale scaleMode = KalipPlanScale.Fifty)
+        /// <param name="firstIndividualFloorCount">0: mevcut benzer-kat gruplaması. &gt;0: modeldeki ilk N kat (0..N-1) ayrı ayrı çizilir.</param>
+        /// <param name="suppressKirisPerdeKolonDosemeLabels">true ise kiriş/perde/kolon/döşeme metin etiketleri ve kiriş-perde kot blokları yok.</param>
+        /// <param name="completionMessageCmdTag">null/boş: KALIP50ST4/KALIP100ST4; dolu: özet satırında bu komut adı.</param>
+        /// <param name="layoutFlags">DENEME1 vb. sade çizim; <see cref="Kalip50LayoutFlags"/> varsayılanı tam kalıp planı.</param>
+        public void DrawFormworkPlan50(Database db, Editor ed, Point3d baseInsertPoint, string st4SourcePath = null, KalipPlanScale scaleMode = KalipPlanScale.Fifty, int firstIndividualFloorCount = 0, bool suppressKirisPerdeKolonDosemeLabels = false, string completionMessageCmdTag = null, Kalip50LayoutFlags layoutFlags = default)
         {
             _ntsDrawFactory = NtsGeometryServices.Instance.CreateGeometryFactory();
             _isKalip50Mode = true;
+            _kalip50SuppressKirisPerdeKolonDosemeLabels = suppressKirisPerdeKolonDosemeLabels;
+            _kalip50DrawSlabBoundaryPolylinesOnDosemeHatti = layoutFlags.DrawSlabBoundaryPolylinesOnDosemeHattiLayer;
+            _kalip50ExcludeStairAdjacentAndBelowFloorSlabs = layoutFlags.ExcludeStairAdjacentSlabsAndSlabsBelowFloorKot;
+            _kalip50DrawInteriorVoidsOnBosLayer = layoutFlags.DrawInteriorVoidsOnBosLayerNotKalipBosluk;
+            _kalip50ClassifyDosemeHattiTopologyLayers = layoutFlags.ClassifyDosemeHattiIntoTopologyLayers;
             _kalipPlanScale = scaleMode;
             _kalip50BinaSemaBlockId = ObjectId.Null;
             _kalip50BinaSemaLabelXBlock = 0.0;
@@ -613,7 +681,23 @@ namespace ST4PlanIdCiz
                         return;
                     }
 
-                    var groups = GetFormworkFloorGroups();
+                    List<List<int>> groups;
+                    if (firstIndividualFloorCount > 0)
+                    {
+                        int n = Math.Min(firstIndividualFloorCount, _model.Floors.Count);
+                        if (n <= 0)
+                        {
+                            ed.WriteMessage("\nKALIP50ST4: Cizilecek kat bulunamadi.");
+                            return;
+                        }
+                        groups = new List<List<int>>(n);
+                        for (int fi = 0; fi < n; fi++)
+                            groups.Add(new List<int> { fi });
+                    }
+                    else
+                    {
+                        groups = GetFormworkFloorGroups();
+                    }
                     if (groups == null || groups.Count == 0)
                     {
                         ed.WriteMessage("\nKALIP50ST4: Benzer kat gruplari olusturulamadi.");
@@ -625,11 +709,16 @@ namespace ST4PlanIdCiz
                     Geometry firstUnion = BuildFloorElementUnion(firstFloor);
                     var firstExt = GetAksSiniriEnvelope(firstUnion);
                     double kalipAntetSpacingMul = scaleMode == KalipPlanScale.Hundred ? 2.0 : 1.0;
-                    // Yerleşim referansı: en soldaki antet SHEETVIEW sol-alt = kullanıcı noktası (KALIP50 şablonunda SheetView, kesit solundan 140 cm içerde).
                     double baseDy;
                     double cursorX;
-                    if (TryComputeKalipLeftSectionMinXForAntetAnchor(firstFloor, firstUnion, firstExt, 0, out double L0))
+                    if (layoutFlags.PlainInsertPoint)
                     {
+                        baseDy = baseInsertPoint.Y - firstExt.Ymin;
+                        cursorX = baseInsertPoint.X;
+                    }
+                    else if (TryComputeKalipLeftSectionMinXForAntetAnchor(firstFloor, firstUnion, firstExt, 0, out double L0))
+                    {
+                        // Yerleşim referansı: en soldaki antet SHEETVIEW sol-alt = kullanıcı noktası (KALIP50 şablonunda SheetView, kesit solundan 140 cm içerde).
                         double yRefAntetBottom = GetLowestHorizontalColumnAxisY(0, firstExt);
                         cursorX = baseInsertPoint.X + firstExt.Xmin - L0 + 140.0 * kalipAntetSpacingMul;
                         baseDy = baseInsertPoint.Y - yRefAntetBottom + 600.0 * kalipAntetSpacingMul;
@@ -649,12 +738,15 @@ namespace ST4PlanIdCiz
                     Dictionary<string, GprDosemeDonatiXy> gprKalipDosemeDonati = null;
                     string gprPathDoseme = ResolveGprPathNextToSt4(st4SourcePath);
                     // Yalnizca ST4 ile ayni adli .GPR/.gpr; yoksa veya okunamazsa donati yazisi eklenmez (dosya secmesi yok).
-                    if (!string.IsNullOrEmpty(gprPathDoseme) && File.Exists(gprPathDoseme) &&
+                    if (!layoutFlags.SingleCopyPerFloor &&
+                        !string.IsNullOrEmpty(gprPathDoseme) && File.Exists(gprPathDoseme) &&
                         GprDosemeDonatiParser.TryParse(gprPathDoseme, out var dosemeMap, out _))
                         gprKalipDosemeDonati = dosemeMap;
 
                     int gprDonatiSlabMatchCountTotal = 0;
                     int kalip50BinaSemaKesitSayisi = 0;
+                    if (_kalip50DrawInteriorVoidsOnBosLayer)
+                        EraseEntitiesOnLayerInBlock(tr, btr, LayerBos);
                     foreach (var group in groups)
                     {
                         if (group == null || group.Count == 0) continue;
@@ -674,28 +766,44 @@ namespace ST4PlanIdCiz
                         double rightCopyRightVerticalAxisX = 0.0;
                         double measurePlanRightBoundaryX = 0.0;
                         double donatiLeftSectionFromAxisX = 0.0;
-                        for (int copyIndex = 0; copyIndex < 2; copyIndex++)
+                        int copyCount = layoutFlags.SingleCopyPerFloor ? 1 : 2;
+                        for (int copyIndex = 0; copyIndex < copyCount; copyIndex++)
                         {
                             double offsetX = cursorX - floorAxisExt.Xmin;
                             double offsetY = baseDy;
 
-                            DrawAxes(tr, btr, offsetX, offsetY, floorAxisExt);
+                            if (!layoutFlags.NoAxes)
+                                DrawAxes(tr, btr, offsetX, offsetY, floorAxisExt);
                             DrawColumns(tr, btr, floor, offsetX, offsetY);
                             DrawBeamsAndWalls(tr, btr, floor, offsetX, offsetY);
-                            DrawSlabs(tr, btr, floor, offsetX, offsetY, drawSlabAltCizgi: copyIndex == 1);
+                            DrawSlabs(tr, btr, floor, offsetX, offsetY, drawSlabAltCizgi: copyIndex == 1 && !layoutFlags.SingleCopyPerFloor);
                             DrawSlabVoids(tr, btr, elemUnion, offsetX, offsetY);
                             DrawUnifiedLayer(tr, btr, floor, offsetX, offsetY, elemUnion);
+                            DrawBosVoidsFromDrawnStructuralUnion(tr, btr, floor, offsetX, offsetY);
+                            FinalizeDeneme1DosemeHattiTopologyLayers(tr, btr, floor, offsetX, offsetY, elemUnion);
                             bool hasSimilarFloors = otherFloors.Count > 0;
                             DrawFloorTitle(tr, btr, floor, offsetX, offsetY, floorAxisExt, isFoundationPlan: false, extraYOffsetCm: hasSimilarFloors ? 10.0 : 0.0);
                             if (hasSimilarFloors)
                                 DrawKalipSimilarFloorNamesNote(tr, btr, otherFloors, offsetX, offsetY, floorAxisExt, yAboveTopCm: 35.0);
-                            DrawPlanSections(tr, btr, db, floor, offsetX, offsetY, floorAxisExt, isFoundationPlan: false, elemUnion,
-                                out double layMinX, out double layMaxX, out double layMinY, out double layMaxY, out double leftSectionMinX, otherFloors);
+                            double layMinX, layMaxX, layMinY, layMaxY, leftSectionMinX;
+                            if (!layoutFlags.NoSections)
+                            {
+                                DrawPlanSections(tr, btr, db, floor, offsetX, offsetY, floorAxisExt, isFoundationPlan: false, elemUnion,
+                                    out layMinX, out layMaxX, out layMinY, out layMaxY, out leftSectionMinX, otherFloors);
+                            }
+                            else
+                            {
+                                layMinX = offsetX + floorAxisExt.Xmin;
+                                layMaxX = offsetX + floorAxisExt.Xmax;
+                                layMinY = offsetY + floorAxisExt.Ymin;
+                                layMaxY = offsetY + floorAxisExt.Ymax;
+                                leftSectionMinX = layMinX;
+                            }
                             // Yalnızca sağ kopya (donatı planı); sol kopya (ölçü planı) GPR yazısı yok.
                             if (copyIndex == 1 && gprKalipDosemeDonati != null && gprKalipDosemeDonati.Count > 0)
                                 gprDonatiSlabMatchCountTotal += DrawKalipDonatiPlanGprSlabNotes(
                                     tr, btr, db, floor, offsetX, offsetY, gprKalipDosemeDonati, countMatchedSlabs: true);
-                            if (copyIndex == 0)
+                            if (copyIndex == 0 && !layoutFlags.NoAntetAndBinaSema)
                             {
                                 // Antet tek olacak; sol yerleşim için ilk (soldaki) kopya kesit referansı tutulur.
                                 hasFirstCopyAntetData = true;
@@ -713,14 +821,21 @@ namespace ST4PlanIdCiz
                                 // sol kesit en sol çizginin 1. aksa göre relatif mesafesi.
                                 donatiLeftSectionFromAxisX = leftSectionMinX - cursorX;
                             }
-                            else
+                            else if (copyIndex == 1)
                             {
                                 // Sağ hedef: aynı katın sağdaki kopyasının en sağ dikey aksı baz alınır.
                                 rightCopyRightVerticalAxisX = floorAxisExt.Xmax + offsetX;
                             }
 
                             double axisDelta;
-                            if (copyIndex == 0)
+                            if (layoutFlags.SingleCopyPerFloor)
+                            {
+                                double layMinFromAxis = layMinX - cursorX;
+                                double requiredNextCursorX = (layMaxX + minPlanGapBetweenFloorsCm) - layMinFromAxis;
+                                double requiredDelta = Math.Max(0.0, requiredNextCursorX - cursorX);
+                                axisDelta = Math.Ceiling(requiredDelta / 100.0) * 100.0;
+                            }
+                            else if (copyIndex == 0)
                             {
                                 // Aynı kata ait ölçü/donatı:
                                 // Donatı sol sınırı, ölçü sağ sınırından min 200 cm sağda olmalı.
@@ -818,10 +933,11 @@ namespace ST4PlanIdCiz
                         ? string.Format(CultureInfo.InvariantCulture, " Bina sema kesiti ({0}): {1} adet (her antet ustu).", binaSemaScaleText, kalip50BinaSemaKesitSayisi)
                         : string.Empty;
                     string kalipCmdTag = scaleMode == KalipPlanScale.Hundred ? "KALIP100ST4" : "KALIP50ST4";
+                    string msgTag = string.IsNullOrWhiteSpace(completionMessageCmdTag) ? kalipCmdTag : completionMessageCmdTag.Trim();
                     string kalipScaleText = scaleMode == KalipPlanScale.Hundred ? "1/100" : "1/50";
                     ed.WriteMessage(
                         "\n{0}: {1} benzersiz kat icin {2} plan cizildi ({3}, toplam kat: {4}, temel plani cizilmedi).{5}{6}",
-                        kalipCmdTag,
+                        msgTag,
                         drawnPlanCount,
                         drawnCopyCount,
                         kalipScaleText,
@@ -833,6 +949,12 @@ namespace ST4PlanIdCiz
             finally
             {
                 _isKalip50Mode = false;
+                _kalip50SuppressKirisPerdeKolonDosemeLabels = false;
+                _kalip50DrawSlabBoundaryPolylinesOnDosemeHatti = false;
+                _kalip50ExcludeStairAdjacentAndBelowFloorSlabs = false;
+                _kalip50DrawInteriorVoidsOnBosLayer = false;
+                _kalip50ClassifyDosemeHattiTopologyLayers = false;
+                _kalip50Deneme1DosemeHattiGeoms = null;
                 _kalipPlanScale = null;
                 _ntsDrawFactory = null;
                 ClearKalip50FormworkSessionCaches();
@@ -3026,11 +3148,21 @@ namespace ST4PlanIdCiz
         /// <summary>ANSI33 sınır polyline'ı; TARAMA'da çizilmez (yalnızca associative hatch için; katman kapalı + plot dışı).</summary>
         private const string LayerTaramaHatchBoundaryIc = "TARAMA SINIR IC (BEYKENT)";
         private const string LayerDoseme = "DOSEME SINIRI (BEYKENT)";
+        /// <summary>DENEME1: döşeme dış sınır polyline (kesilmiş geometri); sınıflandırma kapalıyken.</summary>
+        private const string LayerDosemeHatti = "DOSEME HATTI (BEYKENT)";
+        private const string LayerDosemeHatti1 = "DOSEME HATTI 1 (BEYKENT)";
+        private const string LayerDosemeHatti2 = "DOSEME HATTI 2 (BEYKENT)";
+        private const string LayerDosemeHatti3 = "DOSEME HATTI 3 (BEYKENT)";
+        private const string LayerDosemeHatti4 = "DOSEME HATTI 4 (BEYKENT)";
+        /// <summary>DENEME1 döşeme hattı–KAT SINIRI / BOS / komşu döşeme temas eşiği (cm).</summary>
+        private const double Deneme1DosemeHattiTouchTolCm = 0.8;
         private const string LayerMerdiven = "MERDIVEN (BEYKENT)";
         private const string LayerYazi = "YAZI (BEYKENT)";
         private const string LayerBaslik = "YAZI (BEYKENT)";
         private const string LayerKatSiniri = "KAT SINIRI (BEYKENT)";
         private const string LayerKalipBosluk = "KALIP BOSLUK (BEYKENT)";
+        /// <summary>DENEME1: kat sınırı içi boşluk poligon sınırı (eleman birleşimi iç halkaları).</summary>
+        private const string LayerBos = "BOS (BEYKENT)";
         private const string LayerBirlesikKatman = "BIRLESIK KATMAN (BEYKENT)";
         private const string LayerOlcu = "OLCU (BEYKENT)";
         private const string LayerAksOlcu = "AKS OLCU (BEYKENT)";
@@ -3116,6 +3248,11 @@ namespace ST4PlanIdCiz
             EnsurePlanLayer(tr, db, LayerPerde, 6, LineWeight.LineWeight040, useDashed: false);
             EnsurePlanLayer(tr, db, LayerTarama, 8, LineWeight.LineWeight015, useDashed: false);
             EnsurePlanLayer(tr, db, LayerDoseme, 71, LineWeight.LineWeight030, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerDosemeHatti, 71, LineWeight.LineWeight030, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerDosemeHatti1, 71, LineWeight.LineWeight030, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerDosemeHatti2, 170, LineWeight.LineWeight030, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerDosemeHatti3, 40, LineWeight.LineWeight030, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerDosemeHatti4, 30, LineWeight.LineWeight030, useDashed: false);
             EnsurePlanLayer(tr, db, LayerMerdiven, 5, LineWeight.LineWeight030, useDashed: false);
             EnsurePlanLayer(tr, db, LayerYazi, 4, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, LayerBaslik, 4, LineWeight.LineWeight020, useDashed: false);
@@ -3127,6 +3264,7 @@ namespace ST4PlanIdCiz
             EnsurePlanLayer(tr, db, LayerKatSiniri, 41, LineWeight.LineWeight025, useDashed: false);
             EnsurePlanLayer(tr, db, LayerKalipBosluk, 30, LineWeight.LineWeight025, useDashed: false);
             SetPlanLayerLinetypeContinuous(tr, db, LayerKalipBosluk);
+            EnsurePlanLayer(tr, db, LayerBos, 252, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, LayerBirlesikKatman, 8, LineWeight.LineWeight025, useDashed: false);
             EnsurePlanLayer(tr, db, LayerOlcu, 14, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, LayerAksOlcu, 6, LineWeight.LineWeight018, useDashed: false);
@@ -3463,34 +3601,55 @@ namespace ST4PlanIdCiz
             return TryCascadedPolygonUnionSafe(geoms);
         }
 
-        /// <summary>Kalıp planında: kat sınırı içinde kalan ve hiçbir eleman (kolon, kiriş, perde, döşeme) tanımlanmayan boşlukları çizer (element union iç halkaları / delikler).</summary>
+        private bool TryGetSlabAxisQuadPolygon(SlabInfo slab, double offsetX, double offsetY, GeometryFactory factory, out Polygon slabPoly)
+        {
+            slabPoly = null;
+            if (slab == null || factory == null) return false;
+            int a1 = slab.Axis1, a2 = slab.Axis2, a3 = slab.Axis3, a4 = slab.Axis4;
+            if (a1 == 0 || a2 == 0 || a3 == 0 || a4 == 0) return false;
+            if (!_axisService.TryIntersect(a1, a3, out Point2d p11) || !_axisService.TryIntersect(a1, a4, out Point2d p12) ||
+                !_axisService.TryIntersect(a2, a3, out Point2d p21) || !_axisService.TryIntersect(a2, a4, out Point2d p22)) return false;
+            var coords = new Coordinate[5];
+            coords[0] = new Coordinate(p11.X + offsetX, p11.Y + offsetY);
+            coords[1] = new Coordinate(p12.X + offsetX, p12.Y + offsetY);
+            coords[2] = new Coordinate(p22.X + offsetX, p22.Y + offsetY);
+            coords[3] = new Coordinate(p21.X + offsetX, p21.Y + offsetY);
+            coords[4] = coords[0];
+            slabPoly = factory.CreatePolygon(factory.CreateLinearRing(coords));
+            return slabPoly != null && !slabPoly.IsEmpty;
+        }
+
+        /// <summary>DENEME1: StairSlabIds eksen dikdörtgen birleşimi; alt kotta yalnızca merdivene bitişik döşeme filtresi için.</summary>
+        private Geometry TryBuildStairSlabAxisPolygonUnion(FloorInfo floor, double offsetX, double offsetY, GeometryFactory factory)
+        {
+            if (floor == null || factory == null) return null;
+            int floorNo = floor.FloorNo;
+            var geoms = new List<Geometry>();
+            foreach (var slab in _model.Slabs)
+            {
+                if (GetSlabFloorNo(slab.SlabId) != floorNo) continue;
+                if (!_model.StairSlabIds.Contains(slab.SlabId)) continue;
+                if (!TryGetSlabAxisQuadPolygon(slab, offsetX, offsetY, factory, out var poly) || poly == null || poly.IsEmpty) continue;
+                geoms.Add(poly);
+            }
+            if (geoms.Count == 0) return null;
+            return TryCascadedPolygonUnionSafe(geoms);
+        }
+
+        private static bool SafeGeometryIntersects(Geometry a, Geometry b)
+        {
+            if (a == null || b == null || a.IsEmpty || b.IsEmpty) return false;
+            try { return a.Intersects(b); } catch { return false; }
+        }
+
+        /// <summary>Kalıp planında: kat sınırı içinde kalan ve hiçbir eleman (kolon, kiriş, perde, döşeme) tanımlanmayan boşlukları çizer (element union iç halkaları / delikler). DENEME1 BOS: DrawBosVoidsFromDrawnStructuralUnion.</summary>
         private void DrawSlabVoids(Transaction tr, BlockTableRecord btr, Geometry elementUnion, double offsetX, double offsetY)
         {
+            if (_kalip50DrawInteriorVoidsOnBosLayer)
+                return;
             if (elementUnion == null || elementUnion.IsEmpty) return;
             var interiorRings = new List<Coordinate[]>();
-            if (elementUnion is Polygon poly)
-            {
-                for (int h = 0; h < poly.NumInteriorRings; h++)
-                {
-                    var ring = poly.GetInteriorRingN(h);
-                    if (ring != null && ring.NumPoints >= 3)
-                        interiorRings.Add(ring.Coordinates);
-                }
-            }
-            else if (elementUnion is MultiPolygon mp)
-            {
-                for (int i = 0; i < mp.NumGeometries; i++)
-                {
-                    var p = (Polygon)mp.GetGeometryN(i);
-                    if (p == null) continue;
-                    for (int h = 0; h < p.NumInteriorRings; h++)
-                    {
-                        var ring = p.GetInteriorRingN(h);
-                        if (ring != null && ring.NumPoints >= 3)
-                            interiorRings.Add(ring.Coordinates);
-                    }
-                }
-            }
+            AppendInteriorRingCoordinatesToList(elementUnion, interiorRings);
             foreach (var coords in interiorRings)
             {
                 var cleaned = ApplyRingCleanup(coords, applySmallTriangleTrim: false);
@@ -3512,11 +3671,58 @@ namespace ST4PlanIdCiz
             }
         }
 
-        /// <summary>Çizimde görüldüğü şekilde tüm poligonları (kolon, kiriş, perde, döşeme, kalıp boşluk; aks ve kat sınırı hariç) birleştirip BIRLESIK KATMAN (BEYKENT) katmanında ilave çizer.</summary>
-        private void DrawUnifiedLayer(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY, Geometry elementUnion)
+        /// <summary>Model space’te belirtilen katmandaki tüm entity’leri siler (DENEME1 BOS yenileme).</summary>
+        private static void EraseEntitiesOnLayerInBlock(Transaction tr, BlockTableRecord btr, string layerName)
+        {
+            if (tr == null || btr == null || string.IsNullOrEmpty(layerName)) return;
+            var toErase = new List<ObjectId>();
+            foreach (ObjectId id in btr)
+            {
+                if (!id.IsValid || id.IsErased) continue;
+                Entity ent;
+                try { ent = tr.GetObject(id, OpenMode.ForRead, false, false) as Entity; }
+                catch { continue; }
+                if (ent == null) continue;
+                if (string.Equals(ent.Layer, layerName, StringComparison.OrdinalIgnoreCase))
+                    toErase.Add(id);
+            }
+            foreach (var id in toErase)
+                TryEraseDbObject(tr, id);
+        }
+
+        private static void AppendInteriorRingCoordinatesToList(Geometry geom, List<Coordinate[]> dest)
+        {
+            if (geom == null || geom.IsEmpty || dest == null) return;
+            if (geom is Polygon poly)
+            {
+                for (int h = 0; h < poly.NumInteriorRings; h++)
+                {
+                    var ring = poly.GetInteriorRingN(h);
+                    if (ring != null && ring.NumPoints >= 3)
+                        dest.Add(ring.Coordinates);
+                }
+            }
+            else if (geom is MultiPolygon mp)
+            {
+                for (int i = 0; i < mp.NumGeometries; i++)
+                {
+                    if (mp.GetGeometryN(i) is Polygon p)
+                        for (int h = 0; h < p.NumInteriorRings; h++)
+                        {
+                            var ring = p.GetInteriorRingN(h);
+                            if (ring != null && ring.NumPoints >= 3)
+                                dest.Add(ring.Coordinates);
+                        }
+                }
+            }
+        }
+
+        /// <summary>KALIP birleşik kat sınırı için poligon listesi. İç halka dolgu poligonları yalnızca <paramref name="addElementUnionInteriorAsPolygons"/> true iken eklenir (KAT SINIRI dış sınırı); BOS boşlukları için false.</summary>
+        private List<Geometry> BuildKalipUnifiedPolygonList(FloorInfo floor, double offsetX, double offsetY, Geometry elementUnion, bool addElementUnionInteriorAsPolygons)
         {
             var factory = _ntsDrawFactory;
             var allPolygons = new List<Geometry>();
+            if (factory == null) return allPolygons;
 
             Geometry kolonUnion = BuildKolonUnionSameFloorOnly(floor, offsetX, offsetY);
             if (kolonUnion != null && !kolonUnion.IsEmpty)
@@ -3534,31 +3740,10 @@ namespace ST4PlanIdCiz
                 foreach (var g in _drawnSlabGeometriesForUnion)
                     if (g != null && !g.IsEmpty) AddPolygonsToList(g, allPolygons);
 
-            if (elementUnion != null && !elementUnion.IsEmpty)
+            if (addElementUnionInteriorAsPolygons && elementUnion != null && !elementUnion.IsEmpty)
             {
                 var interiorRings = new List<Coordinate[]>();
-                if (elementUnion is Polygon poly)
-                {
-                    for (int h = 0; h < poly.NumInteriorRings; h++)
-                    {
-                        var ring = poly.GetInteriorRingN(h);
-                        if (ring != null && ring.NumPoints >= 3)
-                            interiorRings.Add(ring.Coordinates);
-                    }
-                }
-                else if (elementUnion is MultiPolygon mp)
-                {
-                    for (int i = 0; i < mp.NumGeometries; i++)
-                    {
-                        if (mp.GetGeometryN(i) is Polygon p)
-                            for (int h = 0; h < p.NumInteriorRings; h++)
-                            {
-                                var ring = p.GetInteriorRingN(h);
-                                if (ring != null && ring.NumPoints >= 3)
-                                    interiorRings.Add(ring.Coordinates);
-                            }
-                    }
-                }
+                AppendInteriorRingCoordinatesToList(elementUnion, interiorRings);
                 foreach (var coords in interiorRings)
                 {
                     if (coords == null || coords.Length < 3) continue;
@@ -3582,10 +3767,250 @@ namespace ST4PlanIdCiz
                 }
             }
 
+            return allPolygons;
+        }
+
+        /// <summary>DENEME1: çizilmiş kolon/kiriş/perde/döşeme birleşiminin iç boşluklarını BOS katmanında çizer (DrawUnifiedLayer sonrası, son durum).</summary>
+        private void DrawBosVoidsFromDrawnStructuralUnion(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY)
+        {
+            if (!_kalip50DrawInteriorVoidsOnBosLayer) return;
+            var factory = _ntsDrawFactory;
+            if (factory == null) return;
+            var allPolygons = BuildKalipUnifiedPolygonList(floor, offsetX, offsetY, null, addElementUnionInteriorAsPolygons: false);
+            if (allPolygons.Count == 0) return;
+            Geometry u = TryCascadedPolygonUnionSafe(allPolygons);
+            if (u == null || u.IsEmpty) return;
+            var interiorRings = new List<Coordinate[]>();
+            AppendInteriorRingCoordinatesToList(u, interiorRings);
+            foreach (var coords in interiorRings)
+            {
+                var cleaned = ApplyRingCleanup(coords, applySmallTriangleTrim: false);
+                if (cleaned == null || cleaned.Count < 3) continue;
+                var ringCoords = new Coordinate[cleaned.Count];
+                for (int i = 0; i < cleaned.Count; i++)
+                    ringCoords[i] = new Coordinate(cleaned[i].X, cleaned[i].Y);
+                if (ringCoords.Length > 1 &&
+                    (ringCoords[0].X != ringCoords[ringCoords.Length - 1].X || ringCoords[0].Y != ringCoords[ringCoords.Length - 1].Y))
+                {
+                    var closed = new Coordinate[ringCoords.Length + 1];
+                    Array.Copy(ringCoords, closed, ringCoords.Length);
+                    closed[ringCoords.Length] = closed[0];
+                    ringCoords = closed;
+                }
+                try
+                {
+                    var lr = factory.CreateLinearRing(ringCoords);
+                    var voidPoly = factory.CreatePolygon(lr);
+                    if (voidPoly != null && !voidPoly.IsEmpty)
+                        DrawGeometryRingsAsPolylines(tr, btr, voidPoly, LayerBos, addHatch: false, applySmallTriangleTrim: false);
+                }
+                catch { }
+            }
+        }
+
+        private static Geometry BuildExteriorShellBoundaryLines(Geometry unionResult, GeometryFactory f)
+        {
+            if (unionResult == null || unionResult.IsEmpty || f == null) return null;
+            var lines = new List<LineString>();
+            void take(Polygon p)
+            {
+                if (p?.ExteriorRing == null || p.ExteriorRing.NumPoints < 2) return;
+                lines.Add(f.CreateLineString(p.ExteriorRing.Coordinates));
+            }
+            if (unionResult is Polygon po) take(po);
+            else if (unionResult is MultiPolygon mp)
+            {
+                for (int i = 0; i < mp.NumGeometries; i++)
+                    if (mp.GetGeometryN(i) is Polygon p2) take(p2);
+            }
+            else if (unionResult is GeometryCollection gc)
+            {
+                for (int i = 0; i < gc.NumGeometries; i++)
+                    if (gc.GetGeometryN(i) is Polygon p3) take(p3);
+            }
+            if (lines.Count == 0) return null;
+            if (lines.Count == 1) return lines[0];
+            return f.CreateMultiLineString(lines.ToArray());
+        }
+
+        private Geometry TryBuildInteriorRingsPolygonUnion(Geometry geomWithHoles, GeometryFactory f)
+        {
+            if (geomWithHoles == null || f == null) return null;
+            var ringCoordsList = new List<Coordinate[]>();
+            AppendInteriorRingCoordinatesToList(geomWithHoles, ringCoordsList);
+            var parts = new List<Geometry>();
+            foreach (var coords in ringCoordsList)
+            {
+                var cleaned = ApplyRingCleanup(coords, applySmallTriangleTrim: false);
+                if (cleaned == null || cleaned.Count < 3) continue;
+                var ringCoords = new Coordinate[cleaned.Count];
+                for (int i = 0; i < cleaned.Count; i++)
+                    ringCoords[i] = new Coordinate(cleaned[i].X, cleaned[i].Y);
+                if (ringCoords.Length > 1 &&
+                    (ringCoords[0].X != ringCoords[ringCoords.Length - 1].X || ringCoords[0].Y != ringCoords[ringCoords.Length - 1].Y))
+                {
+                    var closed = new Coordinate[ringCoords.Length + 1];
+                    Array.Copy(ringCoords, closed, ringCoords.Length);
+                    closed[ringCoords.Length] = closed[0];
+                    ringCoords = closed;
+                }
+                try
+                {
+                    var lr = f.CreateLinearRing(ringCoords);
+                    if (lr != null && lr.IsValid)
+                        parts.Add(f.CreatePolygon(lr));
+                }
+                catch { }
+            }
+            if (parts.Count == 0) return null;
+            return TryCascadedPolygonUnionSafe(parts);
+        }
+
+        private static bool Deneme1SlabTouchesKatSiniriOutline(Geometry slabG, Geometry exteriorLines, double tolCm)
+        {
+            if (slabG == null || slabG.IsEmpty || exteriorLines == null || exteriorLines.IsEmpty) return false;
+            try { return slabG.Boundary.Distance(exteriorLines) <= tolCm; }
+            catch { return false; }
+        }
+
+        private static bool Deneme1SlabTouchesBosArea(Geometry slabG, Geometry bosUnion, double tolCm)
+        {
+            if (slabG == null || slabG.IsEmpty || bosUnion == null || bosUnion.IsEmpty) return false;
+            try
+            {
+                if (slabG.Intersects(bosUnion) || slabG.Touches(bosUnion)) return true;
+                var bb = bosUnion.Boundary;
+                if (bb == null || bb.IsEmpty) return false;
+                return slabG.Boundary.Distance(bb) <= tolCm;
+            }
+            catch { return false; }
+        }
+
+        private static string Deneme1DosemeHattiLayerFromCategory(int cat)
+        {
+            if (cat == 1) return LayerDosemeHatti1;
+            if (cat == 2) return LayerDosemeHatti2;
+            if (cat == 3) return LayerDosemeHatti3;
+            if (cat == 4) return LayerDosemeHatti4;
+            return LayerDosemeHatti;
+        }
+
+        private static bool TryGetDeneme1DosemeLabelPoint(Geometry g, out double x, out double y)
+        {
+            x = y = 0;
+            if (g == null || g.IsEmpty) return false;
+            try
+            {
+                var c = g.Centroid;
+                if (c != null && !c.IsEmpty)
+                {
+                    try
+                    {
+                        if (g.Contains(c))
+                        {
+                            x = c.X;
+                            y = c.Y;
+                            return true;
+                        }
+                    }
+                    catch { }
+                    x = c.X;
+                    y = c.Y;
+                    return true;
+                }
+            }
+            catch { }
+            try
+            {
+                var env = g.EnvelopeInternal;
+                x = (env.MinX + env.MaxX) * 0.5;
+                y = (env.MinY + env.MaxY) * 0.5;
+                return true;
+            }
+            catch { }
+            return false;
+        }
+
+        /// <summary>DENEME1: döşeme hattı poligonu içine kategori rakamı (1–4); polyline ile aynı katman.</summary>
+        private void AppendDeneme1DosemeHattiCategoryText(Transaction tr, BlockTableRecord btr, Geometry slabGeom, string layer, int cat)
+        {
+            if (cat < 1 || cat > 4 || slabGeom == null || slabGeom.IsEmpty) return;
+            if (!TryGetDeneme1DosemeLabelPoint(slabGeom, out double lx, out double ly)) return;
+            Database db = btr.Database;
+            ObjectId styleId = GetOrCreateYaziBeykentTextStyle(tr, db);
+            double textH = _kalipPlanScale == KalipPlanScale.Hundred ? 60.0 : 40.0;
+            var ap = new Point3d(lx, ly, 0);
+            var txt = new DBText
+            {
+                Layer = layer,
+                Height = textH,
+                TextStyleId = styleId,
+                TextString = cat.ToString(CultureInfo.InvariantCulture),
+                HorizontalMode = TextHorizontalMode.TextCenter,
+                VerticalMode = TextVerticalMode.TextVerticalMid,
+                AlignmentPoint = ap,
+            };
+            try { txt.Position = ap; } catch { /* sürüm */ }
+            AppendEntity(tr, btr, txt);
+        }
+
+        /// <summary>DENEME1: kesilmiş döşeme sınırlarını 1=KAT SINIRI dış hattı, 2=yalnız, 3=başka döşeme hattı, 4=BOS teması önceliğiyle çizer.</summary>
+        private void FinalizeDeneme1DosemeHattiTopologyLayers(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY, Geometry elementUnion)
+        {
+            if (!_kalip50ClassifyDosemeHattiTopologyLayers || !_kalip50DrawSlabBoundaryPolylinesOnDosemeHatti) return;
+            var geoms = _kalip50Deneme1DosemeHattiGeoms;
+            if (geoms == null || geoms.Count == 0) return;
+            var factory = _ntsDrawFactory;
+            if (factory == null) return;
+            double tol = Deneme1DosemeHattiTouchTolCm;
+
+            var katPolygons = BuildKalipUnifiedPolygonList(floor, offsetX, offsetY, elementUnion, addElementUnionInteriorAsPolygons: true);
+            Geometry katUnion = katPolygons.Count > 0 ? TryCascadedPolygonUnionSafe(katPolygons) : null;
+            Geometry katExteriorLines = BuildExteriorShellBoundaryLines(katUnion, factory);
+
+            var drawnOnly = BuildKalipUnifiedPolygonList(floor, offsetX, offsetY, null, addElementUnionInteriorAsPolygons: false);
+            Geometry drawnUnion = drawnOnly.Count > 0 ? TryCascadedPolygonUnionSafe(drawnOnly) : null;
+            Geometry bosUnion = TryBuildInteriorRingsPolygonUnion(drawnUnion, factory);
+
+            for (int i = 0; i < geoms.Count; i++)
+            {
+                Geometry g = geoms[i];
+                if (g == null || g.IsEmpty) continue;
+                bool tKat = Deneme1SlabTouchesKatSiniriOutline(g, katExteriorLines, tol);
+                bool tBos = Deneme1SlabTouchesBosArea(g, bosUnion, tol);
+                bool tOther = false;
+                for (int j = 0; j < geoms.Count; j++)
+                {
+                    if (i == j) continue;
+                    Geometry o = geoms[j];
+                    if (o == null || o.IsEmpty) continue;
+                    try
+                    {
+                        if (g.Distance(o) <= tol) { tOther = true; break; }
+                    }
+                    catch { }
+                }
+                int cat = tKat ? 1 : tBos ? 4 : tOther ? 3 : 2;
+                string layer = Deneme1DosemeHattiLayerFromCategory(cat);
+                try
+                {
+                    DrawGeometryRingsAsPolylines(tr, btr, g, layer, addHatch: false, applySmallTriangleTrim: false);
+                    AppendDeneme1DosemeHattiCategoryText(tr, btr, g, layer, cat);
+                }
+                catch { }
+            }
+            geoms.Clear();
+        }
+
+        /// <summary>Çizimde görüldüğü şekilde tüm poligonları (kolon, kiriş, perde, döşeme, kalıp boşluk; aks ve kat sınırı hariç) birleştirip KAT SINIRI çizer.</summary>
+        private void DrawUnifiedLayer(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY, Geometry elementUnion)
+        {
+            var allPolygons = BuildKalipUnifiedPolygonList(floor, offsetX, offsetY, elementUnion, addElementUnionInteriorAsPolygons: true);
             if (allPolygons.Count == 0) return;
             Geometry unionResult = TryCascadedPolygonUnionSafe(allPolygons);
             if (unionResult != null && !unionResult.IsEmpty)
-                DrawGeometryRingsAsPolylines(tr, btr, unionResult, LayerKatSiniri, addHatch: false, applySmallTriangleTrim: false, vertexAngleTolDeg: 0.3, minVertexDistCm: 0.1, collinearTolCm: 0.05);
+                // İç boşluk çevreleri KAT SINIRI'nda tekrarlanmasın; dış sınır + ayrık adaların dış halkaları. Boşluk sınırı KALIP BOSLUK / BOS.
+                DrawGeometryRingsAsPolylines(tr, btr, unionResult, LayerKatSiniri, addHatch: false, applySmallTriangleTrim: false, exteriorRingsOnly: true, vertexAngleTolDeg: 0.3, minVertexDistCm: 0.1, collinearTolCm: 0.05);
         }
 
         /// <summary>Kat sınırı poligonu çizer: eleman birleşiminin tüm dış halkaları (birden fazla kapalı alan varsa hepsi). Union yoksa bbox dikdörtgeni.</summary>
@@ -4322,7 +4747,8 @@ namespace ST4PlanIdCiz
                 }
 
                 Point2d labelRef = GetColumnLabelReferencePoint(center, col.AngleDeg, col.ColumnType, hw, hh, polygonSectionId);
-                AppendColumnLabel(tr, btr, labelRef, col.AngleDeg, col.ColumnNo, col.ColumnType, dim, floor, colPad);
+                if (!_kalip50SuppressKirisPerdeKolonDosemeLabels)
+                    AppendColumnLabel(tr, btr, labelRef, col.AngleDeg, col.ColumnNo, col.ColumnType, dim, floor, colPad);
             }
         }
 
@@ -6260,6 +6686,8 @@ namespace ST4PlanIdCiz
             }
             catch { }
 
+            if (!_kalip50SuppressKirisPerdeKolonDosemeLabels)
+            {
             // Y kiriş etiketini uzunluk çizgisinin başına hizalamak için önce her kirişin (tStart, tEnd) segmentini hesapla
             const double halfSpanCm = 500.0;
             const double beamLengthLineShortenCm = 20.0;
@@ -6588,6 +7016,8 @@ namespace ST4PlanIdCiz
                 }
             }
 
+            }
+
             // KALIP50: çizilen KIRIS (BEYKENT) Line'ları, KOLON (BEYKENT) polyline/circle segment şeridiyle çakışan kısımlardan budanır
             if (_isKalip50Mode)
             {
@@ -6810,6 +7240,8 @@ namespace ST4PlanIdCiz
             int floorNo = floor.FloorNo;
             var factory = _ntsDrawFactory;
             _drawnSlabGeometriesForUnion = new List<Geometry>();
+            if (_kalip50ClassifyDosemeHattiTopologyLayers && _kalip50DrawSlabBoundaryPolylinesOnDosemeHatti)
+                _kalip50Deneme1DosemeHattiGeoms = new List<Geometry>();
             // Çizimde görüldüğü haliyle kolon + perde + kiriş birleşimi (DrawBeamsAndWalls tarafından doldurulur)
             Geometry drawnKolonPerdeKirisUnion = BuildDrawnKolonPerdeKirisUnionForSlabCut(floor, offsetX, offsetY);
 
@@ -6828,6 +7260,10 @@ namespace ST4PlanIdCiz
                 catch { beamUnionForDosemeLineClip = null; }
             }
 
+            Geometry stairFootprintUnionKalip50 = null;
+            if (_kalip50ExcludeStairAdjacentAndBelowFloorSlabs)
+                stairFootprintUnionKalip50 = TryBuildStairSlabAxisPolygonUnion(floor, offsetX, offsetY, factory);
+
             var slabsOnFloor = _model.Slabs.Where(s => GetSlabFloorNo(s.SlabId) == floorNo).ToList();
             int maxSlabNumero = slabsOnFloor.Count > 0 ? slabsOnFloor.Max(s => GetSlabNumero(s.SlabId)) : 0;
             int slabPad = GetLabelPadWidth(maxSlabNumero);
@@ -6840,6 +7276,12 @@ namespace ST4PlanIdCiz
             foreach (var slab in _model.Slabs)
             {
                 if (GetSlabFloorNo(slab.SlabId) != floorNo) continue;
+                if (_kalip50ExcludeStairAdjacentAndBelowFloorSlabs && _model.StairSlabIds.Contains(slab.SlabId)) continue;
+                if (_kalip50ExcludeStairAdjacentAndBelowFloorSlabs && slab.OffsetFromFloorCm < 0
+                    && stairFootprintUnionKalip50 != null && !stairFootprintUnionKalip50.IsEmpty
+                    && TryGetSlabAxisQuadPolygon(slab, offsetX, offsetY, factory, out var axisForSkip) && axisForSkip != null
+                    && SafeGeometryIntersects(axisForSkip, stairFootprintUnionKalip50))
+                    continue;
                 Geometry toDraw;
                 Point2d center;
                 if (!TryGetSlabGeometry(slab, floorNo, offsetX, offsetY, factory, drawnKolonPerdeKirisUnion, out toDraw, out center))
@@ -6872,6 +7314,7 @@ namespace ST4PlanIdCiz
             foreach (var slab in _model.Slabs)
             {
                 if (GetSlabFloorNo(slab.SlabId) != floorNo) continue;
+                if (_kalip50ExcludeStairAdjacentAndBelowFloorSlabs && _model.StairSlabIds.Contains(slab.SlabId)) continue;
                 int a1 = slab.Axis1, a2 = slab.Axis2, a3 = slab.Axis3, a4 = slab.Axis4;
                 Point2d[] pts = null;
                 if (a1 != 0 && a2 != 0 && a3 != 0 && a4 != 0 &&
@@ -6900,12 +7343,19 @@ namespace ST4PlanIdCiz
                 {
                     if (labelSlabsNoGeometry.Contains(slab.SlabId))
                     {
-                        double cx = 0, cy = 0;
-                        for (int i = 0; i < pts.Length; i++) { cx += pts[i].X; cy += pts[i].Y; }
-                        AppendSlabLabel(tr, btr, slab, floor, storyId, slabPad, new Point2d(cx / pts.Length, cy / pts.Length), slabLabelStyleId);
+                        if (!_kalip50SuppressKirisPerdeKolonDosemeLabels)
+                        {
+                            double cx = 0, cy = 0;
+                            for (int i = 0; i < pts.Length; i++) { cx += pts[i].X; cy += pts[i].Y; }
+                            AppendSlabLabel(tr, btr, slab, floor, storyId, slabPad, new Point2d(cx / pts.Length, cy / pts.Length), slabLabelStyleId);
+                        }
                     }
                     continue;
                 }
+                if (_kalip50ExcludeStairAdjacentAndBelowFloorSlabs && slab.OffsetFromFloorCm < 0
+                    && stairFootprintUnionKalip50 != null && !stairFootprintUnionKalip50.IsEmpty
+                    && SafeGeometryIntersects(slabPoly, stairFootprintUnionKalip50))
+                    continue;
 
                 Geometry toDraw = slabPoly;
                 if (drawnKolonPerdeKirisUnion != null && !drawnKolonPerdeKirisUnion.IsEmpty)
@@ -6925,7 +7375,17 @@ namespace ST4PlanIdCiz
                 if (toDraw != null && !toDraw.IsEmpty)
                 {
                     _drawnSlabGeometriesForUnion.Add(toDraw);
-                    if (isStair)
+                    if (_kalip50DrawSlabBoundaryPolylinesOnDosemeHatti)
+                    {
+                        if (_kalip50ClassifyDosemeHattiTopologyLayers && _kalip50Deneme1DosemeHattiGeoms != null)
+                        {
+                            try { _kalip50Deneme1DosemeHattiGeoms.Add(toDraw.Copy()); }
+                            catch { _kalip50Deneme1DosemeHattiGeoms.Add(toDraw); }
+                        }
+                        else
+                            DrawGeometryRingsAsPolylines(tr, btr, toDraw, LayerDosemeHatti, addHatch: false, applySmallTriangleTrim: false);
+                    }
+                    else if (isStair)
                         DrawGeometryRingsAsPolylines(tr, btr, toDraw, LayerMerdiven, addHatch: false, applySmallTriangleTrim: false);
                 }
 
@@ -6946,7 +7406,7 @@ namespace ST4PlanIdCiz
                 double cx2 = 0, cy2 = 0;
                 for (int i = 0; i < pts.Length; i++) { cx2 += pts[i].X; cy2 += pts[i].Y; }
                 var center = new Point2d(cx2 / pts.Length, cy2 / pts.Length);
-                if (!isStair && slabIdsToLabel.Contains(slab.SlabId))
+                if (!_kalip50SuppressKirisPerdeKolonDosemeLabels && !isStair && slabIdsToLabel.Contains(slab.SlabId))
                     AppendSlabLabel(tr, btr, slab, floor, storyId, slabPad, center, slabLabelStyleId);
             }
         }

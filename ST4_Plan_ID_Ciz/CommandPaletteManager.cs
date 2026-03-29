@@ -91,6 +91,10 @@ namespace ST4PlanIdCiz
             ("Kolon Data",   "KOLONDATA"),
             ("ST4 Kesit",    "ST4KESIT"),
         };
+        private static readonly (string label, string cmd)[] AltDeneme =
+        {
+            ("Deneme1 (ilk 2 kat, sade)", "DENEME1"),
+        };
 
         public CommandPaletteControl()
         {
@@ -104,6 +108,7 @@ namespace ST4PlanIdCiz
             y = AddSection("\u00d6L\u00c7EK 1:100", S100, y);
             y = AddSection("\u0130SKELE", Isk, y);
             y = AddSection("GENEL", Gen, y);
+            y = AddSection("DENEME", AltDeneme, y);
         }
 
         private int SecH(int n) => TitleH + InnerPad + n * (BtnH + BtnGap) - BtnGap + InnerPad;

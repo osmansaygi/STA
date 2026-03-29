@@ -560,6 +560,79 @@ namespace ST4PlanIdCiz
             }
         }
 
+        /// <summary>İlk iki model katı için 1/50 sade kalıp planı; kat başına tek kopya; antet, aks, kesit, GPR döşeme yazısı yok; kiriş/perde/kolon/döşeme etiketleri yok. KALIP50ST4 davranışını değiştirmez.</summary>
+        [CommandMethod("DENEME1")]
+        public void Deneme1KalipIlkIkiKat()
+        {
+            var doc = Application.DocumentManager.MdiActiveDocument;
+            if (doc == null) return;
+            ApplyStaDefaultDrawingDisplaySettings(doc);
+
+            var ed = doc.Editor;
+            var db = doc.Database;
+
+            var opts = new PromptOpenFileOptions("\nDENEME1 icin ST4 Dosyasi Secin")
+            {
+                Filter = "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*"
+            };
+
+            var fileRes = ed.GetFileNameForOpen(opts);
+            if (fileRes.Status != PromptStatus.OK) return;
+
+            try
+            {
+                NtsGeometryServices.Instance = new NtsGeometryServices(
+                    CoordinateArraySequenceFactory.Instance,
+                    new PrecisionModel(),
+                    0,
+                    GeometryOverlay.NG,
+                    new CoordinateEqualityComparer());
+
+                var parser = new St4Parser();
+                var model = parser.Parse(fileRes.StringResult);
+                GprYapiAksLabels.TryMergeFromGprBesideSt4(fileRes.StringResult, model);
+                ed.WriteMessage("\n[GPR aks etiketi] X={0} adet, Y={1} adet", model.GprAxisXLabelByRow.Count, model.GprAxisYLabelByRow.Count);
+                foreach (var kv in model.GprAxisXLabelByRow) ed.WriteMessage("  X{0}={1}", kv.Key, kv.Value);
+                foreach (var kv in model.GprAxisYLabelByRow) ed.WriteMessage("  Y{0}={1}", kv.Key, kv.Value);
+                var manager = new PlanIdDrawingManager(model);
+                var insRes = ed.GetPoint(new PromptPointOptions("\nDENEME1: Ilk kat aks kutusu sol-alt kosesi (yerlesim): ") { AllowNone = false });
+                if (insRes.Status != PromptStatus.OK) return;
+                manager.DrawFormworkPlan50(
+                    db,
+                    ed,
+                    insRes.Value,
+                    fileRes.StringResult,
+                    KalipPlanScale.Fifty,
+                    firstIndividualFloorCount: 2,
+                    suppressKirisPerdeKolonDosemeLabels: true,
+                    completionMessageCmdTag: "DENEME1",
+                    layoutFlags: new Kalip50LayoutFlags(
+                        plainInsertPoint: true,
+                        singleCopyPerFloor: true,
+                        noAntetAndBinaSema: true,
+                        noAxes: true,
+                        noSections: true,
+                        drawSlabBoundaryPolylinesOnDosemeHattiLayer: true,
+                        excludeStairAdjacentSlabsAndSlabsBelowFloorKot: true,
+                        drawInteriorVoidsOnBosLayerNotKalipBosluk: true,
+                        classifyDosemeHattiIntoTopologyLayers: true));
+                doc.SendStringToExecute("_.ZOOM _E ", true, false, false);
+            }
+            catch (AcRxException aex)
+            {
+                ed.WriteMessage("\nDENEME1 hata: {0} ({1})", aex.Message, aex.ErrorStatus);
+            }
+            catch (System.Exception ex)
+            {
+                var e = ex;
+                if (e is System.AggregateException agg && agg.InnerExceptions.Count > 0)
+                    e = agg.Flatten().InnerExceptions[0];
+                ed.WriteMessage("\nDENEME1 hata: {0}", e.Message);
+                if (e.InnerException != null)
+                    ed.WriteMessage("  Inner: {0}", e.InnerException.Message);
+            }
+        }
+
         [CommandMethod("KALIP100ST4")]
         public void Kalip100St4()
         {
