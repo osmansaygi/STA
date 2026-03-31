@@ -983,6 +983,22 @@ namespace ST4PlanIdCiz
             return min;
         }
 
+        /// <summary>Kolon donatı tablosu toplam yüksekliği (cm); yerleşim hesabı için. <see cref="Draw"/> ile aynı satır sayısı kuralı.</summary>
+        public static double EstimateTableHeightCm(St4Model model, Dictionary<string, (string ebat, string donati, string etriye)> columnData)
+        {
+            if (model == null || model.Floors == null || model.Floors.Count == 0)
+                return RowHeightHeader + RowHeightDataBlock;
+            var rowColumnNumbers = new List<int>();
+            foreach (var k in columnData?.Keys ?? Enumerable.Empty<string>())
+            {
+                if (TryParseGprStoryKey(k, out _, out int colNo) && !rowColumnNumbers.Contains(colNo))
+                    rowColumnNumbers.Add(colNo);
+            }
+            rowColumnNumbers.Sort();
+            if (rowColumnNumbers.Count == 0) rowColumnNumbers.Add(1);
+            return RowHeightHeader + rowColumnNumbers.Count * RowHeightDataBlock;
+        }
+
         public static bool Draw(St4Model model, Dictionary<string, (string ebat, string donati, string etriye)> columnData,
             Point3d insertPoint, Database db, Editor ed, Transaction tr, BlockTableRecord btr,
             Dictionary<int, (double? temelCm, double? hatilCm)> columnFoundationHeights = null,
@@ -1179,8 +1195,9 @@ namespace ST4PlanIdCiz
                         DrawTextLeftBottom(tr, btr, db, temelTextX, rowTop - 20, ((int)Math.Round(heights.temelCm.Value)).ToString(CultureInfo.InvariantCulture), TextHeightMain, LayerYazi, TextStyleYazi, null);
                     if (heights.temelCm.HasValue && heights.hatilCm.HasValue)
                     {
-                        double hatilFark = heights.hatilCm.Value - heights.temelCm.Value;
-                        DrawTextLeftBottom(tr, btr, db, hatilTextX, rowTop - 20, ((int)Math.Round(hatilFark)).ToString(CultureInfo.InvariantCulture), TextHeightMain, LayerSubasman, TextStyleYazi, null);
+                        // hatilCm = ST4 sürekli temel 13. sütun (HatilLabelHeightCm) veya bağ kirişi yüksekliği; temelCm = sürekli temel kesit yüksekliği (HeightCm).
+                        // İkisini çıkarmak (örn. 130−50=80) yanlış; SUBASMAN sütununda hatıl yüksekliği doğrudan yazılır.
+                        DrawTextLeftBottom(tr, btr, db, hatilTextX, rowTop - 20, ((int)Math.Round(heights.hatilCm.Value)).ToString(CultureInfo.InvariantCulture), TextHeightMain, LayerSubasman, TextStyleYazi, null);
                     }
                 }
 

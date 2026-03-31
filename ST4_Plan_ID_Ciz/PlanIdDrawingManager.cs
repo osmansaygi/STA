@@ -192,7 +192,7 @@ namespace ST4PlanIdCiz
             _axisService = new AxisGeometryService(model);
         }
 
-        /// <summary>Kolon donatı tablosu için: her kolon numarasında temel planında üzerine geldiği temelin yüksekliği (cm) ve o kolona değen en yüksek temel hatılı yüksekliği (cm). Temel planı ilk kat (floor) ile hesaplanır.</summary>
+        /// <summary>Kolon donatı tablosu için: temelCm = sürekli/tekil/radye kesit yüksekliği (cm); hatilCm = ST4 13. sütun hatıl yüksekliği veya bağ kirişi kesit yüksekliği (cm). İkisi farklı boyutlar; tabloda çıkarılmaz. Temel planı ilk kat ile hesaplanır.</summary>
         public Dictionary<int, (double? temelCm, double? hatilCm)> GetColumnFoundationHeights(FloorInfo firstFloor)
         {
             var result = new Dictionary<int, (double?, double?)>();
@@ -625,7 +625,16 @@ namespace ST4PlanIdCiz
 
                     DrawSimplePerdeKolonCopiesByFloorId(tr, btr, copyLayouts);
 
-                    TryDrawKolonDonatiTableAboveKolon50PerdeCopies(tr, btr, db, ed, baseInsertPoint, st4SourcePath);
+                    // GPR tablosu konumu: kopya perde/kolon çizilmediyse _kolon50PerdeCopyExtent boş kalır; tablo yine de plan üst sınırına göre yerleşsin.
+                    if (_kolon50PerdeCopyExtent == null && copyLayouts.Count > 0)
+                    {
+                        double maxY = copyLayouts.Max(x => x.floorAxisExt.Ymax + x.offsetY);
+                        double minX = copyLayouts.Min(x => x.floorAxisExt.Xmin + x.offsetX);
+                        double maxX = copyLayouts.Max(x => x.floorAxisExt.Xmax + x.offsetX);
+                        _kolon50PerdeCopyExtent = new Envelope(minX, maxX, maxY, maxY);
+                    }
+
+                    TryDrawKolonDonatiTableAboveKolon50PerdeCopies(tr, btr, db, ed, baseInsertPoint, st4SourcePath, cmdTag, copyLayouts);
 
                     ApplyPlanStructuralLayerDrawOrder(tr, btr);
                     tr.Commit();
@@ -1803,16 +1812,20 @@ namespace ST4PlanIdCiz
                 : EnvelopeUtil.ExpandToInclude(_kolon50PerdeCopyExtent, env);
         }
 
-        /// <summary>ST4 yanında .GPR varsa KOLONDATA ile aynı kolon donatı tablosunu kopya perdelerin üstüne çizer.</summary>
+        /// <summary>ST4 yanında .GPR varsa KOLONDATA ile aynı kolon donatı tablosunu çizer; yerleşim antet çizim penceresinin alt bandında (plan geometrisinin altı), plana taşmaz.</summary>
         private void TryDrawKolonDonatiTableAboveKolon50PerdeCopies(
             Transaction tr,
             BlockTableRecord btr,
             Database db,
             Editor ed,
             Point3d baseInsertPoint,
-            string st4SourcePath)
+            string st4SourcePath,
+            string kolonCmdTag,
+            List<(FloorInfo floor, double offsetX, double offsetY, (double Xmin, double Xmax, double Ymin, double Ymax) floorAxisExt)> copyLayouts)
         {
-            if (!_isKolon50Mode || string.IsNullOrWhiteSpace(st4SourcePath) || _kolon50PerdeCopyExtent == null)
+            if (!_isKolon50Mode || string.IsNullOrWhiteSpace(st4SourcePath))
+                return;
+            if ((copyLayouts == null || copyLayouts.Count == 0) && _kolon50PerdeCopyExtent == null)
                 return;
             string dir = Path.GetDirectoryName(st4SourcePath);
             string baseName = Path.GetFileNameWithoutExtension(st4SourcePath);
@@ -1823,8 +1836,30 @@ namespace ST4PlanIdCiz
             var columnData = KolonDonatiTableDrawer.ParseKolonBetonarmeFromFile(gprPath, out string parseError);
             if (parseError != null)
             {
-                ed.WriteMessage("\nKOLON50ST4: GPR kolon tablosu atlandi — {0}", parseError);
+                ed.WriteMessage("\n{0}: GPR kolon tablosu atlandi — {1}", kolonCmdTag ?? "KOLON50ST4", parseError);
                 return;
+            }
+
+            double totalHeightCm = KolonDonatiTableDrawer.EstimateTableHeightCm(_model, columnData);
+            const double gapBelowPlanCm = 50.0;
+            const double minMarginAboveAntetSheetBottomCm = 100.0;
+            double tableX = baseInsertPoint.X;
+            double tableY;
+            if (copyLayouts != null && copyLayouts.Count > 0)
+            {
+                var f0 = copyLayouts[0];
+                double layoutMinY = f0.floorAxisExt.Ymin + f0.offsetY;
+                double yLow = GetLowestHorizontalColumnAxisY(f0.offsetY, f0.floorAxisExt);
+                double antetSheetViewBottom = yLow - 600.0;
+                // insertPoint.Y = tablo sol-alt; tablo yukarı büyür — planın altına, antet SHEETVIEW alt bandına.
+                double yPreferred = layoutMinY - totalHeightCm - gapBelowPlanCm;
+                double yMinAllowed = antetSheetViewBottom + minMarginAboveAntetSheetBottomCm;
+                tableY = Math.Max(yMinAllowed, yPreferred);
+            }
+            else
+            {
+                const double tableGapAboveCopiesCm = 80.0;
+                tableY = _kolon50PerdeCopyExtent.MaxY + tableGapAboveCopiesCm;
             }
 
             var firstFloor = _model.Floors.Count > 0 ? _model.Floors[0] : null;
@@ -1849,9 +1884,6 @@ namespace ST4PlanIdCiz
                 }
             }
 
-            const double tableGapAboveCopiesCm = 80.0;
-            double tableX = baseInsertPoint.X;
-            double tableY = _kolon50PerdeCopyExtent.MaxY + tableGapAboveCopiesCm;
             var insertPoint = new Point3d(tableX, tableY, 0);
 
             bool ok = KolonDonatiTableDrawer.Draw(
@@ -1868,7 +1900,7 @@ namespace ST4PlanIdCiz
                 columnActiveCells,
                 echoCompletionMessage: false);
             if (ok)
-                ed.WriteMessage("\nKOLON50ST4: GPR kolon donati tablosu kopya perdelerin ustune cizildi ({0}).", Path.GetFileName(gprPath));
+                ed.WriteMessage("\n{0}: GPR kolon donati tablosu antet bandina (plan alti) yerlestirildi ({1}).", kolonCmdTag ?? "KOLON50ST4", Path.GetFileName(gprPath));
         }
 
         private void DrawSimplePerdeKolonCopiesByFloorId(
@@ -10744,7 +10776,7 @@ namespace ST4PlanIdCiz
             }
         }
 
-        /// <summary>Radye temel temel hatılı: TH-01 (en/yükseklik). Sürekli temel altı hatılı: TH (en/yükseklik), numara ve - yok. TEMEL100: yazı 1.5×.</summary>
+        /// <summary> Radye temel temel hatılı: TH-01 (en/yükseklik). Sürekli temel üstü hatıl: TH (en/yükseklik) — ilk sayı ST4 12. sütun hatıl şerit genişliği (TieBeamWidthCm), ikinci sayı 13. sütun (HatilLabelHeightCm); sürekli temel T- etiketi (kesit genişlik/yükseklik) ile karıştırılmamalı.</summary>
         private void DrawRadyeTemelTemelHatiliLabels(Transaction tr, BlockTableRecord btr, Database db, List<(Polygon poly, double widthCm, double heightDisplayCm, double kot, bool isRadyeTemelHatili)> pieces)
         {
             if (pieces == null || pieces.Count == 0) return;
