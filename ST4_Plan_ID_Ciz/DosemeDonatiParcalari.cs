@@ -44,6 +44,11 @@ namespace ST4PlanIdCiz
         /// <summary>Satır kırığı <c>(s</c> / <c>(sa</c> gibi kapanmayan sağ ilave parçası.</summary>
         private static readonly Regex RxKirikSagIlaParcasi = new Regex(@"\(\s*sa?\s*$|\(\s*sag\s*$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
+        /// <summary>GPR sütun dar: <c>(Mon.)</c> sığmayınca <c>(M</c>, <c>(Mo</c>, <c>(Mon</c> veya <c>(Mon.</c> ile biter.</summary>
+        private static readonly Regex RxKirikMontajParcasi = new Regex(
+            @"\(\s*(?:Mon\.?|Mo|M)\s*$",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
         /// <summary>UTF-8 / 1254 karışık metin için küçük harf + Türkçe harf yaklaşımı.</summary>
         public static string NormalizeForKindMatch(string s)
         {
@@ -86,6 +91,9 @@ namespace ST4PlanIdCiz
 
             if (n.Contains("mon"))
                 return DosemeDonatiKind.Montaj;
+            // GPR bazen tam "(M)" veya kesik hücre sonrası sadece "m"
+            if (n == "m" || n == "mo")
+                return DosemeDonatiKind.Montaj;
 
             if (n.Contains("pil"))
                 return DosemeDonatiKind.Pilye;
@@ -107,6 +115,8 @@ namespace ST4PlanIdCiz
                     return ReplaceTrailingParenOrOpenWith(t, "sağ ila");
                 case DosemeDonatiKind.SolIlave:
                     return ReplaceTrailingParenOrOpenWith(t, "sol ila");
+                case DosemeDonatiKind.Montaj:
+                    return ReplaceTrailingParenOrOpenWith(t, "Mon.");
                 default:
                     return t;
             }
@@ -222,6 +232,8 @@ namespace ST4PlanIdCiz
                 return KindFromParenContent(m.Groups[1].Value);
             if (RxKirikSagIlaParcasi.IsMatch(t))
                 return DosemeDonatiKind.SagIlave;
+            if (RxKirikMontajParcasi.IsMatch(t))
+                return DosemeDonatiKind.Montaj;
             return DosemeDonatiKind.Unknown;
         }
 
