@@ -113,6 +113,16 @@ namespace ST4PlanIdCiz
              _kolonApplicationScale == KolonApplicationPlanScale.Hundred ||
              _kalipPlanScale == KalipPlanScale.Hundred) ? 1.5 : 1.0;
         private string TemelKesitScaleSuffix => _temelFoundationScale == TemelFoundationPlanScale.Hundred ? " (1:100)" : " (1:50)";
+
+        /// <summary>
+        /// Kesit şemasında kiriş/kolon/perde/temel dilim etiketi ve kesit dairesi içindeki A/B harfi.
+        /// KALIP50ST4 / TEMEL50ST4 → 12 cm; KALIP100ST4 / TEMEL100ST4 → 18 cm; ST4PLANID (ölçek atanmamış) → 12 cm.
+        /// </summary>
+        private double KesitSemasiElemanEtiketYaziYukseklikCm =>
+            (_kalipPlanScale == KalipPlanScale.Hundred || _temelFoundationScale == TemelFoundationPlanScale.Hundred)
+                ? 18.0
+                : 12.0;
+
         /// <summary>KOLON50ST4 için kolon aplikasyon ölçü modu.</summary>
         private bool _isKolon50Mode;
         /// <summary>KALIP50ST4 / KALIP100ST4 kalıp planı modu.</summary>

@@ -44,6 +44,7 @@ namespace ST4PlanIdCiz
         private const double KesitIsmiSolAksBalonSolBoslukCm = 60.0;
         /// <summary>Kesit çizgisi ucu ile kat sınırı dikdörtgeni arasındaki boşluk (cm).</summary>
         private const double SectionCutGapFromFloorBoundaryCm = 30.0;
+        /// <summary>Eski sabit; kesit dairesi metni <see cref="PlanIdDrawingManager.KesitSemasiElemanEtiketYaziYukseklikCm"/> ile verilir.</summary>
         private const double KesitEtiketTextHeightCm = 20.0;
         /// <summary>Sol Y aks balonunun kesite bakan dış yüzeyi ile KESİT SINIRI sağ kenarı arası (cm). Balon: çerçeve köşesi − 2R.</summary>
         private const double SectionMinLeftOfAxisLeftLabelsCm = 100.0;
@@ -2857,7 +2858,7 @@ namespace ST4PlanIdCiz
             var dt = new DBText
             {
                 Layer = LayerKesitIsmi,
-                Height = KesitEtiketTextHeightCm * geomScale,
+                Height = KesitSemasiElemanEtiketYaziYukseklikCm * geomScale,
                 TextStyleId = GetOrCreateYaziBeykentTextStyle(tr, db),
                 TextString = ch,
                 HorizontalMode = TextHorizontalMode.TextCenter,
@@ -3252,21 +3253,25 @@ namespace ST4PlanIdCiz
                 {
                     var poly = SlabFoundationFootprintPoly(sfd);
                     double z0 = (_model.BuildingBaseKotu + sfd.BottomLevelM) * 100.0;
-                    double z1 = z0 + Math.Max(sfd.ThicknessCm, 40.0);
+                    // ST4 kalınlığı kullan; yoksa çizim varsayılanı (plan etiketiyle aynı mantık — Max ile 30→40 şişirme yok).
+                    double hRadye = sfd.ThicknessCm > 0 ? sfd.ThicknessCm : 40.0;
+                    double z1 = z0 + hRadye;
                     TryAddSliceCutLine(cutLine, poly, alongOrigin, dirN, z0, z1, "TEMEL (BEYKENT)", 12, list);
                 }
                 foreach (var tb in _model.TieBeams)
                 {
                     var poly = TieBeamFootprintPoly(tb);
                     double z0 = (_model.BuildingBaseKotu + tb.BottomKotM) * 100.0;
-                    double z1 = z0 + Math.Max(tb.HeightCm, 25.0);
+                    double hTb = tb.HeightCm > 0 ? tb.HeightCm : 25.0;
+                    double z1 = z0 + hTb;
                     TryAddSliceCutLine(cutLine, poly, alongOrigin, dirN, z0, z1, "TEMEL HATILI (BEYKENT)", 14, list);
                 }
                 foreach (var sf in _model.SingleFootings)
                 {
                     var poly = SingleFootingModelPoly(sf, floor);
                     double z0 = (_model.BuildingBaseKotu + sf.BottomLevelM) * 100.0;
-                    double z1 = z0 + Math.Max(sf.HeightCm, 30.0);
+                    double hSf = sf.HeightCm > 0 ? sf.HeightCm : 30.0;
+                    double z1 = z0 + hSf;
                     TryAddSliceCutLine(cutLine, poly, alongOrigin, dirN, z0, z1, "TEMEL (BEYKENT)", 11, list);
                 }
                 addColPolys();
@@ -3286,7 +3291,9 @@ namespace ST4PlanIdCiz
                     if (GetSlabFloorNo(slab.SlabId) != floorNo) continue;
                     var poly = SlabFootprintPoly(slab);
                     double zt = floorLevelCm + slab.OffsetFromFloorCm;
-                    double zb = zt - Math.Max(slab.ThicknessCm, 15.0);
+                    // ST4 kalınlığı; Max(.,15) ince döşemeyi 15 cm gösteriyordu (plan etiketi 12 iken kesit 15).
+                    double th = slab.ThicknessCm > 0 ? slab.ThicknessCm : 15.0;
+                    double zb = zt - th;
                     TryAddSliceCutLine(cutLine, poly, alongOrigin, dirN, zb, zt, LayerDoseme, 5, list);
                 }
                 foreach (var beam in MergeSameIdBeamsOnFloor(floorNo))
@@ -3699,8 +3706,7 @@ namespace ST4PlanIdCiz
             double dm = (isFoundationPlan || _kalipPlanScale == KalipPlanScale.Hundred) ? TemelFoundationAnnotMul : 1.0;
             double beamUnderGap = 5.0 * dm;
             double siniriGap = 12.0 * dm;
-            bool kalipKesitEtiket18 = _isKalip50Mode && !isFoundationPlan;
-            double labelH = kalipKesitEtiket18 ? 18.0 : (11.0 * dm);
+            double labelH = KesitSemasiElemanEtiketYaziYukseklikCm;
             const double rotDikKesit = Math.PI / 2.0;
             double kirisSagGap = 8.0 * dm;
             bool hasSiniri = TryGetKesitSiniriBounds(slices, isFoundationPlan, out _, out _, out double zLoS, out double zHiS);
@@ -3758,7 +3764,7 @@ namespace ST4PlanIdCiz
                     putLabel(xKirisSag, cy, s.Etiket, LayerKirisYazisi, rotDikKesit);
                 }
             }
-            double temelEtiketH = kalipKesitEtiket18 ? 18.0 : (12.0 * dm);
+            double temelEtiketH = KesitSemasiElemanEtiketYaziYukseklikCm;
             foreach (var s in slices.Where(x => x.Layer == "TEMEL (BEYKENT)" && x.Order == SectionOrderContinuousFoundation && !string.IsNullOrEmpty(x.Etiket)))
             {
                 if (horizontalAlongX)
