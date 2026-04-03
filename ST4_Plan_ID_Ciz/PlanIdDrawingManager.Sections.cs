@@ -35,17 +35,12 @@ namespace ST4PlanIdCiz
         private const double SectionMinAboveAxisTopLabelsCm = 100.0;
         /// <summary>Çap 40 cm aks balonu ile aynı; ok √2·R oranında.</summary>
         private const double KesitEtiketRadiusCm = 20.0;
-        /// <summary>A-A / B-B kesit başlığı metin yüksekliği (cm).</summary>
-        private const double KesitBaslikMetinYukseklikCm = 20.0;
-        private const double KesitBaslikMetinYukseklikTemel50Cm = 30.0;
         /// <summary>Üst X aks balonunun üst dış yüzeyi ile &quot;A-A KESİTİ&quot; metninin <b>alt</b> kenarı arası (cm).</summary>
         private const double KesitIsmiUstAksBalonUstuBoslukCm = 60.0;
         /// <summary>Sol Y aks balonunun kesite bakan sol dış yüzeyi ile &quot;B-B KESİTİ&quot; metninin <b>sağ</b> kenarı arası (cm).</summary>
         private const double KesitIsmiSolAksBalonSolBoslukCm = 60.0;
         /// <summary>Kesit çizgisi ucu ile kat sınırı dikdörtgeni arasındaki boşluk (cm).</summary>
         private const double SectionCutGapFromFloorBoundaryCm = 30.0;
-        /// <summary>Eski sabit; kesit dairesi metni <see cref="PlanIdDrawingManager.KesitSemasiElemanEtiketYaziYukseklikCm"/> ile verilir.</summary>
-        private const double KesitEtiketTextHeightCm = 20.0;
         /// <summary>Sol Y aks balonunun kesite bakan dış yüzeyi ile KESİT SINIRI sağ kenarı arası (cm). Balon: çerçeve köşesi − 2R.</summary>
         private const double SectionMinLeftOfAxisLeftLabelsCm = 100.0;
         private const double SectionCutLineWidthCm = 3.0;
@@ -916,13 +911,7 @@ namespace ST4PlanIdCiz
             try { DrawKesitSchematicElevationKots(tr, btr, db, slicesTop, contentTopX, contentTopY, aminT, minZT, spanZT, horizontalAlongX: true, mirrorElevationX: false, isFoundationPlan, similarKotSuffix); }
             catch { /* kesit kotları — planın geri kalanı çizilsin */ }
             // A-A başlık: üst aks balon üst yüzeyinden 60 cm yukarıda (metin alt kenarı); TextTop için üst hizası = alt + yükseklik
-            double kesitBaslikHForLayout;
-            if (isFoundationPlan && IsTemelPlanDraw)
-                kesitBaslikHForLayout = KesitBaslikMetinYukseklikTemel50Cm * fa;
-            else if (!isFoundationPlan && _kalipPlanScale == KalipPlanScale.Hundred)
-                kesitBaslikHForLayout = KesitBaslikMetinYukseklikCm * TemelFoundationAnnotMul;
-            else
-                kesitBaslikHForLayout = KesitBaslikMetinYukseklikCm;
+            double kesitBaslikHForLayout = KesitIsmiLayerYaziYukseklikCm * fa;
             double yAaBaslikUstHizasi = yAksBalonUstDisYuzey + KesitIsmiUstAksBalonUstuBoslukCm * fa + kesitBaslikHForLayout;
             bool useScaledKesitTitle = (isFoundationPlan && IsTemelPlanDraw) || (!isFoundationPlan && _isKalip50Mode);
             string kalipKesitScaleSuffix = _kalipPlanScale == KalipPlanScale.Hundred ? " (1:100)" : " (1:50)";
@@ -989,7 +978,7 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>
-        /// KALIP50 yerleşimi: çizim yapmadan soldaki kesit referansı <see cref="leftSectionMinX"/> (antet SheetView solu ≈ bu − 140 cm).
+        /// KALIP50 yerleşimi: çizim yapmadan soldaki kesit referansı <see cref="leftSectionMinX"/> (antet SheetView solu ≈ bu − 140 cm; yerleşim tıklaması SheetViewOut sol-altına göre).
         /// offsetX=0 iken değer L0 olur; genelde leftSectionMinX = offsetX + L0.
         /// </summary>
         private bool TryComputeKalipLeftSectionMinXForAntetAnchor(
@@ -1183,7 +1172,7 @@ namespace ST4PlanIdCiz
                 var titleTxt = new DBText
                 {
                     Layer = LayerKesitIsmi,
-                    Height = KesitBaslikMetinYukseklikCm,
+                    Height = KesitIsmiLayerYaziYukseklikCm,
                     TextStyleId = GetOrCreateYaziBeykentTextStyle(tr, db),
                     TextString = _kalipPlanScale == KalipPlanScale.Hundred ? "SEMATIK KESIT (1:100)" : "SEMATIK KESIT (1:200)",
                     HorizontalMode = TextHorizontalMode.TextCenter,
@@ -2691,13 +2680,10 @@ namespace ST4PlanIdCiz
         /// <summary>A-A yatay kesit başlığı; <see cref="TextVerticalMode.TextTop"/> — <paramref name="yTopAnchor"/> metin üst kenarı.</summary>
         private void DrawKesitTitleBelowSchematic(Transaction tr, BlockTableRecord btr, Database db, string title, double cx, double yTopAnchor)
         {
-            double titleHeight = IsTemelPlanDraw
-                ? KesitBaslikMetinYukseklikTemel50Cm * TemelFoundationAnnotMul
-                : (_isKalip50Mode && _kalipPlanScale == KalipPlanScale.Hundred ? KesitBaslikMetinYukseklikCm * TemelFoundationAnnotMul : KesitBaslikMetinYukseklikCm);
             var txt = new DBText
             {
                 Layer = LayerKesitIsmi,
-                Height = titleHeight,
+                Height = KesitIsmiLayerYaziYukseklikCm,
                 TextStyleId = GetOrCreateYaziBeykentTextStyle(tr, db),
                 TextString = IsTemelPlanDraw ? ("%%u" + title + "%%u") : title,
                 HorizontalMode = TextHorizontalMode.TextCenter,
@@ -2711,13 +2697,10 @@ namespace ST4PlanIdCiz
 
         private void DrawKesitTitleVerticalRightOfSection(Transaction tr, BlockTableRecord btr, Database db, string title, double x, double cy)
         {
-            double titleHeight = IsTemelPlanDraw
-                ? KesitBaslikMetinYukseklikTemel50Cm * TemelFoundationAnnotMul
-                : (_isKalip50Mode && _kalipPlanScale == KalipPlanScale.Hundred ? KesitBaslikMetinYukseklikCm * TemelFoundationAnnotMul : KesitBaslikMetinYukseklikCm);
             var txt = new DBText
             {
                 Layer = LayerKesitIsmi,
-                Height = titleHeight,
+                Height = KesitIsmiLayerYaziYukseklikCm,
                 TextStyleId = GetOrCreateYaziBeykentTextStyle(tr, db),
                 TextString = IsTemelPlanDraw ? ("%%u" + title + "%%u") : title,
                 HorizontalMode = TextHorizontalMode.TextCenter,
@@ -2858,7 +2841,7 @@ namespace ST4PlanIdCiz
             var dt = new DBText
             {
                 Layer = LayerKesitIsmi,
-                Height = KesitSemasiElemanEtiketYaziYukseklikCm * geomScale,
+                Height = KesitIsmiLayerYaziYukseklikCm,
                 TextStyleId = GetOrCreateYaziBeykentTextStyle(tr, db),
                 TextString = ch,
                 HorizontalMode = TextHorizontalMode.TextCenter,

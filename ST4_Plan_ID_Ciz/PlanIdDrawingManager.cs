@@ -115,7 +115,15 @@ namespace ST4PlanIdCiz
         private string TemelKesitScaleSuffix => _temelFoundationScale == TemelFoundationPlanScale.Hundred ? " (1:100)" : " (1:50)";
 
         /// <summary>
-        /// Kesit şemasında kiriş/kolon/perde/temel dilim etiketi ve kesit dairesi içindeki A/B harfi.
+        /// KESIT ISMI (BEYKENT): A-A / B-B / şema kesit başlığı yazı yüksekliği (cm). TEMEL50ST4/KALIP50ST4 → 20; TEMEL100ST4/KALIP100ST4 → 30.
+        /// </summary>
+        private double KesitIsmiLayerYaziYukseklikCm =>
+            (_kalipPlanScale == KalipPlanScale.Hundred || _temelFoundationScale == TemelFoundationPlanScale.Hundred)
+                ? 30.0
+                : 20.0;
+
+        /// <summary>
+        /// Kesit şemasında kiriş/kolon/perde/temel dilim etiketi. Plandaki kesit hattı A/B balonu metni <see cref="KesitIsmiLayerYaziYukseklikCm"/> (20/30 cm).
         /// KALIP50ST4 / TEMEL50ST4 → 12 cm; KALIP100ST4 / TEMEL100ST4 → 18 cm; ST4PLANID (ölçek atanmamış) → 12 cm.
         /// </summary>
         private double KesitSemasiElemanEtiketYaziYukseklikCm =>
@@ -572,6 +580,11 @@ namespace ST4PlanIdCiz
                     var copyLayouts = new List<(FloorInfo floor, double offsetX, double offsetY, (double Xmin, double Xmax, double Ymin, double Ymax) floorAxisExt)>();
                     double? nextAntetOuterLeftTarget = baseInsertPoint.X;
                     double? antetOuterLeftDeltaFromSheetViewLeft = antetOutDx;
+                    double kolonGprTableMaxAntetOuterTop = double.NegativeInfinity;
+                    bool kolonGprTableHasAntetTop = false;
+                    double kolonGprTableAnchorLeftX = baseInsertPoint.X;
+                    double kolonGprTableFirstAntetOuterRight = baseInsertPoint.X;
+                    bool kolonGprTableAnchorSet = false;
                     for (int floorIdx = 0; floorIdx < _model.Floors.Count; floorIdx++)
                     {
                         var floor = _model.Floors[floorIdx];
@@ -622,10 +635,19 @@ namespace ST4PlanIdCiz
                         string kolonPlanAntetTitle = BuildKolonPlanAntetTitle(floor);
                         if (TryDrawAntetFromEmbeddedTemplate(
                             tr, btr, layoutMinX, layoutMinY, layoutMaxY, antetSheetViewLeft, antetSheetViewBottom, antetTargetRight, st4SourcePath, ed,
-                            kolonPlanAntetTitle, null, out double placedAntetOuterLeft, out double placedAntetOuterRight, out _, scaleAntetTwoTimes, useKolonAntetScaleOneHundred: scaleAntetTwoTimes))
+                            kolonPlanAntetTitle, null, out double placedAntetOuterLeft, out double placedAntetOuterRight, out double placedAntetOuterTop, scaleAntetTwoTimes, useKolonAntetScaleOneHundred: scaleAntetTwoTimes))
                         {
                             antetOuterLeftDeltaFromSheetViewLeft = placedAntetOuterLeft - antetSheetViewLeft;
                             nextAntetOuterLeftTarget = placedAntetOuterRight + Kolon50AntetGapBetweenSheetsCm * antetSpacingMul;
+                            kolonGprTableHasAntetTop = true;
+                            kolonGprTableMaxAntetOuterTop = Math.Max(kolonGprTableMaxAntetOuterTop, placedAntetOuterTop);
+                            if (!kolonGprTableAnchorSet)
+                            {
+                                kolonGprTableAnchorSet = true;
+                                const double kolonGprTableInsetFromAntetLeftCm = 120.0;
+                                kolonGprTableAnchorLeftX = placedAntetOuterLeft + kolonGprTableInsetFromAntetLeftCm;
+                                kolonGprTableFirstAntetOuterRight = placedAntetOuterRight;
+                            }
                         }
                         else
                         {
@@ -644,7 +666,11 @@ namespace ST4PlanIdCiz
                         _kolon50PerdeCopyExtent = new Envelope(minX, maxX, maxY, maxY);
                     }
 
-                    TryDrawKolonDonatiTableAboveKolon50PerdeCopies(tr, btr, db, ed, baseInsertPoint, st4SourcePath, cmdTag, copyLayouts);
+                    TryDrawKolonDonatiTableAboveKolon50PerdeCopies(
+                        tr, btr, db, ed, baseInsertPoint, st4SourcePath, cmdTag, copyLayouts,
+                        kolonGprTableHasAntetTop ? kolonGprTableMaxAntetOuterTop : (double?)null,
+                        kolonGprTableAnchorSet ? kolonGprTableAnchorLeftX : (double?)null,
+                        kolonGprTableAnchorSet ? kolonGprTableFirstAntetOuterRight : (double?)null);
 
                     ApplyPlanStructuralLayerDrawOrder(tr, btr);
                     tr.Commit();
@@ -737,10 +763,13 @@ namespace ST4PlanIdCiz
                     }
                     else if (TryComputeKalipLeftSectionMinXForAntetAnchor(firstFloor, firstUnion, firstExt, 0, out double L0))
                     {
-                        // Yerleşim referansı: en soldaki antet SHEETVIEW sol-alt = kullanıcı noktası (KALIP50 şablonunda SheetView, kesit solundan 140 cm içerde).
+                        // Yerleşim referansı: SheetViewOut katmanı dış çerçevesinin sol-altı = kullanıcı noktası (şablonda SheetView’a göre dx,dy; KALIP100 antet 2× ile aynı katsayı).
+                        double kalipSvOutDx = 0.0;
+                        double kalipSvOutDy = AntetDxfSheetViewOutYmin - AntetDxfSheetViewYmin;
+                        TryGetEmbeddedAntetSheetViewOutOffsets(out kalipSvOutDx, out kalipSvOutDy, ed);
                         double yRefAntetBottom = GetLowestHorizontalColumnAxisY(0, firstExt);
-                        cursorX = baseInsertPoint.X + firstExt.Xmin - L0 + 140.0 * kalipAntetSpacingMul;
-                        baseDy = baseInsertPoint.Y - yRefAntetBottom + 600.0 * kalipAntetSpacingMul;
+                        cursorX = baseInsertPoint.X - kalipAntetSpacingMul * kalipSvOutDx + firstExt.Xmin - L0 + 140.0 * kalipAntetSpacingMul;
+                        baseDy = baseInsertPoint.Y - kalipAntetSpacingMul * kalipSvOutDy - yRefAntetBottom + 600.0 * kalipAntetSpacingMul;
                     }
                     else
                     {
@@ -1822,7 +1851,7 @@ namespace ST4PlanIdCiz
                 : EnvelopeUtil.ExpandToInclude(_kolon50PerdeCopyExtent, env);
         }
 
-        /// <summary>ST4 yanında .GPR varsa KOLONDATA ile aynı kolon donatı tablosunu çizer; yerleşim antet çizim penceresinin alt bandında (plan geometrisinin altı), plana taşmaz.</summary>
+        /// <summary>ST4 yanında .GPR varsa KOLONDATA ile aynı kolon donatı tablosunu çizer. Antet başarılıysa: SheetViewOut üst sınırının ve üstteki perde kopyalarının üstüne; böylece plan ve kopya perdelerle çakışmaz.</summary>
         private void TryDrawKolonDonatiTableAboveKolon50PerdeCopies(
             Transaction tr,
             BlockTableRecord btr,
@@ -1831,7 +1860,10 @@ namespace ST4PlanIdCiz
             Point3d baseInsertPoint,
             string st4SourcePath,
             string kolonCmdTag,
-            List<(FloorInfo floor, double offsetX, double offsetY, (double Xmin, double Xmax, double Ymin, double Ymax) floorAxisExt)> copyLayouts)
+            List<(FloorInfo floor, double offsetX, double offsetY, (double Xmin, double Xmax, double Ymin, double Ymax) floorAxisExt)> copyLayouts,
+            double? kolonPlanMaxAntetOuterTop,
+            double? kolonGprTableAnchorLeftX,
+            double? kolonGprTableFirstAntetOuterRight)
         {
             if (!_isKolon50Mode || string.IsNullOrWhiteSpace(st4SourcePath))
                 return;
@@ -1851,17 +1883,36 @@ namespace ST4PlanIdCiz
             }
 
             double totalHeightCm = KolonDonatiTableDrawer.EstimateTableHeightCm(_model, columnData);
+            double tableWidthCm = KolonDonatiTableDrawer.EstimateTableWidthCm(_model);
+            const double gapAboveObstructionCm = 100.0;
             const double gapBelowPlanCm = 50.0;
             const double minMarginAboveAntetSheetBottomCm = 100.0;
-            double tableX = baseInsertPoint.X;
+            const double tableRightMarginInsideAntetCm = 100.0;
+
+            double tableX = kolonGprTableAnchorLeftX ?? baseInsertPoint.X;
+            if (kolonGprTableAnchorLeftX.HasValue && kolonGprTableFirstAntetOuterRight.HasValue
+                && kolonGprTableFirstAntetOuterRight.Value > kolonGprTableAnchorLeftX.Value + 10.0)
+            {
+                double maxLeftForFit = kolonGprTableFirstAntetOuterRight.Value - tableRightMarginInsideAntetCm - tableWidthCm;
+                if (maxLeftForFit < kolonGprTableAnchorLeftX.Value)
+                    tableX = maxLeftForFit;
+            }
+
             double tableY;
-            if (copyLayouts != null && copyLayouts.Count > 0)
+            if (kolonPlanMaxAntetOuterTop.HasValue)
+            {
+                double yClear = kolonPlanMaxAntetOuterTop.Value;
+                if (_kolon50PerdeCopyExtent != null)
+                    yClear = Math.Max(yClear, _kolon50PerdeCopyExtent.MaxY);
+                // insertPoint.Y = tablo alt kenarı (KolonDonatiTableDrawer: yTop = y0 + totalHeight).
+                tableY = yClear + gapAboveObstructionCm;
+            }
+            else if (copyLayouts != null && copyLayouts.Count > 0)
             {
                 var f0 = copyLayouts[0];
                 double layoutMinY = f0.floorAxisExt.Ymin + f0.offsetY;
                 double yLow = GetLowestHorizontalColumnAxisY(f0.offsetY, f0.floorAxisExt);
                 double antetSheetViewBottom = yLow - 600.0;
-                // insertPoint.Y = tablo sol-alt; tablo yukarı büyür — planın altına, antet SHEETVIEW alt bandına.
                 double yPreferred = layoutMinY - totalHeightCm - gapBelowPlanCm;
                 double yMinAllowed = antetSheetViewBottom + minMarginAboveAntetSheetBottomCm;
                 tableY = Math.Max(yMinAllowed, yPreferred);
@@ -1910,7 +1961,12 @@ namespace ST4PlanIdCiz
                 columnActiveCells,
                 echoCompletionMessage: false);
             if (ok)
-                ed.WriteMessage("\n{0}: GPR kolon donati tablosu antet bandina (plan alti) yerlestirildi ({1}).", kolonCmdTag ?? "KOLON50ST4", Path.GetFileName(gprPath));
+            {
+                string yer = kolonPlanMaxAntetOuterTop.HasValue
+                    ? "antet ve perde kopyalarinin ustune"
+                    : "antet bandina (plan alti, yedek yerlesim)";
+                ed.WriteMessage("\n{0}: GPR kolon donati tablosu {1} yerlestirildi ({2}).", kolonCmdTag ?? "KOLON50ST4", yer, Path.GetFileName(gprPath));
+            }
         }
 
         private void DrawSimplePerdeKolonCopiesByFloorId(

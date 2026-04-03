@@ -16,12 +16,20 @@ namespace ST4PlanIdCiz
             {
                 if (_palette != null)
                 {
-                    try { _palette.Dispose(); } catch { }
-                    _palette = null;
+                    try
+                    {
+                        _palette.Visible = true;
+                        return;
+                    }
+                    catch
+                    {
+                        try { _palette.Dispose(); } catch { }
+                        _palette = null;
+                    }
                 }
 
-                int palW = 135;
-                int palH = 440;
+                int palW = 150;
+                int palH = 460;
 
                 _palette = new PaletteSet("STA Komut Paneli")
                 {
@@ -33,6 +41,7 @@ namespace ST4PlanIdCiz
                 };
 
                 _palette.Add("Komutlar", new CommandPaletteControl());
+                _palette.Add("Kiri\u015f d\u00fczelt", new KirisDuzeltPaletteControl());
 
                 try
                 {
@@ -184,6 +193,56 @@ namespace ST4PlanIdCiz
                 var doc = AcApp.DocumentManager.MdiActiveDocument;
                 if (doc == null) return;
                 doc.SendStringToExecute(cmd + " ", true, false, false);
+            }
+            catch { }
+        }
+    }
+
+    /// <summary>STA kesit/kiris çizimini Beykent katman ve stillerine çevirir (KIRISDUZELT).</summary>
+    internal sealed class KirisDuzeltPaletteControl : UserControl
+    {
+        public KirisDuzeltPaletteControl()
+        {
+            BackColor = Color.FromArgb(248, 249, 252);
+            Dock = DockStyle.Fill;
+            AutoScroll = true;
+            Padding = new Padding(6, 8, 6, 8);
+
+            var lbl = new Label
+            {
+                Text = "STA4CAD kiriş/kesit: x5000, INSERT/XREF BlockTransform yedek; blok içi + model + yerleşimde Color/LT/LW BYLAYER; DONATI, KES_DET, KOT.",
+                Font = new Font("Segoe UI", 7.5f),
+                ForeColor = Color.FromArgb(55, 65, 85),
+                AutoSize = false,
+                Size = new Size(130, 120),
+                Location = new Point(2, 4),
+                BackColor = Color.Transparent
+            };
+
+            var btn = new Button
+            {
+                Text = "KIRISDUZELT",
+                Location = new Point(2, 128),
+                Size = new Size(130, 28),
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8f, FontStyle.Bold),
+                Cursor = Cursors.Hand,
+                Tag = "KIRISDUZELT"
+            };
+            btn.FlatAppearance.BorderColor = Color.FromArgb(185, 192, 210);
+            btn.Click += CommandPaletteControl_OnKirisClick;
+
+            Controls.Add(lbl);
+            Controls.Add(btn);
+        }
+
+        private static void CommandPaletteControl_OnKirisClick(object sender, EventArgs e)
+        {
+            try
+            {
+                var doc = AcApp.DocumentManager.MdiActiveDocument;
+                if (doc == null) return;
+                doc.SendStringToExecute("KIRISDUZELT ", true, false, false);
             }
             catch { }
         }

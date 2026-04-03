@@ -46,6 +46,40 @@ namespace ST4PlanIdCiz
             catch { /* sürüm / bağlam */ }
         }
 
+        private static void ConfigureNtsNextGenOverlay()
+        {
+            NtsGeometryServices.Instance = new NtsGeometryServices(
+                CoordinateArraySequenceFactory.Instance,
+                new PrecisionModel(),
+                0,
+                GeometryOverlay.NG,
+                new CoordinateEqualityComparer());
+        }
+
+        private static void WriteGprAxisSummary(Editor ed, St4Model model)
+        {
+            if (ed == null || model == null) return;
+            int nx = model.GprAxisXLabelByRow?.Count ?? 0;
+            int ny = model.GprAxisYLabelByRow?.Count ?? 0;
+            ed.WriteMessage("\n[GPR aks etiketi] X={0} satir, Y={1} satir.", nx, ny);
+        }
+
+        private static void WriteStaCommandError(Editor ed, string commandTag, System.Exception ex)
+        {
+            if (ed == null || ex == null) return;
+            if (ex is AcRxException aex)
+            {
+                ed.WriteMessage("\n{0} hata: {1} ({2})", commandTag, aex.Message, aex.ErrorStatus);
+                return;
+            }
+            var e = ex;
+            if (e is System.AggregateException agg && agg.InnerExceptions.Count > 0)
+                e = agg.Flatten().InnerExceptions[0];
+            ed.WriteMessage("\n{0} hata: {1}", commandTag, e.Message);
+            if (e.InnerException != null)
+                ed.WriteMessage("  Inner: {0}", e.InnerException.Message);
+        }
+
         /// <summary>
         /// ST4 dosyasından akslar, kolonlar (poligon dahil), kirişler ve perdeleri
         /// tüm eleman ID'leriyle çizer; katlar yan yana dizilir.
@@ -70,33 +104,18 @@ namespace ST4PlanIdCiz
 
             try
             {
-                // non-noded intersection hatalarını önlemek için (sb_emn.st4 vb.) overlay işlemlerinde NextGen kullan
-                NtsGeometryServices.Instance = new NtsGeometryServices(
-                    CoordinateArraySequenceFactory.Instance,
-                    new PrecisionModel(),
-                    0,
-                    GeometryOverlay.NG,
-                    new CoordinateEqualityComparer());
-
+                ConfigureNtsNextGenOverlay();
                 var parser = new St4Parser();
                 var model = parser.Parse(fileRes.StringResult);
                 GprYapiAksLabels.TryMergeFromGprBesideSt4(fileRes.StringResult, model);
-                ed.WriteMessage("\n[GPR aks etiketi] X={0} adet, Y={1} adet", model.GprAxisXLabelByRow.Count, model.GprAxisYLabelByRow.Count);
-                foreach (var kv in model.GprAxisXLabelByRow) ed.WriteMessage("  X{0}={1}", kv.Key, kv.Value);
-                foreach (var kv in model.GprAxisYLabelByRow) ed.WriteMessage("  Y{0}={1}", kv.Key, kv.Value);
+                WriteGprAxisSummary(ed, model);
                 var manager = new PlanIdDrawingManager(model);
                 manager.Draw(db, ed);
                 doc.SendStringToExecute("_.ZOOM _E ", true, false, false);
             }
-            catch (AcRxException aex)
-            {
-                ed.WriteMessage("\nST4PLANID hata: {0} ({1})", aex.Message, aex.ErrorStatus);
-            }
             catch (System.Exception ex)
             {
-                ed.WriteMessage("\nST4PLANID hata: {0}", ex.Message);
-                if (ex.InnerException != null)
-                    ed.WriteMessage("  Inner: {0}", ex.InnerException.Message);
+                WriteStaCommandError(ed, "ST4PLANID", ex);
             }
         }
 
@@ -122,6 +141,18 @@ namespace ST4PlanIdCiz
             if (doc == null) return;
             ApplyStaDefaultDrawingDisplaySettings(doc);
             IskeleKesitRunner.Execute(doc);
+        }
+
+        /// <summary>
+        /// Kiriş/kesit DWG düzenlemesi: KIRISDUZ_002.lsp (KIRIS_D) ile aynı mantık — katmanlar, yazı stilleri, kot/çubuk sembolleri.
+        /// </summary>
+        [CommandMethod("KIRISDUZELT")]
+        public void KirisDuzelt()
+        {
+            var doc = Application.DocumentManager.MdiActiveDocument;
+            if (doc == null) return;
+            ApplyStaDefaultDrawingDisplaySettings(doc);
+            KirisDuzeltRunner.Execute(doc);
         }
 
         /// <summary>
@@ -252,19 +283,11 @@ namespace ST4PlanIdCiz
 
             try
             {
-                NtsGeometryServices.Instance = new NtsGeometryServices(
-                    CoordinateArraySequenceFactory.Instance,
-                    new PrecisionModel(),
-                    0,
-                    GeometryOverlay.NG,
-                    new CoordinateEqualityComparer());
-
+                ConfigureNtsNextGenOverlay();
                 var parser = new St4Parser();
                 var model = parser.Parse(fileRes.StringResult);
                 GprYapiAksLabels.TryMergeFromGprBesideSt4(fileRes.StringResult, model);
-                ed.WriteMessage("\n[GPR aks etiketi] X={0} adet, Y={1} adet", model.GprAxisXLabelByRow.Count, model.GprAxisYLabelByRow.Count);
-                foreach (var kv in model.GprAxisXLabelByRow) ed.WriteMessage("  X{0}={1}", kv.Key, kv.Value);
-                foreach (var kv in model.GprAxisYLabelByRow) ed.WriteMessage("  Y{0}={1}", kv.Key, kv.Value);
+                WriteGprAxisSummary(ed, model);
                 var manager = new PlanIdDrawingManager(model);
 
                 var p1Res = ed.GetPoint(new PromptPointOptions("\nKesit hatti 1. nokta: ") { AllowNone = false });
@@ -290,15 +313,9 @@ namespace ST4PlanIdCiz
                 if (ok)
                     doc.SendStringToExecute("_.REGEN ", true, false, false);
             }
-            catch (AcRxException aex)
-            {
-                ed.WriteMessage("\nST4KESIT hata: {0} ({1})", aex.Message, aex.ErrorStatus);
-            }
             catch (System.Exception ex)
             {
-                ed.WriteMessage("\nST4KESIT hata: {0}", ex.Message);
-                if (ex.InnerException != null)
-                    ed.WriteMessage("  Inner: {0}", ex.InnerException.Message);
+                WriteStaCommandError(ed, "ST4KESIT", ex);
             }
         }
 
@@ -322,34 +339,20 @@ namespace ST4PlanIdCiz
 
             try
             {
-                NtsGeometryServices.Instance = new NtsGeometryServices(
-                    CoordinateArraySequenceFactory.Instance,
-                    new PrecisionModel(),
-                    0,
-                    GeometryOverlay.NG,
-                    new CoordinateEqualityComparer());
-
+                ConfigureNtsNextGenOverlay();
                 var parser = new St4Parser();
                 var model = parser.Parse(fileRes.StringResult);
                 GprYapiAksLabels.TryMergeFromGprBesideSt4(fileRes.StringResult, model);
-                ed.WriteMessage("\n[GPR aks etiketi] X={0} adet, Y={1} adet", model.GprAxisXLabelByRow.Count, model.GprAxisYLabelByRow.Count);
-                foreach (var kv in model.GprAxisXLabelByRow) ed.WriteMessage("  X{0}={1}", kv.Key, kv.Value);
-                foreach (var kv in model.GprAxisYLabelByRow) ed.WriteMessage("  Y{0}={1}", kv.Key, kv.Value);
+                WriteGprAxisSummary(ed, model);
                 var manager = new PlanIdDrawingManager(model);
                 var insRes = ed.GetPoint(new PromptPointOptions("\nTEMEL50ST4 yerlestirme noktasi (sol-alt): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
                 manager.DrawFoundationPlanWithSections(db, ed, insRes.Value, fileRes.StringResult);
                 doc.SendStringToExecute("_.ZOOM _E ", true, false, false);
             }
-            catch (AcRxException aex)
-            {
-                ed.WriteMessage("\nTEMEL50ST4 hata: {0} ({1})", aex.Message, aex.ErrorStatus);
-            }
             catch (System.Exception ex)
             {
-                ed.WriteMessage("\nTEMEL50ST4 hata: {0}", ex.Message);
-                if (ex.InnerException != null)
-                    ed.WriteMessage("  Inner: {0}", ex.InnerException.Message);
+                WriteStaCommandError(ed, "TEMEL50ST4", ex);
             }
         }
 
@@ -373,34 +376,20 @@ namespace ST4PlanIdCiz
 
             try
             {
-                NtsGeometryServices.Instance = new NtsGeometryServices(
-                    CoordinateArraySequenceFactory.Instance,
-                    new PrecisionModel(),
-                    0,
-                    GeometryOverlay.NG,
-                    new CoordinateEqualityComparer());
-
+                ConfigureNtsNextGenOverlay();
                 var parser = new St4Parser();
                 var model = parser.Parse(fileRes.StringResult);
                 GprYapiAksLabels.TryMergeFromGprBesideSt4(fileRes.StringResult, model);
-                ed.WriteMessage("\n[GPR aks etiketi] X={0} adet, Y={1} adet", model.GprAxisXLabelByRow.Count, model.GprAxisYLabelByRow.Count);
-                foreach (var kv in model.GprAxisXLabelByRow) ed.WriteMessage("  X{0}={1}", kv.Key, kv.Value);
-                foreach (var kv in model.GprAxisYLabelByRow) ed.WriteMessage("  Y{0}={1}", kv.Key, kv.Value);
+                WriteGprAxisSummary(ed, model);
                 var manager = new PlanIdDrawingManager(model);
                 var insRes = ed.GetPoint(new PromptPointOptions("\nTEMEL100ST4 yerlestirme noktasi (sol-alt): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
                 manager.DrawFoundationPlanWithSections(db, ed, insRes.Value, fileRes.StringResult, TemelFoundationPlanScale.Hundred);
                 doc.SendStringToExecute("_.ZOOM _E ", true, false, false);
             }
-            catch (AcRxException aex)
-            {
-                ed.WriteMessage("\nTEMEL100ST4 hata: {0} ({1})", aex.Message, aex.ErrorStatus);
-            }
             catch (System.Exception ex)
             {
-                ed.WriteMessage("\nTEMEL100ST4 hata: {0}", ex.Message);
-                if (ex.InnerException != null)
-                    ed.WriteMessage("  Inner: {0}", ex.InnerException.Message);
+                WriteStaCommandError(ed, "TEMEL100ST4", ex);
             }
         }
 
@@ -424,34 +413,20 @@ namespace ST4PlanIdCiz
 
             try
             {
-                NtsGeometryServices.Instance = new NtsGeometryServices(
-                    CoordinateArraySequenceFactory.Instance,
-                    new PrecisionModel(),
-                    0,
-                    GeometryOverlay.NG,
-                    new CoordinateEqualityComparer());
-
+                ConfigureNtsNextGenOverlay();
                 var parser = new St4Parser();
                 var model = parser.Parse(fileRes.StringResult);
                 GprYapiAksLabels.TryMergeFromGprBesideSt4(fileRes.StringResult, model);
-                ed.WriteMessage("\n[GPR aks etiketi] X={0} adet, Y={1} adet", model.GprAxisXLabelByRow.Count, model.GprAxisYLabelByRow.Count);
-                foreach (var kv in model.GprAxisXLabelByRow) ed.WriteMessage("  X{0}={1}", kv.Key, kv.Value);
-                foreach (var kv in model.GprAxisYLabelByRow) ed.WriteMessage("  Y{0}={1}", kv.Key, kv.Value);
+                WriteGprAxisSummary(ed, model);
                 var manager = new PlanIdDrawingManager(model);
                 var insRes = ed.GetPoint(new PromptPointOptions("\nKOLON50ST4 yerlestirme noktasi (sol-alt): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
                 manager.DrawColumnApplicationPlan(db, ed, insRes.Value, fileRes.StringResult, KolonApplicationPlanScale.Fifty);
                 doc.SendStringToExecute("_.ZOOM _E ", true, false, false);
             }
-            catch (AcRxException aex)
-            {
-                ed.WriteMessage("\nKOLON50ST4 hata: {0} ({1})", aex.Message, aex.ErrorStatus);
-            }
             catch (System.Exception ex)
             {
-                ed.WriteMessage("\nKOLON50ST4 hata: {0}", ex.Message);
-                if (ex.InnerException != null)
-                    ed.WriteMessage("  Inner: {0}", ex.InnerException.Message);
+                WriteStaCommandError(ed, "KOLON50ST4", ex);
             }
         }
 
@@ -475,34 +450,20 @@ namespace ST4PlanIdCiz
 
             try
             {
-                NtsGeometryServices.Instance = new NtsGeometryServices(
-                    CoordinateArraySequenceFactory.Instance,
-                    new PrecisionModel(),
-                    0,
-                    GeometryOverlay.NG,
-                    new CoordinateEqualityComparer());
-
+                ConfigureNtsNextGenOverlay();
                 var parser = new St4Parser();
                 var model = parser.Parse(fileRes.StringResult);
                 GprYapiAksLabels.TryMergeFromGprBesideSt4(fileRes.StringResult, model);
-                ed.WriteMessage("\n[GPR aks etiketi] X={0} adet, Y={1} adet", model.GprAxisXLabelByRow.Count, model.GprAxisYLabelByRow.Count);
-                foreach (var kv in model.GprAxisXLabelByRow) ed.WriteMessage("  X{0}={1}", kv.Key, kv.Value);
-                foreach (var kv in model.GprAxisYLabelByRow) ed.WriteMessage("  Y{0}={1}", kv.Key, kv.Value);
+                WriteGprAxisSummary(ed, model);
                 var manager = new PlanIdDrawingManager(model);
                 var insRes = ed.GetPoint(new PromptPointOptions("\nKOLON100ST4 yerlestirme noktasi (sol-alt): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
                 manager.DrawColumnApplicationPlan(db, ed, insRes.Value, fileRes.StringResult, KolonApplicationPlanScale.Hundred);
                 doc.SendStringToExecute("_.ZOOM _E ", true, false, false);
             }
-            catch (AcRxException aex)
-            {
-                ed.WriteMessage("\nKOLON100ST4 hata: {0} ({1})", aex.Message, aex.ErrorStatus);
-            }
             catch (System.Exception ex)
             {
-                ed.WriteMessage("\nKOLON100ST4 hata: {0}", ex.Message);
-                if (ex.InnerException != null)
-                    ed.WriteMessage("  Inner: {0}", ex.InnerException.Message);
+                WriteStaCommandError(ed, "KOLON100ST4", ex);
             }
         }
 
@@ -526,37 +487,20 @@ namespace ST4PlanIdCiz
 
             try
             {
-                NtsGeometryServices.Instance = new NtsGeometryServices(
-                    CoordinateArraySequenceFactory.Instance,
-                    new PrecisionModel(),
-                    0,
-                    GeometryOverlay.NG,
-                    new CoordinateEqualityComparer());
-
+                ConfigureNtsNextGenOverlay();
                 var parser = new St4Parser();
                 var model = parser.Parse(fileRes.StringResult);
                 GprYapiAksLabels.TryMergeFromGprBesideSt4(fileRes.StringResult, model);
-                ed.WriteMessage("\n[GPR aks etiketi] X={0} adet, Y={1} adet", model.GprAxisXLabelByRow.Count, model.GprAxisYLabelByRow.Count);
-                foreach (var kv in model.GprAxisXLabelByRow) ed.WriteMessage("  X{0}={1}", kv.Key, kv.Value);
-                foreach (var kv in model.GprAxisYLabelByRow) ed.WriteMessage("  Y{0}={1}", kv.Key, kv.Value);
+                WriteGprAxisSummary(ed, model);
                 var manager = new PlanIdDrawingManager(model);
-                var insRes = ed.GetPoint(new PromptPointOptions("\nKALIP50ST4: En soldaki antet SHEETVIEW sol-alt kosesi (yerlesim referansi): ") { AllowNone = false });
+                var insRes = ed.GetPoint(new PromptPointOptions("\nKALIP50ST4: En soldaki antet SheetViewOut (dis cerceve) sol-alt kosesi (yerlesim referansi): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
                 manager.DrawFormworkPlan50(db, ed, insRes.Value, fileRes.StringResult, KalipPlanScale.Fifty);
                 doc.SendStringToExecute("_.ZOOM _E ", true, false, false);
             }
-            catch (AcRxException aex)
-            {
-                ed.WriteMessage("\nKALIP50ST4 hata: {0} ({1})", aex.Message, aex.ErrorStatus);
-            }
             catch (System.Exception ex)
             {
-                var e = ex;
-                if (e is System.AggregateException agg && agg.InnerExceptions.Count > 0)
-                    e = agg.Flatten().InnerExceptions[0];
-                ed.WriteMessage("\nKALIP50ST4 hata: {0}", e.Message);
-                if (e.InnerException != null)
-                    ed.WriteMessage("  Inner: {0}", e.InnerException.Message);
+                WriteStaCommandError(ed, "KALIP50ST4", ex);
             }
         }
 
@@ -581,19 +525,11 @@ namespace ST4PlanIdCiz
 
             try
             {
-                NtsGeometryServices.Instance = new NtsGeometryServices(
-                    CoordinateArraySequenceFactory.Instance,
-                    new PrecisionModel(),
-                    0,
-                    GeometryOverlay.NG,
-                    new CoordinateEqualityComparer());
-
+                ConfigureNtsNextGenOverlay();
                 var parser = new St4Parser();
                 var model = parser.Parse(fileRes.StringResult);
                 GprYapiAksLabels.TryMergeFromGprBesideSt4(fileRes.StringResult, model);
-                ed.WriteMessage("\n[GPR aks etiketi] X={0} adet, Y={1} adet", model.GprAxisXLabelByRow.Count, model.GprAxisYLabelByRow.Count);
-                foreach (var kv in model.GprAxisXLabelByRow) ed.WriteMessage("  X{0}={1}", kv.Key, kv.Value);
-                foreach (var kv in model.GprAxisYLabelByRow) ed.WriteMessage("  Y{0}={1}", kv.Key, kv.Value);
+                WriteGprAxisSummary(ed, model);
                 var manager = new PlanIdDrawingManager(model);
                 var insRes = ed.GetPoint(new PromptPointOptions("\nDENEME1: Ilk kat aks kutusu sol-alt kosesi (yerlesim): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
@@ -618,18 +554,9 @@ namespace ST4PlanIdCiz
                         classifyDosemeHattiIntoTopologyLayers: true));
                 doc.SendStringToExecute("_.ZOOM _E ", true, false, false);
             }
-            catch (AcRxException aex)
-            {
-                ed.WriteMessage("\nDENEME1 hata: {0} ({1})", aex.Message, aex.ErrorStatus);
-            }
             catch (System.Exception ex)
             {
-                var e = ex;
-                if (e is System.AggregateException agg && agg.InnerExceptions.Count > 0)
-                    e = agg.Flatten().InnerExceptions[0];
-                ed.WriteMessage("\nDENEME1 hata: {0}", e.Message);
-                if (e.InnerException != null)
-                    ed.WriteMessage("  Inner: {0}", e.InnerException.Message);
+                WriteStaCommandError(ed, "DENEME1", ex);
             }
         }
 
@@ -653,37 +580,20 @@ namespace ST4PlanIdCiz
 
             try
             {
-                NtsGeometryServices.Instance = new NtsGeometryServices(
-                    CoordinateArraySequenceFactory.Instance,
-                    new PrecisionModel(),
-                    0,
-                    GeometryOverlay.NG,
-                    new CoordinateEqualityComparer());
-
+                ConfigureNtsNextGenOverlay();
                 var parser = new St4Parser();
                 var model = parser.Parse(fileRes.StringResult);
                 GprYapiAksLabels.TryMergeFromGprBesideSt4(fileRes.StringResult, model);
-                ed.WriteMessage("\n[GPR aks etiketi] X={0} adet, Y={1} adet", model.GprAxisXLabelByRow.Count, model.GprAxisYLabelByRow.Count);
-                foreach (var kv in model.GprAxisXLabelByRow) ed.WriteMessage("  X{0}={1}", kv.Key, kv.Value);
-                foreach (var kv in model.GprAxisYLabelByRow) ed.WriteMessage("  Y{0}={1}", kv.Key, kv.Value);
+                WriteGprAxisSummary(ed, model);
                 var manager = new PlanIdDrawingManager(model);
-                var insRes = ed.GetPoint(new PromptPointOptions("\nKALIP100ST4: En soldaki antet SHEETVIEW sol-alt kosesi (yerlesim referansi): ") { AllowNone = false });
+                var insRes = ed.GetPoint(new PromptPointOptions("\nKALIP100ST4: En soldaki antet SheetViewOut (dis cerceve) sol-alt kosesi (yerlesim referansi): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
                 manager.DrawFormworkPlan50(db, ed, insRes.Value, fileRes.StringResult, KalipPlanScale.Hundred);
                 doc.SendStringToExecute("_.ZOOM _E ", true, false, false);
             }
-            catch (AcRxException aex)
-            {
-                ed.WriteMessage("\nKALIP100ST4 hata: {0} ({1})", aex.Message, aex.ErrorStatus);
-            }
             catch (System.Exception ex)
             {
-                var e = ex;
-                if (e is System.AggregateException agg && agg.InnerExceptions.Count > 0)
-                    e = agg.Flatten().InnerExceptions[0];
-                ed.WriteMessage("\nKALIP100ST4 hata: {0}", e.Message);
-                if (e.InnerException != null)
-                    ed.WriteMessage("  Inner: {0}", e.InnerException.Message);
+                WriteStaCommandError(ed, "KALIP100ST4", ex);
             }
         }
     }

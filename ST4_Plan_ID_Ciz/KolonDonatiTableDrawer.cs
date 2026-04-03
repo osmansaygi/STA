@@ -983,6 +983,15 @@ namespace ST4PlanIdCiz
             return min;
         }
 
+        /// <summary>Kolon donatı tablosu genişliği (cm); yerleşim hesabı için. <see cref="Draw"/> ile aynı sütun sayısı kuralı.</summary>
+        public static double EstimateTableWidthCm(St4Model model)
+        {
+            if (model?.Floors == null || model.Floors.Count == 0)
+                return ColWidthKatNo + ColWidthSubHeader + ColWidthFloor;
+            int n = model.Floors.Count;
+            return ColWidthKatNo + ColWidthSubHeader + n * ColWidthFloor;
+        }
+
         /// <summary>Kolon donatı tablosu toplam yüksekliği (cm); yerleşim hesabı için. <see cref="Draw"/> ile aynı satır sayısı kuralı.</summary>
         public static double EstimateTableHeightCm(St4Model model, Dictionary<string, (string ebat, string donati, string etriye)> columnData)
         {

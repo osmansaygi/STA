@@ -42,6 +42,11 @@
     <EmbeddedResource Include="..\dosyalar\ISKELE_KESIT.dxf" LogicalName="ST4PlanIdCiz.IskeleKesitTemplates.ISKELE_KESIT.dxf" Condition="Exists('$(MSBuildProjectDirectory)\..\dosyalar\ISKELE_KESIT.dxf')" />
   </ItemGroup>
 
+  <!-- KIRISDUZELT: DONATI_TAR blok DXF (KOT/KES_DET/DONATI programa gomulu geometri) -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\lisp\DONATI_TAR.dxf" LogicalName="ST4PlanIdCiz.KirisDuzeltBlocks.DONATI_TAR.dxf" Condition="Exists('$(MSBuildProjectDirectory)\..\lisp\DONATI_TAR.dxf')" />
+  </ItemGroup>
+
   <ItemGroup Condition="Exists('$(AutoCADInstallDir)\acdbmgd.dll') and Exists('$(AutoCADInstallDir)\acmgd.dll')">
     <Reference Include="acdbmgd">
       <HintPath>$(AutoCADInstallDir)\acdbmgd.dll</HintPath>
