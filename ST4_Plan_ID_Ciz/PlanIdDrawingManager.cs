@@ -145,9 +145,12 @@ namespace ST4PlanIdCiz
         private bool _kalip50DrawInteriorVoidsOnBosLayer;
         /// <summary>DENEME1: döşeme sınırı DOSEME HATTI 1–4 katmanlarına bölünür.</summary>
         private bool _kalip50ClassifyDosemeHattiTopologyLayers;
-        /// <summary>DENEME1: DrawSlabs sonrası DrawBos’ta sınıflandırılacak kesilmiş döşeme geometrileri.</summary>
         /// <summary>DENEME1: kesilmiş döşeme poligonu + ST4 döşeme ID (topology finalize ve eğim grubu etiketi için).</summary>
         private List<(int SlabId, Geometry Geom)> _kalip50Deneme1DosemeHattiGeoms;
+        /// <summary>DENEME1: kolon/perde/kiriş farkı öncesi eksen dörtgeni (ham); EKSEN grubu donatı hatları için.</summary>
+        private Dictionary<int, Geometry> _kalip50Deneme1SlabHamQuadBySlabId;
+        /// <summary>DENEME1: son çizimdeki kesilmiş döşeme poligonu (ileride donatı formülü için; şu an donatı ofsetinde kullanılmıyor).</summary>
+        private Dictionary<int, Geometry> _kalip50Deneme1SlabKesilmisBySlabId;
         /// <summary>KALIP50 bina şema kesiti: blok tanımı bir kez; her antet üstüne ayrı INSERT.</summary>
         private ObjectId _kalip50BinaSemaBlockId = ObjectId.Null;
         private double _kalip50BinaSemaAminT;
@@ -1004,6 +1007,8 @@ namespace ST4PlanIdCiz
                 _kalip50DrawInteriorVoidsOnBosLayer = false;
                 _kalip50ClassifyDosemeHattiTopologyLayers = false;
                 _kalip50Deneme1DosemeHattiGeoms = null;
+                _kalip50Deneme1SlabHamQuadBySlabId = null;
+                _kalip50Deneme1SlabKesilmisBySlabId = null;
                 _kalipPlanScale = null;
                 _ntsDrawFactory = null;
                 ClearKalip50FormworkSessionCaches();
@@ -3253,14 +3258,35 @@ namespace ST4PlanIdCiz
         private const string LayerDosemeHatti2 = "DOSEME HATTI 2 (BEYKENT)";
         private const string LayerDosemeHatti3 = "DOSEME HATTI 3 (BEYKENT)";
         private const string LayerDosemeHatti4 = "DOSEME HATTI 4 (BEYKENT)";
+        /// <summary>DENEME1: döşeme kenarı L/5 noktaları — kot işareti yok, kırmızı 5 cm daire.</summary>
+        private const string LayerDeneme1DosemeSegmentBirBes = "1-5 (BEYKENT)";
         /// <summary>DENEME1: döşeme eğim imzası grup numarası (yalnızca bu komutta); eksen ailesi ile birlikte sıralanır.</summary>
         private const string LayerEksen = "EKSEN (BEYKENT)";
         /// <summary>DENEME1: artı çizgisi yerel X (Span12); ACI mavi.</summary>
         private const string LayerEksenX = "EKSEN X (BEYKENT)";
         /// <summary>DENEME1: artı çizgisi yerel Y (Span34 / X’e dik); ACI kırmızı.</summary>
         private const string LayerEksenY = "EKSEN Y (BEYKENT)";
+        /// <summary>+X’ten CCW: Y yönü bantları (°); aralık dışı X (mavi 5), bant içi Y (kırmızı 1).</summary>
+        private const double Deneme1EksenYBand1MinDeg = 45.0;
+        private const double Deneme1EksenYBand1MaxDeg = 135.0;
+        private const double Deneme1EksenYBand2MinDeg = 225.0;
+        private const double Deneme1EksenYBand2MaxDeg = 315.0;
+        /// <summary>DENEME1: donatı X (EKSEN grubu ham birleşimi içinde); EKSEN X ile aynı ACI.</summary>
+        private const string LayerDosemeDonatiEksenX = "DOSEME DONATI EKSEN X (BEYKENT)";
+        /// <summary>DENEME1: donatı Y (EKSEN grubu ham birleşimi içinde); EKSEN Y ile aynı ACI.</summary>
+        private const string LayerDosemeDonatiEksenY = "DOSEME DONATI EKSEN Y (BEYKENT)";
         /// <summary>DENEME1 döşeme hattı–KAT SINIRI / BOS / komşu döşeme temas eşiği (cm).</summary>
         private const double Deneme1DosemeHattiTouchTolCm = 0.8;
+        /// <summary>DENEME1: kesilmiş döşeme kenarında L/5 kot işareti; kenar bundan kısaysa atlanır (cm).</summary>
+        private const double Deneme1DosemeSegmentKotMinEdgeCm = 3.0;
+        /// <summary>DENEME1 donatı: ofsetin döşeme projeksiyon aralığında sayılması (cm).</summary>
+        private const double Deneme1DonatiSlabCoverageTolCm = 0.05;
+        /// <summary>DENEME1 donatı: ham projeksiyon [a,b] uçlarından simetrik içeri oran (kenara yaslanmasın).</summary>
+        private const double Deneme1DonatiProjEdgeInsetRatio = 0.12;
+        /// <summary>DENEME1 donatı: EKSEN birleşik poligonu ile kesişen segment için anlamlı minimum uzunluk (cm).</summary>
+        private const double Deneme1DonatiMinHitLengthCm = 0.15;
+        /// <summary>EKSEN zarf köşelerini aşan çizgi uzatımı için ek güvenlik payı (cm).</summary>
+        private const double Deneme1DonatiLineEnvelopeMarginCm = 500.0;
         /// <summary>DENEME1 EKSEN artı: merkezden her yönde yarım uzunluk (cm); toplam kol 50 cm.</summary>
         private const double Deneme1EksenArtiYarimKolCm = 25.0;
         /// <summary>DENEME1: Her iki artı kolu da kenar akslarından hiçbirine ~paralel/~dik değilse merkeze ek daire (yarıçap, cm).</summary>
@@ -3369,9 +3395,12 @@ namespace ST4PlanIdCiz
             EnsurePlanLayer(tr, db, LayerDosemeHatti2, 170, LineWeight.LineWeight030, useDashed: false);
             EnsurePlanLayer(tr, db, LayerDosemeHatti3, 40, LineWeight.LineWeight030, useDashed: false);
             EnsurePlanLayer(tr, db, LayerDosemeHatti4, 30, LineWeight.LineWeight030, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerDeneme1DosemeSegmentBirBes, 1, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, LayerEksen, 3, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, LayerEksenX, 5, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, LayerEksenY, 1, LineWeight.LineWeight020, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerDosemeDonatiEksenX, 5, LineWeight.LineWeight025, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerDosemeDonatiEksenY, 1, LineWeight.LineWeight025, useDashed: false);
             EnsurePlanLayer(tr, db, LayerMerdiven, 5, LineWeight.LineWeight030, useDashed: false);
             EnsurePlanLayer(tr, db, LayerYazi, 4, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, LayerBaslik, 4, LineWeight.LineWeight020, useDashed: false);
@@ -3515,7 +3544,9 @@ namespace ST4PlanIdCiz
                 string lyr = ent.Layer;
                 if (string.IsNullOrEmpty(lyr)) continue;
 
-                if (lyr == LayerAks || lyr == LayerAksBalonu || lyr == LayerAksYazisi || lyr == LayerAksOlcu || lyr == LayerEksen || lyr == LayerEksenX || lyr == LayerEksenY)
+                if (lyr == LayerAks || lyr == LayerAksBalonu || lyr == LayerAksYazisi || lyr == LayerAksOlcu || lyr == LayerEksen || lyr == LayerEksenX || lyr == LayerEksenY
+                    || lyr == LayerDosemeDonatiEksenX || lyr == LayerDosemeDonatiEksenY || lyr == LayerDeneme1DosemeSegmentBirBes
+                    || (lyr.StartsWith("EKSEN ", StringComparison.Ordinal) && lyr.EndsWith(" SINIRI (BEYKENT)", StringComparison.Ordinal)))
                     aks.Add(eid);
                 else if (lyr == LayerKatSiniri)
                     kat.Add(eid);
@@ -4501,6 +4532,22 @@ namespace ST4PlanIdCiz
                 TryDeneme1EksenArtiOptimizeMarkedSlabToMaxBoundaryAlignment(slabId, ref t1, ref t2);
         }
 
+        /// <summary>Doğrultu açısı (+X’ten CCW, rad) [45°,135°] veya [225°,315°] ise Y bandı; aksi halde X bandı (−45…45 ve 135…225 yatay bölgeleri dahil).</summary>
+        private static bool Deneme1IsEksenDirectionAngleInYBand(double angleRad)
+        {
+            const double eps = 1e-9;
+            double deg = angleRad * 180.0 / Math.PI;
+            deg = ((deg % 360.0) + 360.0) % 360.0;
+            return (deg >= Deneme1EksenYBand1MinDeg - eps && deg <= Deneme1EksenYBand1MaxDeg + eps)
+                || (deg >= Deneme1EksenYBand2MinDeg - eps && deg <= Deneme1EksenYBand2MaxDeg + eps);
+        }
+
+        private static string Deneme1LayerForEksenLineAngleRad(double angleRad) =>
+            Deneme1IsEksenDirectionAngleInYBand(angleRad) ? LayerEksenY : LayerEksenX;
+
+        private static string Deneme1LayerForDonatiLineAngleRad(double angleRad) =>
+            Deneme1IsEksenDirectionAngleInYBand(angleRad) ? LayerDosemeDonatiEksenY : LayerDosemeDonatiEksenX;
+
         /// <summary>
         /// Çizilen son artı imzasına göre EKSEN numaralarını 1,2,… yeniden verir (küme sırası: min döşeme ID).
         /// </summary>
@@ -4558,8 +4605,8 @@ namespace ST4PlanIdCiz
                     double r = Deneme1EksenArtiMerkezCircleRadiusCm;
                     AppendEntity(tr, btr, new Circle(new Point3d(cx, cy, 0), Vector3d.ZAxis, r) { Layer = LayerEksen });
                 }
-                AppendEntity(tr, btr, new Line(new Point3d(cx - h * c1, cy - h * s1, 0), new Point3d(cx + h * c1, cy + h * s1, 0)) { Layer = LayerEksenX });
-                AppendEntity(tr, btr, new Line(new Point3d(cx - h * c2, cy - h * s2, 0), new Point3d(cx + h * c2, cy + h * s2, 0)) { Layer = LayerEksenY });
+                AppendEntity(tr, btr, new Line(new Point3d(cx - h * c1, cy - h * s1, 0), new Point3d(cx + h * c1, cy + h * s1, 0)) { Layer = Deneme1LayerForEksenLineAngleRad(t1) });
+                AppendEntity(tr, btr, new Line(new Point3d(cx - h * c2, cy - h * s2, 0), new Point3d(cx + h * c2, cy + h * s2, 0)) { Layer = Deneme1LayerForEksenLineAngleRad(t2) });
             }
             catch { }
         }
@@ -4900,6 +4947,9 @@ namespace ST4PlanIdCiz
                 Deneme1RenumberEksenGrupNosByFinalDrawnArtiSignature(slabIdToEgimGrupNo, eksenGrupArtiYon, geoms);
                 eksenGrupArtiYon = BuildDeneme1EksenGrupCanonicalArtiYonByGrupNo(slabIdToEgimGrupNo);
 
+                AppendDeneme1EksenGrupBirlesikDisSinirlariHam(tr, btr, geoms, slabIdToEgimGrupNo, _kalip50Deneme1SlabHamQuadBySlabId, factory);
+                AppendDeneme1EksenGrupDonatiHatlariFromHamQuads(tr, btr, geoms, slabIdToEgimGrupNo, eksenGrupArtiYon, factory);
+
                 for (int i = 0; i < geoms.Count; i++)
                 {
                     (int slabId, Geometry g) = geoms[i];
@@ -4934,6 +4984,7 @@ namespace ST4PlanIdCiz
                             else if (TryGetDeneme1EksenArtiDikIkiYonRad(slabId, out double fb1, out double fb2))
                                 AppendDeneme1DosemeEksenArtiCizgileri(tr, btr, g, slabId, fb1, fb2);
                         }
+                        AppendDeneme1DosemeSegmentOneFifthKotMarks(tr, btr, floor, slabId, g);
                     }
                     catch { }
                 }
@@ -4945,6 +4996,715 @@ namespace ST4PlanIdCiz
             finally
             {
                 geoms.Clear();
+            }
+        }
+
+        /// <summary>DENEME1: 1/5 noktaları <b>ham</b> döşeme kenarına göre; daireler <see cref="LayerDeneme1DosemeSegmentBirBes"/> üzerinde, konum <b>kesilmiş</b> poligona izdüşüm (içindeyse aynı nokta, değilse sınırda en yakın).</summary>
+        private void AppendDeneme1DosemeSegmentOneFifthKotMarks(Transaction tr, BlockTableRecord btr, FloorInfo floor, int slabId, Geometry kesilmisG)
+        {
+            if (kesilmisG == null || kesilmisG.IsEmpty || floor == null || slabId <= 0) return;
+            if (!_model.Slabs.Any(s => s.SlabId == slabId)) return;
+            Database db = btr.Database;
+            EnsurePlanLayer(tr, db, LayerDeneme1DosemeSegmentBirBes, 1, LineWeight.LineWeight020, useDashed: false);
+            const double yaricapCm = 2.5;
+            double minL = Deneme1DosemeSegmentKotMinEdgeCm;
+            Geometry hamG = null;
+            if (_kalip50Deneme1SlabHamQuadBySlabId != null && _kalip50Deneme1SlabHamQuadBySlabId.TryGetValue(slabId, out Geometry h) && h != null && !h.IsEmpty)
+                hamG = h;
+            try
+            {
+                Geometry kesStable = kesilmisG;
+                try
+                {
+                    Geometry r = ReducePrecisionSafe(kesilmisG, 100);
+                    if (r != null && !r.IsEmpty) kesStable = r;
+                }
+                catch { }
+                var placed = new HashSet<string>(StringComparer.Ordinal);
+                void tryMark(double hx, double hy)
+                {
+                    if (!Deneme1TryProjectHamOneFifthOntoKesilmis(hx, hy, kesStable, out double ox, out double oy)) return;
+                    string key = string.Format(CultureInfo.InvariantCulture, "{0:F3},{1:F3}", ox, oy);
+                    if (!placed.Add(key)) return;
+                    AppendEntity(tr, btr, new Circle(new Point3d(ox, oy, 0), Vector3d.ZAxis, yaricapCm) { Layer = LayerDeneme1DosemeSegmentBirBes });
+                }
+                Geometry walkSource = hamG ?? kesStable;
+                Deneme1WalkSlabExteriorRingsForSegmentKot(walkSource, (x0, y0, x1, y1) =>
+                {
+                    double dx = x1 - x0, dy = y1 - y0;
+                    double L = Math.Sqrt(dx * dx + dy * dy);
+                    if (L < minL) return;
+                    double ux = dx / L, uy = dy / L;
+                    tryMark(x0 + ux * (L / 5.0), y0 + uy * (L / 5.0));
+                    tryMark(x0 + ux * (4.0 * L / 5.0), y0 + uy * (4.0 * L / 5.0));
+                });
+            }
+            catch { }
+        }
+
+        /// <summary>Ham üzerindeki (hx,hy) noktasını kesilmiş poligona taşır: içinde / kenarında ise aynı; dışarıdaysa dış halka segmentlerine en yakın nokta.</summary>
+        private static bool Deneme1TryProjectHamOneFifthOntoKesilmis(double hx, double hy, Geometry kesStable, out double ox, out double oy)
+        {
+            ox = oy = 0;
+            if (kesStable == null || kesStable.IsEmpty) return false;
+            try
+            {
+                GeometryFactory f = kesStable.Factory;
+                if (f == null) return false;
+                var pt = f.CreatePoint(new Coordinate(hx, hy));
+                if (kesStable.Covers(pt))
+                {
+                    ox = hx;
+                    oy = hy;
+                    return true;
+                }
+                return Deneme1TryClosestPointOnExteriorRings(hx, hy, kesStable, out ox, out oy);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static void Deneme1ClosestPointOnSegment(double px, double py, double x0, double y0, double x1, double y1, out double qx, out double qy)
+        {
+            double dx = x1 - x0, dy = y1 - y0;
+            double len2 = dx * dx + dy * dy;
+            if (len2 < 1e-24)
+            {
+                qx = x0;
+                qy = y0;
+                return;
+            }
+            double t = ((px - x0) * dx + (py - y0) * dy) / len2;
+            if (t < 0) t = 0;
+            else if (t > 1) t = 1;
+            qx = x0 + t * dx;
+            qy = y0 + t * dy;
+        }
+
+        private static bool Deneme1TryClosestPointOnExteriorRings(double px, double py, Geometry geom, out double ox, out double oy)
+        {
+            ox = oy = 0;
+            double best2 = double.MaxValue;
+            double bestCx = 0, bestCy = 0;
+            bool any = false;
+            void considerSeg(double x0, double y0, double x1, double y1)
+            {
+                Deneme1ClosestPointOnSegment(px, py, x0, y0, x1, y1, out double qx, out double qy);
+                double d2 = (qx - px) * (qx - px) + (qy - py) * (qy - py);
+                if (d2 < best2)
+                {
+                    best2 = d2;
+                    bestCx = qx;
+                    bestCy = qy;
+                    any = true;
+                }
+            }
+            Deneme1WalkSlabExteriorRingsSegmentCallback(geom, considerSeg);
+            if (any)
+            {
+                ox = bestCx;
+                oy = bestCy;
+            }
+            return any;
+        }
+
+        private static void Deneme1WalkSlabExteriorRingsSegmentCallback(Geometry geom, Action<double, double, double, double> onSegment)
+        {
+            if (geom == null || geom.IsEmpty || onSegment == null) return;
+            if (geom is Polygon poly)
+            {
+                Deneme1EmitSegmentsFromLinearRing(poly.ExteriorRing, onSegment);
+                return;
+            }
+            if (geom is MultiPolygon mp)
+            {
+                for (int i = 0; i < mp.NumGeometries; i++)
+                    Deneme1WalkSlabExteriorRingsSegmentCallback(mp.GetGeometryN(i), onSegment);
+                return;
+            }
+            if (geom is GeometryCollection gc)
+            {
+                for (int i = 0; i < gc.NumGeometries; i++)
+                    Deneme1WalkSlabExteriorRingsSegmentCallback(gc.GetGeometryN(i), onSegment);
+            }
+        }
+
+        private static void Deneme1WalkSlabExteriorRingsForSegmentKot(Geometry geom, Action<double, double, double, double> onSegment) =>
+            Deneme1WalkSlabExteriorRingsSegmentCallback(geom, onSegment);
+
+        private static void Deneme1EmitSegmentsFromLinearRing(LineString ring, Action<double, double, double, double> onSegment)
+        {
+            if (ring == null || ring.IsEmpty || onSegment == null) return;
+            Coordinate[] coords = ring.Coordinates;
+            if (coords == null || coords.Length < 2) return;
+            int last = coords.Length - 1;
+            for (int i = 0; i < last; i++)
+            {
+                double x0 = coords[i].X, y0 = coords[i].Y;
+                double x1 = coords[i + 1].X, y1 = coords[i + 1].Y;
+                onSegment(x0, y0, x1, y1);
+            }
+        }
+
+        /// <summary>DENEME1: Aynı EKSEN numarasındaki döşemelerin ham birleşiminin yalnız dış halkaları; grup başına <c>EKSEN n SINIRI (BEYKENT)</c> katmanı.</summary>
+        private static string Deneme1EksenGrupSinirLayerName(int grupNo) =>
+            string.Format(CultureInfo.InvariantCulture, "EKSEN {0} SINIRI (BEYKENT)", grupNo);
+
+        private static short Deneme1EksenGrupSinirAci(int grupNo)
+        {
+            ReadOnlySpan<short> aci = stackalloc short[] { 30, 40, 50, 60, 70, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200, 210, 220, 230, 240 };
+            int idx = grupNo > 0 ? (grupNo - 1) % aci.Length : 0;
+            return aci[idx];
+        }
+
+        private void AppendDeneme1EksenGrupBirlesikDisSinirlariHam(
+            Transaction tr,
+            BlockTableRecord btr,
+            IReadOnlyList<(int SlabId, Geometry Geom)> geoms,
+            Dictionary<int, int> slabIdToEgimGrupNo,
+            Dictionary<int, Geometry> hamById,
+            GeometryFactory factory)
+        {
+            if (hamById == null || factory == null || geoms == null || geoms.Count == 0 || slabIdToEgimGrupNo == null) return;
+            Database db = btr.Database;
+            var grupToIds = new Dictionary<int, HashSet<int>>();
+            foreach ((int slabId, _) in geoms)
+            {
+                if (slabId <= 0) continue;
+                if (!slabIdToEgimGrupNo.TryGetValue(slabId, out int gn) || gn <= 0) continue;
+                if (!grupToIds.TryGetValue(gn, out HashSet<int> hs))
+                {
+                    hs = new HashSet<int>();
+                    grupToIds[gn] = hs;
+                }
+                hs.Add(slabId);
+            }
+            foreach (KeyValuePair<int, HashSet<int>> kv in grupToIds.OrderBy(x => x.Key))
+            {
+                int grupNo = kv.Key;
+                var polys = new List<Geometry>();
+                foreach (int sid in kv.Value.OrderBy(id => id))
+                {
+                    if (!hamById.TryGetValue(sid, out Geometry h) || h == null || h.IsEmpty) continue;
+                    try { polys.Add(h.Copy()); }
+                    catch { polys.Add(h); }
+                }
+                if (polys.Count == 0) continue;
+                Geometry unionG = TryCascadedPolygonUnionSafe(polys);
+                if (unionG == null || unionG.IsEmpty) continue;
+                try
+                {
+                    Geometry ru = ReducePrecisionSafe(unionG, 100);
+                    if (ru != null && !ru.IsEmpty) unionG = ru;
+                }
+                catch { }
+                string layer = Deneme1EksenGrupSinirLayerName(grupNo);
+                EnsurePlanLayer(tr, db, layer, Deneme1EksenGrupSinirAci(grupNo), LineWeight.LineWeight030, useDashed: false);
+                try
+                {
+                    DrawGeometryRingsAsPolylines(tr, btr, unionG, layer, addHatch: false, applySmallTriangleTrim: false, exteriorRingsOnly: true, vertexAngleTolDeg: 0.3, minVertexDistCm: 0.1, collinearTolCm: 0.05);
+                }
+                catch { }
+            }
+        }
+
+        /// <summary>DENEME1: Donatı hatları EKSEN grubu ham birleşiminde; t1/t2, greedy + her döşeme X/Y. Ofset: ham döşeme + simetrik inset + kesişim ortası (formül sonra güncellenebilir).</summary>
+        private void AppendDeneme1EksenGrupDonatiHatlariFromHamQuads(
+            Transaction tr,
+            BlockTableRecord btr,
+            IReadOnlyList<(int SlabId, Geometry Geom)> geoms,
+            Dictionary<int, int> slabIdToEgimGrupNo,
+            IReadOnlyDictionary<int, (double t1, double t2)> eksenGrupArtiYon,
+            GeometryFactory factory)
+        {
+            var hamById = _kalip50Deneme1SlabHamQuadBySlabId;
+            if (hamById == null || hamById.Count == 0 || geoms == null || geoms.Count == 0 || factory == null) return;
+            if (slabIdToEgimGrupNo == null || eksenGrupArtiYon == null) return;
+            Database db = btr.Database;
+            EnsurePlanLayer(tr, db, LayerDosemeDonatiEksenX, 5, LineWeight.LineWeight025, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerDosemeDonatiEksenY, 1, LineWeight.LineWeight025, useDashed: false);
+
+            var grupToSlabIds = new Dictionary<int, HashSet<int>>();
+            foreach ((int slabId, _) in geoms)
+            {
+                if (slabId <= 0) continue;
+                if (!slabIdToEgimGrupNo.TryGetValue(slabId, out int gn) || gn <= 0) continue;
+                if (!grupToSlabIds.TryGetValue(gn, out HashSet<int> gset))
+                {
+                    gset = new HashSet<int>();
+                    grupToSlabIds[gn] = gset;
+                }
+                gset.Add(slabId);
+            }
+
+            var inEksenGrup = new HashSet<int>();
+
+            foreach (KeyValuePair<int, HashSet<int>> kv in grupToSlabIds.OrderBy(x => x.Key))
+            {
+                int grupNo = kv.Key;
+                List<int> ids = kv.Value.OrderBy(id => id).ToList();
+                if (ids.Count == 0) continue;
+                int repSid = ids[0];
+                var polys = new List<Geometry>(ids.Count);
+                foreach (int sid in ids)
+                {
+                    if (!hamById.TryGetValue(sid, out Geometry h) || h == null || h.IsEmpty) continue;
+                    try { polys.Add(h.Copy()); }
+                    catch { polys.Add(h); }
+                    inEksenGrup.Add(sid);
+                }
+                if (polys.Count == 0) continue;
+                Geometry unionG = TryCascadedPolygonUnionSafe(polys);
+                if (unionG == null || unionG.IsEmpty) continue;
+                try
+                {
+                    Geometry ru = ReducePrecisionSafe(unionG, 100);
+                    if (ru != null && !ru.IsEmpty) unionG = ru;
+                }
+                catch { }
+
+                if (!TryGetDeneme1EksenArtiBaseTupleForSlab(repSid, grupNo, eksenGrupArtiYon, out double bt1, out double bt2)) continue;
+                Deneme1ComputeFinalEksenArtiAnglesForDraw(repSid, bt1, bt2, out double t1, out double t2);
+                double c1 = Math.Cos(t1), s1 = Math.Sin(t1);
+                double c2 = Math.Cos(t2), s2 = Math.Sin(t2);
+                double n1x = -s1, n1y = c1;
+                double n2x = -s2, n2y = c2;
+
+                var envU = unionG.EnvelopeInternal;
+                double w = envU.MaxX - envU.MinX;
+                double hgt = envU.MaxY - envU.MinY;
+                double halfLen = 0.5 * Math.Sqrt(w * w + hgt * hgt) * 2.0 + 100.0;
+                if (halfLen < 300.0) halfLen = 300.0;
+
+                AppendDeneme1DonatiLinesForDirection(tr, btr, factory, ids, hamById, unionG, n1x, n1y, c1, s1, halfLen, Deneme1LayerForDonatiLineAngleRad(t1));
+                AppendDeneme1DonatiLinesForDirection(tr, btr, factory, ids, hamById, unionG, n2x, n2y, c2, s2, halfLen, Deneme1LayerForDonatiLineAngleRad(t2));
+            }
+
+            var seenUngrouped = new HashSet<int>();
+            foreach ((int slabId, _) in geoms)
+            {
+                if (slabId <= 0 || inEksenGrup.Contains(slabId) || !seenUngrouped.Add(slabId)) continue;
+                if (!hamById.TryGetValue(slabId, out Geometry hamG) || hamG == null || hamG.IsEmpty) continue;
+                slabIdToEgimGrupNo.TryGetValue(slabId, out int grupNoU);
+                if (!TryGetDeneme1EksenArtiBaseTupleForSlab(slabId, grupNoU, eksenGrupArtiYon, out double bt1u, out double bt2u)) continue;
+                Deneme1ComputeFinalEksenArtiAnglesForDraw(slabId, bt1u, bt2u, out double t1u, out double t2u);
+                double c1u = Math.Cos(t1u), s1u = Math.Sin(t1u);
+                double c2u = Math.Cos(t2u), s2u = Math.Sin(t2u);
+                double n1xu = -s1u, n1yu = c1u;
+                double n2xu = -s2u, n2yu = c2u;
+
+                Geometry sh = hamG;
+                try
+                {
+                    Geometry r = ReducePrecisionSafe(hamG, 100);
+                    if (r != null && !r.IsEmpty) sh = r;
+                }
+                catch { }
+                var env1 = sh.EnvelopeInternal;
+                double wu = env1.MaxX - env1.MinX;
+                double hgu = env1.MaxY - env1.MinY;
+                double halfLenu = 0.5 * Math.Sqrt(wu * wu + hgu * hgu) * 2.0 + 100.0;
+                if (halfLenu < 300.0) halfLenu = 300.0;
+
+                var oneId = new List<int> { slabId };
+                AppendDeneme1DonatiLinesForDirection(tr, btr, factory, oneId, hamById, sh, n1xu, n1yu, c1u, s1u, halfLenu, Deneme1LayerForDonatiLineAngleRad(t1u));
+                AppendDeneme1DonatiLinesForDirection(tr, btr, factory, oneId, hamById, sh, n2xu, n2yu, c2u, s2u, halfLenu, Deneme1LayerForDonatiLineAngleRad(t2u));
+            }
+        }
+
+        private static void AppendDeneme1DonatiLinesForDirection(
+            Transaction tr,
+            BlockTableRecord btr,
+            GeometryFactory factory,
+            List<int> slabIdsInGroup,
+            Dictionary<int, Geometry> hamById,
+            Geometry eksenGrupBirlesikClip,
+            double nx,
+            double ny,
+            double dirCos,
+            double dirSin,
+            double halfLen,
+            string layer)
+        {
+            if (slabIdsInGroup == null || slabIdsInGroup.Count == 0 || hamById == null || eksenGrupBirlesikClip == null || eksenGrupBirlesikClip.IsEmpty || factory == null) return;
+            double covTol = Deneme1DonatiSlabCoverageTolCm;
+            var perSlab = new List<(int Sid, double A, double B)>();
+            foreach (int sid in slabIdsInGroup)
+            {
+                if (!hamById.TryGetValue(sid, out Geometry ham) || ham == null || ham.IsEmpty) continue;
+                Geometry sh = ham;
+                try
+                {
+                    Geometry r = ReducePrecisionSafe(ham, 100);
+                    if (r != null && !r.IsEmpty) sh = r;
+                }
+                catch { }
+                if (Deneme1TryProjectionIntervalOntoUnitNormal(sh, nx, ny, out double a, out double b) && a <= b)
+                {
+                    Deneme1InsetProjIntervalForDonatiCentered(a, b, out double ai, out double bi);
+                    perSlab.Add((sid, ai, bi));
+                }
+                else
+                {
+                    var env = sh.EnvelopeInternal;
+                    double u0 = nx * (env.MinX + env.MaxX) * 0.5 + ny * (env.MinY + env.MaxY) * 0.5;
+                    perSlab.Add((sid, u0, u0));
+                }
+            }
+            if (perSlab.Count == 0) return;
+            var intervals = new List<(double A, double B)>(perSlab.Count);
+            for (int i = 0; i < perSlab.Count; i++)
+                intervals.Add((perSlab[i].A, perSlab[i].B));
+            List<double> offsets = Deneme1GreedyStabIntervals(intervals);
+            foreach ((int _, double a, double b) in perSlab)
+            {
+                bool covered = false;
+                foreach (double u in offsets)
+                {
+                    if (a - covTol <= u && u <= b + covTol) { covered = true; break; }
+                }
+                if (!covered)
+                    offsets.Add((a + b) * 0.5);
+            }
+            Deneme1EnsureEverySlabHamHitByDonatiLines(
+                factory,
+                eksenGrupBirlesikClip,
+                slabIdsInGroup,
+                hamById,
+                perSlab,
+                nx,
+                ny,
+                dirCos,
+                dirSin,
+                halfLen,
+                offsets);
+            offsets = Deneme1SortDedupeDonatiOffsets(offsets);
+            foreach (double u in offsets)
+            {
+                Deneme1PointOnLineFromNormalEquation(nx, ny, u, out double cx, out double cy);
+                Geometry seg = TryIntersectLineWithPolygonReduced(factory, cx, cy, dirCos, dirSin, halfLen, eksenGrupBirlesikClip);
+                AppendLineGeometryEntitiesForLayer(tr, btr, seg, layer);
+            }
+        }
+
+        private static void Deneme1InsetProjIntervalForDonatiCentered(double a, double b, out double ai, out double bi)
+        {
+            double w = b - a;
+            if (w <= 1e-9)
+            {
+                ai = bi = (a + b) * 0.5;
+                return;
+            }
+            double inset = Deneme1DonatiProjEdgeInsetRatio * w;
+            const double maxInsetFrac = 0.45;
+            if (inset > maxInsetFrac * w) inset = maxInsetFrac * w;
+            if (2 * inset >= w)
+            {
+                ai = bi = (a + b) * 0.5;
+                return;
+            }
+            ai = a + inset;
+            bi = b - inset;
+        }
+
+        private static List<double> Deneme1GreedyStabIntervals(List<(double A, double B)> intervals)
+        {
+            var result = new List<double>();
+            if (intervals == null || intervals.Count == 0) return result;
+            if (intervals.Count == 1)
+            {
+                result.Add((intervals[0].A + intervals[0].B) * 0.5);
+                return result;
+            }
+            var rem = new List<(double A, double B)>(intervals);
+            while (rem.Count > 0)
+            {
+                rem.Sort((x, y) => x.B.CompareTo(y.B));
+                double b0 = rem[0].B;
+                double L = double.NegativeInfinity;
+                double R = double.PositiveInfinity;
+                int stabCount = 0;
+                foreach (var iv in rem)
+                {
+                    if (iv.A <= b0 && b0 <= iv.B)
+                    {
+                        stabCount++;
+                        if (iv.A > L) L = iv.A;
+                        if (iv.B < R) R = iv.B;
+                    }
+                }
+                double u;
+                if (stabCount == 0)
+                {
+                    var first = rem[0];
+                    u = (first.A + first.B) * 0.5;
+                }
+                else if (L <= R && !double.IsInfinity(L) && !double.IsInfinity(R))
+                    u = (L + R) * 0.5;
+                else
+                    u = b0;
+                result.Add(u);
+                rem.RemoveAll(iv => iv.A <= u && u <= iv.B);
+            }
+            return result;
+        }
+
+        /// <summary>EKSEN birleşik poligonunun eksen-paralel zarfına göre (cx,cy) noktasından çizgi yarı uzunluğu; sınıra kadar uzatmak için.</summary>
+        private static double Deneme1HalfSpanAlongDirectionThroughEnvelope(Envelope env, double cx, double cy, double cos, double sin)
+        {
+            if (env == null) return 1e6;
+            double maxAbsT = 0;
+            double[] xs = { env.MinX, env.MaxX };
+            double[] ys = { env.MinY, env.MaxY };
+            foreach (double x in xs)
+            {
+                foreach (double y in ys)
+                {
+                    double t = (x - cx) * cos + (y - cy) * sin;
+                    double ab = Math.Abs(t);
+                    if (ab > maxAbsT) maxAbsT = ab;
+                }
+            }
+            return maxAbsT + Deneme1DonatiLineEnvelopeMarginCm;
+        }
+
+        private static double Deneme1GeometryLengthCm(Geometry g)
+        {
+            if (g == null || g.IsEmpty) return 0;
+            try
+            {
+                if (g is LineString ls) return ls.Length;
+                if (g is MultiLineString mls)
+                {
+                    double s = 0;
+                    for (int i = 0; i < mls.NumGeometries; i++)
+                    {
+                        if (mls.GetGeometryN(i) is LineString l) s += l.Length;
+                    }
+                    return s;
+                }
+                if (g is GeometryCollection gc)
+                {
+                    double s = 0;
+                    for (int i = 0; i < gc.NumGeometries; i++)
+                        s += Deneme1GeometryLengthCm(gc.GetGeometryN(i));
+                    return s;
+                }
+            }
+            catch { }
+            return 0;
+        }
+
+        private static bool Deneme1DonatiSegmentMeaningfulHitOnHam(Geometry clipSegment, Geometry ham)
+        {
+            if (clipSegment == null || clipSegment.IsEmpty || ham == null || ham.IsEmpty) return false;
+            try
+            {
+                Geometry h = ham;
+                try
+                {
+                    Geometry r = ReducePrecisionSafe(ham, 100);
+                    if (r != null && !r.IsEmpty) h = r;
+                }
+                catch { }
+                Geometry inter = clipSegment.Intersection(h);
+                return Deneme1GeometryLengthCm(inter) >= Deneme1DonatiMinHitLengthCm;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>Her döşeme ham geometrisi ile hat isabeti; eksikse inset aralığının ortası eklenir.</summary>
+        private static void Deneme1EnsureEverySlabHamHitByDonatiLines(
+            GeometryFactory factory,
+            Geometry eksenGrupBirlesikClip,
+            List<int> slabIdsInGroup,
+            Dictionary<int, Geometry> hamById,
+            List<(int Sid, double A, double B)> perSlab,
+            double nx,
+            double ny,
+            double dirCos,
+            double dirSin,
+            double halfLenHint,
+            List<double> offsets)
+        {
+            if (factory == null || eksenGrupBirlesikClip == null || eksenGrupBirlesikClip.IsEmpty || slabIdsInGroup == null || hamById == null || offsets == null) return;
+            var sidToAb = new Dictionary<int, (double a, double b)>();
+            if (perSlab != null)
+            {
+                foreach ((int sid, double a, double b) in perSlab)
+                    sidToAb[sid] = (a, b);
+            }
+            foreach (int sid in slabIdsInGroup)
+            {
+                if (!hamById.TryGetValue(sid, out Geometry ham) || ham == null || ham.IsEmpty) continue;
+                Geometry sh = ham;
+                try
+                {
+                    Geometry r = ReducePrecisionSafe(ham, 100);
+                    if (r != null && !r.IsEmpty) sh = r;
+                }
+                catch { }
+                bool hit = false;
+                foreach (double u in offsets)
+                {
+                    Deneme1PointOnLineFromNormalEquation(nx, ny, u, out double cx, out double cy);
+                    Geometry seg = TryIntersectLineWithPolygonReduced(factory, cx, cy, dirCos, dirSin, halfLenHint, eksenGrupBirlesikClip);
+                    if (Deneme1DonatiSegmentMeaningfulHitOnHam(seg, sh))
+                    {
+                        hit = true;
+                        break;
+                    }
+                }
+                if (hit) continue;
+                double uAdd;
+                if (sidToAb.TryGetValue(sid, out (double a, double b) iv))
+                    uAdd = (iv.a + iv.b) * 0.5;
+                else
+                {
+                    var env = sh.EnvelopeInternal;
+                    uAdd = nx * (env.MinX + env.MaxX) * 0.5 + ny * (env.MinY + env.MaxY) * 0.5;
+                }
+                offsets.Add(uAdd);
+            }
+        }
+
+        private static List<double> Deneme1SortDedupeDonatiOffsets(List<double> offs)
+        {
+            if (offs == null || offs.Count == 0) return offs ?? new List<double>();
+            offs.Sort();
+            const double epsCm = 0.03;
+            var res = new List<double>(offs.Count);
+            foreach (double u in offs)
+            {
+                if (res.Count == 0 || Math.Abs(u - res[res.Count - 1]) > epsCm)
+                    res.Add(u);
+            }
+            return res;
+        }
+
+        private static bool Deneme1TryProjectionIntervalOntoUnitNormal(Geometry g, double nx, double ny, out double amin, out double amax)
+        {
+            double minV = double.PositiveInfinity;
+            double maxV = double.NegativeInfinity;
+            void consider(double x, double y)
+            {
+                double s = x * nx + y * ny;
+                if (s < minV) minV = s;
+                if (s > maxV) maxV = s;
+            }
+            void walk(Geometry geom)
+            {
+                if (geom == null || geom.IsEmpty) return;
+                if (geom is Polygon poly)
+                {
+                    LineString ring = poly.ExteriorRing;
+                    if (ring != null)
+                        foreach (Coordinate c in ring.Coordinates)
+                            consider(c.X, c.Y);
+                }
+                else if (geom is MultiPolygon mp)
+                {
+                    for (int i = 0; i < mp.NumGeometries; i++)
+                        walk(mp.GetGeometryN(i));
+                }
+                else if (geom is LineString ls)
+                {
+                    foreach (Coordinate c in ls.Coordinates)
+                        consider(c.X, c.Y);
+                }
+                else if (geom is GeometryCollection gc)
+                {
+                    for (int i = 0; i < gc.NumGeometries; i++)
+                        walk(gc.GetGeometryN(i));
+                }
+            }
+            walk(g);
+            amin = minV;
+            amax = maxV;
+            return amin <= amax && !double.IsInfinity(amin);
+        }
+
+        private static void Deneme1PointOnLineFromNormalEquation(double nx, double ny, double u, out double px, out double py)
+        {
+            if (Math.Abs(nx) >= Math.Abs(ny) && Math.Abs(nx) > 1e-12)
+            {
+                px = u / nx;
+                py = 0;
+            }
+            else if (Math.Abs(ny) > 1e-12)
+            {
+                px = 0;
+                py = u / ny;
+            }
+            else
+            {
+                px = 0;
+                py = 0;
+            }
+        }
+
+        private static Geometry TryIntersectLineWithPolygonReduced(GeometryFactory factory, double cx, double cy, double cos, double sin, double halfLen, Geometry polygon)
+        {
+            if (factory == null) return null;
+            if (polygon == null || polygon.IsEmpty) return factory.CreateLineString();
+            Envelope envClip = polygon.EnvelopeInternal;
+            double spanHalf = Deneme1HalfSpanAlongDirectionThroughEnvelope(envClip, cx, cy, cos, sin);
+            if (halfLen < spanHalf) halfLen = spanHalf;
+            var p0 = new Coordinate(cx - halfLen * cos, cy - halfLen * sin);
+            var p1 = new Coordinate(cx + halfLen * cos, cy + halfLen * sin);
+            LineString line = factory.CreateLineString(new[] { p0, p1 });
+            foreach (double scale in new[] { 100.0, 50.0, 20.0 })
+            {
+                var lineR = ReducePrecisionSafe(line, scale) as LineString ?? line;
+                var polyR = ReducePrecisionSafe(polygon, scale) ?? polygon;
+                if (polyR == null || polyR.IsEmpty) continue;
+                try
+                {
+                    var inter = lineR.Intersection(polyR);
+                    if (inter != null && !inter.IsEmpty) return inter;
+                }
+                catch { }
+            }
+            try
+            {
+                var inter = line.Intersection(polygon);
+                return inter != null && !inter.IsEmpty ? inter : factory.CreateLineString();
+            }
+            catch
+            {
+                return factory.CreateLineString();
+            }
+        }
+
+        private static void AppendLineGeometryEntitiesForLayer(Transaction tr, BlockTableRecord btr, Geometry geom, string layer)
+        {
+            if (geom == null || geom.IsEmpty || string.IsNullOrEmpty(layer)) return;
+            if (geom is LineString ls)
+            {
+                var coords = ls.Coordinates;
+                for (int i = 0; i < coords.Length - 1; i++)
+                {
+                    AppendEntity(tr, btr, new Line(
+                        new Point3d(coords[i].X, coords[i].Y, 0),
+                        new Point3d(coords[i + 1].X, coords[i + 1].Y, 0)) { Layer = layer });
+                }
+                return;
+            }
+            if (geom is MultiLineString mls)
+            {
+                for (int i = 0; i < mls.NumGeometries; i++)
+                    AppendLineGeometryEntitiesForLayer(tr, btr, mls.GetGeometryN(i), layer);
+                return;
+            }
+            if (geom is GeometryCollection gc)
+            {
+                for (int i = 0; i < gc.NumGeometries; i++)
+                    AppendLineGeometryEntitiesForLayer(tr, btr, gc.GetGeometryN(i), layer);
             }
         }
 
@@ -8178,7 +8938,11 @@ namespace ST4PlanIdCiz
             var factory = _ntsDrawFactory;
             _drawnSlabGeometriesForUnion = new List<Geometry>();
             if (_kalip50ClassifyDosemeHattiTopologyLayers && _kalip50DrawSlabBoundaryPolylinesOnDosemeHatti)
+            {
                 _kalip50Deneme1DosemeHattiGeoms = new List<(int SlabId, Geometry Geom)>();
+                _kalip50Deneme1SlabHamQuadBySlabId = new Dictionary<int, Geometry>();
+                _kalip50Deneme1SlabKesilmisBySlabId = new Dictionary<int, Geometry>();
+            }
             // Çizimde görüldüğü haliyle kolon + perde + kiriş birleşimi (DrawBeamsAndWalls tarafından doldurulur)
             Geometry drawnKolonPerdeKirisUnion = BuildDrawnKolonPerdeKirisUnionForSlabCut(floor, offsetX, offsetY);
 
@@ -8316,6 +9080,16 @@ namespace ST4PlanIdCiz
                     {
                         if (_kalip50ClassifyDosemeHattiTopologyLayers && _kalip50Deneme1DosemeHattiGeoms != null)
                         {
+                            if (_kalip50Deneme1SlabHamQuadBySlabId != null)
+                            {
+                                try { _kalip50Deneme1SlabHamQuadBySlabId[slab.SlabId] = slabPoly.Copy(); }
+                                catch { _kalip50Deneme1SlabHamQuadBySlabId[slab.SlabId] = slabPoly; }
+                            }
+                            if (_kalip50Deneme1SlabKesilmisBySlabId != null)
+                            {
+                                try { _kalip50Deneme1SlabKesilmisBySlabId[slab.SlabId] = toDraw.Copy(); }
+                                catch { _kalip50Deneme1SlabKesilmisBySlabId[slab.SlabId] = toDraw; }
+                            }
                             try { _kalip50Deneme1DosemeHattiGeoms.Add((slab.SlabId, toDraw.Copy())); }
                             catch { _kalip50Deneme1DosemeHattiGeoms.Add((slab.SlabId, toDraw)); }
                         }
