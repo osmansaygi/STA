@@ -4350,19 +4350,6 @@ namespace ST4PlanIdCiz
             return string.CompareOrdinal(a, b) <= 0 ? a : b;
         }
 
-        /// <summary>Ön EKSEN haritasındaki grup yönü veya döşeme yedeği — birleştirme imzası için.</summary>
-        private bool TryGetDeneme1EksenArtiTupleForUnify(int slabId, int grupNo, IReadOnlyDictionary<int, (double t1, double t2)> eksenGrupArtiYonPre, out double t1, out double t2)
-        {
-            t1 = t2 = 0;
-            if (grupNo > 0 && eksenGrupArtiYonPre != null && eksenGrupArtiYonPre.TryGetValue(grupNo, out (double gt1, double gt2) p))
-            {
-                t1 = p.gt1;
-                t2 = p.gt2;
-                return true;
-            }
-            return TryGetDeneme1EksenArtiDikIkiYonRad(slabId, out t1, out t2);
-        }
-
         /// <summary>
         /// Önceki aşama çıktısı korunur; ardından çizilecek artı ile aynı doğrultu imzasına sahip döşemelere ortak EKSEN numarası (kümedeki en küçük numara).
         /// </summary>
@@ -4377,7 +4364,7 @@ namespace ST4PlanIdCiz
             {
                 if (slabId <= 0) continue;
                 if (!slabIdToEgimGrupNo.TryGetValue(slabId, out int no) || no <= 0) continue;
-                if (!TryGetDeneme1EksenArtiTupleForUnify(slabId, no, eksenGrupArtiYonPre, out double t1, out double t2)) continue;
+                if (!TryGetDeneme1EksenArtiBaseTupleForSlab(slabId, no, eksenGrupArtiYonPre, out double t1, out double t2)) continue;
                 string sig = Deneme1EksenArtiYonSignature(t1, t2);
                 if (!sigToSlabIds.TryGetValue(sig, out List<int> list))
                 {
@@ -4429,16 +4416,137 @@ namespace ST4PlanIdCiz
             return !ArmParallelOrPerpToSomeBoundary(t1) && !ArmParallelOrPerpToSomeBoundary(t2);
         }
 
+        /// <summary><see cref="AxisGeometryService.GetLineAngleRad"/> aralığına indirger: (-π/2, π/2].</summary>
+        private static double Deneme1NormalizeLineAngleRad(double x)
+        {
+            while (x > Math.PI / 2.0) x -= Math.PI;
+            while (x <= -Math.PI / 2.0) x += Math.PI;
+            return x;
+        }
+
+        /// <summary>
+        /// Birinci kol açısı α için: kaç köşe aksı α veya α+90° ile ~paralel veya ~dik (tol içinde).
+        /// </summary>
+        private static void Deneme1PickEksenArtiMaxBoundaryAlignment(IReadOnlyList<double> betas, double tolRad, out double t1, out double t2)
+        {
+            t1 = 0;
+            t2 = Math.PI * 0.5;
+            if (betas == null || betas.Count == 0) return;
+            double bestA = 0;
+            int bestScore = -1;
+            void Consider(double alpha)
+            {
+                alpha = Deneme1NormalizeLineAngleRad(alpha);
+                int s = 0;
+                foreach (double b in betas)
+                {
+                    if (Deneme1LineAnglesNearlyParallel(b, alpha, tolRad) ||
+                        Deneme1LineAnglesNearlyPerpendicular(b, alpha, tolRad))
+                        s++;
+                }
+                if (s > bestScore || (s == bestScore && alpha < bestA))
+                {
+                    bestScore = s;
+                    bestA = alpha;
+                }
+            }
+            const int gridSteps = 360;
+            for (int k = 0; k < gridSteps; k++)
+                Consider(-Math.PI * 0.5 + (Math.PI * k) / gridSteps);
+            foreach (double b in betas)
+            {
+                Consider(b);
+                Consider(b + Math.PI * 0.5);
+            }
+            t1 = Deneme1NormalizeLineAngleRad(bestA);
+            t2 = Deneme1NormalizeLineAngleRad(bestA + Math.PI * 0.5);
+        }
+
+        /// <summary>Daire ile işaretlenen döşemede artı doğrultularını kenar akslarına en çok paralel/dik gelecek şekilde çevirir.</summary>
+        private bool TryDeneme1EksenArtiOptimizeMarkedSlabToMaxBoundaryAlignment(int slabId, ref double t1, ref double t2)
+        {
+            if (slabId <= 0) return false;
+            if (!_model.SlabAxesFrameBySlabId.TryGetValue(slabId, out SlabAxesFrameInfo frame) || frame?.AxisCorners == null)
+                return false;
+            var betas = new List<double>(4);
+            foreach (SlabAxisDirectionEntry c in frame.AxisCorners)
+            {
+                if (double.IsNaN(c.LineAngleRad) || double.IsInfinity(c.LineAngleRad)) continue;
+                betas.Add(c.LineAngleRad);
+            }
+            if (betas.Count == 0) return false;
+            Deneme1PickEksenArtiMaxBoundaryAlignment(betas, Deneme1OrthogonalAxisAngleTolRad, out t1, out t2);
+            return true;
+        }
+
+        /// <summary>Grup kanonik çifti veya döşeme yedeği — daire/optimizasyon öncesi taban artı.</summary>
+        private bool TryGetDeneme1EksenArtiBaseTupleForSlab(int slabId, int grupNo, IReadOnlyDictionary<int, (double t1, double t2)> eksenGrupArtiYon, out double t1, out double t2)
+        {
+            t1 = t2 = 0;
+            if (grupNo > 0 && eksenGrupArtiYon != null && eksenGrupArtiYon.TryGetValue(grupNo, out (double gt1, double gt2) p))
+            {
+                t1 = p.gt1;
+                t2 = p.gt2;
+                return true;
+            }
+            return TryGetDeneme1EksenArtiDikIkiYonRad(slabId, out t1, out t2);
+        }
+
+        /// <summary>Daire işaretinde kenar aksına hizalama; aksi halde taban açılar.</summary>
+        private void Deneme1ComputeFinalEksenArtiAnglesForDraw(int slabId, double baseT1, double baseT2, out double t1, out double t2)
+        {
+            t1 = baseT1;
+            t2 = baseT2;
+            if (Deneme1EksenArtiAddMerkezCircleForArmsOffBoundaryAxes(slabId, baseT1, baseT2))
+                TryDeneme1EksenArtiOptimizeMarkedSlabToMaxBoundaryAlignment(slabId, ref t1, ref t2);
+        }
+
+        /// <summary>
+        /// Çizilen son artı imzasına göre EKSEN numaralarını 1,2,… yeniden verir (küme sırası: min döşeme ID).
+        /// </summary>
+        private void Deneme1RenumberEksenGrupNosByFinalDrawnArtiSignature(
+            Dictionary<int, int> slabIdToEgimGrupNo,
+            IReadOnlyDictionary<int, (double t1, double t2)> eksenGrupArtiYon,
+            IReadOnlyList<(int SlabId, Geometry Geom)> geoms)
+        {
+            if (slabIdToEgimGrupNo == null || geoms == null || geoms.Count == 0) return;
+            var sigToSlabIds = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+            foreach ((int slabId, _) in geoms)
+            {
+                if (slabId <= 0) continue;
+                if (!slabIdToEgimGrupNo.TryGetValue(slabId, out int grupNo) || grupNo <= 0) continue;
+                if (!TryGetDeneme1EksenArtiBaseTupleForSlab(slabId, grupNo, eksenGrupArtiYon, out double bt1, out double bt2)) continue;
+                Deneme1ComputeFinalEksenArtiAnglesForDraw(slabId, bt1, bt2, out double ft1, out double ft2);
+                string sig = Deneme1EksenArtiYonSignature(ft1, ft2);
+                if (!sigToSlabIds.TryGetValue(sig, out List<int> list))
+                {
+                    list = new List<int>();
+                    sigToSlabIds[sig] = list;
+                }
+                list.Add(slabId);
+            }
+            if (sigToSlabIds.Count == 0) return;
+            List<KeyValuePair<string, List<int>>> ordered = sigToSlabIds.OrderBy(kv => kv.Value.Min()).ToList();
+            int no = 1;
+            foreach (KeyValuePair<string, List<int>> kv in ordered)
+            {
+                foreach (int sid in kv.Value)
+                    slabIdToEgimGrupNo[sid] = no;
+                no++;
+            }
+        }
+
         /// <summary>DENEME1: 50 cm artı (X/Y). Kenar akslarına göre hizasızsa önce <see cref="LayerEksen"/> daire, üstte kollar.</summary>
-        private void AppendDeneme1DosemeEksenArtiCizgileri(Transaction tr, BlockTableRecord btr, Geometry slabGeom, int slabId, double t1, double t2)
+        private void AppendDeneme1DosemeEksenArtiCizgileri(Transaction tr, BlockTableRecord btr, Geometry slabGeom, int slabId, double baseT1, double baseT2)
         {
             if (slabGeom == null || slabGeom.IsEmpty) return;
             if (!TryGetDeneme1DosemeLabelPoint(slabGeom, out double cx, out double cy)) return;
             Database db = btr.Database;
+            bool addCircle = Deneme1EksenArtiAddMerkezCircleForArmsOffBoundaryAxes(slabId, baseT1, baseT2);
+            Deneme1ComputeFinalEksenArtiAnglesForDraw(slabId, baseT1, baseT2, out double t1, out double t2);
             double h = Deneme1EksenArtiYarimKolCm;
             double c1 = Math.Cos(t1), s1 = Math.Sin(t1);
             double c2 = Math.Cos(t2), s2 = Math.Sin(t2);
-            bool addCircle = Deneme1EksenArtiAddMerkezCircleForArmsOffBoundaryAxes(slabId, t1, t2);
             if (addCircle)
                 EnsurePlanLayer(tr, db, LayerEksen, 3, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, LayerEksenX, 5, LineWeight.LineWeight020, useDashed: false);
@@ -4789,6 +4897,8 @@ namespace ST4PlanIdCiz
                     Deneme1UnifyEksenGrupNosByArtiYonSignature(slabIdToEgimGrupNo, pre, geoms);
                 }
                 Dictionary<int, (double t1, double t2)> eksenGrupArtiYon = BuildDeneme1EksenGrupCanonicalArtiYonByGrupNo(slabIdToEgimGrupNo);
+                Deneme1RenumberEksenGrupNosByFinalDrawnArtiSignature(slabIdToEgimGrupNo, eksenGrupArtiYon, geoms);
+                eksenGrupArtiYon = BuildDeneme1EksenGrupCanonicalArtiYonByGrupNo(slabIdToEgimGrupNo);
 
                 for (int i = 0; i < geoms.Count; i++)
                 {
