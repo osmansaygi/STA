@@ -14,6 +14,22 @@ namespace ST4AksCizCSharp
             _axisById = model.AxisX.Concat(model.AxisY).ToDictionary(a => a.Id, a => a);
         }
 
+        /// <summary>
+        /// Eksen doğrusunun yön açısı (rad), (-π/2, π/2]; PlanIdDrawingManager.GetAxisLineAngleRad ile aynı.
+        /// </summary>
+        public static double GetLineAngleRad(AxisLine axis)
+        {
+            if (axis == null) return 0.0;
+            double angleRad;
+            if (axis.Kind == AxisKind.X)
+                angleRad = Math.Atan2(1.0, axis.Slope);
+            else
+                angleRad = Math.Atan2(axis.Slope, -1.0);
+            while (angleRad > Math.PI / 2.0) angleRad -= Math.PI;
+            while (angleRad <= -Math.PI / 2.0) angleRad += Math.PI;
+            return angleRad;
+        }
+
         public bool TryIntersect(int axisA, int axisB, out Point2d p)
         {
             p = default;

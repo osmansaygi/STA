@@ -12,6 +12,12 @@ namespace ST4AksCizCSharp
         public List<BeamInfo> Beams { get; } = new List<BeamInfo>();
         /// <summary>Döşemeler (Floors Data): 4 (veya 3) aks ile sınırlı alanlar.</summary>
         public List<SlabInfo> Slabs { get; } = new List<SlabInfo>();
+        /// <summary>
+        /// DENEME1: Floors Data 9–12 akslarının doğrultusu (AxisCorners) + kenar öbek ortalamaları (Span12/34).
+        /// EKSEN grup no: dört sınır aks doğrultusundan en az ikisi aynıysa çoklu küme ile gruplanır.
+        /// Yalnızca <see cref="SlabAxesDirections.PopulateCornerAxisDirections"/> ile doldurulur; diğer komutlar kullanmaz.
+        /// </summary>
+        public Dictionary<int, SlabAxesFrameInfo> SlabAxesFrameBySlabId { get; } = new Dictionary<int, SlabAxesFrameInfo>();
         /// <summary>Floors Data 1. satır 25. sütunu "1" olan döşeme ID'leri (merdiven döşemesi).</summary>
         public HashSet<int> StairSlabIds { get; } = new HashSet<int>();
         /// <summary>Dosya başlığı 5. satır 3. sütun: 100 veya 1000. Kat = slabId / SlabFloorKeyStep.</summary>

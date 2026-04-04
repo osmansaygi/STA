@@ -2,7 +2,7 @@ namespace ST4AksCizCSharp
 {
     /// <summary>
     /// Döşeme alanı: genellikle 4 aks (2 X + 2 Y), nadiren 3 aks ile sınırlanır.
-    /// ST4 Floors Data satırından parse edilir: slabId, ..., axis1, axis2, axis3, axis4 (indeks 8,9,10,11).
+    /// ST4 Floors Data satırından parse edilir: slabId, ..., axis1, axis2, axis3, axis4 (0-tabanlı indeks 8–11 = 1-tabanlı sütun 9–12).
     /// </summary>
     public sealed class SlabInfo
     {

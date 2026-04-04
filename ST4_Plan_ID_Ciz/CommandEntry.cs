@@ -530,6 +530,7 @@ namespace ST4PlanIdCiz
                 var model = parser.Parse(fileRes.StringResult);
                 GprYapiAksLabels.TryMergeFromGprBesideSt4(fileRes.StringResult, model);
                 WriteGprAxisSummary(ed, model);
+                SlabAxesDirections.PopulateCornerAxisDirections(model);
                 var manager = new PlanIdDrawingManager(model);
                 var insRes = ed.GetPoint(new PromptPointOptions("\nDENEME1: Ilk kat aks kutusu sol-alt kosesi (yerlesim): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
