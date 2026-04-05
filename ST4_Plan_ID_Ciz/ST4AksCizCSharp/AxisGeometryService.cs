@@ -14,6 +14,9 @@ namespace ST4AksCizCSharp
             _axisById = model.AxisX.Concat(model.AxisY).ToDictionary(a => a.Id, a => a);
         }
 
+        public bool TryGetAxisLine(int axisId, out AxisLine axis) =>
+            _axisById.TryGetValue(axisId, out axis);
+
         /// <summary>
         /// Eksen doğrusunun yön açısı (rad), (-π/2, π/2]; PlanIdDrawingManager.GetAxisLineAngleRad ile aynı.
         /// </summary>
