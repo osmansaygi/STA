@@ -3291,12 +3291,16 @@ namespace ST4PlanIdCiz
         private const double Deneme1DosemeSegmentKotMinEdgeCm = 3.0;
         /// <summary>DENEME1: uç işaret mesafesi üst sınırı — gerçek ofset <c>min(L/5, bu değer)</c> (cm).</summary>
         private const double Deneme1DosemeSegmentBirBesMaxOffsetCm = 50.0;
+        /// <summary>DENEME1: döşeme tip rakamı (1–4), EKSEN grup numarası metni, L/5 işaret daireleri ve X/Y/köşe etiketleri, 1-5 bağlantı çizgileri. Şimdilik false; tekrar çizmek için true yapın. Döşeme hattı polyline, EKSEN artı, DTX/DTY ve donatı hatları bu bayraktan etkilenmez.</summary>
+        private static readonly bool Deneme1DrawDosemeHattiOverlayLabelsAndBirBes = false;
         /// <summary>DENEME1 donatı: ofsetin döşeme projeksiyon aralığında sayılması (cm).</summary>
         private const double Deneme1DonatiSlabCoverageTolCm = 0.05;
         /// <summary>DENEME1 donatı: ham projeksiyon [a,b] uçlarından simetrik içeri oran (kenara yaslanmasın).</summary>
         private const double Deneme1DonatiProjEdgeInsetRatio = 0.12;
         /// <summary>DENEME1 donatı: EKSEN birleşik poligonu ile kesişen segment için anlamlı minimum uzunluk (cm).</summary>
         private const double Deneme1DonatiMinHitLengthCm = 0.15;
+        /// <summary>DENEME1 donatı: DTX/DTY ile bu uzunluktan fazla kesişen hat kabul edilmez; hat bütün olarak kaydırılır (kırpma yok).</summary>
+        private const double Deneme1DonatiExclusionOverlapMaxCm = 0.05;
         /// <summary>EKSEN zarf köşelerini aşan çizgi uzatımı için ek güvenlik payı (cm).</summary>
         private const double Deneme1DonatiLineEnvelopeMarginCm = 500.0;
         /// <summary>DENEME1 EKSEN artı: merkezden her yönde yarım uzunluk (cm); toplam kol 50 cm.</summary>
@@ -5586,15 +5590,28 @@ namespace ST4PlanIdCiz
                 Deneme1RenumberEksenGrupNosByFinalDrawnArtiSignature(slabIdToEgimGrupNo, eksenGrupArtiYon, geoms);
                 eksenGrupArtiYon = BuildDeneme1EksenGrupCanonicalArtiYonByGrupNo(slabIdToEgimGrupNo);
 
-                AppendDeneme1EksenGrupBirlesikDisSinirlariHam(tr, btr, geoms, slabIdToEgimGrupNo, _kalip50Deneme1SlabHamQuadBySlabId, factory);
-                AppendDeneme1EksenGrupDonatiHatlariFromHamQuads(tr, btr, geoms, slabIdToEgimGrupNo, eksenGrupArtiYon, factory);
-
                 var gDrawByIndex = new Geometry[geoms.Count];
                 for (int k = 0; k < geoms.Count; k++)
                 {
                     Geometry gk = geoms[k].Geom;
                     gDrawByIndex[k] = (gk == null || gk.IsEmpty) ? null : Deneme1ResolveDosemeHattiDrawOutline(gk, factory);
                 }
+
+                var dtxExclBySlab = new Dictionary<int, Geometry>();
+                var dtyExclBySlab = new Dictionary<int, Geometry>();
+                for (int k = 0; k < geoms.Count; k++)
+                {
+                    (int sid, Geometry gk) = geoms[k];
+                    if (sid <= 0 || gk == null || gk.IsEmpty) continue;
+                    Geometry gDrawK = gDrawByIndex[k] ?? gk;
+                    Geometry uDtx = Deneme1UnionPolygonListForDonatiExclude(Deneme1CollectDtxPolygonsForSlabBirBesOutline(sid, gk, gDrawK, slabIdToEgimGrupNo, eksenGrupArtiYon, factory));
+                    if (uDtx != null && !uDtx.IsEmpty) dtxExclBySlab[sid] = uDtx;
+                    Geometry uDty = Deneme1UnionPolygonListForDonatiExclude(Deneme1CollectDtyPolygonsForSlabBirBesOutline(sid, gk, gDrawK, slabIdToEgimGrupNo, eksenGrupArtiYon, factory));
+                    if (uDty != null && !uDty.IsEmpty) dtyExclBySlab[sid] = uDty;
+                }
+
+                AppendDeneme1EksenGrupBirlesikDisSinirlariHam(tr, btr, geoms, slabIdToEgimGrupNo, _kalip50Deneme1SlabHamQuadBySlabId, factory);
+                AppendDeneme1EksenGrupDonatiHatlariFromHamQuads(tr, btr, geoms, slabIdToEgimGrupNo, eksenGrupArtiYon, factory, dtxExclBySlab, dtyExclBySlab);
 
                 for (int i = 0; i < geoms.Count; i++)
                 {
@@ -5626,17 +5643,22 @@ namespace ST4PlanIdCiz
                     {
                         // Çizim: köşe ön temizlik + mevcut zarf/4-seg (gDraw); etiket/eksen merkezi kesit g üzerinde; tip yalnız g ile.
                         DrawGeometryRingsAsPolylines(tr, btr, gDraw, layer, addHatch: false, applySmallTriangleTrim: false);
-                        AppendDeneme1DosemeHattiCategoryText(tr, btr, g, layer, cat);
+                        if (Deneme1DrawDosemeHattiOverlayLabelsAndBirBes)
+                            AppendDeneme1DosemeHattiCategoryText(tr, btr, g, layer, cat);
                         if (slabIdToEgimGrupNo.TryGetValue(slabId, out int egimNo) && egimNo > 0)
                         {
-                            AppendDeneme1DosemeEgimGrupNoText(tr, btr, g, egimNo);
+                            if (Deneme1DrawDosemeHattiOverlayLabelsAndBirBes)
+                                AppendDeneme1DosemeEgimGrupNoText(tr, btr, g, egimNo);
                             if (eksenGrupArtiYon.TryGetValue(egimNo, out (double t1, double t2) artiYon))
                                 AppendDeneme1DosemeEksenArtiCizgileri(tr, btr, gDraw, slabId, artiYon.t1, artiYon.t2);
                             else if (TryGetDeneme1EksenArtiDikIkiYonRad(slabId, out double fb1, out double fb2))
                                 AppendDeneme1DosemeEksenArtiCizgileri(tr, btr, gDraw, slabId, fb1, fb2);
                         }
-                        AppendDeneme1DosemeSegmentOneFifthKotMarks(tr, btr, floor, slabId, g, gDraw, slabIdToEgimGrupNo, eksenGrupArtiYon);
-                        AppendDeneme1DosemeBirBesKarsilikliBaglantiCizgileriDeneme1Only(tr, btr, slabId, g, gDraw, slabIdToEgimGrupNo, eksenGrupArtiYon);
+                        if (Deneme1DrawDosemeHattiOverlayLabelsAndBirBes)
+                        {
+                            AppendDeneme1DosemeSegmentOneFifthKotMarks(tr, btr, floor, slabId, g, gDraw, slabIdToEgimGrupNo, eksenGrupArtiYon);
+                            AppendDeneme1DosemeBirBesKarsilikliBaglantiCizgileriDeneme1Only(tr, btr, slabId, g, gDraw, slabIdToEgimGrupNo, eksenGrupArtiYon);
+                        }
                         AppendDeneme1DosemeDtxPolygonY1Kose1Kose2Deneme1Only(tr, btr, slabId, g, gDraw, slabIdToEgimGrupNo, eksenGrupArtiYon);
                         AppendDeneme1DosemeDtyPolygonX1Kose1Kose3Deneme1Only(tr, btr, slabId, g, gDraw, slabIdToEgimGrupNo, eksenGrupArtiYon);
                     }
@@ -6185,23 +6207,17 @@ namespace ST4PlanIdCiz
             catch { }
         }
 
-        /// <summary>
-        /// DENEME1: Dört kenarlı döşemede iki <c>Y1</c> işareti ile köşe <c>1</c> ve <c>2</c> (1-5 köşe etiketi) — kapalı poligon, <see cref="LayerDeneme1Dtx"/> (ACI mavi 5).
-        /// Köşe 1→2 doğrultusunda Y1 noktaları sıralanır; böylece kenarlar çakışmaz.
-        /// </summary>
-        private void AppendDeneme1DosemeDtxPolygonY1Kose1Kose2Deneme1Only(
-            Transaction tr,
-            BlockTableRecord btr,
+        /// <summary>DENEME1: DTX (mavi tarama) poligonları — donatı X hattı bu birleşimle kesişmez.</summary>
+        private List<Polygon> Deneme1CollectDtxPolygonsForSlabBirBesOutline(
             int slabId,
             Geometry slabGeomForAxisCenter,
             Geometry dosemeHattiBirBesOutlineG,
             Dictionary<int, int> slabIdToEgimGrupNo,
-            IReadOnlyDictionary<int, (double t1, double t2)> eksenGrupArtiYon)
+            IReadOnlyDictionary<int, (double t1, double t2)> eksenGrupArtiYon,
+            GeometryFactory f)
         {
-            if (!Deneme1IsFormworkCompletionTagDeneme1(_kalip50FormworkCompletionTag) || dosemeHattiBirBesOutlineG == null || dosemeHattiBirBesOutlineG.IsEmpty)
-                return;
-            Database db = btr.Database;
-            EnsurePlanLayer(tr, db, LayerDeneme1Dtx, 5, LineWeight.LineWeight020, useDashed: false);
+            var list = new List<Polygon>();
+            if (dosemeHattiBirBesOutlineG == null || dosemeHattiBirBesOutlineG.IsEmpty || f == null) return list;
             bool haveAxes = Deneme1TryGetBirBesEksenAxisBlueRed(slabId, slabGeomForAxisCenter, slabIdToEgimGrupNo, eksenGrupArtiYon, out double acx, out double acy, out double tBlue, out double tRed);
             Geometry outlineStable = dosemeHattiBirBesOutlineG;
             try
@@ -6210,9 +6226,6 @@ namespace ST4PlanIdCiz
                 if (r != null && !r.IsEmpty) outlineStable = r;
             }
             catch { }
-            GeometryFactory f = outlineStable.Factory ?? _ntsDrawFactory;
-            if (f == null) return;
-
             try
             {
                 foreach (List<Deneme1SegBirBesRow> segsOnePoly in Deneme1BuildSegBirBesRowsPerExteriorPolygon(outlineStable))
@@ -6247,9 +6260,7 @@ namespace ST4PlanIdCiz
                     double tLo = (yLo.x - c1x) * ux + (yLo.y - c1y) * uy;
                     double tHi = (yHi.x - c1x) * ux + (yHi.y - c1y) * uy;
                     if (tLo > tHi)
-                    {
                         (yLo, yHi) = (yHi, yLo);
-                    }
 
                     var ringPts = new List<(double x, double y)> { (c1x, c1y), yLo, yHi, (c2x, c2y) };
                     ringPts = Deneme1DedupePointsCm(ringPts, minDistCm: 0.05);
@@ -6260,40 +6271,29 @@ namespace ST4PlanIdCiz
                     for (int i = 0; i < n; i++)
                         coords[i] = new Coordinate(ringPts[i].x, ringPts[i].y);
                     coords[n] = new Coordinate(coords[0].X, coords[0].Y);
-                    Polygon poly;
                     try
                     {
-                        poly = f.CreatePolygon(f.CreateLinearRing(coords));
-                        if (poly == null || poly.IsEmpty) continue;
+                        Polygon poly = f.CreatePolygon(f.CreateLinearRing(coords));
+                        if (poly != null && !poly.IsEmpty) list.Add(poly);
                     }
-                    catch
-                    {
-                        continue;
-                    }
-
-                    DrawGeometryRingsAsPolylines(tr, btr, poly, LayerDeneme1Dtx, addHatch: false, applySmallTriangleTrim: false);
+                    catch { }
                 }
             }
             catch { }
+            return list;
         }
 
-        /// <summary>
-        /// DENEME1: Dört kenarlı döşemede iki <c>X1</c> işareti ile köşe <c>1</c> ve <c>3</c> — kapalı poligon, <see cref="LayerDeneme1Dty"/> (ACI kırmızı 1).
-        /// Köşe 1→3 doğrultusunda X1 noktaları sıralanır.
-        /// </summary>
-        private void AppendDeneme1DosemeDtyPolygonX1Kose1Kose3Deneme1Only(
-            Transaction tr,
-            BlockTableRecord btr,
+        /// <summary>DENEME1: DTY (kırmızı tarama) poligonları — donatı Y hattı bu birleşimle kesişmez.</summary>
+        private List<Polygon> Deneme1CollectDtyPolygonsForSlabBirBesOutline(
             int slabId,
             Geometry slabGeomForAxisCenter,
             Geometry dosemeHattiBirBesOutlineG,
             Dictionary<int, int> slabIdToEgimGrupNo,
-            IReadOnlyDictionary<int, (double t1, double t2)> eksenGrupArtiYon)
+            IReadOnlyDictionary<int, (double t1, double t2)> eksenGrupArtiYon,
+            GeometryFactory f)
         {
-            if (!Deneme1IsFormworkCompletionTagDeneme1(_kalip50FormworkCompletionTag) || dosemeHattiBirBesOutlineG == null || dosemeHattiBirBesOutlineG.IsEmpty)
-                return;
-            Database db = btr.Database;
-            EnsurePlanLayer(tr, db, LayerDeneme1Dty, 1, LineWeight.LineWeight020, useDashed: false);
+            var list = new List<Polygon>();
+            if (dosemeHattiBirBesOutlineG == null || dosemeHattiBirBesOutlineG.IsEmpty || f == null) return list;
             bool haveAxes = Deneme1TryGetBirBesEksenAxisBlueRed(slabId, slabGeomForAxisCenter, slabIdToEgimGrupNo, eksenGrupArtiYon, out double acx, out double acy, out double tBlue, out double tRed);
             Geometry outlineStable = dosemeHattiBirBesOutlineG;
             try
@@ -6302,9 +6302,6 @@ namespace ST4PlanIdCiz
                 if (r != null && !r.IsEmpty) outlineStable = r;
             }
             catch { }
-            GeometryFactory f = outlineStable.Factory ?? _ntsDrawFactory;
-            if (f == null) return;
-
             try
             {
                 foreach (List<Deneme1SegBirBesRow> segsOnePoly in Deneme1BuildSegBirBesRowsPerExteriorPolygon(outlineStable))
@@ -6339,9 +6336,7 @@ namespace ST4PlanIdCiz
                     double tLo = (xLo.x - c1x) * ux + (xLo.y - c1y) * uy;
                     double tHi = (xHi.x - c1x) * ux + (xHi.y - c1y) * uy;
                     if (tLo > tHi)
-                    {
                         (xLo, xHi) = (xHi, xLo);
-                    }
 
                     var ringPts = new List<(double x, double y)> { (c1x, c1y), xLo, xHi, (c3x, c3y) };
                     ringPts = Deneme1DedupePointsCm(ringPts, minDistCm: 0.05);
@@ -6352,21 +6347,219 @@ namespace ST4PlanIdCiz
                     for (int i = 0; i < n; i++)
                         coords[i] = new Coordinate(ringPts[i].x, ringPts[i].y);
                     coords[n] = new Coordinate(coords[0].X, coords[0].Y);
-                    Polygon poly;
                     try
                     {
-                        poly = f.CreatePolygon(f.CreateLinearRing(coords));
-                        if (poly == null || poly.IsEmpty) continue;
+                        Polygon poly = f.CreatePolygon(f.CreateLinearRing(coords));
+                        if (poly != null && !poly.IsEmpty) list.Add(poly);
                     }
-                    catch
-                    {
-                        continue;
-                    }
-
-                    DrawGeometryRingsAsPolylines(tr, btr, poly, LayerDeneme1Dty, addHatch: false, applySmallTriangleTrim: false);
+                    catch { }
                 }
             }
             catch { }
+            return list;
+        }
+
+        private static Geometry Deneme1UnionPolygonListForDonatiExclude(List<Polygon> polys)
+        {
+            if (polys == null || polys.Count == 0) return null;
+            if (polys.Count == 1) return polys[0];
+            var geoms = new List<Geometry>(polys.Count);
+            foreach (Polygon p in polys)
+            {
+                if (p == null || p.IsEmpty) continue;
+                try { geoms.Add(p.Copy()); }
+                catch { geoms.Add(p); }
+            }
+            if (geoms.Count == 0) return null;
+            if (geoms.Count == 1) return geoms[0];
+            return TryCascadedPolygonUnionSafe(geoms);
+        }
+
+        /// <summary>Donatı hattı (birleşik clip ile kesişmiş tam segment) DTX/DTY ile anlamlı örtüşmüyorsa true — hat bütün olarak çizilir, kırpılmaz.</summary>
+        private static bool Deneme1DonatiClippedSegmentClearOfExclusion(Geometry segment, Geometry exclusionUnion)
+        {
+            if (segment == null || segment.IsEmpty) return false;
+            if (exclusionUnion == null || exclusionUnion.IsEmpty) return true;
+            Geometry ex = exclusionUnion;
+            try
+            {
+                Geometry r = ReducePrecisionSafe(exclusionUnion, 100);
+                if (r != null && !r.IsEmpty) ex = r;
+            }
+            catch { }
+            foreach (double scale in new[] { 100.0, 50.0, 20.0 })
+            {
+                try
+                {
+                    var segR = ReducePrecisionSafe(segment, scale) ?? segment;
+                    var exR = ReducePrecisionSafe(ex, scale) ?? ex;
+                    Geometry inter = segR.Intersection(exR);
+                    if (Deneme1GeometryLengthCm(inter) <= Deneme1DonatiExclusionOverlapMaxCm) return true;
+                }
+                catch { }
+            }
+            try
+            {
+                return Deneme1GeometryLengthCm(segment.Intersection(ex)) <= Deneme1DonatiExclusionOverlapMaxCm;
+            }
+            catch
+            {
+                return true;
+            }
+        }
+
+        private static List<double> Deneme1FilterDonatiOffsetsWhereFullSegmentClearOfExclusion(
+            GeometryFactory factory,
+            Geometry eksenGrupBirlesikClip,
+            double nx,
+            double ny,
+            double dirCos,
+            double dirSin,
+            double halfLen,
+            Geometry exclusionUnion,
+            List<double> candidateOffsets)
+        {
+            var res = new List<double>();
+            if (candidateOffsets == null || candidateOffsets.Count == 0) return res;
+            if (exclusionUnion == null || exclusionUnion.IsEmpty)
+            {
+                res.AddRange(candidateOffsets);
+                return res;
+            }
+            foreach (double u in candidateOffsets)
+            {
+                Deneme1PointOnLineFromNormalEquation(nx, ny, u, out double cx, out double cy);
+                Geometry seg = TryIntersectLineWithPolygonReduced(factory, cx, cy, dirCos, dirSin, halfLen, eksenGrupBirlesikClip);
+                if (Deneme1DonatiClippedSegmentClearOfExclusion(seg, exclusionUnion))
+                    res.Add(u);
+            }
+            return res;
+        }
+
+        private static bool Deneme1TryScanUAlongIntervalForDonatiLineClearOfExclusion(
+            GeometryFactory factory,
+            Geometry eksenGrupBirlesikClip,
+            double nx,
+            double ny,
+            double dirCos,
+            double dirSin,
+            double halfLen,
+            Geometry exclusionUnion,
+            Geometry ham,
+            double a,
+            double b,
+            out double uFound)
+        {
+            uFound = 0;
+            if (factory == null || eksenGrupBirlesikClip == null || eksenGrupBirlesikClip.IsEmpty || ham == null || ham.IsEmpty) return false;
+            if (a > b)
+                (a, b) = (b, a);
+            double span = b - a;
+            if (span < 1e-9)
+            {
+                double u0 = (a + b) * 0.5;
+                Deneme1PointOnLineFromNormalEquation(nx, ny, u0, out double cx, out double cy);
+                Geometry seg = TryIntersectLineWithPolygonReduced(factory, cx, cy, dirCos, dirSin, halfLen, eksenGrupBirlesikClip);
+                if (!Deneme1DonatiClippedSegmentClearOfExclusion(seg, exclusionUnion)) return false;
+                if (!Deneme1DonatiSegmentMeaningfulHitOnHam(seg, ham)) return false;
+                uFound = u0;
+                return true;
+            }
+            const double stepCm = 0.4;
+            int nSteps = Math.Max(2, (int)Math.Ceiling(span / stepCm));
+            if (nSteps > 5000) nSteps = 5000;
+            for (int i = 0; i <= nSteps; i++)
+            {
+                double u = a + span * i / nSteps;
+                Deneme1PointOnLineFromNormalEquation(nx, ny, u, out double cx, out double cy);
+                Geometry seg = TryIntersectLineWithPolygonReduced(factory, cx, cy, dirCos, dirSin, halfLen, eksenGrupBirlesikClip);
+                if (!Deneme1DonatiClippedSegmentClearOfExclusion(seg, exclusionUnion)) continue;
+                if (!Deneme1DonatiSegmentMeaningfulHitOnHam(seg, ham)) continue;
+                uFound = u;
+                return true;
+            }
+            return false;
+        }
+
+        private static Geometry Deneme1UnionExclusionGeometriesForSlabIds(List<int> slabIds, Dictionary<int, Geometry> exclBySlab)
+        {
+            if (slabIds == null || slabIds.Count == 0 || exclBySlab == null || exclBySlab.Count == 0) return null;
+            var parts = new List<Geometry>();
+            foreach (int sid in slabIds)
+            {
+                if (!exclBySlab.TryGetValue(sid, out Geometry g) || g == null || g.IsEmpty) continue;
+                try { parts.Add(g.Copy()); }
+                catch { parts.Add(g); }
+            }
+            if (parts.Count == 0) return null;
+            if (parts.Count == 1) return parts[0];
+            return TryCascadedPolygonUnionSafe(parts);
+        }
+
+        /// <summary>
+        /// DENEME1: Dört kenarlı döşemede iki <c>Y1</c> işareti ile köşe <c>1</c> ve <c>2</c> (1-5 köşe etiketi) — kapalı poligon, <see cref="LayerDeneme1Dtx"/> (ACI mavi 5).
+        /// Köşe 1→2 doğrultusunda Y1 noktaları sıralanır; böylece kenarlar çakışmaz.
+        /// </summary>
+        private void AppendDeneme1DosemeDtxPolygonY1Kose1Kose2Deneme1Only(
+            Transaction tr,
+            BlockTableRecord btr,
+            int slabId,
+            Geometry slabGeomForAxisCenter,
+            Geometry dosemeHattiBirBesOutlineG,
+            Dictionary<int, int> slabIdToEgimGrupNo,
+            IReadOnlyDictionary<int, (double t1, double t2)> eksenGrupArtiYon)
+        {
+            if (!Deneme1IsFormworkCompletionTagDeneme1(_kalip50FormworkCompletionTag) || dosemeHattiBirBesOutlineG == null || dosemeHattiBirBesOutlineG.IsEmpty)
+                return;
+            Database db = btr.Database;
+            EnsurePlanLayer(tr, db, LayerDeneme1Dtx, 5, LineWeight.LineWeight020, useDashed: false);
+            Geometry outlineStable = dosemeHattiBirBesOutlineG;
+            try
+            {
+                Geometry r = ReducePrecisionSafe(dosemeHattiBirBesOutlineG, 100);
+                if (r != null && !r.IsEmpty) outlineStable = r;
+            }
+            catch { }
+            GeometryFactory f = outlineStable.Factory ?? _ntsDrawFactory;
+            if (f == null) return;
+
+            foreach (Polygon poly in Deneme1CollectDtxPolygonsForSlabBirBesOutline(slabId, slabGeomForAxisCenter, dosemeHattiBirBesOutlineG, slabIdToEgimGrupNo, eksenGrupArtiYon, f))
+            {
+                DrawGeometryRingsAsPolylines(tr, btr, poly, LayerDeneme1Dtx, addHatch: false, applySmallTriangleTrim: false, onClosedPolylineAppended: plId => AppendHatchSolidOnLayer(tr, btr, plId, aciColorIndex: 5, LayerDeneme1Dtx));
+            }
+        }
+
+        /// <summary>
+        /// DENEME1: Dört kenarlı döşemede iki <c>X1</c> işareti ile köşe <c>1</c> ve <c>3</c> — kapalı poligon, <see cref="LayerDeneme1Dty"/> (ACI kırmızı 1).
+        /// Köşe 1→3 doğrultusunda X1 noktaları sıralanır.
+        /// </summary>
+        private void AppendDeneme1DosemeDtyPolygonX1Kose1Kose3Deneme1Only(
+            Transaction tr,
+            BlockTableRecord btr,
+            int slabId,
+            Geometry slabGeomForAxisCenter,
+            Geometry dosemeHattiBirBesOutlineG,
+            Dictionary<int, int> slabIdToEgimGrupNo,
+            IReadOnlyDictionary<int, (double t1, double t2)> eksenGrupArtiYon)
+        {
+            if (!Deneme1IsFormworkCompletionTagDeneme1(_kalip50FormworkCompletionTag) || dosemeHattiBirBesOutlineG == null || dosemeHattiBirBesOutlineG.IsEmpty)
+                return;
+            Database db = btr.Database;
+            EnsurePlanLayer(tr, db, LayerDeneme1Dty, 1, LineWeight.LineWeight020, useDashed: false);
+            Geometry outlineStable = dosemeHattiBirBesOutlineG;
+            try
+            {
+                Geometry r = ReducePrecisionSafe(dosemeHattiBirBesOutlineG, 100);
+                if (r != null && !r.IsEmpty) outlineStable = r;
+            }
+            catch { }
+            GeometryFactory f = outlineStable.Factory ?? _ntsDrawFactory;
+            if (f == null) return;
+
+            foreach (Polygon poly in Deneme1CollectDtyPolygonsForSlabBirBesOutline(slabId, slabGeomForAxisCenter, dosemeHattiBirBesOutlineG, slabIdToEgimGrupNo, eksenGrupArtiYon, f))
+            {
+                DrawGeometryRingsAsPolylines(tr, btr, poly, LayerDeneme1Dty, addHatch: false, applySmallTriangleTrim: false, onClosedPolylineAppended: plId => AppendHatchSolidOnLayer(tr, btr, plId, aciColorIndex: 1, LayerDeneme1Dty));
+            }
         }
 
         private static bool Deneme1TryGetKoseVertexForBirBesBolgeNo(
@@ -6822,14 +7015,16 @@ namespace ST4PlanIdCiz
             }
         }
 
-        /// <summary>DENEME1: Donatı hatları EKSEN grubu ham birleşiminde; t1/t2, greedy + her döşeme X/Y. Ofset: ham döşeme + simetrik inset + kesişim ortası (formül sonra güncellenebilir).</summary>
+        /// <summary>DENEME1: Donatı hatları EKSEN grubu ham birleşiminde; t1/t2, greedy + her döşeme X/Y. DOSEME DONATI EKSEN X hatları DTX (mavi solid); Y hatları DTY (kırmızı solid) ile anlamlı örtüşmez — hat bütün olarak paralel kaydırılarak uygun <c>u</c> bulunur; kırpma yok.</summary>
         private void AppendDeneme1EksenGrupDonatiHatlariFromHamQuads(
             Transaction tr,
             BlockTableRecord btr,
             IReadOnlyList<(int SlabId, Geometry Geom)> geoms,
             Dictionary<int, int> slabIdToEgimGrupNo,
             IReadOnlyDictionary<int, (double t1, double t2)> eksenGrupArtiYon,
-            GeometryFactory factory)
+            GeometryFactory factory,
+            Dictionary<int, Geometry> dtxExclBySlab,
+            Dictionary<int, Geometry> dtyExclBySlab)
         {
             var hamById = _kalip50Deneme1SlabHamQuadBySlabId;
             if (hamById == null || hamById.Count == 0 || geoms == null || geoms.Count == 0 || factory == null) return;
@@ -6890,8 +7085,16 @@ namespace ST4PlanIdCiz
                 double halfLen = 0.5 * Math.Sqrt(w * w + hgt * hgt) * 2.0 + 100.0;
                 if (halfLen < 300.0) halfLen = 300.0;
 
-                AppendDeneme1DonatiLinesForDirection(tr, btr, factory, ids, hamById, unionG, n1x, n1y, c1, s1, halfLen, Deneme1LayerForDonatiLineAngleRad(t1));
-                AppendDeneme1DonatiLinesForDirection(tr, btr, factory, ids, hamById, unionG, n2x, n2y, c2, s2, halfLen, Deneme1LayerForDonatiLineAngleRad(t2));
+                string layT1 = Deneme1LayerForDonatiLineAngleRad(t1);
+                Geometry exT1 = string.Equals(layT1, LayerDosemeDonatiEksenX, StringComparison.Ordinal)
+                    ? Deneme1UnionExclusionGeometriesForSlabIds(ids, dtxExclBySlab)
+                    : Deneme1UnionExclusionGeometriesForSlabIds(ids, dtyExclBySlab);
+                AppendDeneme1DonatiLinesForDirection(tr, btr, factory, ids, hamById, unionG, n1x, n1y, c1, s1, halfLen, layT1, exT1);
+                string layT2 = Deneme1LayerForDonatiLineAngleRad(t2);
+                Geometry exT2 = string.Equals(layT2, LayerDosemeDonatiEksenX, StringComparison.Ordinal)
+                    ? Deneme1UnionExclusionGeometriesForSlabIds(ids, dtxExclBySlab)
+                    : Deneme1UnionExclusionGeometriesForSlabIds(ids, dtyExclBySlab);
+                AppendDeneme1DonatiLinesForDirection(tr, btr, factory, ids, hamById, unionG, n2x, n2y, c2, s2, halfLen, layT2, exT2);
             }
 
             var seenUngrouped = new HashSet<int>();
@@ -6921,8 +7124,16 @@ namespace ST4PlanIdCiz
                 if (halfLenu < 300.0) halfLenu = 300.0;
 
                 var oneId = new List<int> { slabId };
-                AppendDeneme1DonatiLinesForDirection(tr, btr, factory, oneId, hamById, sh, n1xu, n1yu, c1u, s1u, halfLenu, Deneme1LayerForDonatiLineAngleRad(t1u));
-                AppendDeneme1DonatiLinesForDirection(tr, btr, factory, oneId, hamById, sh, n2xu, n2yu, c2u, s2u, halfLenu, Deneme1LayerForDonatiLineAngleRad(t2u));
+                string layU1 = Deneme1LayerForDonatiLineAngleRad(t1u);
+                Geometry exU1 = string.Equals(layU1, LayerDosemeDonatiEksenX, StringComparison.Ordinal)
+                    ? Deneme1UnionExclusionGeometriesForSlabIds(oneId, dtxExclBySlab)
+                    : Deneme1UnionExclusionGeometriesForSlabIds(oneId, dtyExclBySlab);
+                AppendDeneme1DonatiLinesForDirection(tr, btr, factory, oneId, hamById, sh, n1xu, n1yu, c1u, s1u, halfLenu, layU1, exU1);
+                string layU2 = Deneme1LayerForDonatiLineAngleRad(t2u);
+                Geometry exU2 = string.Equals(layU2, LayerDosemeDonatiEksenX, StringComparison.Ordinal)
+                    ? Deneme1UnionExclusionGeometriesForSlabIds(oneId, dtxExclBySlab)
+                    : Deneme1UnionExclusionGeometriesForSlabIds(oneId, dtyExclBySlab);
+                AppendDeneme1DonatiLinesForDirection(tr, btr, factory, oneId, hamById, sh, n2xu, n2yu, c2u, s2u, halfLenu, layU2, exU2);
             }
         }
 
@@ -6938,7 +7149,8 @@ namespace ST4PlanIdCiz
             double dirCos,
             double dirSin,
             double halfLen,
-            string layer)
+            string layer,
+            Geometry donatiSolidExclusionUnion)
         {
             if (slabIdsInGroup == null || slabIdsInGroup.Count == 0 || hamById == null || eksenGrupBirlesikClip == null || eksenGrupBirlesikClip.IsEmpty || factory == null) return;
             double covTol = Deneme1DonatiSlabCoverageTolCm;
@@ -6980,6 +7192,8 @@ namespace ST4PlanIdCiz
                 if (!covered)
                     offsets.Add((a + b) * 0.5);
             }
+            offsets = Deneme1FilterDonatiOffsetsWhereFullSegmentClearOfExclusion(
+                factory, eksenGrupBirlesikClip, nx, ny, dirCos, dirSin, halfLen, donatiSolidExclusionUnion, offsets);
             Deneme1EnsureEverySlabHamHitByDonatiLines(
                 factory,
                 eksenGrupBirlesikClip,
@@ -6991,12 +7205,16 @@ namespace ST4PlanIdCiz
                 dirCos,
                 dirSin,
                 halfLen,
-                offsets);
+                offsets,
+                donatiSolidExclusionUnion);
             offsets = Deneme1SortDedupeDonatiOffsets(offsets);
             foreach (double u in offsets)
             {
                 Deneme1PointOnLineFromNormalEquation(nx, ny, u, out double cx, out double cy);
                 Geometry seg = TryIntersectLineWithPolygonReduced(factory, cx, cy, dirCos, dirSin, halfLen, eksenGrupBirlesikClip);
+                if (donatiSolidExclusionUnion != null && !donatiSolidExclusionUnion.IsEmpty &&
+                    !Deneme1DonatiClippedSegmentClearOfExclusion(seg, donatiSolidExclusionUnion))
+                    continue;
                 AppendLineGeometryEntitiesForLayer(tr, btr, seg, layer);
             }
         }
@@ -7142,7 +7360,8 @@ namespace ST4PlanIdCiz
             double dirCos,
             double dirSin,
             double halfLenHint,
-            List<double> offsets)
+            List<double> offsets,
+            Geometry donatiSolidExclusionUnion)
         {
             if (factory == null || eksenGrupBirlesikClip == null || eksenGrupBirlesikClip.IsEmpty || slabIdsInGroup == null || hamById == null || offsets == null) return;
             var sidToAb = new Dictionary<int, (double a, double b)>();
@@ -7166,6 +7385,7 @@ namespace ST4PlanIdCiz
                 {
                     Deneme1PointOnLineFromNormalEquation(nx, ny, u, out double cx, out double cy);
                     Geometry seg = TryIntersectLineWithPolygonReduced(factory, cx, cy, dirCos, dirSin, halfLenHint, eksenGrupBirlesikClip);
+                    if (!Deneme1DonatiClippedSegmentClearOfExclusion(seg, donatiSolidExclusionUnion)) continue;
                     if (Deneme1DonatiSegmentMeaningfulHitOnHam(seg, sh))
                     {
                         hit = true;
@@ -7173,15 +7393,31 @@ namespace ST4PlanIdCiz
                     }
                 }
                 if (hit) continue;
-                double uAdd;
+                double aScan, bScan;
                 if (sidToAb.TryGetValue(sid, out (double a, double b) iv))
-                    uAdd = (iv.a + iv.b) * 0.5;
+                {
+                    aScan = iv.a;
+                    bScan = iv.b;
+                }
                 else
                 {
                     var env = sh.EnvelopeInternal;
-                    uAdd = nx * (env.MinX + env.MaxX) * 0.5 + ny * (env.MinY + env.MaxY) * 0.5;
+                    double u0 = nx * (env.MinX + env.MaxX) * 0.5 + ny * (env.MinY + env.MaxY) * 0.5;
+                    aScan = bScan = u0;
                 }
-                offsets.Add(uAdd);
+                if (Deneme1TryScanUAlongIntervalForDonatiLineClearOfExclusion(
+                        factory, eksenGrupBirlesikClip, nx, ny, dirCos, dirSin, halfLenHint,
+                        donatiSolidExclusionUnion, sh, aScan, bScan, out double uFound))
+                {
+                    offsets.Add(uFound);
+                    continue;
+                }
+                if (Deneme1TryProjectionIntervalOntoUnitNormal(sh, nx, ny, out double aFull, out double bFull) && aFull <= bFull &&
+                    (aFull < aScan - 1e-3 || bFull > bScan + 1e-3) &&
+                    Deneme1TryScanUAlongIntervalForDonatiLineClearOfExclusion(
+                        factory, eksenGrupBirlesikClip, nx, ny, dirCos, dirSin, halfLenHint,
+                        donatiSolidExclusionUnion, sh, aFull, bFull, out double uWide))
+                    offsets.Add(uWide);
             }
         }
 
@@ -13238,7 +13474,7 @@ namespace ST4PlanIdCiz
             catch { return false; }
         }
 
-        /// <summary>NTS Geometry (Polygon/MultiPolygon) dış ve iç halkalarını verilen katmanda polyline olarak çizer; 4 mm'den kısa segmentleri atlar. addHatch true ise her halka için tarama eklenir: <paramref name="hatchPatternName"/> doluysa o desen + ölçek + <paramref name="hatchLayerOverride"/> (varsayılan <see cref="LayerTarama"/>), değilse ANSI33. hatchAngleRad verilirse tarama açısı olarak kullanılır (perde: aks eğimi). exteriorRingsOnly true ise sadece dış halkalar çizilir (iç halkalar/delik sınırları çizilmez; kolona yapışık çizgi olmaz). <see cref="LayerTarama"/> hedefli taramada sınır polyline yalnızca geçicidir (kolon/perde/grobeton konturu gerekiyorsa ayrı kopya çizilir); <paramref name="hatchBoundaryPolylineOnHiddenLayer"/> yalnızca TARAMA dışı dolgu yolunda kullanılır.</summary>
+        /// <summary>NTS Geometry (Polygon/MultiPolygon) dış ve iç halkalarını verilen katmanda polyline olarak çizer; 4 mm'den kısa segmentleri atlar. addHatch true ise her halka için tarama eklenir: <paramref name="hatchPatternName"/> doluysa o desen + ölçek + <paramref name="hatchLayerOverride"/> (varsayılan <see cref="LayerTarama"/>), değilse ANSI33. hatchAngleRad verilirse tarama açısı olarak kullanılır (perde: aks eğimi). exteriorRingsOnly true ise sadece dış halkalar çizilir (iç halkalar/delik sınırları çizilmez; kolona yapışık çizgi olmaz). <see cref="LayerTarama"/> hedefli taramada sınır polyline yalnızca geçicidir (kolon/perde/grobeton konturu gerekiyorsa ayrı kopya çizilir); <paramref name="hatchBoundaryPolylineOnHiddenLayer"/> yalnızca TARAMA dışı dolgu yolunda kullanılır. addHatch false iken <paramref name="onClosedPolylineAppended"/> verilirse her kapalı polyline eklendikten sonra (ObjectId ile) çağrılır.</summary>
         /// <param name="drawRingEdgesAsLines">true ise kapalı halka polyline yerine her kenar ayrı <see cref="Line"/> (KALIP50ST4 kiriş çizimi).</param>
         private static void EnsureLayerTaramaHatchBoundaryIc(Transaction tr, Database db)
         {
@@ -13280,7 +13516,7 @@ namespace ST4PlanIdCiz
             catch { /* silinmiş veya kilitli */ }
         }
 
-        private static void DrawGeometryRingsAsPolylines(Transaction tr, BlockTableRecord btr, Geometry geom, string layer, bool addHatch = false, double? hatchAngleRad = null, bool exteriorRingsOnly = false, bool applySmallTriangleTrim = false, double vertexAngleTolDeg = 1.0, double minVertexDistCm = 0.4, double collinearTolCm = 0, string hatchPatternName = null, double hatchPatternScale = 1.0, string hatchLayerOverride = null, bool drawRingEdgesAsLines = false, bool hatchBoundaryPolylineOnHiddenLayer = false, double ansi33HatchPatternScale = 1.0)
+        private static void DrawGeometryRingsAsPolylines(Transaction tr, BlockTableRecord btr, Geometry geom, string layer, bool addHatch = false, double? hatchAngleRad = null, bool exteriorRingsOnly = false, bool applySmallTriangleTrim = false, double vertexAngleTolDeg = 1.0, double minVertexDistCm = 0.4, double collinearTolCm = 0, string hatchPatternName = null, double hatchPatternScale = 1.0, string hatchLayerOverride = null, bool drawRingEdgesAsLines = false, bool hatchBoundaryPolylineOnHiddenLayer = false, double ansi33HatchPatternScale = 1.0, Action<ObjectId> onClosedPolylineAppended = null)
         {
             if (geom == null || geom.IsEmpty) return;
             double minSegmentLen = minVertexDistCm; // ardışık vertex arası min mesafe (varsayılan 4 mm)
@@ -13600,7 +13836,10 @@ namespace ST4PlanIdCiz
                     }
                 }
                 else
+                {
                     AppendEntity(tr, btr, pl);
+                    onClosedPolylineAppended?.Invoke(pl.ObjectId);
+                }
             }
         }
 
@@ -13608,6 +13847,34 @@ namespace ST4PlanIdCiz
         private static double GetContinuousFoundationTopElevationM(double buildingBaseKotuM, ContinuousFoundationInfo cf)
         {
             return buildingBaseKotuM + (cf.BottomKotBinaGoreCm + cf.HeightCm) / 100.0;
+        }
+
+        /// <summary>
+        /// ST4 sürekli temel üst satır adı (örn. <c>T1</c>, <c>T-2</c>, <c>T18</c>) → plan/kesitte <c>T-n</c> için <c>n</c>.
+        /// Dosyada <c>T6</c> girdisi <c>T8</c>’den sonra listelense bile numara addan okunur. Ad boş veya geçerli sayı yoksa liste sırası (1-based).
+        /// </summary>
+        private static int GetContinuousFoundationLabelNumber(ContinuousFoundationInfo cf, int listIndexZeroBased)
+        {
+            if (cf == null) return listIndexZeroBased + 1;
+            string n = (cf.Name ?? string.Empty).Trim();
+            if (n.Length == 0) return listIndexZeroBased + 1;
+
+            int i = 0;
+            if (i < n.Length && (n[i] == 'T' || n[i] == 't')) i++;
+            while (i < n.Length && char.IsWhiteSpace(n[i])) i++;
+            if (i < n.Length && n[i] == '-') i++;
+            while (i < n.Length && char.IsWhiteSpace(n[i])) i++;
+            int startDigit = i;
+            while (i < n.Length && char.IsDigit(n[i])) i++;
+            if (i > startDigit &&
+                int.TryParse(n.Substring(startDigit, i - startDigit), NumberStyles.Integer, CultureInfo.InvariantCulture, out int numFromT) &&
+                numFromT > 0)
+                return numFromT;
+
+            if (int.TryParse(n, NumberStyles.Integer, CultureInfo.InvariantCulture, out int allNum) && allNum > 0)
+                return allNum;
+
+            return listIndexZeroBased + 1;
         }
 
         /// <param name="temelHatiliRaws">Dolu verilirse sürekli temel hatılı (geom, widthCm, heightDisplayCm, kot, isRadyeTemelHatili=false). kot = sürekli temel üst yüzey kotu (m); hatılın oturma (alt) kotu buna eşitlenir.</param>
@@ -13671,7 +13938,7 @@ namespace ST4PlanIdCiz
                         labelCx = upperMidX + perpUnit.X * 3.0;
                         labelCy = upperMidY + perpUnit.Y * 3.0;
                     }
-                    int temelNo = cfIndex + 1;
+                    int temelNo = GetContinuousFoundationLabelNumber(cf, cfIndex);
                     int eni = (int)Math.Round(cf.WidthCm);
                     int yukseklik = (int)Math.Round(cf.HeightCm);
                     string eniStr = eni.ToString(CultureInfo.InvariantCulture);
@@ -15186,6 +15453,22 @@ namespace ST4PlanIdCiz
             var ids = new ObjectIdCollection { boundaryId };
             hatch.AppendLoop(HatchLoopTypes.Outermost, ids);
             hatch.EvaluateHatch(true);
+        }
+
+        /// <summary>Kapalı polyline sınırı içine SOLID tarama; renk ve katman parametre (DENEME1 DTX/DTY vb.).</summary>
+        private static void AppendHatchSolidOnLayer(Transaction tr, BlockTableRecord btr, ObjectId boundaryId, short aciColorIndex, string layer)
+        {
+            if (boundaryId == ObjectId.Null || !boundaryId.IsValid || string.IsNullOrEmpty(layer)) return;
+            var hatch = new Hatch();
+            btr.AppendEntity(hatch);
+            tr.AddNewlyCreatedDBObject(hatch, true);
+            hatch.SetHatchPattern(HatchPatternType.PreDefined, "SOLID");
+            hatch.Color = Color.FromColorIndex(ColorMethod.ByAci, aciColorIndex);
+            hatch.Layer = layer;
+            hatch.Associative = true;
+            hatch.AppendLoop(HatchLoopTypes.Outermost, new ObjectIdCollection { boundaryId });
+            try { hatch.EvaluateHatch(true); }
+            catch { try { hatch.EvaluateHatch(false); } catch { } }
         }
 
         /// <summary>Mavi işaret: daire sınırı içine mavi solid dolgu (kırmızı işarete bağlı kirişin karşı ucu; başka kiriş içinde değilse).</summary>

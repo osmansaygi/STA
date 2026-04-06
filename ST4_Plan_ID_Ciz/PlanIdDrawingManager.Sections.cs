@@ -3221,7 +3221,7 @@ namespace ST4PlanIdCiz
                     string eniStr = eni.ToString(CultureInfo.InvariantCulture);
                     if (cf.AmpatmanWidthCm > 0 && Math.Abs(cf.AmpatmanWidthCm - cf.WidthCm) > 1e-6)
                         eniStr = eniStr + "-" + ((int)Math.Round(cf.AmpatmanWidthCm)).ToString(CultureInfo.InvariantCulture);
-                    string cfEtik = string.Format(CultureInfo.InvariantCulture, "T-{0} ({1}/{2})", cfSliceIndex + 1, eniStr, yukCf);
+                    string cfEtik = string.Format(CultureInfo.InvariantCulture, "T-{0} ({1}/{2})", GetContinuousFoundationLabelNumber(cf, cfSliceIndex), eniStr, yukCf);
                     TryAddSliceCutLine(cutLine, poly, alongOrigin, dirN, z0, z1, "TEMEL (BEYKENT)", SectionOrderContinuousFoundation, list, cfEtik);
                     cfSliceIndex++;
                     var hat = HatilStripOnContinuousPoly(cf);
