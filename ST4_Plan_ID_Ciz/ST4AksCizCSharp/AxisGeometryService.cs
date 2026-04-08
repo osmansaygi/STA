@@ -33,6 +33,17 @@ namespace ST4AksCizCSharp
             return angleRad;
         }
 
+        /// <summary>Eksen doğrusuna (sonsuz hat) noktanın dik mesafesi (cm); çizgi denklemi <c>Ax+By+C=0</c>.</summary>
+        public bool TryGetUnsignedDistancePointToAxisLineCm(int axisId, double xCm, double yCm, out double distCm)
+        {
+            distCm = 0;
+            if (!TryLineCoeff(axisId, out var l)) return false;
+            double den = Math.Sqrt(l.A * l.A + l.B * l.B);
+            if (den < 1e-18) return false;
+            distCm = Math.Abs(l.A * xCm + l.B * yCm + l.C) / den;
+            return true;
+        }
+
         public bool TryIntersect(int axisA, int axisB, out Point2d p)
         {
             p = default;
