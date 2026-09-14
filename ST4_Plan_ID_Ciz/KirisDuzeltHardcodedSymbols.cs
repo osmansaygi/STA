@@ -73,6 +73,7 @@ namespace ST4PlanIdCiz
             hatch.HatchStyle = HatchStyle.Normal;
             hatch.Layer = LayerKotCizgi;
             hatch.Color = KotHatchSolidColor;
+            hatch.Associative = false;
             hatch.AppendLoop(HatchLoopTypes.Outermost, new ObjectIdCollection { tri.ObjectId });
             hatch.EvaluateHatch(true);
 
@@ -128,6 +129,7 @@ namespace ST4PlanIdCiz
             hatch.HatchStyle = HatchStyle.Normal;
             hatch.Layer = LayerKesit;
             hatch.Color = KesDetDonatiHatchSolidColor;
+            hatch.Associative = false;
             hatch.AppendLoop(HatchLoopTypes.Outermost, new ObjectIdCollection { pl.ObjectId });
             hatch.EvaluateHatch(true);
         }
@@ -150,6 +152,7 @@ namespace ST4PlanIdCiz
             hatch.Layer = LayerDonatiKesit;
             hatch.Color = KesDetDonatiHatchSolidColor;
             hatch.LineWeight = LineWeight.LineWeight035;
+            hatch.Associative = false;
             hatch.AppendLoop(HatchLoopTypes.Outermost, new ObjectIdCollection { c.ObjectId });
             hatch.EvaluateHatch(true);
         }

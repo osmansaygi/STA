@@ -78,20 +78,27 @@ namespace ST4PlanIdCiz
             var encodings = new List<Encoding>(5);
             if (utf8Bom)
                 encodings.Add(Encoding.UTF8);
-            encodings.Add(Encoding.GetEncoding(1254));
+            if (WindowsAnsiEncodings.TryGet(1254, out Encoding enc1254))
+                encodings.Add(enc1254);
             if (!utf8Bom)
                 encodings.Add(Encoding.UTF8);
-            try
-            {
-                encodings.Add(Encoding.GetEncoding("iso-8859-9"));
-            }
-            catch
-            {
-                /* bazı ortamlarda yok */
-            }
+            if (WindowsAnsiEncodings.TryGet("iso-8859-9", out Encoding encIso9))
+                encodings.Add(encIso9);
 
             Dictionary<string, GprDosemeDonatiXy> best = null;
             int bestCount = 0;
+            try
+            {
+                string[] linesSafe = WindowsAnsiEncodings.ReadAllLines(gprFilePath);
+                if (TryParseLines(linesSafe, out Dictionary<string, GprDosemeDonatiXy> dictSafe) && dictSafe != null && dictSafe.Count > 0)
+                {
+                    best = dictSafe;
+                    bestCount = dictSafe.Count;
+                }
+            }
+            catch
+            {
+            }
             foreach (Encoding enc in encodings)
             {
                 string[] lines;

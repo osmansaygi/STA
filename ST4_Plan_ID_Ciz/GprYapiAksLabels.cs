@@ -96,9 +96,9 @@ namespace ST4PlanIdCiz
                 if (bytes[i] == 0xB3) bytes[i] = 0x7C; // │ → |
                 if (bytes[i] == 0xED) bytes[i] = 0x7C; // í/� → |
             }
-            try { return Encoding.GetEncoding(1254).GetString(bytes); }
-            catch { }
-            return Encoding.UTF8.GetString(bytes);
+            if (WindowsAnsiEncodings.TryGet(1254, out Encoding enc1254))
+                return enc1254.GetString(bytes);
+            return WindowsAnsiEncodings.DecodeWindows1254Bytes(bytes);
         }
 
         private static string NormalizeTableSeparators(string rawLine)

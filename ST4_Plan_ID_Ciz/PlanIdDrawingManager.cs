@@ -3318,8 +3318,33 @@ namespace ST4PlanIdCiz
         private const double Deneme1DonatiMinHitLengthCm = 0.15;
         /// <summary>DENEME1 donatı: DTX/DTY ile bu uzunluktan fazla kesişen hat kabul edilmez; hat bütün olarak kaydırılır (kırpma yok).</summary>
         private const double Deneme1DonatiExclusionOverlapMaxCm = 0.05;
+        /// <summary>DENEME1: X yönü donatı hattının <b>tek</b> kiriş poligonu ile kesişim uzunluğu üst sınırı (cm).</summary>
+        private const double Deneme1DonatiEksenXMaxBeamInteriorLengthCm = 160.0;
         /// <summary>EKSEN zarf köşelerini aşan çizgi uzatımı için ek güvenlik payı (cm).</summary>
         private const double Deneme1DonatiLineEnvelopeMarginCm = 500.0;
+        /// <summary>DTX/DTY yakınında u taramasında en fazla örnek sayısı (performans; çok adım AutoCAD’de kilitlenmeye yakın donmaya yol açabiliyordu).</summary>
+        private const int Deneme1DonatiScanMaxSteps = 160;
+        /// <summary>X donatı: DTX’in normal izdüşüm bandının dışına (kenara) eklenen aday u ofsetleri (cm); hat DTX taramasına yaklaşır.</summary>
+        private static readonly double[] Deneme1DonatiDtxProximitySeedDeltasCm =
+            new[] { 0.05, 0.1, 0.2, 0.4, 0.8, 1.5, 3.0, 6.0, 12.0, 20.0 };
+        /// <summary>X donatı: filtre sonrası DTX bandına yaklaştırma adımı ve toplam en fazla kayma (cm).</summary>
+        private const double Deneme1DonatiDtxRefineStepCm = 0.25;
+        private const double Deneme1DonatiDtxRefineMaxTravelCm = 35.0;
+        /// <summary>X/Y donatı (per döşeme): DTX veya DTY bandının +<c>n</c> tarafında arama adımı ve ham inset ötesi izin (cm).</summary>
+        private const double Deneme1DonatiAboveTaramaSearchStepCm = 0.25;
+        private const double Deneme1DonatiAboveTaramaMaxExtraFromHamInsetCm = 180.0;
+        /// <summary>X birleştirme grafiği: ham’lar gerçekten değiyor sayılır; <see cref="Geometry.Intersects"/> veya ham–ham mesafe bu eşikten küçük (cm, sayısal boşluk).</summary>
+        private const double Deneme1DonatiXNeighborHamTouchMaxGapCm = 2.0;
+        /// <summary>Ortak <c>u</c> kümesinde komşu uç birleştirmede <see cref="Geometry.Covers"/> için ham’a verilen tampon (cm).</summary>
+        private const double Deneme1DonatiXSnapHamCoversBufferCm = 0.08;
+        /// <summary>X ortak <c>u</c>: birleşik hat ile <c>uEksen</c> arasında en az bu kadar normal mesafe (cm); eksen çizgisiyle çakışmayı engeller.</summary>
+        private const double Deneme1DonatiXMergeClearOfEksenLineCm = 0.35;
+        /// <summary>X eksen artı merkez doğrusuna (<c>uEksen</c>) göre yarı düzlem; birleştirirken ters tarafa geçmeyi engeller (cm tolerans).</summary>
+        private const double Deneme1DonatiXEksenHalfPlaneTolCm = 0.12;
+        /// <summary>Ortak <c>u</c> araması: minimum pad (cm); gerçek aralık <see cref="Deneme1DonatiXSharedUSearchPadDynamicAddCm"/> ile yayılıma göre büyür.</summary>
+        private const double Deneme1DonatiXSharedUSearchPadCm = 40.0;
+        /// <summary>Ortak <c>u</c> taraması: (max uPick − min uPick) üzerine eklenen cm (geniş adım farklı döşemeleri aynı hatta çeker).</summary>
+        private const double Deneme1DonatiXSharedUSearchPadDynamicAddCm = 35.0;
         /// <summary>DENEME1 EKSEN artı: merkezden her yönde yarım uzunluk (cm); toplam kol 50 cm.</summary>
         private const double Deneme1EksenArtiYarimKolCm = 25.0;
         /// <summary>DENEME1: Her iki artı kolu da kenar akslarından hiçbirine ~paralel/~dik değilse merkeze ek daire (yarıçap, cm).</summary>
@@ -3411,6 +3436,9 @@ namespace ST4PlanIdCiz
         private const string PlanOlcuDimStyleName100 = "PLAN_OLCU_100";
         /// <summary>Symbols and Arrows → Arrow size = 3 (cm). <see cref="DimStyleTableRecord.Dimasz"/>; First/Second tik için <see cref="DimStyleTableRecord.Dimtsz"/>.</summary>
         private const double OlcuDimArrowTickSizeCm = 3.0;
+        /// <summary>Aks ve plan ölçü yazısı: 0.5 cm adımlarına yuvarla (DIMRND). DIMDEC=1 ile 12.5 görünür; DIMZIN=12 ile tam cm’de sondaki sıfır yazılmaz.</summary>
+        private const double OlcuDimRoundCm = 0.5;
+        private const short OlcuDimDecimalPlaces = 1;
 
         private static void EnsureLayers(Transaction tr, Database db)
         {
@@ -7118,18 +7146,62 @@ namespace ST4PlanIdCiz
             return TryCascadedPolygonUnionSafe(geoms);
         }
 
+        private static bool Deneme1DonatiSegmentRespectsMaxBeamInteriorLength(Geometry segment, IReadOnlyList<Geometry> beams, double maxLenCm, bool beamsAlreadyReduced = false)
+        {
+            if (beams == null || beams.Count == 0) return true;
+            if (segment == null || segment.IsEmpty) return false;
+            double tol = 1e-3;
+            Envelope segEnv = segment.EnvelopeInternal;
+            foreach (Geometry beam in beams)
+            {
+                if (beam == null || beam.IsEmpty) continue;
+                try
+                {
+                    Envelope be = beam.EnvelopeInternal;
+                    if (be.MaxX < segEnv.MinX - tol || be.MinX > segEnv.MaxX + tol || be.MaxY < segEnv.MinY - tol || be.MinY > segEnv.MaxY + tol)
+                        continue;
+                    Geometry b = beam;
+                    if (!beamsAlreadyReduced)
+                    {
+                        try
+                        {
+                            Geometry r = ReducePrecisionSafe(beam, 100);
+                            if (r != null && !r.IsEmpty) b = r;
+                        }
+                        catch { }
+                    }
+                    Geometry inter = segment.Intersection(b);
+                    if (Deneme1GeometryLengthCm(inter) > maxLenCm + tol) return false;
+                }
+                catch { }
+            }
+            return true;
+        }
+
+        /// <summary>DTX’in <paramref name="nx"/>,<paramref name="ny"/> normaline izdüşüm aralığı [uLo,uHi]; u için şeride en yakın kenar mesafesi (cm).</summary>
+        private static double Deneme1DonatiGapToDtxBandAlongNormalCm(double u, double uLo, double uHi)
+        {
+            if (u < uLo) return uLo - u;
+            if (u > uHi) return u - uHi;
+            return Math.Min(u - uLo, uHi - u);
+        }
+
         /// <summary>Donatı hattı (birleşik clip ile kesişmiş tam segment) DTX/DTY ile anlamlı örtüşmüyorsa true — hat bütün olarak çizilir, kırpılmaz.</summary>
-        private static bool Deneme1DonatiClippedSegmentClearOfExclusion(Geometry segment, Geometry exclusionUnion)
+        /// <param name="exclusionAlreadyReduced"><c>true</c> ise <paramref name="exclusionUnion"/> zaten <c>ReducePrecisionSafe(...,100)</c> ile indirgenmiş kabul edilir (sıcak döngüde tekrar indirgeme yapılmaz).</param>
+        private static bool Deneme1DonatiClippedSegmentClearOfExclusion(Geometry segment, Geometry exclusionUnion, bool exclusionAlreadyReduced = false)
         {
             if (segment == null || segment.IsEmpty) return false;
             if (exclusionUnion == null || exclusionUnion.IsEmpty) return true;
             Geometry ex = exclusionUnion;
-            try
+            if (!exclusionAlreadyReduced)
             {
-                Geometry r = ReducePrecisionSafe(exclusionUnion, 100);
-                if (r != null && !r.IsEmpty) ex = r;
+                try
+                {
+                    Geometry r = ReducePrecisionSafe(exclusionUnion, 100);
+                    if (r != null && !r.IsEmpty) ex = r;
+                }
+                catch { }
             }
-            catch { }
             foreach (double scale in new[] { 100.0, 50.0, 20.0 })
             {
                 try
@@ -7151,6 +7223,908 @@ namespace ST4PlanIdCiz
             }
         }
 
+        /// <summary>X donatı: tek <paramref name="u"/> için gruptaki tüm ham’larda kırpma, DTX (varsa) ve kiriş kuralları.</summary>
+        private static bool Deneme1DonatiXEksenOffsetValidForAllSlabs(
+            GeometryFactory factory,
+            double nx,
+            double ny,
+            double dirCos,
+            double dirSin,
+            double halfLen,
+            double u,
+            Geometry exclusionUnion,
+            bool exclusionAlreadyReduced,
+            IReadOnlyList<Geometry> beamPolysForEksenX,
+            bool beamsAlreadyReduced,
+            List<int> slabIdsInGroup,
+            Dictionary<int, Geometry> hamById,
+            Dictionary<int, Geometry> hamStableById)
+        {
+            if (factory == null || slabIdsInGroup == null) return false;
+            bool hasExclusion = exclusionUnion != null && !exclusionUnion.IsEmpty;
+            int nChecked = 0;
+            Deneme1PointOnLineFromNormalEquation(nx, ny, u, out double cx, out double cy);
+            foreach (int sid in slabIdsInGroup)
+            {
+                Geometry sh = null;
+                if (hamStableById != null && hamStableById.TryGetValue(sid, out Geometry st) && st != null && !st.IsEmpty)
+                    sh = st;
+                else if (hamById != null && hamById.TryGetValue(sid, out Geometry raw) && raw != null && !raw.IsEmpty)
+                {
+                    sh = raw;
+                    try
+                    {
+                        Geometry r = ReducePrecisionSafe(raw, 100);
+                        if (r != null && !r.IsEmpty) sh = r;
+                    }
+                    catch { }
+                }
+                if (sh == null) continue;
+                nChecked++;
+                Geometry seg = Deneme1DonatiLineClipToPolygon(factory, cx, cy, dirCos, dirSin, halfLen, sh);
+                if (seg == null || seg.IsEmpty) return false;
+                if (hasExclusion && !Deneme1DonatiClippedSegmentClearOfExclusion(seg, exclusionUnion, exclusionAlreadyReduced)) return false;
+                if (!Deneme1DonatiSegmentRespectsMaxBeamInteriorLength(seg, beamPolysForEksenX, Deneme1DonatiEksenXMaxBeamInteriorLengthCm, beamsAlreadyReduced)) return false;
+            }
+            return nChecked > 0;
+        }
+
+        /// <summary>X/Y donatı: tek döşeme ham’ında <paramref name="u"/> doğrusu — DTX/DTY (o döşeme), kiriş ve anlamlı isabet.</summary>
+        private static bool Deneme1DonatiEksenSingleSlabOffsetValid(
+            GeometryFactory factory,
+            double nx,
+            double ny,
+            double dirCos,
+            double dirSin,
+            double halfLen,
+            double u,
+            int sid,
+            Geometry exclusionForSlabOrNull,
+            bool exclusionAlreadyReduced,
+            IReadOnlyList<Geometry> beamPolysForEksenX,
+            bool beamsAlreadyReduced,
+            Dictionary<int, Geometry> hamById,
+            Dictionary<int, Geometry> hamStableById)
+        {
+            if (factory == null) return false;
+            Geometry sh = null;
+            bool fromStable = false;
+            if (hamStableById != null && hamStableById.TryGetValue(sid, out Geometry st) && st != null && !st.IsEmpty)
+            {
+                sh = st;
+                fromStable = true;
+            }
+            else if (hamById != null && hamById.TryGetValue(sid, out Geometry raw) && raw != null && !raw.IsEmpty)
+            {
+                sh = raw;
+                try
+                {
+                    Geometry r = ReducePrecisionSafe(raw, 100);
+                    if (r != null && !r.IsEmpty) sh = r;
+                }
+                catch { }
+            }
+            if (sh == null) return false;
+            Deneme1PointOnLineFromNormalEquation(nx, ny, u, out double cx, out double cy);
+            Geometry seg = Deneme1DonatiLineClipToPolygon(factory, cx, cy, dirCos, dirSin, halfLen, sh);
+            if (seg == null || seg.IsEmpty) return false;
+            bool hasEx = exclusionForSlabOrNull != null && !exclusionForSlabOrNull.IsEmpty;
+            if (hasEx && !Deneme1DonatiClippedSegmentClearOfExclusion(seg, exclusionForSlabOrNull, exclusionAlreadyReduced)) return false;
+            if (!Deneme1DonatiSegmentRespectsMaxBeamInteriorLength(seg, beamPolysForEksenX, Deneme1DonatiEksenXMaxBeamInteriorLengthCm, beamsAlreadyReduced)) return false;
+            return Deneme1DonatiSegmentMeaningfulHitOnHam(seg, sh, fromStable);
+        }
+
+        /// <summary>DTX/DTY taramasının +<c>n</c> (büyük <c>u</c>) tarafında en yakın geçerli ofset; olmazsa −<c>n</c>, inset merkezi ve kaba tarama.</summary>
+        private static bool Deneme1TryPickDonatiUImmediatelyAboveTaramaForSlab(
+            GeometryFactory factory,
+            double nx,
+            double ny,
+            double dirCos,
+            double dirSin,
+            double halfLen,
+            int sid,
+            Geometry taramaForSlabOrNull,
+            IReadOnlyList<Geometry> beams,
+            bool beamsAlreadyReduced,
+            Dictionary<int, Geometry> hamById,
+            Dictionary<int, Geometry> hamStableById,
+            out double uPicked)
+        {
+            uPicked = 0;
+            if (!hamStableById.TryGetValue(sid, out Geometry ham) || ham == null || ham.IsEmpty) return false;
+            double ai, bi;
+            if (Deneme1TryProjectionIntervalOntoUnitNormal(ham, nx, ny, out double ha, out double hb) && ha <= hb)
+            {
+                Deneme1InsetProjIntervalForDonatiCentered(ha, hb, out ai, out bi);
+            }
+            else
+            {
+                var env = ham.EnvelopeInternal;
+                double uM = nx * (env.MinX + env.MaxX) * 0.5 + ny * (env.MinY + env.MaxY) * 0.5;
+                ai = bi = uM;
+            }
+            double uMid = (ai + bi) * 0.5;
+            double uSearchMin = ai - Deneme1DonatiAboveTaramaMaxExtraFromHamInsetCm;
+            double uSearchMax = bi + Deneme1DonatiAboveTaramaMaxExtraFromHamInsetCm;
+
+            Geometry exR = null;
+            bool exPrec = false;
+            if (taramaForSlabOrNull != null && !taramaForSlabOrNull.IsEmpty)
+            {
+                try
+                {
+                    Geometry r = ReducePrecisionSafe(taramaForSlabOrNull, 100);
+                    if (r != null && !r.IsEmpty)
+                    {
+                        exR = r;
+                        exPrec = true;
+                    }
+                    else exR = taramaForSlabOrNull;
+                }
+                catch { exR = taramaForSlabOrNull; }
+            }
+
+            if (exR == null || exR.IsEmpty)
+            {
+                if (Deneme1DonatiEksenSingleSlabOffsetValid(factory, nx, ny, dirCos, dirSin, halfLen, uMid, sid, null, false, beams, beamsAlreadyReduced, hamById, hamStableById))
+                {
+                    uPicked = uMid;
+                    return true;
+                }
+                return false;
+            }
+
+            if (!Deneme1TryProjectionIntervalOntoUnitNormal(exR, nx, ny, out double uLo, out double uHi) || uLo > uHi)
+            {
+                uLo = uHi = uMid;
+            }
+
+            double step = Deneme1DonatiAboveTaramaSearchStepCm;
+            double maxExtra = Math.Max(5.0, (bi - ai) + Deneme1DonatiAboveTaramaMaxExtraFromHamInsetCm);
+
+            for (double d = 0.05; d <= maxExtra; d += step)
+            {
+                double uTry = uHi + d;
+                if (uTry > uSearchMax) break;
+                if (Deneme1DonatiEksenSingleSlabOffsetValid(factory, nx, ny, dirCos, dirSin, halfLen, uTry, sid, exR, exPrec, beams, beamsAlreadyReduced, hamById, hamStableById))
+                {
+                    uPicked = uTry;
+                    return true;
+                }
+            }
+            for (double d = 0.05; d <= maxExtra; d += step)
+            {
+                double uTry = uLo - d;
+                if (uTry < uSearchMin) break;
+                if (Deneme1DonatiEksenSingleSlabOffsetValid(factory, nx, ny, dirCos, dirSin, halfLen, uTry, sid, exR, exPrec, beams, beamsAlreadyReduced, hamById, hamStableById))
+                {
+                    uPicked = uTry;
+                    return true;
+                }
+            }
+            if (Deneme1DonatiEksenSingleSlabOffsetValid(factory, nx, ny, dirCos, dirSin, halfLen, uMid, sid, exR, exPrec, beams, beamsAlreadyReduced, hamById, hamStableById))
+            {
+                uPicked = uMid;
+                return true;
+            }
+            for (int k = 0; k <= 48; k++)
+            {
+                double t = k / 48.0;
+                double uTry = ai + (bi - ai) * t;
+                if (Deneme1DonatiEksenSingleSlabOffsetValid(factory, nx, ny, dirCos, dirSin, halfLen, uTry, sid, exR, exPrec, beams, beamsAlreadyReduced, hamById, hamStableById))
+                {
+                    uPicked = uTry;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static bool Deneme1HamGeometriesTouchingForDonatiMerge(Geometry ha, Geometry hb)
+        {
+            if (ha == null || hb == null || ha.IsEmpty || hb.IsEmpty) return false;
+            try
+            {
+                if (ha.Intersects(hb)) return true;
+                return ha.Distance(hb) <= Deneme1DonatiXNeighborHamTouchMaxGapCm + 1e-9;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>Birleştirilmiş <c>u</c>, eksen X artı merkezinin normal izdüşümü <c>uEksen</c> ile ilk seçim <c>uPick</c>’in aynı yarı düzleminde kalmalı (çizgiyi eksen üstüne atlamadan kaydırma).</summary>
+        private static bool Deneme1DonatiXUStaySameSideOfEksenHalfPlane(double u, double uPick, double uEksen)
+        {
+            double dPick = uPick - uEksen;
+            double dU = u - uEksen;
+            if (Math.Abs(dPick) <= Deneme1DonatiXEksenHalfPlaneTolCm) return true;
+            if (Math.Abs(dU) <= Deneme1DonatiXEksenHalfPlaneTolCm) return true;
+            return dPick * dU >= -Deneme1DonatiXEksenHalfPlaneTolCm;
+        }
+
+        /// <summary>Ortak X <c>u</c>: her döşemede donatı doğrusu, o döşemenin X eksen çizgisinin yasak yarı düzlemine geçmesin ve çizgiyle çakışmasın (<see cref="Deneme1DonatiXMergeClearOfEksenLineCm"/>).</summary>
+        private static bool Deneme1DonatiXUMergeAllowedVsEksenLine(double u, double uPick, double uEksen)
+        {
+            double tolP = Deneme1DonatiXEksenHalfPlaneTolCm;
+            double m = Deneme1DonatiXMergeClearOfEksenLineCm;
+            double dPick = uPick - uEksen;
+            double dU = u - uEksen;
+            if (dPick < -tolP)
+                return dU <= -m;
+            if (dPick > tolP)
+                return dU >= m;
+            if (Math.Abs(dU) <= m)
+                return false;
+            return dPick * dU >= -tolP;
+        }
+
+        private static bool Deneme1TryResolveSharedXDonatiUForCluster(
+            GeometryFactory factory,
+            double nx,
+            double ny,
+            double dirCos,
+            double dirSin,
+            double halfLen,
+            List<int> cluster,
+            Dictionary<int, double> uPickBySid,
+            Dictionary<int, double> uEksenBySid,
+            Dictionary<int, (Geometry ex, bool exPrec)> taramaReducedBySid,
+            IReadOnlyList<Geometry> beamsForRule,
+            bool beamsPrecReduced,
+            Dictionary<int, Geometry> hamById,
+            Dictionary<int, Geometry> hamStableById,
+            out double uShared)
+        {
+            uShared = 0;
+            if (factory == null || cluster == null || cluster.Count < 2 || uPickBySid == null || uEksenBySid == null) return false;
+            double minP = double.PositiveInfinity;
+            double maxP = double.NegativeInfinity;
+            double sumP = 0;
+            int nOk = 0;
+            foreach (int sid in cluster)
+            {
+                if (!uPickBySid.TryGetValue(sid, out double up)) return false;
+                minP = Math.Min(minP, up);
+                maxP = Math.Max(maxP, up);
+                sumP += up;
+                nOk++;
+            }
+            if (nOk < 2) return false;
+            double uMean = sumP / nOk;
+            double spread = maxP - minP;
+            double pad = Deneme1DonatiXSharedUSearchPadCm + spread * 0.5 + Deneme1DonatiXSharedUSearchPadDynamicAddCm;
+            double uA = minP - pad;
+            double uB = maxP + pad;
+            double step = Deneme1DonatiAboveTaramaSearchStepCm;
+            var dtxBandBySid = new Dictionary<int, (double lo, double hi, bool has)>();
+            foreach (int sid in cluster)
+            {
+                Geometry exG = null;
+                if (taramaReducedBySid != null && taramaReducedBySid.TryGetValue(sid, out var pair))
+                    exG = pair.ex;
+                if (exG == null || exG.IsEmpty)
+                {
+                    dtxBandBySid[sid] = (0, 0, false);
+                    continue;
+                }
+                if (Deneme1TryProjectionIntervalOntoUnitNormal(exG, nx, ny, out double ulo, out double uhi) && ulo <= uhi)
+                    dtxBandBySid[sid] = (ulo, uhi, true);
+                else
+                    dtxBandBySid[sid] = (0, 0, false);
+            }
+            double bestGapSum = double.PositiveInfinity;
+            double bestPickSq = double.PositiveInfinity;
+            double bestU = uMean;
+            bool any = false;
+            for (double uTry = uA; uTry <= uB + 1e-9; uTry += step)
+            {
+                bool clusterOk = true;
+                foreach (int sid in cluster)
+                {
+                    if (!uPickBySid.TryGetValue(sid, out double up)) { clusterOk = false; break; }
+                    if (!uEksenBySid.TryGetValue(sid, out double ue)) { clusterOk = false; break; }
+                    if (!Deneme1DonatiXUMergeAllowedVsEksenLine(uTry, up, ue)) { clusterOk = false; break; }
+                    Geometry exG = null;
+                    bool exPr = false;
+                    if (taramaReducedBySid != null && taramaReducedBySid.TryGetValue(sid, out var pair))
+                    {
+                        exG = pair.ex;
+                        exPr = pair.exPrec;
+                    }
+                    if (!Deneme1DonatiEksenSingleSlabOffsetValid(factory, nx, ny, dirCos, dirSin, halfLen, uTry, sid, exG, exPr, beamsForRule, beamsPrecReduced, hamById, hamStableById))
+                    {
+                        clusterOk = false;
+                        break;
+                    }
+                }
+                if (!clusterOk) continue;
+                double gapSum = 0;
+                int nBand = 0;
+                foreach (int sid in cluster)
+                {
+                    if (!dtxBandBySid.TryGetValue(sid, out var band) || !band.has) continue;
+                    gapSum += Deneme1DonatiGapToDtxBandAlongNormalCm(uTry, band.lo, band.hi);
+                    nBand++;
+                }
+                double pickSq = 0;
+                foreach (int sid in cluster)
+                {
+                    double d = uTry - uPickBySid[sid];
+                    pickSq += d * d;
+                }
+                bool better;
+                if (nBand > 0)
+                    better = gapSum < bestGapSum - 1e-9 || (Math.Abs(gapSum - bestGapSum) <= 1e-9 && pickSq < bestPickSq - 1e-12);
+                else
+                    better = pickSq < bestPickSq - 1e-12;
+                if (better)
+                {
+                    bestGapSum = nBand > 0 ? gapSum : bestGapSum;
+                    bestPickSq = pickSq;
+                    bestU = uTry;
+                    any = true;
+                }
+            }
+            if (!any) return false;
+            uShared = bestU;
+            return true;
+        }
+
+        private static List<List<int>> Deneme1BuildXDonatiMergeClusters(
+            List<int> slabIdsInGroup,
+            Dictionary<int, double> uPickBySid,
+            Dictionary<int, Geometry> hamStableById)
+        {
+            var clusters = new List<List<int>>();
+            if (slabIdsInGroup == null || slabIdsInGroup.Count == 0 || uPickBySid == null || hamStableById == null) return clusters;
+            var withU = new List<int>();
+            foreach (int sid in slabIdsInGroup)
+            {
+                if (uPickBySid.ContainsKey(sid)) withU.Add(sid);
+            }
+            if (withU.Count == 0) return clusters;
+            var adj = new Dictionary<int, List<int>>();
+            foreach (int sid in withU)
+                adj[sid] = new List<int>();
+            for (int i = 0; i < withU.Count; i++)
+            {
+                int a = withU[i];
+                if (!hamStableById.TryGetValue(a, out Geometry ha) || ha == null || ha.IsEmpty) continue;
+                if (!uPickBySid.ContainsKey(a)) continue;
+                for (int j = i + 1; j < withU.Count; j++)
+                {
+                    int b = withU[j];
+                    if (!uPickBySid.TryGetValue(b, out _)) continue;
+                    if (!hamStableById.TryGetValue(b, out Geometry hb) || hb == null || hb.IsEmpty) continue;
+                    if (!Deneme1HamGeometriesTouchingForDonatiMerge(ha, hb)) continue;
+                    adj[a].Add(b);
+                    adj[b].Add(a);
+                }
+            }
+            var seen = new HashSet<int>();
+            foreach (int sid in withU)
+            {
+                if (!seen.Add(sid)) continue;
+                var comp = new List<int> { sid };
+                var q = new Queue<int>();
+                q.Enqueue(sid);
+                while (q.Count > 0)
+                {
+                    int v = q.Dequeue();
+                    if (!adj.TryGetValue(v, out List<int> nb)) continue;
+                    foreach (int w in nb)
+                    {
+                        if (seen.Add(w))
+                        {
+                            comp.Add(w);
+                            q.Enqueue(w);
+                        }
+                    }
+                }
+                clusters.Add(comp);
+            }
+            return clusters;
+        }
+
+        /// <summary>X veya Y eksen donatı: eksen doğrultusuna paralel, DTX/DTY +<c>n</c> tarafında <c>u</c>. X’te ham’ı değen komşular mümkünse aynı <c>u</c> (DTX’e yakınlık öncelikli); ortak <c>u</c> kümelerinde komşu segment uçları ham ortak kenarında aynı ışında buluşturulur. Y değişmez.</summary>
+        private static void AppendDeneme1DonatiLinesEksenPerSlabAboveTarama(
+            Transaction tr,
+            BlockTableRecord btr,
+            GeometryFactory factory,
+            List<int> slabIdsInGroup,
+            Dictionary<int, Geometry> hamById,
+            Dictionary<int, Geometry> hamStableById,
+            double nx,
+            double ny,
+            double dirCos,
+            double dirSin,
+            double halfLen,
+            string layer,
+            Dictionary<int, Geometry> taramaExclBySlab,
+            IReadOnlyList<Geometry> beamPolysForDonati)
+        {
+            if (tr == null || btr == null || factory == null || slabIdsInGroup == null || hamStableById == null || string.IsNullOrEmpty(layer) || taramaExclBySlab == null) return;
+            IReadOnlyList<Geometry> beamsForRule = beamPolysForDonati;
+            bool beamsPrecReduced = false;
+            List<Geometry> beamsReducedList = null;
+            if (beamPolysForDonati != null && beamPolysForDonati.Count > 0)
+            {
+                beamsReducedList = new List<Geometry>(beamPolysForDonati.Count);
+                foreach (Geometry b in beamPolysForDonati)
+                {
+                    if (b == null || b.IsEmpty) continue;
+                    Geometry br = b;
+                    try
+                    {
+                        Geometry r = ReducePrecisionSafe(b, 100);
+                        if (r != null && !r.IsEmpty) br = r;
+                    }
+                    catch { }
+                    beamsReducedList.Add(br);
+                }
+                if (beamsReducedList.Count > 0)
+                {
+                    beamsForRule = beamsReducedList;
+                    beamsPrecReduced = true;
+                }
+            }
+            var taramaReducedBySid = new Dictionary<int, (Geometry ex, bool exPrec)>();
+            foreach (int sid in slabIdsInGroup)
+            {
+                if (!taramaExclBySlab.TryGetValue(sid, out Geometry raw) || raw == null || raw.IsEmpty)
+                {
+                    taramaReducedBySid[sid] = (null, false);
+                    continue;
+                }
+                Geometry er = raw;
+                bool pr = false;
+                try
+                {
+                    Geometry r = ReducePrecisionSafe(raw, 100);
+                    if (r != null && !r.IsEmpty)
+                    {
+                        er = r;
+                        pr = true;
+                    }
+                }
+                catch { }
+                taramaReducedBySid[sid] = (er, pr);
+            }
+            var uPickBySid = new Dictionary<int, double>();
+            foreach (int sid in slabIdsInGroup)
+            {
+                taramaExclBySlab.TryGetValue(sid, out Geometry taramaRawPick);
+                if (!Deneme1TryPickDonatiUImmediatelyAboveTaramaForSlab(factory, nx, ny, dirCos, dirSin, halfLen, sid, taramaRawPick, beamsForRule, beamsPrecReduced, hamById, hamStableById, out double uPick))
+                    continue;
+                uPickBySid[sid] = uPick;
+            }
+            var finalUBySid = new Dictionary<int, double>();
+            foreach (KeyValuePair<int, double> kv in uPickBySid)
+                finalUBySid[kv.Key] = kv.Value;
+            bool mergeXNeighbors = string.Equals(layer, LayerDosemeDonatiEksenX, StringComparison.Ordinal);
+            var xDonatiMergedCompsForRaySnap = new List<(List<int> comp, double uShared)>();
+            if (mergeXNeighbors && uPickBySid.Count >= 2)
+            {
+                var uEksenBySid = new Dictionary<int, double>();
+                foreach (int sid in uPickBySid.Keys)
+                {
+                    if (!hamStableById.TryGetValue(sid, out Geometry hamG) || hamG == null || hamG.IsEmpty) continue;
+                    if (!TryGetDeneme1DosemeLabelPoint(hamG, out double ecx, out double ecy)) continue;
+                    uEksenBySid[sid] = nx * ecx + ny * ecy;
+                }
+                List<List<int>> mergeClusters = Deneme1BuildXDonatiMergeClusters(slabIdsInGroup, uPickBySid, hamStableById);
+                foreach (List<int> comp in mergeClusters)
+                {
+                    if (comp == null || comp.Count < 2) continue;
+                    bool allHaveEksenU = true;
+                    foreach (int sid in comp)
+                    {
+                        if (!uEksenBySid.ContainsKey(sid)) { allHaveEksenU = false; break; }
+                    }
+                    if (!allHaveEksenU) continue;
+                    if (Deneme1TryResolveSharedXDonatiUForCluster(factory, nx, ny, dirCos, dirSin, halfLen, comp, uPickBySid, uEksenBySid, taramaReducedBySid, beamsForRule, beamsPrecReduced, hamById, hamStableById, out double uShared))
+                    {
+                        foreach (int sid in comp)
+                            finalUBySid[sid] = uShared;
+                        xDonatiMergedCompsForRaySnap.Add((comp, uShared));
+                    }
+                }
+            }
+            var drawSegBySid = new Dictionary<int, Geometry>();
+            foreach (int sid in slabIdsInGroup)
+            {
+                if (!finalUBySid.TryGetValue(sid, out double u)) continue;
+                if (!hamStableById.TryGetValue(sid, out Geometry shDraw) || shDraw == null || shDraw.IsEmpty) continue;
+                Deneme1PointOnLineFromNormalEquation(nx, ny, u, out double cx, out double cy);
+                Geometry seg = Deneme1DonatiLineClipToPolygon(factory, cx, cy, dirCos, dirSin, halfLen, shDraw);
+                if (seg == null || seg.IsEmpty) continue;
+                if (!taramaReducedBySid.TryGetValue(sid, out var tex))
+                    tex = (null, false);
+                Geometry exSlab = tex.ex;
+                bool exPr = tex.exPrec;
+                if (exSlab != null && !exSlab.IsEmpty &&
+                    !Deneme1DonatiClippedSegmentClearOfExclusion(seg, exSlab, exPr))
+                    continue;
+                if (!Deneme1DonatiSegmentRespectsMaxBeamInteriorLength(seg, beamsForRule, Deneme1DonatiEksenXMaxBeamInteriorLengthCm, beamsPrecReduced))
+                    continue;
+                drawSegBySid[sid] = seg;
+            }
+            foreach ((List<int> comp, double uSh) in xDonatiMergedCompsForRaySnap)
+            {
+                if (comp == null || comp.Count < 2) continue;
+                bool allDraw = true;
+                foreach (int sid in comp)
+                {
+                    if (!drawSegBySid.ContainsKey(sid)) { allDraw = false; break; }
+                }
+                if (!allDraw) continue;
+                Deneme1ApplyXDonatiSharedRaySnapAtHamTouches(factory, comp, drawSegBySid, hamStableById, nx, ny, dirCos, dirSin, halfLen, uSh, taramaReducedBySid, beamsForRule, beamsPrecReduced);
+            }
+            foreach (int sid in slabIdsInGroup)
+            {
+                if (!drawSegBySid.TryGetValue(sid, out Geometry seg) || seg == null || seg.IsEmpty) continue;
+                AppendLineGeometryEntitiesForLayer(tr, btr, seg, layer);
+            }
+        }
+
+        /// <summary>Geçerli kalan <paramref name="u"/> değerini DTX bandının en yakın kenarına doğru kaydırır (mümkün olduğunca yakın geçiş).</summary>
+        private static double Deneme1RefineXDonatiUTowardDtx(
+            GeometryFactory factory,
+            double nx,
+            double ny,
+            double dirCos,
+            double dirSin,
+            double halfLen,
+            double u0,
+            double uLo,
+            double uHi,
+            Geometry exclusionUnion,
+            bool exclusionAlreadyReduced,
+            IReadOnlyList<Geometry> beamPolysForEksenX,
+            bool beamsAlreadyReduced,
+            List<int> slabIdsInGroup,
+            Dictionary<int, Geometry> hamById,
+            Dictionary<int, Geometry> hamStableById)
+        {
+            if (!Deneme1DonatiXEksenOffsetValidForAllSlabs(factory, nx, ny, dirCos, dirSin, halfLen, u0,
+                    exclusionUnion, exclusionAlreadyReduced, beamPolysForEksenX, beamsAlreadyReduced,
+                    slabIdsInGroup, hamById, hamStableById))
+                return u0;
+            double uBest = u0;
+            double gBest = Deneme1DonatiGapToDtxBandAlongNormalCm(u0, uLo, uHi);
+            double uEdge;
+            if (u0 < uLo) uEdge = uLo;
+            else if (u0 > uHi) uEdge = uHi;
+            else uEdge = (u0 - uLo <= uHi - u0) ? uLo : uHi;
+            double deltaEdge = uEdge - u0;
+            if (Math.Abs(deltaEdge) < 1e-9) return u0;
+            double dir = Math.Sign(deltaEdge);
+            int maxK = Math.Max(1, (int)Math.Ceiling(Deneme1DonatiDtxRefineMaxTravelCm / Deneme1DonatiDtxRefineStepCm));
+            for (int k = 1; k <= maxK; k++)
+            {
+                double uTry = u0 + dir * Deneme1DonatiDtxRefineStepCm * k;
+                if (!Deneme1DonatiXEksenOffsetValidForAllSlabs(factory, nx, ny, dirCos, dirSin, halfLen, uTry,
+                        exclusionUnion, exclusionAlreadyReduced, beamPolysForEksenX, beamsAlreadyReduced,
+                        slabIdsInGroup, hamById, hamStableById))
+                    break;
+                double gTry = Deneme1DonatiGapToDtxBandAlongNormalCm(uTry, uLo, uHi);
+                if (gTry < gBest - 1e-9)
+                {
+                    gBest = gTry;
+                    uBest = uTry;
+                }
+            }
+            return uBest;
+        }
+
+        private static double Deneme1DotAlongBarDir(Coordinate c, double dirCos, double dirSin)
+        {
+            return c.X * dirCos + c.Y * dirSin;
+        }
+
+        private static Coordinate Deneme1ProjectCoordinateOntoBarThrough(double cx, double cy, double dirCos, double dirSin, Coordinate p)
+        {
+            double vx = p.X - cx, vy = p.Y - cy;
+            double t = vx * dirCos + vy * dirSin;
+            return new Coordinate(cx + t * dirCos, cy + t * dirSin);
+        }
+
+        private static LineString Deneme1DonatiPrimaryLineStringFromClip(Geometry g)
+        {
+            if (g == null || g.IsEmpty) return null;
+            if (g is LineString ls && ls.NumPoints >= 2) return ls;
+            if (g is MultiLineString mls)
+            {
+                LineString best = null;
+                double bestLen = -1;
+                for (int i = 0; i < mls.NumGeometries; i++)
+                {
+                    if (!(mls.GetGeometryN(i) is LineString li) || li.NumPoints < 2) continue;
+                    double len = li.Length;
+                    if (len > bestLen)
+                    {
+                        bestLen = len;
+                        best = li;
+                    }
+                }
+                return best;
+            }
+            if (g is GeometryCollection gc)
+            {
+                LineString best = null;
+                double bestLen = -1;
+                for (int i = 0; i < gc.NumGeometries; i++)
+                {
+                    LineString li = Deneme1DonatiPrimaryLineStringFromClip(gc.GetGeometryN(i));
+                    if (li == null) continue;
+                    double len = li.Length;
+                    if (len > bestLen)
+                    {
+                        bestLen = len;
+                        best = li;
+                    }
+                }
+                return best;
+            }
+            return null;
+        }
+
+        private static bool Deneme1TryFirstPointFromPlanIntersection(Geometry hit, out Coordinate pOut)
+        {
+            pOut = null;
+            if (hit == null || hit.IsEmpty) return false;
+            if (hit is Point pt)
+            {
+                pOut = new Coordinate(pt.X, pt.Y);
+                return true;
+            }
+            if (hit is LineString ls && ls.NumPoints >= 1)
+            {
+                Coordinate c = ls.GetCoordinateN(0);
+                pOut = new Coordinate(c.X, c.Y);
+                return true;
+            }
+            if (hit is MultiPoint mp && mp.NumGeometries > 0 && mp.GetGeometryN(0) is Point q)
+            {
+                pOut = new Coordinate(q.X, q.Y);
+                return true;
+            }
+            if (hit is MultiLineString mls)
+            {
+                for (int i = 0; i < mls.NumGeometries; i++)
+                {
+                    if (Deneme1TryFirstPointFromPlanIntersection(mls.GetGeometryN(i), out Coordinate p))
+                    {
+                        pOut = p;
+                        return true;
+                    }
+                }
+            }
+            if (hit is GeometryCollection gc)
+            {
+                for (int i = 0; i < gc.NumGeometries; i++)
+                {
+                    if (Deneme1TryFirstPointFromPlanIntersection(gc.GetGeometryN(i), out Coordinate p))
+                    {
+                        pOut = p;
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        /// <summary>Ortak X donatı ışını ile iki ham’ın ortak sınırının kesişiminde bir temas noktası (komşu döşeme hattı uçlarını burada buluşturmak için).</summary>
+        private static bool Deneme1TryGetBarMeetOnHamTouchBoundary(
+            GeometryFactory factory,
+            Geometry hamA,
+            Geometry hamB,
+            double cx,
+            double cy,
+            double dirCos,
+            double dirSin,
+            double spanHalf,
+            out Coordinate pMeet)
+        {
+            pMeet = null;
+            if (factory == null || hamA == null || hamB == null || hamA.IsEmpty || hamB.IsEmpty) return false;
+            try
+            {
+                Geometry shA = ReducePrecisionSafe(hamA, 100) ?? hamA;
+                Geometry shB = ReducePrecisionSafe(hamB, 100) ?? hamB;
+                Geometry shared = shA.Boundary.Intersection(shB.Boundary);
+                if (shared == null || shared.IsEmpty) return false;
+                double span = Math.Max(spanHalf, 5000.0);
+                var c0 = new Coordinate(cx - span * dirCos, cy - span * dirSin);
+                var c1 = new Coordinate(cx + span * dirCos, cy + span * dirSin);
+                LineString bar = factory.CreateLineString(new[] { c0, c1 });
+                foreach (double scale in new[] { 100.0, 50.0, 20.0 })
+                {
+                    try
+                    {
+                        LineString bR = ReducePrecisionSafe(bar, scale) as LineString ?? bar;
+                        Geometry sR = ReducePrecisionSafe(shared, scale) ?? shared;
+                        Geometry hit = bR.Intersection(sR);
+                        if (hit == null || hit.IsEmpty) continue;
+                        if (Deneme1TryFirstPointFromPlanIntersection(hit, out Coordinate p))
+                        {
+                            pMeet = p;
+                            return true;
+                        }
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        private static LineString Deneme1ReplaceBarChordEndpointTowardPartner(
+            GeometryFactory factory,
+            LineString chord,
+            Coordinate pSnap,
+            bool replaceMaxTAlongBar,
+            double dirCos,
+            double dirSin)
+        {
+            if (factory == null || chord == null || chord.NumPoints < 2) return chord;
+            Coordinate c0 = chord.GetCoordinateN(0);
+            Coordinate c1 = chord.GetCoordinateN(chord.NumPoints - 1);
+            double t0 = Deneme1DotAlongBarDir(c0, dirCos, dirSin);
+            double t1 = Deneme1DotAlongBarDir(c1, dirCos, dirSin);
+            Coordinate lo = t0 <= t1 ? c0 : c1;
+            Coordinate hi = t0 <= t1 ? c1 : c0;
+            if (replaceMaxTAlongBar)
+                return factory.CreateLineString(new[] { lo, pSnap });
+            return factory.CreateLineString(new[] { pSnap, hi });
+        }
+
+        /// <summary>Aynı <c>u</c> ile çizilen komşu döşemelerde donatı segment uçlarını ham ortak kenarı üzerinde ortak ışına getirir; DTX/kiriş/ham kuralı bozulursa geri alınır.</summary>
+        private static void Deneme1ApplyXDonatiSharedRaySnapAtHamTouches(
+            GeometryFactory factory,
+            List<int> comp,
+            Dictionary<int, Geometry> drawSegBySid,
+            Dictionary<int, Geometry> hamStableById,
+            double nx,
+            double ny,
+            double dirCos,
+            double dirSin,
+            double halfLen,
+            double uShared,
+            Dictionary<int, (Geometry ex, bool exPrec)> taramaReducedBySid,
+            IReadOnlyList<Geometry> beamsForRule,
+            bool beamsPrecReduced)
+        {
+            if (factory == null || comp == null || comp.Count < 2 || drawSegBySid == null || hamStableById == null) return;
+            foreach (int sid in comp)
+            {
+                if (!drawSegBySid.ContainsKey(sid)) return;
+            }
+            var backup = new Dictionary<int, Geometry>();
+            foreach (int sid in comp)
+            {
+                Geometry g = drawSegBySid[sid];
+                try
+                {
+                    Geometry c = g.Copy();
+                    backup[sid] = c != null && !c.IsEmpty ? c : g;
+                }
+                catch
+                {
+                    backup[sid] = g;
+                }
+            }
+            Deneme1PointOnLineFromNormalEquation(nx, ny, uShared, out double cx, out double cy);
+            double span = halfLen;
+            foreach (int sid in comp)
+            {
+                if (!hamStableById.TryGetValue(sid, out Geometry h) || h == null || h.IsEmpty) continue;
+                try
+                {
+                    Envelope e = h.EnvelopeInternal;
+                    double d = Math.Sqrt(e.Width * e.Width + e.Height * e.Height);
+                    span = Math.Max(span, d * 2.0);
+                }
+                catch { }
+            }
+            var segLine = new Dictionary<int, LineString>();
+            foreach (int sid in comp)
+            {
+                LineString ls = Deneme1DonatiPrimaryLineStringFromClip(drawSegBySid[sid]);
+                if (ls == null || ls.NumPoints < 2)
+                    return;
+                segLine[sid] = ls;
+            }
+            for (int i = 0; i < comp.Count; i++)
+            {
+                for (int j = i + 1; j < comp.Count; j++)
+                {
+                    int a = comp[i], b = comp[j];
+                    if (!hamStableById.TryGetValue(a, out Geometry ha) || ha == null || ha.IsEmpty) continue;
+                    if (!hamStableById.TryGetValue(b, out Geometry hb) || hb == null || hb.IsEmpty) continue;
+                    if (!Deneme1HamGeometriesTouchingForDonatiMerge(ha, hb)) continue;
+                    if (!Deneme1TryGetBarMeetOnHamTouchBoundary(factory, ha, hb, cx, cy, dirCos, dirSin, span, out Coordinate pRaw)) continue;
+                    Coordinate P = Deneme1ProjectCoordinateOntoBarThrough(cx, cy, dirCos, dirSin, pRaw);
+                    Point cA = ha.Centroid;
+                    Point cB = hb.Centroid;
+                    double tA = Deneme1DotAlongBarDir(cA.Coordinate, dirCos, dirSin);
+                    double tB = Deneme1DotAlongBarDir(cB.Coordinate, dirCos, dirSin);
+                    bool bAhead = tB > tA;
+                    if (!segLine.TryGetValue(a, out LineString la) || !segLine.TryGetValue(b, out LineString lb)) continue;
+                    segLine[a] = Deneme1ReplaceBarChordEndpointTowardPartner(factory, la, P, bAhead, dirCos, dirSin);
+                    segLine[b] = Deneme1ReplaceBarChordEndpointTowardPartner(factory, lb, P, !bAhead, dirCos, dirSin);
+                }
+            }
+            bool allOk = true;
+            foreach (int sid in comp)
+            {
+                if (!segLine.TryGetValue(sid, out LineString ls) || ls == null || ls.NumPoints < 2)
+                {
+                    allOk = false;
+                    break;
+                }
+                if (!hamStableById.TryGetValue(sid, out Geometry ham) || ham == null || ham.IsEmpty)
+                {
+                    allOk = false;
+                    break;
+                }
+                try
+                {
+                    if (!ham.Covers(ls))
+                    {
+                        Geometry buf = ham.Buffer(Deneme1DonatiXSnapHamCoversBufferCm);
+                        if (buf == null || buf.IsEmpty || !buf.Covers(ls))
+                        {
+                            allOk = false;
+                            break;
+                        }
+                    }
+                }
+                catch
+                {
+                    allOk = false;
+                    break;
+                }
+                if (!Deneme1DonatiSegmentMeaningfulHitOnHam(ls, ham, true)) { allOk = false; break; }
+                Geometry exG = null;
+                bool exPr = false;
+                if (taramaReducedBySid != null && taramaReducedBySid.TryGetValue(sid, out var tex))
+                {
+                    exG = tex.ex;
+                    exPr = tex.exPrec;
+                }
+                if (exG != null && !exG.IsEmpty && !Deneme1DonatiClippedSegmentClearOfExclusion(ls, exG, exPr)) { allOk = false; break; }
+                if (!Deneme1DonatiSegmentRespectsMaxBeamInteriorLength(ls, beamsForRule, Deneme1DonatiEksenXMaxBeamInteriorLengthCm, beamsPrecReduced)) { allOk = false; break; }
+            }
+            if (!allOk)
+            {
+                foreach (int sid in comp)
+                {
+                    if (backup.TryGetValue(sid, out Geometry g)) drawSegBySid[sid] = g;
+                }
+                return;
+            }
+            foreach (int sid in comp)
+                drawSegBySid[sid] = segLine[sid];
+        }
+
+        private static Geometry Deneme1DonatiLineClipToPolygon(GeometryFactory factory, double cx, double cy, double dirCos, double dirSin, double halfLenHint, Geometry clipPoly)
+        {
+            if (factory == null || clipPoly == null || clipPoly.IsEmpty) return null;
+            Envelope envClip = clipPoly.EnvelopeInternal;
+            double halfLocal = Math.Max(halfLenHint, Deneme1HalfSpanAlongDirectionThroughEnvelope(envClip, cx, cy, dirCos, dirSin));
+            double m = 1e-3;
+            double x0 = cx - halfLocal * dirCos, y0 = cy - halfLocal * dirSin;
+            double x1 = cx + halfLocal * dirCos, y1 = cy + halfLocal * dirSin;
+            double lnMinX = Math.Min(x0, x1) - m, lnMaxX = Math.Max(x0, x1) + m;
+            double lnMinY = Math.Min(y0, y1) - m, lnMaxY = Math.Max(y0, y1) + m;
+            if (lnMaxX < envClip.MinX || lnMinX > envClip.MaxX || lnMaxY < envClip.MinY || lnMinY > envClip.MaxY)
+                return null;
+            return TryIntersectLineWithPolygonReduced(factory, cx, cy, dirCos, dirSin, halfLocal, clipPoly);
+        }
+
         private static List<double> Deneme1FilterDonatiOffsetsWhereFullSegmentClearOfExclusion(
             GeometryFactory factory,
             Geometry eksenGrupBirlesikClip,
@@ -7160,21 +8134,59 @@ namespace ST4PlanIdCiz
             double dirSin,
             double halfLen,
             Geometry exclusionUnion,
-            List<double> candidateOffsets)
+            bool exclusionAlreadyReduced,
+            List<double> candidateOffsets,
+            IReadOnlyList<Geometry> beamPolysForEksenX,
+            bool applyEksenXBeamRule,
+            bool beamsAlreadyReduced,
+            List<int> slabIdsInGroup,
+            Dictionary<int, Geometry> hamById,
+            Dictionary<int, Geometry> hamStableById)
         {
             var res = new List<double>();
             if (candidateOffsets == null || candidateOffsets.Count == 0) return res;
+            bool xPerSlab = applyEksenXBeamRule && slabIdsInGroup != null && hamById != null;
             if (exclusionUnion == null || exclusionUnion.IsEmpty)
             {
-                res.AddRange(candidateOffsets);
+                if (!applyEksenXBeamRule || beamPolysForEksenX == null || beamPolysForEksenX.Count == 0)
+                {
+                    res.AddRange(candidateOffsets);
+                    return res;
+                }
+                foreach (double u in candidateOffsets)
+                {
+                    if (xPerSlab)
+                    {
+                        if (Deneme1DonatiXEksenOffsetValidForAllSlabs(factory, nx, ny, dirCos, dirSin, halfLen, u,
+                                null, false, beamPolysForEksenX, beamsAlreadyReduced, slabIdsInGroup, hamById, hamStableById))
+                            res.Add(u);
+                    }
+                    else
+                    {
+                        Deneme1PointOnLineFromNormalEquation(nx, ny, u, out double cx, out double cy);
+                        Geometry seg = TryIntersectLineWithPolygonReduced(factory, cx, cy, dirCos, dirSin, halfLen, eksenGrupBirlesikClip);
+                        if (Deneme1DonatiSegmentRespectsMaxBeamInteriorLength(seg, beamPolysForEksenX, Deneme1DonatiEksenXMaxBeamInteriorLengthCm, beamsAlreadyReduced))
+                            res.Add(u);
+                    }
+                }
                 return res;
             }
             foreach (double u in candidateOffsets)
             {
-                Deneme1PointOnLineFromNormalEquation(nx, ny, u, out double cx, out double cy);
-                Geometry seg = TryIntersectLineWithPolygonReduced(factory, cx, cy, dirCos, dirSin, halfLen, eksenGrupBirlesikClip);
-                if (Deneme1DonatiClippedSegmentClearOfExclusion(seg, exclusionUnion))
+                if (xPerSlab)
+                {
+                    if (Deneme1DonatiXEksenOffsetValidForAllSlabs(factory, nx, ny, dirCos, dirSin, halfLen, u,
+                            exclusionUnion, exclusionAlreadyReduced, beamPolysForEksenX, beamsAlreadyReduced, slabIdsInGroup, hamById, hamStableById))
+                        res.Add(u);
+                }
+                else
+                {
+                    Deneme1PointOnLineFromNormalEquation(nx, ny, u, out double cx, out double cy);
+                    Geometry seg = TryIntersectLineWithPolygonReduced(factory, cx, cy, dirCos, dirSin, halfLen, eksenGrupBirlesikClip);
+                    if (!Deneme1DonatiClippedSegmentClearOfExclusion(seg, exclusionUnion, exclusionAlreadyReduced)) continue;
+                    if (applyEksenXBeamRule && !Deneme1DonatiSegmentRespectsMaxBeamInteriorLength(seg, beamPolysForEksenX, Deneme1DonatiEksenXMaxBeamInteriorLengthCm, beamsAlreadyReduced)) continue;
                     res.Add(u);
+                }
             }
             return res;
         }
@@ -7188,38 +8200,82 @@ namespace ST4PlanIdCiz
             double dirSin,
             double halfLen,
             Geometry exclusionUnion,
+            bool exclusionAlreadyReduced,
             Geometry ham,
+            bool hamAlreadyReduced,
             double a,
             double b,
-            out double uFound)
+            out double uFound,
+            IReadOnlyList<Geometry> beamPolysForEksenX,
+            bool applyEksenXDonatiExtraRules,
+            bool beamsAlreadyReduced,
+            Geometry dtxUnionForProximity)
         {
             uFound = 0;
             if (factory == null || eksenGrupBirlesikClip == null || eksenGrupBirlesikClip.IsEmpty || ham == null || ham.IsEmpty) return false;
             if (a > b)
                 (a, b) = (b, a);
             double span = b - a;
+            double uDLo = 0, uDHi = 0;
+            bool useDtxGap = applyEksenXDonatiExtraRules && dtxUnionForProximity != null && !dtxUnionForProximity.IsEmpty &&
+                Deneme1TryProjectionIntervalOntoUnitNormal(dtxUnionForProximity, nx, ny, out uDLo, out uDHi) && uDLo <= uDHi;
+            bool TryOne(double u, out Geometry segOut)
+            {
+                segOut = null;
+                Deneme1PointOnLineFromNormalEquation(nx, ny, u, out double cx, out double cy);
+                Geometry clipPoly = applyEksenXDonatiExtraRules ? ham : eksenGrupBirlesikClip;
+                Geometry seg = applyEksenXDonatiExtraRules
+                    ? Deneme1DonatiLineClipToPolygon(factory, cx, cy, dirCos, dirSin, halfLen, clipPoly)
+                    : TryIntersectLineWithPolygonReduced(factory, cx, cy, dirCos, dirSin, halfLen, eksenGrupBirlesikClip);
+                if (seg == null || seg.IsEmpty) return false;
+                if (!Deneme1DonatiClippedSegmentClearOfExclusion(seg, exclusionUnion, exclusionAlreadyReduced)) return false;
+                if (applyEksenXDonatiExtraRules && !Deneme1DonatiSegmentRespectsMaxBeamInteriorLength(seg, beamPolysForEksenX, Deneme1DonatiEksenXMaxBeamInteriorLengthCm, beamsAlreadyReduced)) return false;
+                if (!Deneme1DonatiSegmentMeaningfulHitOnHam(seg, ham, hamAlreadyReduced)) return false;
+                segOut = seg;
+                return true;
+            }
             if (span < 1e-9)
             {
                 double u0 = (a + b) * 0.5;
-                Deneme1PointOnLineFromNormalEquation(nx, ny, u0, out double cx, out double cy);
-                Geometry seg = TryIntersectLineWithPolygonReduced(factory, cx, cy, dirCos, dirSin, halfLen, eksenGrupBirlesikClip);
-                if (!Deneme1DonatiClippedSegmentClearOfExclusion(seg, exclusionUnion)) return false;
-                if (!Deneme1DonatiSegmentMeaningfulHitOnHam(seg, ham)) return false;
+                if (!TryOne(u0, out _)) return false;
                 uFound = u0;
                 return true;
             }
-            const double stepCm = 0.4;
+            double stepCm = Math.Max(1.2, span / Deneme1DonatiScanMaxSteps);
             int nSteps = Math.Max(2, (int)Math.Ceiling(span / stepCm));
-            if (nSteps > 5000) nSteps = 5000;
+            if (nSteps > Deneme1DonatiScanMaxSteps) nSteps = Deneme1DonatiScanMaxSteps;
+            if (applyEksenXDonatiExtraRules && useDtxGap)
+            {
+                double bestScore = double.PositiveInfinity;
+                double bestU = 0;
+                bool any = false;
+                for (int i = 0; i <= nSteps; i++)
+                {
+                    double u = a + span * i / nSteps;
+                    if (!TryOne(u, out _)) continue;
+                    double score = Deneme1DonatiGapToDtxBandAlongNormalCm(u, uDLo, uDHi);
+                    if (score < bestScore)
+                    {
+                        bestScore = score;
+                        bestU = u;
+                        any = true;
+                    }
+                }
+                if (any)
+                {
+                    uFound = bestU;
+                    return true;
+                }
+                return false;
+            }
             for (int i = 0; i <= nSteps; i++)
             {
                 double u = a + span * i / nSteps;
-                Deneme1PointOnLineFromNormalEquation(nx, ny, u, out double cx, out double cy);
-                Geometry seg = TryIntersectLineWithPolygonReduced(factory, cx, cy, dirCos, dirSin, halfLen, eksenGrupBirlesikClip);
-                if (!Deneme1DonatiClippedSegmentClearOfExclusion(seg, exclusionUnion)) continue;
-                if (!Deneme1DonatiSegmentMeaningfulHitOnHam(seg, ham)) continue;
-                uFound = u;
-                return true;
+                if (TryOne(u, out _))
+                {
+                    uFound = u;
+                    return true;
+                }
             }
             return false;
         }
@@ -7871,7 +8927,85 @@ namespace ST4PlanIdCiz
             }
         }
 
-        /// <summary>DENEME1: Donatı hatları EKSEN grubu ham birleşiminde; t1/t2, greedy + her döşeme X/Y. DOSEME DONATI EKSEN X hatları DTX (mavi solid); Y hatları DTY (kırmızı solid) ile anlamlı örtüşmez — hat bütün olarak paralel kaydırılarak uygun <c>u</c> bulunur; kırpma yok.</summary>
+        /// <summary>Aynı X donatı normalinde (<c>nx,ny</c>) tüm EKSEN gruplarından biriken döşemeler — çizim tek seferde (118–122–120 gibi farklı gruplar aynı hatta).</summary>
+        private sealed class Deneme1PendingXDonatiMergeRow
+        {
+            public double Nx, Ny, DirCos, DirSin, HalfLen;
+            public HashSet<int> SlabIds { get; } = new HashSet<int>();
+        }
+
+        private static string Deneme1XDonatiDirectionSignature(double nx, double ny)
+        {
+            return string.Format(CultureInfo.InvariantCulture, "{0:F5}|{1:F5}", nx, ny);
+        }
+
+        private static void Deneme1RegisterPendingXDonatiMergeRow(
+            Dictionary<string, Deneme1PendingXDonatiMergeRow> deferBySig,
+            List<int> slabIdsInGroup,
+            double nx,
+            double ny,
+            double dirCos,
+            double dirSin,
+            double halfLen)
+        {
+            if (deferBySig == null || slabIdsInGroup == null) return;
+            string sig = Deneme1XDonatiDirectionSignature(nx, ny);
+            if (!deferBySig.TryGetValue(sig, out Deneme1PendingXDonatiMergeRow row))
+            {
+                row = new Deneme1PendingXDonatiMergeRow
+                {
+                    Nx = nx,
+                    Ny = ny,
+                    DirCos = dirCos,
+                    DirSin = dirSin,
+                    HalfLen = halfLen
+                };
+                deferBySig[sig] = row;
+            }
+            else if (halfLen > row.HalfLen)
+                row.HalfLen = halfLen;
+            foreach (int sid in slabIdsInGroup)
+            {
+                if (sid > 0)
+                    row.SlabIds.Add(sid);
+            }
+        }
+
+        private static void Deneme1FlushPendingXDonatiMergeAndDraw(
+            Transaction tr,
+            BlockTableRecord btr,
+            GeometryFactory factory,
+            Dictionary<int, Geometry> hamById,
+            Dictionary<string, Deneme1PendingXDonatiMergeRow> deferBySig,
+            Dictionary<int, Geometry> dtxExclBySlab,
+            IReadOnlyList<Geometry> beamPolysForDonati)
+        {
+            if (deferBySig == null || deferBySig.Count == 0 || hamById == null || factory == null || tr == null || btr == null) return;
+            foreach (KeyValuePair<string, Deneme1PendingXDonatiMergeRow> kv in deferBySig)
+            {
+                Deneme1PendingXDonatiMergeRow row = kv.Value;
+                if (row.SlabIds == null || row.SlabIds.Count == 0) continue;
+                List<int> ids = row.SlabIds.OrderBy(id => id).ToList();
+                var hamStableById = new Dictionary<int, Geometry>();
+                foreach (int sid in ids)
+                {
+                    if (!hamById.TryGetValue(sid, out Geometry hamRaw) || hamRaw == null || hamRaw.IsEmpty) continue;
+                    Geometry shS = hamRaw;
+                    try
+                    {
+                        Geometry r = ReducePrecisionSafe(hamRaw, 100);
+                        if (r != null && !r.IsEmpty) shS = r;
+                    }
+                    catch { }
+                    hamStableById[sid] = shS;
+                }
+                if (hamStableById.Count == 0) continue;
+                AppendDeneme1DonatiLinesEksenPerSlabAboveTarama(tr, btr, factory, ids, hamById, hamStableById,
+                    row.Nx, row.Ny, row.DirCos, row.DirSin, row.HalfLen, LayerDosemeDonatiEksenX, dtxExclBySlab, beamPolysForDonati);
+            }
+        }
+
+        /// <summary>DENEME1: Donatı hatları. X: her döşeme ayrı hat, DTX’in +<c>n</c> tarafında; Y: aynı kural DTY ile. Kiriş ≤160 cm, tarama örtüşme sınırı. Sözlük yoksa eski grup clip + greedy yedek.</summary>
         private void AppendDeneme1EksenGrupDonatiHatlariFromHamQuads(
             Transaction tr,
             BlockTableRecord btr,
@@ -7888,6 +9022,8 @@ namespace ST4PlanIdCiz
             Database db = btr.Database;
             EnsurePlanLayer(tr, db, LayerDosemeDonatiEksenX, Deneme1DonatiEksenLayerAciX, LineWeight.LineWeight025, useDashed: false);
             EnsurePlanLayer(tr, db, LayerDosemeDonatiEksenY, Deneme1DonatiEksenLayerAciY, LineWeight.LineWeight025, useDashed: false);
+
+            var xDonatiDeferMergeByDirSig = new Dictionary<string, Deneme1PendingXDonatiMergeRow>(StringComparer.Ordinal);
 
             var grupToSlabIds = new Dictionary<int, HashSet<int>>();
             foreach ((int slabId, _) in geoms)
@@ -7945,12 +9081,12 @@ namespace ST4PlanIdCiz
                 Geometry exT1 = string.Equals(layT1, LayerDosemeDonatiEksenX, StringComparison.Ordinal)
                     ? Deneme1UnionExclusionGeometriesForSlabIds(ids, dtxExclBySlab)
                     : Deneme1UnionExclusionGeometriesForSlabIds(ids, dtyExclBySlab);
-                AppendDeneme1DonatiLinesForDirection(tr, btr, factory, ids, hamById, unionG, n1x, n1y, c1, s1, halfLen, layT1, exT1);
+                AppendDeneme1DonatiLinesForDirection(tr, btr, factory, ids, hamById, unionG, n1x, n1y, c1, s1, halfLen, layT1, exT1, dtxExclBySlab, dtyExclBySlab, _drawnBeamGeometriesForSlabCut, xDonatiDeferMergeByDirSig);
                 string layT2 = Deneme1LayerForDonatiLineAngleRad(t2);
                 Geometry exT2 = string.Equals(layT2, LayerDosemeDonatiEksenX, StringComparison.Ordinal)
                     ? Deneme1UnionExclusionGeometriesForSlabIds(ids, dtxExclBySlab)
                     : Deneme1UnionExclusionGeometriesForSlabIds(ids, dtyExclBySlab);
-                AppendDeneme1DonatiLinesForDirection(tr, btr, factory, ids, hamById, unionG, n2x, n2y, c2, s2, halfLen, layT2, exT2);
+                AppendDeneme1DonatiLinesForDirection(tr, btr, factory, ids, hamById, unionG, n2x, n2y, c2, s2, halfLen, layT2, exT2, dtxExclBySlab, dtyExclBySlab, _drawnBeamGeometriesForSlabCut, xDonatiDeferMergeByDirSig);
             }
 
             var seenUngrouped = new HashSet<int>();
@@ -7984,13 +9120,15 @@ namespace ST4PlanIdCiz
                 Geometry exU1 = string.Equals(layU1, LayerDosemeDonatiEksenX, StringComparison.Ordinal)
                     ? Deneme1UnionExclusionGeometriesForSlabIds(oneId, dtxExclBySlab)
                     : Deneme1UnionExclusionGeometriesForSlabIds(oneId, dtyExclBySlab);
-                AppendDeneme1DonatiLinesForDirection(tr, btr, factory, oneId, hamById, sh, n1xu, n1yu, c1u, s1u, halfLenu, layU1, exU1);
+                AppendDeneme1DonatiLinesForDirection(tr, btr, factory, oneId, hamById, sh, n1xu, n1yu, c1u, s1u, halfLenu, layU1, exU1, dtxExclBySlab, dtyExclBySlab, _drawnBeamGeometriesForSlabCut, xDonatiDeferMergeByDirSig);
                 string layU2 = Deneme1LayerForDonatiLineAngleRad(t2u);
                 Geometry exU2 = string.Equals(layU2, LayerDosemeDonatiEksenX, StringComparison.Ordinal)
                     ? Deneme1UnionExclusionGeometriesForSlabIds(oneId, dtxExclBySlab)
                     : Deneme1UnionExclusionGeometriesForSlabIds(oneId, dtyExclBySlab);
-                AppendDeneme1DonatiLinesForDirection(tr, btr, factory, oneId, hamById, sh, n2xu, n2yu, c2u, s2u, halfLenu, layU2, exU2);
+                AppendDeneme1DonatiLinesForDirection(tr, btr, factory, oneId, hamById, sh, n2xu, n2yu, c2u, s2u, halfLenu, layU2, exU2, dtxExclBySlab, dtyExclBySlab, _drawnBeamGeometriesForSlabCut, xDonatiDeferMergeByDirSig);
             }
+
+            Deneme1FlushPendingXDonatiMergeAndDraw(tr, btr, factory, hamById, xDonatiDeferMergeByDirSig, dtxExclBySlab, _drawnBeamGeometriesForSlabCut);
         }
 
         private static void AppendDeneme1DonatiLinesForDirection(
@@ -8006,21 +9144,85 @@ namespace ST4PlanIdCiz
             double dirSin,
             double halfLen,
             string layer,
-            Geometry donatiSolidExclusionUnion)
+            Geometry donatiSolidExclusionUnion,
+            Dictionary<int, Geometry> dtxExclBySlab,
+            Dictionary<int, Geometry> dtyExclBySlab,
+            IReadOnlyList<Geometry> beamPolysForEksenXDonati,
+            Dictionary<string, Deneme1PendingXDonatiMergeRow> xDonatiDeferMergeByDirSig)
         {
-            if (slabIdsInGroup == null || slabIdsInGroup.Count == 0 || hamById == null || eksenGrupBirlesikClip == null || eksenGrupBirlesikClip.IsEmpty || factory == null) return;
-            double covTol = Deneme1DonatiSlabCoverageTolCm;
+            if (slabIdsInGroup == null || slabIdsInGroup.Count == 0 || hamById == null || factory == null) return;
+            bool eksenXDonati = string.Equals(layer, LayerDosemeDonatiEksenX, StringComparison.Ordinal);
+            bool eksenYDonati = string.Equals(layer, LayerDosemeDonatiEksenY, StringComparison.Ordinal);
+            var hamStableById = new Dictionary<int, Geometry>();
+            foreach (int sid in slabIdsInGroup)
+            {
+                if (!hamById.TryGetValue(sid, out Geometry hamRaw) || hamRaw == null || hamRaw.IsEmpty) continue;
+                Geometry shS = hamRaw;
+                try
+                {
+                    Geometry r = ReducePrecisionSafe(hamRaw, 100);
+                    if (r != null && !r.IsEmpty) shS = r;
+                }
+                catch { }
+                hamStableById[sid] = shS;
+            }
+            if (eksenXDonati && dtxExclBySlab != null)
+            {
+                if (xDonatiDeferMergeByDirSig != null)
+                    Deneme1RegisterPendingXDonatiMergeRow(xDonatiDeferMergeByDirSig, slabIdsInGroup, nx, ny, dirCos, dirSin, halfLen);
+                else
+                    AppendDeneme1DonatiLinesEksenPerSlabAboveTarama(tr, btr, factory, slabIdsInGroup, hamById, hamStableById, nx, ny, dirCos, dirSin, halfLen, layer, dtxExclBySlab, beamPolysForEksenXDonati);
+                return;
+            }
+            if (eksenYDonati && dtyExclBySlab != null)
+            {
+                AppendDeneme1DonatiLinesEksenPerSlabAboveTarama(tr, btr, factory, slabIdsInGroup, hamById, hamStableById, nx, ny, dirCos, dirSin, halfLen, layer, dtyExclBySlab, beamPolysForEksenXDonati);
+                return;
+            }
+            if (eksenGrupBirlesikClip == null || eksenGrupBirlesikClip.IsEmpty) return;
+            Geometry exForOps = donatiSolidExclusionUnion;
+            bool exPrecReduced = false;
+            if (donatiSolidExclusionUnion != null && !donatiSolidExclusionUnion.IsEmpty)
+            {
+                try
+                {
+                    Geometry rEx = ReducePrecisionSafe(donatiSolidExclusionUnion, 100);
+                    if (rEx != null && !rEx.IsEmpty)
+                    {
+                        exForOps = rEx;
+                        exPrecReduced = true;
+                    }
+                }
+                catch { }
+            }
+            IReadOnlyList<Geometry> beamsForRule = beamPolysForEksenXDonati;
+            bool beamsPrecReduced = false;
+            List<Geometry> beamsReducedList = null;
+            if (eksenXDonati && beamPolysForEksenXDonati != null && beamPolysForEksenXDonati.Count > 0)
+            {
+                beamsReducedList = new List<Geometry>(beamPolysForEksenXDonati.Count);
+                foreach (Geometry b in beamPolysForEksenXDonati)
+                {
+                    if (b == null || b.IsEmpty) continue;
+                    Geometry br = b;
+                    try
+                    {
+                        Geometry r = ReducePrecisionSafe(b, 100);
+                        if (r != null && !r.IsEmpty) br = r;
+                    }
+                    catch { }
+                    beamsReducedList.Add(br);
+                }
+                if (beamsReducedList.Count > 0)
+                {
+                    beamsForRule = beamsReducedList;
+                    beamsPrecReduced = true;
+                }
+            }
             var perSlab = new List<(int Sid, double A, double B)>();
             foreach (int sid in slabIdsInGroup)
             {
-                if (!hamById.TryGetValue(sid, out Geometry ham) || ham == null || ham.IsEmpty) continue;
-                Geometry sh = ham;
-                try
-                {
-                    Geometry r = ReducePrecisionSafe(ham, 100);
-                    if (r != null && !r.IsEmpty) sh = r;
-                }
-                catch { }
+                if (!hamStableById.TryGetValue(sid, out Geometry sh) || sh == null || sh.IsEmpty) continue;
                 if (Deneme1TryProjectionIntervalOntoUnitNormal(sh, nx, ny, out double a, out double b) && a <= b)
                 {
                     Deneme1InsetProjIntervalForDonatiCentered(a, b, out double ai, out double bi);
@@ -8037,24 +9239,29 @@ namespace ST4PlanIdCiz
             var intervals = new List<(double A, double B)>(perSlab.Count);
             for (int i = 0; i < perSlab.Count; i++)
                 intervals.Add((perSlab[i].A, perSlab[i].B));
-            List<double> offsets = Deneme1GreedyStabIntervals(intervals);
+            var offsetSeed = new List<double>();
+            offsetSeed.AddRange(Deneme1GreedyStabIntervals(intervals));
             foreach ((int _, double a, double b) in perSlab)
+                offsetSeed.Add((a + b) * 0.5);
+            if (eksenXDonati && exForOps != null && !exForOps.IsEmpty &&
+                Deneme1TryProjectionIntervalOntoUnitNormal(exForOps, nx, ny, out double uDtxLoSeed, out double uDtxHiSeed) && uDtxLoSeed <= uDtxHiSeed)
             {
-                bool covered = false;
-                foreach (double u in offsets)
+                foreach (double d in Deneme1DonatiDtxProximitySeedDeltasCm)
                 {
-                    if (a - covTol <= u && u <= b + covTol) { covered = true; break; }
+                    offsetSeed.Add(uDtxLoSeed - d);
+                    offsetSeed.Add(uDtxHiSeed + d);
                 }
-                if (!covered)
-                    offsets.Add((a + b) * 0.5);
             }
+            List<double> offsets = Deneme1SortDedupeDonatiOffsets(offsetSeed);
             offsets = Deneme1FilterDonatiOffsetsWhereFullSegmentClearOfExclusion(
-                factory, eksenGrupBirlesikClip, nx, ny, dirCos, dirSin, halfLen, donatiSolidExclusionUnion, offsets);
+                factory, eksenGrupBirlesikClip, nx, ny, dirCos, dirSin, halfLen, exForOps, exPrecReduced, offsets,
+                beamsForRule, eksenXDonati, beamsPrecReduced, slabIdsInGroup, hamById, hamStableById);
             Deneme1EnsureEverySlabHamHitByDonatiLines(
                 factory,
                 eksenGrupBirlesikClip,
                 slabIdsInGroup,
                 hamById,
+                hamStableById,
                 perSlab,
                 nx,
                 ny,
@@ -8062,16 +9269,56 @@ namespace ST4PlanIdCiz
                 dirSin,
                 halfLen,
                 offsets,
-                donatiSolidExclusionUnion);
+                exForOps,
+                exPrecReduced,
+                beamsForRule,
+                beamsPrecReduced,
+                eksenXDonati,
+                exForOps);
             offsets = Deneme1SortDedupeDonatiOffsets(offsets);
+            if (eksenXDonati && exForOps != null && !exForOps.IsEmpty &&
+                Deneme1TryProjectionIntervalOntoUnitNormal(exForOps, nx, ny, out double uBandLo, out double uBandHi) && uBandLo <= uBandHi)
+            {
+                var refined = new List<double>(offsets.Count);
+                foreach (double uRaw in offsets)
+                {
+                    refined.Add(Deneme1RefineXDonatiUTowardDtx(factory, nx, ny, dirCos, dirSin, halfLen, uRaw, uBandLo, uBandHi,
+                        exForOps, exPrecReduced, beamsForRule, beamsPrecReduced, slabIdsInGroup, hamById, hamStableById));
+                }
+                offsets = Deneme1SortDedupeDonatiOffsets(refined);
+                var scored = new List<(double u, double gap)>(offsets.Count);
+                foreach (double u in offsets)
+                    scored.Add((u, Deneme1DonatiGapToDtxBandAlongNormalCm(u, uBandLo, uBandHi)));
+                scored.Sort((a, b) => a.gap.CompareTo(b.gap));
+                offsets = new List<double>(scored.Count);
+                foreach (var t in scored) offsets.Add(t.u);
+            }
             foreach (double u in offsets)
             {
                 Deneme1PointOnLineFromNormalEquation(nx, ny, u, out double cx, out double cy);
-                Geometry seg = TryIntersectLineWithPolygonReduced(factory, cx, cy, dirCos, dirSin, halfLen, eksenGrupBirlesikClip);
-                if (donatiSolidExclusionUnion != null && !donatiSolidExclusionUnion.IsEmpty &&
-                    !Deneme1DonatiClippedSegmentClearOfExclusion(seg, donatiSolidExclusionUnion))
-                    continue;
-                AppendLineGeometryEntitiesForLayer(tr, btr, seg, layer);
+                if (eksenXDonati)
+                {
+                    foreach (int sid in slabIdsInGroup)
+                    {
+                        if (!hamStableById.TryGetValue(sid, out Geometry shDraw) || shDraw == null || shDraw.IsEmpty) continue;
+                        Geometry seg = Deneme1DonatiLineClipToPolygon(factory, cx, cy, dirCos, dirSin, halfLen, shDraw);
+                        if (seg == null || seg.IsEmpty) continue;
+                        if (exForOps != null && !exForOps.IsEmpty &&
+                            !Deneme1DonatiClippedSegmentClearOfExclusion(seg, exForOps, exPrecReduced))
+                            continue;
+                        if (!Deneme1DonatiSegmentRespectsMaxBeamInteriorLength(seg, beamsForRule, Deneme1DonatiEksenXMaxBeamInteriorLengthCm, beamsPrecReduced))
+                            continue;
+                        AppendLineGeometryEntitiesForLayer(tr, btr, seg, layer);
+                    }
+                }
+                else
+                {
+                    Geometry seg = TryIntersectLineWithPolygonReduced(factory, cx, cy, dirCos, dirSin, halfLen, eksenGrupBirlesikClip);
+                    if (exForOps != null && !exForOps.IsEmpty &&
+                        !Deneme1DonatiClippedSegmentClearOfExclusion(seg, exForOps, exPrecReduced))
+                        continue;
+                    AppendLineGeometryEntitiesForLayer(tr, btr, seg, layer);
+                }
             }
         }
 
@@ -8183,18 +9430,21 @@ namespace ST4PlanIdCiz
             return 0;
         }
 
-        private static bool Deneme1DonatiSegmentMeaningfulHitOnHam(Geometry clipSegment, Geometry ham)
+        private static bool Deneme1DonatiSegmentMeaningfulHitOnHam(Geometry clipSegment, Geometry ham, bool hamAlreadyReduced = false)
         {
             if (clipSegment == null || clipSegment.IsEmpty || ham == null || ham.IsEmpty) return false;
             try
             {
                 Geometry h = ham;
-                try
+                if (!hamAlreadyReduced)
                 {
-                    Geometry r = ReducePrecisionSafe(ham, 100);
-                    if (r != null && !r.IsEmpty) h = r;
+                    try
+                    {
+                        Geometry r = ReducePrecisionSafe(ham, 100);
+                        if (r != null && !r.IsEmpty) h = r;
+                    }
+                    catch { }
                 }
-                catch { }
                 Geometry inter = clipSegment.Intersection(h);
                 return Deneme1GeometryLengthCm(inter) >= Deneme1DonatiMinHitLengthCm;
             }
@@ -8210,6 +9460,7 @@ namespace ST4PlanIdCiz
             Geometry eksenGrupBirlesikClip,
             List<int> slabIdsInGroup,
             Dictionary<int, Geometry> hamById,
+            Dictionary<int, Geometry> hamStableById,
             List<(int Sid, double A, double B)> perSlab,
             double nx,
             double ny,
@@ -8217,7 +9468,12 @@ namespace ST4PlanIdCiz
             double dirSin,
             double halfLenHint,
             List<double> offsets,
-            Geometry donatiSolidExclusionUnion)
+            Geometry donatiSolidExclusionUnion,
+            bool exclusionAlreadyReduced,
+            IReadOnlyList<Geometry> beamPolysForEksenX,
+            bool beamsAlreadyReduced,
+            bool applyEksenXDonatiExtraRules,
+            Geometry dtxUnionForProximity)
         {
             if (factory == null || eksenGrupBirlesikClip == null || eksenGrupBirlesikClip.IsEmpty || slabIdsInGroup == null || hamById == null || offsets == null) return;
             var sidToAb = new Dictionary<int, (double a, double b)>();
@@ -8230,19 +9486,32 @@ namespace ST4PlanIdCiz
             {
                 if (!hamById.TryGetValue(sid, out Geometry ham) || ham == null || ham.IsEmpty) continue;
                 Geometry sh = ham;
-                try
+                bool shStable = false;
+                if (hamStableById != null && hamStableById.TryGetValue(sid, out Geometry st) && st != null && !st.IsEmpty)
                 {
-                    Geometry r = ReducePrecisionSafe(ham, 100);
-                    if (r != null && !r.IsEmpty) sh = r;
+                    sh = st;
+                    shStable = true;
                 }
-                catch { }
+                else
+                {
+                    try
+                    {
+                        Geometry r = ReducePrecisionSafe(ham, 100);
+                        if (r != null && !r.IsEmpty) sh = r;
+                    }
+                    catch { }
+                }
                 bool hit = false;
                 foreach (double u in offsets)
                 {
                     Deneme1PointOnLineFromNormalEquation(nx, ny, u, out double cx, out double cy);
-                    Geometry seg = TryIntersectLineWithPolygonReduced(factory, cx, cy, dirCos, dirSin, halfLenHint, eksenGrupBirlesikClip);
-                    if (!Deneme1DonatiClippedSegmentClearOfExclusion(seg, donatiSolidExclusionUnion)) continue;
-                    if (Deneme1DonatiSegmentMeaningfulHitOnHam(seg, sh))
+                    Geometry seg = applyEksenXDonatiExtraRules
+                        ? Deneme1DonatiLineClipToPolygon(factory, cx, cy, dirCos, dirSin, halfLenHint, sh)
+                        : TryIntersectLineWithPolygonReduced(factory, cx, cy, dirCos, dirSin, halfLenHint, eksenGrupBirlesikClip);
+                    if (seg == null || seg.IsEmpty) continue;
+                    if (!Deneme1DonatiClippedSegmentClearOfExclusion(seg, donatiSolidExclusionUnion, exclusionAlreadyReduced)) continue;
+                    if (applyEksenXDonatiExtraRules && !Deneme1DonatiSegmentRespectsMaxBeamInteriorLength(seg, beamPolysForEksenX, Deneme1DonatiEksenXMaxBeamInteriorLengthCm, beamsAlreadyReduced)) continue;
+                    if (Deneme1DonatiSegmentMeaningfulHitOnHam(seg, sh, shStable))
                     {
                         hit = true;
                         break;
@@ -8263,7 +9532,8 @@ namespace ST4PlanIdCiz
                 }
                 if (Deneme1TryScanUAlongIntervalForDonatiLineClearOfExclusion(
                         factory, eksenGrupBirlesikClip, nx, ny, dirCos, dirSin, halfLenHint,
-                        donatiSolidExclusionUnion, sh, aScan, bScan, out double uFound))
+                        donatiSolidExclusionUnion, exclusionAlreadyReduced, sh, shStable, aScan, bScan, out double uFound,
+                        beamPolysForEksenX, applyEksenXDonatiExtraRules, beamsAlreadyReduced, dtxUnionForProximity))
                 {
                     offsets.Add(uFound);
                     continue;
@@ -8272,7 +9542,8 @@ namespace ST4PlanIdCiz
                     (aFull < aScan - 1e-3 || bFull > bScan + 1e-3) &&
                     Deneme1TryScanUAlongIntervalForDonatiLineClearOfExclusion(
                         factory, eksenGrupBirlesikClip, nx, ny, dirCos, dirSin, halfLenHint,
-                        donatiSolidExclusionUnion, sh, aFull, bFull, out double uWide))
+                        donatiSolidExclusionUnion, exclusionAlreadyReduced, sh, shStable, aFull, bFull, out double uWide,
+                        beamPolysForEksenX, applyEksenXDonatiExtraRules, beamsAlreadyReduced, dtxUnionForProximity))
                     offsets.Add(uWide);
             }
         }
@@ -8898,6 +10169,34 @@ namespace ST4PlanIdCiz
             catch { }
             try { rec.Dimgap = 2.0 * mul; } catch { }
             try { rec.Dimtix = true; } catch { }
+            ApplyAksPlanOlcuDimPrecision(rec);
+        }
+
+        internal static void ApplyAksPlanOlcuDimPrecision(DimStyleTableRecord rec)
+        {
+            if (rec == null) return;
+            try { rec.Dimrnd = OlcuDimRoundCm; } catch { }
+            try { rec.Dimdec = OlcuDimDecimalPlaces; } catch { }
+            try { rec.Dimtdec = OlcuDimDecimalPlaces; } catch { }
+            try { rec.Dimzin = 12; } catch { }
+            try { rec.Dimlunit = 2; } catch { }
+        }
+
+        internal static void ApplyOlcuDimPrecisionToEntity(Autodesk.AutoCAD.DatabaseServices.Dimension dim)
+        {
+            if (dim == null) return;
+            try { dim.Dimrnd = OlcuDimRoundCm; } catch { }
+            try { dim.Dimdec = OlcuDimDecimalPlaces; } catch { }
+            try { dim.Dimtdec = OlcuDimDecimalPlaces; } catch { }
+            try { dim.Dimzin = 12; } catch { }
+        }
+
+        internal static string FormatOlcuCm(double cm)
+        {
+            double r = Math.Round(cm * 2.0, MidpointRounding.AwayFromZero) / 2.0;
+            if (Math.Abs(r - Math.Round(r)) < 1e-9)
+                return Math.Round(r).ToString("0", CultureInfo.InvariantCulture);
+            return r.ToString("0.0", CultureInfo.InvariantCulture);
         }
 
         /// <summary>Aks ölçüleri için özel dim style "AKS_OLCU": metin stili YAZI (BEYKENT), yükseklik çağrıda; oklar vb. AKS_OLCU ayarları.</summary>
@@ -8928,10 +10227,7 @@ namespace ST4PlanIdCiz
             try { newRec.Dimtih = false; } catch { }
             try { newRec.Dimtoh = false; } catch { }
 
-            try { newRec.Dimdec = 0; } catch { }
-            try { newRec.Dimrnd = 0.5; } catch { }
             try { newRec.Dimlfac = 1.0; } catch { }
-            try { newRec.Dimzin = 12; } catch { }
             try { newRec.Dimaunit = 0; } catch { }
             try { newRec.Dimadec = 0; } catch { }
 
@@ -8973,10 +10269,7 @@ namespace ST4PlanIdCiz
             try { newRec.Dimtad = 1; } catch { }
             try { newRec.Dimtih = false; } catch { }
             try { newRec.Dimtoh = false; } catch { }
-            try { newRec.Dimdec = 0; } catch { }
-            try { newRec.Dimrnd = 0.5; } catch { }
             try { newRec.Dimlfac = 1.0; } catch { }
-            try { newRec.Dimzin = 12; } catch { }
             try { newRec.Dimaunit = 0; } catch { }
             try { newRec.Dimadec = 0; } catch { }
             try { newRec.Dimtofl = true; } catch { }
@@ -16299,6 +17592,8 @@ namespace ST4PlanIdCiz
 
         private static void AppendEntity(Transaction tr, BlockTableRecord btr, Entity e)
         {
+            if (e is Autodesk.AutoCAD.DatabaseServices.Dimension dim)
+                ApplyOlcuDimPrecisionToEntity(dim);
             btr.AppendEntity(e);
             tr.AddNewlyCreatedDBObject(e, true);
         }
@@ -16306,6 +17601,8 @@ namespace ST4PlanIdCiz
         /// <summary>Entity ekler ve ObjectId döndürür (tarama boundary için).</summary>
         private static ObjectId AppendEntityReturnId(Transaction tr, BlockTableRecord btr, Entity e)
         {
+            if (e is Autodesk.AutoCAD.DatabaseServices.Dimension dim)
+                ApplyOlcuDimPrecisionToEntity(dim);
             btr.AppendEntity(e);
             tr.AddNewlyCreatedDBObject(e, true);
             return e.ObjectId;
@@ -16320,7 +17617,7 @@ namespace ST4PlanIdCiz
             hatch.SetHatchPattern(HatchPatternType.PreDefined, "SOLID");
             hatch.Color = Color.FromColorIndex(ColorMethod.ByAci, 1);
             hatch.Layer = "KIRIS UZATMA ISARET (BEYKENT)";
-            hatch.Associative = true;
+            hatch.Associative = false;
             var ids = new ObjectIdCollection { boundaryId };
             hatch.AppendLoop(HatchLoopTypes.Outermost, ids);
             hatch.EvaluateHatch(true);
@@ -16336,7 +17633,7 @@ namespace ST4PlanIdCiz
             hatch.SetHatchPattern(HatchPatternType.PreDefined, "SOLID");
             hatch.Color = Color.FromColorIndex(ColorMethod.ByAci, aciColorIndex);
             hatch.Layer = layer;
-            hatch.Associative = true;
+            hatch.Associative = false;
             hatch.AppendLoop(HatchLoopTypes.Outermost, new ObjectIdCollection { boundaryId });
             try { hatch.EvaluateHatch(true); }
             catch { try { hatch.EvaluateHatch(false); } catch { } }
@@ -16351,7 +17648,7 @@ namespace ST4PlanIdCiz
             hatch.SetHatchPattern(HatchPatternType.PreDefined, "SOLID");
             hatch.Color = Color.FromColorIndex(ColorMethod.ByAci, 5);
             hatch.Layer = "KIRIS UZATMA ISARET MAVI (BEYKENT)";
-            hatch.Associative = true;
+            hatch.Associative = false;
             var ids = new ObjectIdCollection { boundaryId };
             hatch.AppendLoop(HatchLoopTypes.Outermost, ids);
             hatch.EvaluateHatch(true);
@@ -16377,7 +17674,7 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>Önceden tanımlı desen (ör. grobeton AR-CONC); tarama ayrı katmanda (genelde <see cref="LayerTarama"/>).</summary>
-        private static void AppendHatchPredefined(Transaction tr, BlockTableRecord btr, ObjectId boundaryId, string patternName, double patternScale, double patternAngleRad, string hatchLayer, bool associativeHatch = true)
+        private static void AppendHatchPredefined(Transaction tr, BlockTableRecord btr, ObjectId boundaryId, string patternName, double patternScale, double patternAngleRad, string hatchLayer, bool associativeHatch = false)
         {
             var hatch = new Hatch();
             btr.AppendEntity(hatch);

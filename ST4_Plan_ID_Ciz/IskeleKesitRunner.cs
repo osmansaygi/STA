@@ -671,7 +671,7 @@ namespace ST4PlanIdCiz
             btr.AppendEntity(hatch);
             tr.AddNewlyCreatedDBObject(hatch, true);
             hatch.SetHatchPattern(HatchPatternType.PreDefined, "SOLID");
-            hatch.Associative = true;
+            hatch.Associative = false;
             hatch.AppendLoop(HatchLoopTypes.Outermost, new ObjectIdCollection { pl.ObjectId });
             try { hatch.EvaluateHatch(true); } catch { try { hatch.EvaluateHatch(false); } catch { } }
         }
@@ -918,6 +918,7 @@ namespace ST4PlanIdCiz
                     new Point3d(xTotalRight, yLast, 0),
                     new Point3d(xTotalRight, (yFirst + yLast) * 0.5, 0),
                     "", aksOlcuDimStyleId) { Layer = LayerAksOlcu };
+                PlanIdDrawingManager.ApplyOlcuDimPrecisionToEntity(dimTotal);
                 btr.AppendEntity(dimTotal);
                 tr.AddNewlyCreatedDBObject(dimTotal, true);
 
@@ -929,6 +930,7 @@ namespace ST4PlanIdCiz
                         new Point3d(xIndRight, yb, 0),
                         new Point3d(xIndRight, (ya + yb) * 0.5, 0),
                         "", aksOlcuDimStyleId) { Layer = LayerAksOlcu };
+                    PlanIdDrawingManager.ApplyOlcuDimPrecisionToEntity(dimInd);
                     btr.AppendEntity(dimInd);
                     tr.AddNewlyCreatedDBObject(dimInd, true);
                 }
@@ -946,6 +948,7 @@ namespace ST4PlanIdCiz
                     new Point3d(xLast, yTotalBot, 0),
                     new Point3d((xFirst + xLast) * 0.5, yTotalBot, 0),
                     "", aksOlcuDimStyleId) { Layer = LayerAksOlcu };
+                PlanIdDrawingManager.ApplyOlcuDimPrecisionToEntity(dimTotalX);
                 btr.AppendEntity(dimTotalX);
                 tr.AddNewlyCreatedDBObject(dimTotalX, true);
 
@@ -957,6 +960,7 @@ namespace ST4PlanIdCiz
                         new Point3d(xb, yIndBot, 0),
                         new Point3d((xa + xb) * 0.5, yIndBot, 0),
                         "", aksOlcuDimStyleId) { Layer = LayerAksOlcu };
+                    PlanIdDrawingManager.ApplyOlcuDimPrecisionToEntity(dimIndX);
                     btr.AppendEntity(dimIndX);
                     tr.AddNewlyCreatedDBObject(dimIndX, true);
                 }
@@ -1576,8 +1580,7 @@ namespace ST4PlanIdCiz
             int n = Math.Min(dims.Count, bayWidthsCm.Count);
             for (int i = 0; i < n; i++)
             {
-                long r = (long)Math.Round(bayWidthsCm[i]);
-                dims[i].DimensionText = r.ToString(CultureInfo.InvariantCulture);
+                dims[i].DimensionText = PlanIdDrawingManager.FormatOlcuCm(bayWidthsCm[i]);
             }
 
             if (dims.Count != bayWidthsCm.Count)

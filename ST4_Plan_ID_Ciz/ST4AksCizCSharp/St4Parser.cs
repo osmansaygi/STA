@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using Autodesk.AutoCAD.Geometry;
+using ST4PlanIdCiz;
 
 namespace ST4AksCizCSharp
 {
@@ -13,7 +13,7 @@ namespace ST4AksCizCSharp
             var allValues = new List<double>();
             var allSlopes = new List<double>();
             var storyLines = new List<string>();
-            var rawLines = File.ReadAllLines(filePath);
+            var rawLines = WindowsAnsiEncodings.ReadAllLines(filePath);
 
             bool inAxis = false;
             bool inStory = false;

@@ -2447,7 +2447,7 @@ namespace ST4PlanIdCiz
             btr.AppendEntity(hatch);
             tr.AddNewlyCreatedDBObject(hatch, true);
             hatch.SetHatchPattern(HatchPatternType.PreDefined, "SOLID");
-            hatch.Associative = true;
+            hatch.Associative = false;
             hatch.AppendLoop(HatchLoopTypes.Outermost, new ObjectIdCollection { pl.ObjectId });
             try { hatch.EvaluateHatch(true); }
             catch { try { hatch.EvaluateHatch(false); } catch { } }

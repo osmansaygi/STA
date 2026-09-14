@@ -10,6 +10,7 @@
     <Platforms>AnyCPU</Platforms>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <Deterministic>false</Deterministic>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
   <PropertyGroup>
     <AutoCADInstallDir Condition="'$(AutoCADInstallDir)' == '' and Exists('C:\Program Files\Autodesk\AutoCAD 2026\acdbmgd.dll')">C:\Program Files\Autodesk\AutoCAD 2026</AutoCADInstallDir>
@@ -20,6 +21,9 @@
 
   <ItemGroup>
     <PackageReference Include="NetTopologySuite" Version="2.6.0" />
+    <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
+    <!-- AutoCAD 2027 yonetilen DLL'ler net48 ile uyumsuz; makinede 2023-2026 yoksa NuGet net48 referanslari. -->
+    <PackageReference Include="AutoCAD.NET" Version="24.3.0" Condition="'$(AutoCADInstallDir)' == ''" />
   </ItemGroup>
 
   <ItemGroup>
@@ -62,7 +66,7 @@
     </Reference>
   </ItemGroup>
 
-  <Target Name="ValidateAutoCADReferences" BeforeTargets="ResolveReferences">
+  <Target Name="ValidateAutoCADReferences" BeforeTargets="ResolveReferences" Condition="'$(AutoCADInstallDir)' != ''">
     <Error
       Condition="!Exists('$(AutoCADInstallDir)\acdbmgd.dll') or !Exists('$(AutoCADInstallDir)\acmgd.dll')"
       Text="AutoCAD .NET referanslari bulunamadi. MSBuild'e /p:AutoCADInstallDir='C:\Program Files\Autodesk\AutoCAD 20XX' verin." />

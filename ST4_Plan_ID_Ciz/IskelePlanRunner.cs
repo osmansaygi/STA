@@ -443,7 +443,7 @@ namespace ST4PlanIdCiz
                 IskeleCizContextStore.SetActive();
             }
 
-            doc.SendStringToExecute("_.ZOOM _E ", true, false, false);
+            AcadDocumentViewUtil.ZoomExtentsWithoutNestedCommand(doc);
             }
             finally
             {
@@ -544,7 +544,17 @@ namespace ST4PlanIdCiz
         private static ObjectId EnsurePlanOlcuDimStyle(Transaction tr, Database db, ObjectId yaziStyleId)
         {
             var dst = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
-            if (dst.Has(DimPlanOlcu)) return dst[DimPlanOlcu];
+            if (dst.Has(DimPlanOlcu))
+            {
+                ObjectId existingId = dst[DimPlanOlcu];
+                try
+                {
+                    var existing = (DimStyleTableRecord)tr.GetObject(existingId, OpenMode.ForWrite);
+                    PlanIdDrawingManager.ApplyAksPlanOlcuDimPrecision(existing);
+                }
+                catch { }
+                return existingId;
+            }
             dst.UpgradeOpen();
             var rec = new DimStyleTableRecord { Name = DimPlanOlcu };
             try { if (!yaziStyleId.IsNull) rec.Dimtxsty = yaziStyleId; } catch { }
@@ -563,8 +573,8 @@ namespace ST4PlanIdCiz
             try { rec.Dimclrt = Color.FromColorIndex(ColorMethod.ByAci, 7); } catch { }
             try { rec.Dimclrd = Color.FromColorIndex(ColorMethod.ByLayer, 256); } catch { }
             try { rec.Dimclre = Color.FromColorIndex(ColorMethod.ByLayer, 256); } catch { }
-            try { rec.Dimdec = 0; } catch { }
             try { rec.Dimlfac = 1.0; } catch { }
+            PlanIdDrawingManager.ApplyAksPlanOlcuDimPrecision(rec);
             ObjectId id = dst.Add(rec);
             tr.AddNewlyCreatedDBObject(rec, true);
             dst.DowngradeOpen();
@@ -574,7 +584,17 @@ namespace ST4PlanIdCiz
         private static ObjectId EnsurePlanOlcuDetayDimStyle(Transaction tr, Database db, ObjectId yaziStyleId)
         {
             var dst = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
-            if (dst.Has(DimPlanOlcuDetay)) return dst[DimPlanOlcuDetay];
+            if (dst.Has(DimPlanOlcuDetay))
+            {
+                ObjectId existingId = dst[DimPlanOlcuDetay];
+                try
+                {
+                    var existing = (DimStyleTableRecord)tr.GetObject(existingId, OpenMode.ForWrite);
+                    PlanIdDrawingManager.ApplyAksPlanOlcuDimPrecision(existing);
+                }
+                catch { }
+                return existingId;
+            }
             dst.UpgradeOpen();
             var rec = new DimStyleTableRecord { Name = DimPlanOlcuDetay };
             try { if (!yaziStyleId.IsNull) rec.Dimtxsty = yaziStyleId; } catch { }
@@ -592,8 +612,7 @@ namespace ST4PlanIdCiz
             try { rec.Dimclrt = Color.FromColorIndex(ColorMethod.ByAci, 7); } catch { }
             try { rec.Dimclrd = Color.FromColorIndex(ColorMethod.ByLayer, 256); } catch { }
             try { rec.Dimclre = Color.FromColorIndex(ColorMethod.ByLayer, 256); } catch { }
-            try { rec.Dimdec = 1; } catch { }
-            try { rec.Dimtdec = 1; } catch { }
+            PlanIdDrawingManager.ApplyAksPlanOlcuDimPrecision(rec);
             ObjectId id = dst.Add(rec);
             tr.AddNewlyCreatedDBObject(rec, true);
             dst.DowngradeOpen();

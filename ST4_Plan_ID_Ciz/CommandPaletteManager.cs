@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using Autodesk.AutoCAD.Windows;
 using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
@@ -8,6 +9,12 @@ namespace ST4PlanIdCiz
 {
     internal static class CommandPaletteManager
     {
+        private const int PaletteWidth = 150;
+        private const int PaletteHeight = 490;
+        private const int MarginX = 8;
+        /// <summary>Komut satırı / durum çubuğu üstünde kalsın.</summary>
+        private const int MarginBottom = 56;
+
         private static PaletteSet _palette;
 
         public static void Show()
@@ -19,6 +26,8 @@ namespace ST4PlanIdCiz
                     try
                     {
                         _palette.Visible = true;
+                        PlacePaletteBottomLeft();
+                        EnableAutoHide();
                         return;
                     }
                     catch
@@ -28,33 +37,84 @@ namespace ST4PlanIdCiz
                     }
                 }
 
-                int palW = 150;
-                int palH = 460;
-
                 _palette = new PaletteSet("STA Komut Paneli")
                 {
                     Style = PaletteSetStyles.ShowAutoHideButton
                           | PaletteSetStyles.ShowCloseButton,
-                    MinimumSize = new Size(palW, palH),
+                    MinimumSize = new Size(PaletteWidth, PaletteHeight),
                     KeepFocus = false,
-                    DockEnabled = DockSides.None
+                    DockEnabled = DockSides.Left | DockSides.Right | DockSides.Bottom
                 };
 
                 _palette.Add("Komutlar", new CommandPaletteControl());
                 _palette.Add("Kiri\u015f d\u00fczelt", new KirisDuzeltPaletteControl());
 
-                try
-                {
-                    var screen = Screen.PrimaryScreen.WorkingArea;
-                    _palette.Location = new Point(screen.Left + 10, screen.Bottom - palH - 5);
-                }
-                catch { }
-
-                _palette.Size = new Size(palW, palH);
+                _palette.Size = new Size(PaletteWidth, PaletteHeight);
                 _palette.Visible = true;
+                try { _palette.Dock = DockSides.None; } catch { }
+                _palette.Size = new Size(PaletteWidth, PaletteHeight);
+                PlacePaletteBottomLeft();
+                EnableAutoHide();
+            }
+            catch { }
+        }
+
+        public static void Shutdown()
+        {
+            if (_palette == null) return;
+            try { _palette.Visible = false; } catch { }
+            try { _palette.Dispose(); } catch { }
+            _palette = null;
+        }
+
+        private static void EnableAutoHide()
+        {
+            if (_palette == null) return;
+            try { _palette.AutoRollUp = true; } catch { }
+        }
+
+        private static void PlacePaletteBottomLeft()
+        {
+            if (_palette == null) return;
+            try
+            {
+                try { _palette.Dock = DockSides.None; } catch { }
+                int palW = _palette.Size.Width > 0 ? _palette.Size.Width : PaletteWidth;
+                int palH = _palette.Size.Height > 0 ? _palette.Size.Height : PaletteHeight;
+                Rectangle host = GetAcadWindowBounds();
+                int x = host.Left + MarginX;
+                int y = host.Bottom - palH - MarginBottom;
+                if (y < host.Top + MarginX) y = host.Top + MarginX;
+                _palette.Location = new Point(x, y);
                 _palette.Size = new Size(palW, palH);
             }
             catch { }
+        }
+
+        private static Rectangle GetAcadWindowBounds()
+        {
+            try
+            {
+                IntPtr hwnd = AcApp.MainWindow.Handle;
+                if (hwnd != IntPtr.Zero && GetWindowRect(hwnd, out RECT r))
+                    return Rectangle.FromLTRB(r.Left, r.Top, r.Right, r.Bottom);
+            }
+            catch { }
+
+            try { return Screen.PrimaryScreen.WorkingArea; }
+            catch { return new Rectangle(0, 0, 1280, 800); }
+        }
+
+        [DllImport("user32.dll")]
+        private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct RECT
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
         }
     }
 
@@ -99,6 +159,7 @@ namespace ST4PlanIdCiz
             ("ST4 Plan ID",  "ST4PLANID"),
             ("Kolon Data",   "KOLONDATA"),
             ("ST4 Kesit",    "ST4KESIT"),
+            ("Katman temizle", "ST4KATMANTEMIZLE"),
         };
         private static readonly (string label, string cmd)[] AltDeneme =
         {

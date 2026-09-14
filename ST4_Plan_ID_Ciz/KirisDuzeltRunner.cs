@@ -100,20 +100,20 @@ namespace ST4PlanIdCiz
 
                 ed.Command("_.UNDO", "_GROUP");
 
-                ed.Command("_.ZOOM", "_E");
+                AcadDocumentViewUtil.ZoomExtentsWithoutNestedCommand(doc);
 
                 RunOverkillNotColor4(ed);
 
                 EraseZeroLengthLines(db, ed);
                 SetAllTextWidthFactorOne(ed);
 
-                ed.Command("_.ZOOM", "_E");
+                AcadDocumentViewUtil.ZoomExtentsWithoutNestedCommand(doc);
                 try { Application.SetSystemVariable("LTSCALE", 0.5); } catch { }
                 ed.Command("_.UNITS", "", "", "", "", "", "N");
 
                 TryApplyStaDrawingScale(doc, db, ed);
 
-                ed.Command("_.ZOOM", "_E");
+                AcadDocumentViewUtil.ZoomExtentsWithoutNestedCommand(doc);
 
                 List<ObjectId> axis2Ids;
                 using (doc.LockDocument())

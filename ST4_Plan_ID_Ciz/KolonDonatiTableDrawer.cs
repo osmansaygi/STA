@@ -192,9 +192,9 @@ namespace ST4PlanIdCiz
         {
             if (seg == null || seg.Length == 0) return string.Empty;
             var utf8 = new UTF8Encoding(false, false);
-            var w1252 = Encoding.GetEncoding(1252);
-            Encoding w1254 = null;
-            try { w1254 = Encoding.GetEncoding(1254); } catch { w1254 = w1252; }
+            if (!WindowsAnsiEncodings.TryGet(1252, out Encoding w1252))
+                w1252 = utf8;
+            Encoding w1254 = WindowsAnsiEncodings.TryGet(1254, out Encoding e1254) ? e1254 : w1252;
             string best = utf8.GetString(seg);
             int bestSc = ScoreGprDonatiCellCandidate(best);
             foreach (var enc in new[] { w1252, w1254 })
@@ -210,7 +210,10 @@ namespace ST4PlanIdCiz
         {
             byte[] arr = content.Length == 0 ? Array.Empty<byte>() : content.ToArray();
             var utf8 = new UTF8Encoding(false, false);
-            foreach (var enc in new[] { utf8, Encoding.GetEncoding(1252), Encoding.GetEncoding(1254) })
+            var tryEnc = new List<Encoding> { utf8 };
+            if (WindowsAnsiEncodings.TryGet(1252, out Encoding e1252)) tryEnc.Add(e1252);
+            if (WindowsAnsiEncodings.TryGet(1254, out Encoding e1254fb)) tryEnc.Add(e1254fb);
+            foreach (var enc in tryEnc)
             {
                 string s = enc.GetString(arr);
                 var m = Regex.Match(s, @"([\d\s+x×\u00D7\u00F8Ø/\.\(\)]+)\(govde\)", RegexOptions.IgnoreCase);
@@ -420,7 +423,8 @@ namespace ST4PlanIdCiz
             byte[] b = File.ReadAllBytes(filePath);
             rawLines = SplitFileIntoRawLines(b);
             var utf8 = new UTF8Encoding(false, false);
-            var win1252 = Encoding.GetEncoding(1252);
+            if (!WindowsAnsiEncodings.TryGet(1252, out Encoding win1252))
+                win1252 = utf8;
             textLines = new string[rawLines.Length];
             for (int k = 0; k < rawLines.Length; k++)
             {
@@ -453,10 +457,8 @@ namespace ST4PlanIdCiz
             Encoding enc;
             if (utf8Delim >= 25 && utf8Delim >= winDelim)
                 enc = new UTF8Encoding(false, false);
-            else if (winDelim >= 25)
-                enc = Encoding.GetEncoding(1252);
-            else if (winDelim > utf8Delim * 2)
-                enc = Encoding.GetEncoding(1252);
+            else if (winDelim >= 25 || winDelim > utf8Delim * 2)
+                enc = WindowsAnsiEncodings.TryGet(1252, out Encoding e1252a) ? e1252a : new UTF8Encoding(false, false);
             else
                 enc = new UTF8Encoding(false, false);
             return enc.GetString(b).Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
@@ -475,7 +477,7 @@ namespace ST4PlanIdCiz
                 if (rawBytes == null || rawBytes.Length < 20) return false;
                 if (!GprRawLineContainsAscii(rawBytes, "MOMENT")) return false;
                 if (GprRawLineContainsAscii(rawBytes, "BETONARME HESAP")) return false;
-                s = Encoding.GetEncoding(1252).GetString(rawBytes);
+                s = WindowsAnsiEncodings.TryGet(1252, out Encoding e1252n) ? e1252n.GetString(rawBytes) : Encoding.UTF8.GetString(rawBytes);
                 ik = s.IndexOf("Kolon", StringComparison.OrdinalIgnoreCase);
                 im = s.IndexOf("Moment", StringComparison.OrdinalIgnoreCase);
                 if (ik < 0 || im < 0 || im < ik) return false;

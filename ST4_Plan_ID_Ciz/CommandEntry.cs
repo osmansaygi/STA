@@ -21,9 +21,40 @@ namespace ST4PlanIdCiz
     {
         public void Initialize()
         {
+            WindowsAnsiEncodings.EnsureRegistered();
+            int loaded = CountLoadedPlanIdAssemblies();
+            Document doc = Application.DocumentManager.MdiActiveDocument;
+            if (loaded > 1)
+            {
+                try
+                {
+                    doc?.Editor.WriteMessage(
+                        "\nST4_Plan_ID_Ciz: Ayni AutoCAD oturumunda birden fazla DLL yuklu ({0}). MOVE/COPY cokmesi icin AutoCAD'i kapatip yalnizca son DLL ile NETLOAD yapin.",
+                        loaded);
+                }
+                catch { }
+                return;
+            }
             CommandPaletteManager.Show();
         }
-        public void Terminate() { }
+
+        public void Terminate()
+        {
+            CommandPaletteManager.Shutdown();
+        }
+
+        private static int CountLoadedPlanIdAssemblies()
+        {
+            int n = 0;
+            foreach (System.Reflection.Assembly a in System.AppDomain.CurrentDomain.GetAssemblies())
+            {
+                string name = a.GetName().Name ?? "";
+                if (name.StartsWith("ST4_Plan_ID_Ciz", System.StringComparison.OrdinalIgnoreCase)
+                    || name.StartsWith("ST4_Aks_Ciz_CSharp", System.StringComparison.OrdinalIgnoreCase))
+                    n++;
+            }
+            return n;
+        }
     }
 
     public class CommandEntry
@@ -44,6 +75,12 @@ namespace ST4PlanIdCiz
                 Application.SetSystemVariable("LTSCALE", 10.0);
             }
             catch { /* sürüm / bağlam */ }
+        }
+
+        private static void FinishStaDrawing(Document doc)
+        {
+            if (doc == null) return;
+            AcadDocumentViewUtil.ZoomExtentsWithoutNestedCommand(doc);
         }
 
         private static void ConfigureNtsNextGenOverlay()
@@ -80,6 +117,19 @@ namespace ST4PlanIdCiz
                 ed.WriteMessage("  Inner: {0}", e.InnerException.Message);
         }
 
+        /// <summary>Aktif çizimde hiç nesne kullanmayan katmanları siler (0 / Defpoints / güncel katman / xref hariç). Herhangi bir DWG.</summary>
+        [CommandMethod("ST4KATMANTEMIZLE")]
+        public void St4KatmanTemizle()
+        {
+            var doc = Application.DocumentManager.MdiActiveDocument;
+            if (doc == null) return;
+            int n;
+            using (doc.LockDocument())
+                n = UnusedLayerPurger.PurgeUnusedLayers(doc.Database, doc.Editor);
+            if (n == 0)
+                doc.Editor.WriteMessage("\nST4KATMANTEMIZLE: Silinecek kullanilmayan katman yok.");
+        }
+
         /// <summary>
         /// ST4 dosyasından akslar, kolonlar (poligon dahil), kirişler ve perdeleri
         /// tüm eleman ID'leriyle çizer; katlar yan yana dizilir.
@@ -111,7 +161,7 @@ namespace ST4PlanIdCiz
                 WriteGprAxisSummary(ed, model);
                 var manager = new PlanIdDrawingManager(model);
                 manager.Draw(db, ed);
-                doc.SendStringToExecute("_.ZOOM _E ", true, false, false);
+                FinishStaDrawing(doc);
             }
             catch (System.Exception ex)
             {
@@ -311,7 +361,7 @@ namespace ST4PlanIdCiz
 
                 bool ok = manager.DrawSectionFromUserCut(db, ed, p1Res.Value, p2Res.Value, insRes.Value, letter);
                 if (ok)
-                    doc.SendStringToExecute("_.REGEN ", true, false, false);
+                    AcadDocumentViewUtil.ZoomExtentsWithoutNestedCommand(doc);
             }
             catch (System.Exception ex)
             {
@@ -348,7 +398,7 @@ namespace ST4PlanIdCiz
                 var insRes = ed.GetPoint(new PromptPointOptions("\nTEMEL50ST4 yerlestirme noktasi (sol-alt): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
                 manager.DrawFoundationPlanWithSections(db, ed, insRes.Value, fileRes.StringResult);
-                doc.SendStringToExecute("_.ZOOM _E ", true, false, false);
+                FinishStaDrawing(doc);
             }
             catch (System.Exception ex)
             {
@@ -385,7 +435,7 @@ namespace ST4PlanIdCiz
                 var insRes = ed.GetPoint(new PromptPointOptions("\nTEMEL100ST4 yerlestirme noktasi (sol-alt): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
                 manager.DrawFoundationPlanWithSections(db, ed, insRes.Value, fileRes.StringResult, TemelFoundationPlanScale.Hundred);
-                doc.SendStringToExecute("_.ZOOM _E ", true, false, false);
+                FinishStaDrawing(doc);
             }
             catch (System.Exception ex)
             {
@@ -422,7 +472,7 @@ namespace ST4PlanIdCiz
                 var insRes = ed.GetPoint(new PromptPointOptions("\nKOLON50ST4 yerlestirme noktasi (sol-alt): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
                 manager.DrawColumnApplicationPlan(db, ed, insRes.Value, fileRes.StringResult, KolonApplicationPlanScale.Fifty);
-                doc.SendStringToExecute("_.ZOOM _E ", true, false, false);
+                FinishStaDrawing(doc);
             }
             catch (System.Exception ex)
             {
@@ -459,7 +509,7 @@ namespace ST4PlanIdCiz
                 var insRes = ed.GetPoint(new PromptPointOptions("\nKOLON100ST4 yerlestirme noktasi (sol-alt): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
                 manager.DrawColumnApplicationPlan(db, ed, insRes.Value, fileRes.StringResult, KolonApplicationPlanScale.Hundred);
-                doc.SendStringToExecute("_.ZOOM _E ", true, false, false);
+                FinishStaDrawing(doc);
             }
             catch (System.Exception ex)
             {
@@ -496,7 +546,7 @@ namespace ST4PlanIdCiz
                 var insRes = ed.GetPoint(new PromptPointOptions("\nKALIP50ST4: En soldaki antet SheetViewOut (dis cerceve) sol-alt kosesi (yerlesim referansi): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
                 manager.DrawFormworkPlan50(db, ed, insRes.Value, fileRes.StringResult, KalipPlanScale.Fifty);
-                doc.SendStringToExecute("_.ZOOM _E ", true, false, false);
+                FinishStaDrawing(doc);
             }
             catch (System.Exception ex)
             {
@@ -553,7 +603,7 @@ namespace ST4PlanIdCiz
                         excludeStairAdjacentSlabsAndSlabsBelowFloorKot: true,
                         drawInteriorVoidsOnBosLayerNotKalipBosluk: true,
                         classifyDosemeHattiIntoTopologyLayers: true));
-                doc.SendStringToExecute("_.ZOOM _E ", true, false, false);
+                FinishStaDrawing(doc);
             }
             catch (System.Exception ex)
             {
@@ -590,7 +640,7 @@ namespace ST4PlanIdCiz
                 var insRes = ed.GetPoint(new PromptPointOptions("\nKALIP100ST4: En soldaki antet SheetViewOut (dis cerceve) sol-alt kosesi (yerlesim referansi): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
                 manager.DrawFormworkPlan50(db, ed, insRes.Value, fileRes.StringResult, KalipPlanScale.Hundred);
-                doc.SendStringToExecute("_.ZOOM _E ", true, false, false);
+                FinishStaDrawing(doc);
             }
             catch (System.Exception ex)
             {

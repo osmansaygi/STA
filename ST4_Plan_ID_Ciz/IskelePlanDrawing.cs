@@ -12,6 +12,8 @@ namespace ST4PlanIdCiz
     {
         public static void Append(Transaction tr, BlockTableRecord btr, Entity e)
         {
+            if (e is Dimension dim)
+                PlanIdDrawingManager.ApplyOlcuDimPrecisionToEntity(dim);
             btr.AppendEntity(e);
             tr.AddNewlyCreatedDBObject(e, true);
         }
