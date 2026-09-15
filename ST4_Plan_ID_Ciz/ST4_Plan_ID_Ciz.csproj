@@ -22,8 +22,11 @@
   <ItemGroup>
     <PackageReference Include="NetTopologySuite" Version="2.6.0" />
     <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
-    <!-- AutoCAD 2027 yonetilen DLL'ler net48 ile uyumsuz; makinede 2023-2026 yoksa NuGet net48 referanslari. -->
-    <PackageReference Include="AutoCAD.NET" Version="24.3.0" Condition="'$(AutoCADInstallDir)' == ''" />
+    <!-- AutoCAD 2027 yonetilen DLL'ler net48 ile uyumsuz; makinede 2023-2026 yoksa NuGet net48 referanslari. Cikti klasorune kopyalanmaz (AutoCAD zaten saglar). -->
+    <PackageReference Include="AutoCAD.NET" Version="24.3.0" Condition="'$(AutoCADInstallDir)' == ''">
+      <ExcludeAssets>runtime</ExcludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>
@@ -72,6 +75,15 @@
       Text="AutoCAD .NET referanslari bulunamadi. MSBuild'e /p:AutoCADInstallDir='C:\Program Files\Autodesk\AutoCAD 20XX' verin." />
   </Target>
 
+  <!-- NuGet AutoCAD DLL'leri ve onceki tarihli eklenti DLL'leri NETLOAD klasorunu doldurmasin. -->
+  <Target Name="CleanupOutputFolder" AfterTargets="Build">
+    <ItemGroup>
+      <_AcadHostDlls Include="$(OutputPath)Ac*.dll;$(OutputPath)Ad*.dll;$(OutputPath)ac*.dll" />
+      <_OldPluginOutputs Include="$(OutputPath)$(BaseAssemblyName)_*.dll;$(OutputPath)$(BaseAssemblyName)_*.pdb"
+                         Exclude="$(OutputPath)$(AssemblyName).dll;$(OutputPath)$(AssemblyName).pdb" />
+    </ItemGroup>
+    <Delete Files="@(_AcadHostDlls);@(_OldPluginOutputs)" ContinueOnError="true" />
+  </Target>
   <Target Name="ShowDllPath" AfterTargets="Build">
     <Message Importance="high" Text="DLL kaydedildi: $(OutputPath)$(AssemblyName).dll" />
     <Message Importance="high" Text="========================================" />
