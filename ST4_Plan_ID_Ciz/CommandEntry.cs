@@ -21,26 +21,24 @@ namespace ST4PlanIdCiz
     {
         public void Initialize()
         {
-            WindowsAnsiEncodings.EnsureRegistered();
-            int loaded = CountLoadedPlanIdAssemblies();
-            Document doc = Application.DocumentManager.MdiActiveDocument;
-            if (loaded > 1)
+            try
             {
-                try
+                WindowsAnsiEncodings.EnsureRegistered();
+                int loaded = CountLoadedPlanIdAssemblies();
+                if (loaded > 1)
                 {
-                    doc?.Editor.WriteMessage(
-                        "\nST4_Plan_ID_Ciz: Ayni AutoCAD oturumunda birden fazla DLL yuklu ({0}). MOVE/COPY cokmesi icin AutoCAD'i kapatip yalnizca son DLL ile NETLOAD yapin.",
-                        loaded);
+                    CommandPaletteManager.RequestDuplicateLoadWarning(loaded);
+                    return;
                 }
-                catch { }
-                return;
+                // PaletteSet NETLOAD/Initialize icinde native e06d7363 fatal verebilir; Idle'a birak.
+                CommandPaletteManager.RequestShowWhenIdle();
             }
-            CommandPaletteManager.Show();
+            catch { }
         }
 
         public void Terminate()
         {
-            CommandPaletteManager.Shutdown();
+            try { CommandPaletteManager.Shutdown(); } catch { }
         }
 
         private static int CountLoadedPlanIdAssemblies()
@@ -49,8 +47,8 @@ namespace ST4PlanIdCiz
             foreach (System.Reflection.Assembly a in System.AppDomain.CurrentDomain.GetAssemblies())
             {
                 string name = a.GetName().Name ?? "";
-                if (name.StartsWith("ST4_Plan_ID_Ciz", System.StringComparison.OrdinalIgnoreCase)
-                    || name.StartsWith("ST4_Aks_Ciz_CSharp", System.StringComparison.OrdinalIgnoreCase))
+                // Aks referansi her NETLOAD'ta zaten yuklu; onu saymak paleti hep atlatirdi.
+                if (name.StartsWith("ST4_Plan_ID_Ciz", System.StringComparison.OrdinalIgnoreCase))
                     n++;
             }
             return n;
@@ -115,6 +113,13 @@ namespace ST4PlanIdCiz
             ed.WriteMessage("\n{0} hata: {1}", commandTag, e.Message);
             if (e.InnerException != null)
                 ed.WriteMessage("  Inner: {0}", e.InnerException.Message);
+        }
+
+        /// <summary>STA komut paletini gosterir (NETLOAD sonrasi Idle'da da otomatik acilir).</summary>
+        [CommandMethod("STAPANEL")]
+        public void StaPanel()
+        {
+            CommandPaletteManager.Show();
         }
 
         /// <summary>Aktif çizimde hiç nesne kullanmayan katmanları siler (0 / Defpoints / güncel katman / xref hariç). Herhangi bir DWG.</summary>

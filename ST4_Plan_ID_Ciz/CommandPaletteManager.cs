@@ -1,6 +1,5 @@
 using System;
 using System.Drawing;
-using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using Autodesk.AutoCAD.Windows;
 using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
@@ -11,22 +10,69 @@ namespace ST4PlanIdCiz
     {
         private const int PaletteWidth = 150;
         private const int PaletteHeight = 490;
-        private const int MarginX = 8;
-        /// <summary>Komut satırı / durum çubuğu üstünde kalsın.</summary>
-        private const int MarginBottom = 56;
+
+        /// <summary>PaletteSet kalici kimligi; Guid olmadan tekrar NETLOAD native fatal (e06d7363) verebilir.</summary>
+        private static readonly Guid PaletteToolId = new Guid("3d8e1c7a-9b24-4f51-a6e0-7c2b91d84e15");
 
         private static PaletteSet _palette;
+        private static bool _idleHooked;
+        private static int _pendingDupWarning;
+
+        public static void RequestShowWhenIdle()
+        {
+            try
+            {
+                if (_idleHooked) return;
+                _idleHooked = true;
+                AcApp.Idle += OnIdleShow;
+            }
+            catch { }
+        }
+
+        public static void RequestDuplicateLoadWarning(int loadedCount)
+        {
+            _pendingDupWarning = loadedCount;
+            RequestShowWhenIdle();
+        }
+
+        private static void OnIdleShow(object sender, EventArgs e)
+        {
+            try
+            {
+                AcApp.Idle -= OnIdleShow;
+                _idleHooked = false;
+                if (_pendingDupWarning > 1)
+                {
+                    int n = _pendingDupWarning;
+                    _pendingDupWarning = 0;
+                    try
+                    {
+                        AcApp.DocumentManager.MdiActiveDocument?.Editor.WriteMessage(
+                            "\nST4_Plan_ID_Ciz: Ayni AutoCAD oturumunda birden fazla DLL yuklu ({0}). MOVE/COPY cokmesi icin AutoCAD'i kapatip yalnizca son DLL ile NETLOAD yapin.",
+                            n);
+                    }
+                    catch { }
+                    return;
+                }
+                if (AcApp.DocumentManager.MdiActiveDocument == null)
+                    return;
+                Show();
+            }
+            catch { }
+        }
 
         public static void Show()
         {
             try
             {
+                if (AcApp.DocumentManager.MdiActiveDocument == null)
+                    return;
+
                 if (_palette != null)
                 {
                     try
                     {
                         _palette.Visible = true;
-                        PlacePaletteBottomLeft();
                         EnableAutoHide();
                         return;
                     }
@@ -37,7 +83,7 @@ namespace ST4PlanIdCiz
                     }
                 }
 
-                _palette = new PaletteSet("STA Komut Paneli")
+                _palette = new PaletteSet("STA Komut Paneli", "STAPANEL", PaletteToolId)
                 {
                     Style = PaletteSetStyles.ShowAutoHideButton
                           | PaletteSetStyles.ShowCloseButton,
@@ -51,9 +97,6 @@ namespace ST4PlanIdCiz
 
                 _palette.Size = new Size(PaletteWidth, PaletteHeight);
                 _palette.Visible = true;
-                try { _palette.Dock = DockSides.None; } catch { }
-                _palette.Size = new Size(PaletteWidth, PaletteHeight);
-                PlacePaletteBottomLeft();
                 EnableAutoHide();
             }
             catch { }
@@ -61,6 +104,15 @@ namespace ST4PlanIdCiz
 
         public static void Shutdown()
         {
+            try
+            {
+                if (_idleHooked)
+                {
+                    AcApp.Idle -= OnIdleShow;
+                    _idleHooked = false;
+                }
+            }
+            catch { }
             if (_palette == null) return;
             try { _palette.Visible = false; } catch { }
             try { _palette.Dispose(); } catch { }
@@ -71,50 +123,6 @@ namespace ST4PlanIdCiz
         {
             if (_palette == null) return;
             try { _palette.AutoRollUp = true; } catch { }
-        }
-
-        private static void PlacePaletteBottomLeft()
-        {
-            if (_palette == null) return;
-            try
-            {
-                try { _palette.Dock = DockSides.None; } catch { }
-                int palW = _palette.Size.Width > 0 ? _palette.Size.Width : PaletteWidth;
-                int palH = _palette.Size.Height > 0 ? _palette.Size.Height : PaletteHeight;
-                Rectangle host = GetAcadWindowBounds();
-                int x = host.Left + MarginX;
-                int y = host.Bottom - palH - MarginBottom;
-                if (y < host.Top + MarginX) y = host.Top + MarginX;
-                _palette.Location = new Point(x, y);
-                _palette.Size = new Size(palW, palH);
-            }
-            catch { }
-        }
-
-        private static Rectangle GetAcadWindowBounds()
-        {
-            try
-            {
-                IntPtr hwnd = AcApp.MainWindow.Handle;
-                if (hwnd != IntPtr.Zero && GetWindowRect(hwnd, out RECT r))
-                    return Rectangle.FromLTRB(r.Left, r.Top, r.Right, r.Bottom);
-            }
-            catch { }
-
-            try { return Screen.PrimaryScreen.WorkingArea; }
-            catch { return new Rectangle(0, 0, 1280, 800); }
-        }
-
-        [DllImport("user32.dll")]
-        private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct RECT
-        {
-            public int Left;
-            public int Top;
-            public int Right;
-            public int Bottom;
         }
     }
 
