@@ -1,0 +1,78 @@
+---
+description: BEYKENT katman tablosu ve METRAJ katman kullanımı
+alwaysApply: true
+---
+
+# BEYKENT katman tablosu
+
+Kullanıcının later (layer) tablosu referanstır. Mevcut çizimde katman varsa renk/çizgi tipi/kalınlık **değiştirilmez**; yoksa oluşturulur.
+
+## METRAJ komutu (zorunlu)
+
+- Tablo başlığı (ör. `... BETON/KALIP KEŞİF METRAJI`) → **`METRAJ YAZI (BEYKENT)`** — ACI **60**, Continuous, 0.20 m
+- Sütun başlıkları (Kat, Beton m³, …) → **`METRAJ YAZI (BEYKENT)`** — ACI **60**, Continuous, 0.20 m
+- Tablo çizgileri → **`METRAJ TABLO (BEYKENT)`** — ACI **206**, Continuous, 0.20 m
+- Toplam satırları ve temel/kat ayırıcı yatay çizgiler → **`METRAJ TOPLAM (BEYKENT)`** — ACI **142**, Continuous, 0.30 m; yazı 10 cm
+- Metraj sayıları (miktar, tutar, birim fiyat) → **`DONATI YAZISI (BEYKENT)`** — ACI **3**, Continuous, 0.20 m
+
+## Katman listesi (Continuous/Dashed, renk, 0.20–0.40 m)
+
+| Katman | Çizgi | Not |
+|---|---|---|
+| AKS BALONU (BEYKENT) | Continuous 0.20 | beyaz |
+| AKS CIZGISI (BEYKENT) | Dashed 0.20 | gri |
+| AKS NO (BEYKENT) | Continuous 0.20 | mor |
+| AKS OLCU (BEYKENT) | Continuous 0.20 | magenta |
+| BANT (BEYKENT) | Dashed 0.25 | kahve |
+| CIROZ (BEYKENT) | Continuous 0.20 | cyan |
+| CIZGI (BEYKENT) | Continuous 0.20 | kırmızı |
+| D.GORUNUS (BEYKENT) | Dashed 0.20 | gri |
+| DETAY ANTET (BEYKENT) | Continuous 0.40 | mavi |
+| DONATI (BEYKENT) | Continuous 0.40 | cyan |
+| DONATI HALKASI (BEYKENT) | Dashed 0.30 | sarı |
+| DONATI OKU (BEYKENT) | Continuous 0.20 | bordo |
+| DONATI YAZISI (BEYKENT) | Continuous 0.20 | yeşil |
+| DOSEME (BEYKENT) | Continuous 0.30 | sarı |
+| DOSEME ISMI (BEYKENT) | Continuous 0.20 | gri |
+| DOSEME PAFTA (BEYKENT) | Continuous 0.20 | yeşil |
+| DOSEME SINIRI (BEYKENT) | Continuous 0.30 | yeşil |
+| ETRIYE (BEYKENT) | Continuous 0.35 | mavi |
+| HASIR (BEYKENT) | Continuous 0.35 | cyan |
+| HASIR CIZGI (BEYKENT) | Continuous 0.20 | kırmızı |
+| HASIR YAZI (BEYKENT) | Continuous 0.20 | yeşil |
+| HASIR YONU (BEYKENT) | Continuous 0.25 | lacivert |
+| HPOZ BALON (BEYKENT) | Continuous 0.20 | mavi |
+| HPOZ NO (BEYKENT) | Continuous 0.20 | cyan |
+| I.DONATI HALKASI (BEYKENT) | Dashed 0.30 | kırmızı |
+| I.DONATI OKU (BEYKENT) | Continuous 0.20 | mavi |
+| IZDUSUM (BEYKENT) | Dashed 0.20 | gri |
+| KAPAMA PERDESI (BEYKENT) | Continuous 0.30 | mavi |
+| KAPAMA PERDESI ISMI (BEYKENT) | Continuous 0.20 | mavi |
+| KASET AKS (BEYKENT) | Dashed 0.20 | gri |
+| KASET ALT (BEYKENT) | Continuous 0.20 | magenta |
+| KASET UST (BEYKENT) | Continuous 0.20 | mor |
+| KESIT (BEYKENT) | Continuous 0.25 | mavi |
+| KESIT GORUNUS (BEYKENT) | Continuous 0.20 | gri |
+| KESIT ISMI (BEYKENT) | Dashed 0.20 | magenta |
+| KESIT SINIRI (BEYKENT) | Dashed 0.20 | pembe |
+| KIRIS (BEYKENT) | Continuous 0.30 | sarı |
+| KIRIS ISMI (BEYKENT) | Continuous 0.20 | turuncu |
+| KOLON (BEYKENT) | Continuous 0.30 | yeşil |
+| KOLON ISMI (BEYKENT) | Continuous 0.20 | yeşil |
+| KOT CIZGI (BEYKENT) | Continuous 0.20 | beyaz |
+| KOT YAZI (BEYKENT) | Continuous 0.20 | beyaz |
+| MERDIVEN (BEYKENT) | Continuous 0.20 | mavi |
+| MERDIVEN YAZI (BEYKENT) | Continuous 0.20 | sarı |
+| METRAJ TABLO (BEYKENT) | Continuous 0.20 | ACI 206 |
+| METRAJ TOPLAM (BEYKENT) | Continuous 0.30 | ACI 142 |
+| METRAJ YAZI (BEYKENT) | Continuous 0.20 | ACI 60 |
+| OLCU (BEYKENT) | Continuous 0.30 | yeşil |
+| PARAPET (BEYKENT) | Continuous 0.20 | mavi |
+| PERDE (BEYKENT) | Continuous 0.30 | magenta |
+| PERDE ISMI (BEYKENT) | Continuous 0.20 | kırmızı |
+| POZ BALON (BEYKENT) | Continuous 0.20 | cyan |
+| POZ NO (BEYKENT) | Continuous 0.20 | sarı |
+| SUBASMAN (BEYKENT) | Continuous 0.30 | mavi |
+| TARAMA (BEYKENT) | Continuous 0.20 | gri |
+| TEMEL (BEYKENT) | Continuous 0.30 | sarı |
+| YAZI (BEYKENT) | Continuous 0.20 | mavi |

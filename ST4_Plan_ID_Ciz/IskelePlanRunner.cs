@@ -457,6 +457,7 @@ namespace ST4PlanIdCiz
         private static void EnsureLayers(Transaction tr, Database db)
         {
             EnsureLayer(tr, db, LayerYazi, 4, "Continuous", LineWeight.LineWeight020);
+            BeykentCizgiLayer.Ensure(tr, db);
             EnsureLayer(tr, db, LayerIskeleDetay, 4, "Continuous", LineWeight.LineWeight025);
             EnsureLayer(tr, db, LayerOlcu, 14, "Continuous", LineWeight.LineWeight020);
             EnsureLayer(tr, db, LayerCapraz, 140, "Continuous", LineWeight.LineWeight020);

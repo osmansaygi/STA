@@ -3247,18 +3247,22 @@ namespace ST4PlanIdCiz
                         DrawTieBeams(tr, btr, firstFloor, offsetX, offsetY, kolonPerdeUnion, temelHatiliRaws);
                         DrawSingleFootings(tr, btr, firstFloor, offsetX, offsetY, drawTemelOutline: false);
                         DrawPerdeLabelsForFloor(tr, btr, firstFloor, offsetX, offsetY, kolonPerdeUnion);
-                        DrawFloorTitle(tr, btr, firstFloor, offsetX, offsetY, firstFloorAxisExt, isFoundationPlan: true);
                         if (planCopyCount > 1 && copyIndex < copyCaptions.Length)
                             DrawTemelDonatiCopyCaption(tr, btr, offsetX, offsetY, firstFloorAxisExt, copyCaptions[copyIndex]);
+                        else
+                            DrawFloorTitle(tr, btr, firstFloor, offsetX, offsetY, firstFloorAxisExt, isFoundationPlan: true);
 
                         DrawPlanSections(tr, btr, db, firstFloor, offsetX, offsetY, firstFloorAxisExt, isFoundationPlan: true, firstFloorUnion,
                             out double layMinX, out double layMaxX, out double layMinY, out double layMaxY, out double leftSec);
                         GetSectionCutBalloonExtents(offsetX, offsetY, firstFloorAxisExt,
                             out _, out double xRightBalloon, out double yBottomBalloonTemel, out _,
                             out _, out _, out _, out _);
-                        double fa = TemelFoundationAnnotMul;
-                        double temelBaslikYTop = yBottomBalloonTemel - Temel50BaslikAltAksBalonBoslukCm * fa;
-                        layMinY = Math.Min(layMinY, temelBaslikYTop - 30.0 * fa - 100.0 * fa);
+                        if (planCopyCount <= 1)
+                        {
+                            double fa = TemelFoundationAnnotMul;
+                            double temelBaslikYTop = yBottomBalloonTemel - Temel50BaslikAltAksBalonBoslukCm * fa;
+                            layMinY = Math.Min(layMinY, temelBaslikYTop - 30.0 * fa - 100.0 * fa);
+                        }
 
                         if (!antetInit)
                         {
@@ -3565,6 +3569,7 @@ namespace ST4PlanIdCiz
         private static void EnsureLayers(Transaction tr, Database db)
         {
             EnsureDashedLinetype(tr, db);
+            BeykentCizgiLayer.Ensure(tr, db);
             EnsurePlanLayer(tr, db, LayerAks, 252, LineWeight.LineWeight020, useDashed: true);
             EnsurePlanLayer(tr, db, LayerAksBalonu, 7, LineWeight.LineWeight030, useDashed: false);
             EnsurePlanLayer(tr, db, LayerAksYazisi, 3, LineWeight.LineWeight020, useDashed: false);
@@ -3573,21 +3578,6 @@ namespace ST4PlanIdCiz
             EnsurePlanLayer(tr, db, LayerPerde, 6, LineWeight.LineWeight040, useDashed: false);
             EnsurePlanLayer(tr, db, LayerTarama, 8, LineWeight.LineWeight015, useDashed: false);
             EnsurePlanLayer(tr, db, LayerDoseme, 71, LineWeight.LineWeight030, useDashed: false);
-            EnsurePlanLayer(tr, db, LayerDosemeHatti, 71, LineWeight.LineWeight030, useDashed: false);
-            EnsurePlanLayer(tr, db, LayerDosemeHatti1, 71, LineWeight.LineWeight030, useDashed: false);
-            EnsurePlanLayer(tr, db, LayerDosemeHatti2, 170, LineWeight.LineWeight030, useDashed: false);
-            EnsurePlanLayer(tr, db, LayerDosemeHatti3, 40, LineWeight.LineWeight030, useDashed: false);
-            EnsurePlanLayer(tr, db, LayerDosemeHatti4, 30, LineWeight.LineWeight030, useDashed: false);
-            EnsurePlanLayer(tr, db, LayerDeneme1DosemeSegmentBirBes, 1, LineWeight.LineWeight020, useDashed: false);
-            EnsurePlanLayer(tr, db, LayerDeneme1BirBesBaglantiX, 5, LineWeight.LineWeight020, useDashed: false);
-            EnsurePlanLayer(tr, db, LayerDeneme1BirBesBaglantiY, 1, LineWeight.LineWeight020, useDashed: false);
-            EnsurePlanLayer(tr, db, LayerDeneme1Dtx, 5, LineWeight.LineWeight020, useDashed: false);
-            EnsurePlanLayer(tr, db, LayerDeneme1Dty, 1, LineWeight.LineWeight020, useDashed: false);
-            EnsurePlanLayer(tr, db, LayerEksen, 3, LineWeight.LineWeight020, useDashed: false);
-            EnsurePlanLayer(tr, db, LayerEksenX, 5, LineWeight.LineWeight020, useDashed: false);
-            EnsurePlanLayer(tr, db, LayerEksenY, 1, LineWeight.LineWeight020, useDashed: false);
-            EnsurePlanLayer(tr, db, LayerDosemeDonatiEksenX, Deneme1DonatiEksenLayerAciX, LineWeight.LineWeight025, useDashed: false);
-            EnsurePlanLayer(tr, db, LayerDosemeDonatiEksenY, Deneme1DonatiEksenLayerAciY, LineWeight.LineWeight025, useDashed: false);
             EnsurePlanLayer(tr, db, LayerMerdiven, 5, LineWeight.LineWeight030, useDashed: false);
             EnsurePlanLayer(tr, db, LayerYazi, 4, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, LayerBaslik, 4, LineWeight.LineWeight020, useDashed: false);
@@ -6064,6 +6054,12 @@ namespace ST4PlanIdCiz
             if (geoms == null || geoms.Count == 0) return;
             var factory = _ntsDrawFactory;
             if (factory == null) return;
+            Database dbHatti = btr.Database;
+            EnsurePlanLayer(tr, dbHatti, LayerDosemeHatti, 71, LineWeight.LineWeight030, useDashed: false);
+            EnsurePlanLayer(tr, dbHatti, LayerDosemeHatti1, 71, LineWeight.LineWeight030, useDashed: false);
+            EnsurePlanLayer(tr, dbHatti, LayerDosemeHatti2, 170, LineWeight.LineWeight030, useDashed: false);
+            EnsurePlanLayer(tr, dbHatti, LayerDosemeHatti3, 40, LineWeight.LineWeight030, useDashed: false);
+            EnsurePlanLayer(tr, dbHatti, LayerDosemeHatti4, 30, LineWeight.LineWeight030, useDashed: false);
             double tol = Deneme1DosemeHattiTouchTolCm;
             _kalip50Deneme1DosemeHattiEdgeAxisRecordsBySlabId = null;
             if (Deneme1IsFormworkCompletionTagDeneme1(_kalip50FormworkCompletionTag))
@@ -9805,15 +9801,18 @@ namespace ST4PlanIdCiz
             }
         }
 
-        /// <summary>Çizimde görüldüğü şekilde tüm poligonları (kolon, kiriş, perde, döşeme, kalıp boşluk; aks ve kat sınırı hariç) birleştirip KAT SINIRI çizer.</summary>
+        /// <summary>Çizimde görüldüğü şekilde tüm poligonları birleştirip kalıpta DOSEME SINIRI, diğer komutlarda KAT SINIRI çizer.</summary>
         private void DrawUnifiedLayer(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY, Geometry elementUnion)
         {
             var allPolygons = BuildKalipUnifiedPolygonList(floor, offsetX, offsetY, elementUnion, addElementUnionInteriorAsPolygons: true);
             if (allPolygons.Count == 0) return;
             Geometry unionResult = TryCascadedPolygonUnionSafe(allPolygons);
             if (unionResult != null && !unionResult.IsEmpty)
-                // İç boşluk çevreleri KAT SINIRI'nda tekrarlanmasın; dış sınır + ayrık adaların dış halkaları. Boşluk sınırı KALIP BOSLUK / BOS.
-                DrawGeometryRingsAsPolylines(tr, btr, unionResult, LayerKatSiniri, addHatch: false, applySmallTriangleTrim: false, exteriorRingsOnly: true, vertexAngleTolDeg: 0.3, minVertexDistCm: 0.1, collinearTolCm: 0.05);
+            {
+                string ringLayer = _isKalip50Mode ? LayerDoseme : LayerKatSiniri;
+                // İç boşluk çevreleri tekrarlanmasın; dış sınır + ayrık adaların dış halkaları. Boşluk sınırı KALIP BOSLUK / BOS.
+                DrawGeometryRingsAsPolylines(tr, btr, unionResult, ringLayer, addHatch: false, applySmallTriangleTrim: false, exteriorRingsOnly: true, vertexAngleTolDeg: 0.3, minVertexDistCm: 0.1, collinearTolCm: 0.05);
+            }
         }
 
         /// <summary>Kat sınırı poligonu çizer: eleman birleşiminin tüm dış halkaları (birden fazla kapalı alan varsa hepsi). Union yoksa bbox dikdörtgeni.</summary>
@@ -13210,7 +13209,10 @@ namespace ST4PlanIdCiz
                             catch { _kalip50Deneme1DosemeHattiGeoms.Add((slab.SlabId, dosemeHattiListGeom)); }
                         }
                         else
+                        {
+                            EnsurePlanLayer(tr, btr.Database, LayerDosemeHatti, 71, LineWeight.LineWeight030, useDashed: false);
                             DrawGeometryRingsAsPolylines(tr, btr, toDraw, LayerDosemeHatti, addHatch: false, applySmallTriangleTrim: false);
+                        }
                     }
                     else if (isStair)
                         DrawGeometryRingsAsPolylines(tr, btr, toDraw, LayerMerdiven, addHatch: false, applySmallTriangleTrim: false);

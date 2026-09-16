@@ -44,7 +44,7 @@ namespace ST4PlanIdCiz
             bool drawStaBoxes = true,
             List<StaCadBox> staCadBoxes = null,
             string heatLayer = null,
-            short heatAci = 1)
+            AcColor heatColor = null)
         {
             if (string.IsNullOrWhiteSpace(pngPath) || !File.Exists(pngPath))
             {
@@ -52,7 +52,7 @@ namespace ST4PlanIdCiz
                 return 0;
             }
             using (var bmp = LoadBitmap(pngPath))
-                return DrawBitmap(bmp, temelWorld, temelGeom, db, ed, tr, btr, drawStaBoxes, staCadBoxes, heatLayer, heatAci);
+                return DrawBitmap(bmp, temelWorld, temelGeom, db, ed, tr, btr, drawStaBoxes, staCadBoxes, heatLayer, heatColor);
         }
 
         public static int DrawBitmap(
@@ -66,7 +66,7 @@ namespace ST4PlanIdCiz
             bool drawStaBoxes = false,
             List<StaCadBox> staCadBoxes = null,
             string heatLayer = null,
-            short heatAci = 1)
+            AcColor heatColor = null)
         {
             if (bmp == null)
             {
@@ -84,7 +84,7 @@ namespace ST4PlanIdCiz
                 if (LooksLikeLightPdfGraph(bmp, 0, 0, bmp.Width - 1, bmp.Height - 1)
                     && staCadBoxes != null && staCadBoxes.Count > 0)
                 {
-                    int locked = DrawHeatLockedToStaBoxes(bmp, temelWorld, temelGeom, staCadBoxes, db, ed, tr, btr, heatLayer, heatAci);
+                    int locked = DrawHeatLockedToStaBoxes(bmp, temelWorld, temelGeom, staCadBoxes, db, ed, tr, btr, heatLayer, heatColor);
                     if (locked > 0) return locked;
                 }
 
@@ -99,11 +99,11 @@ namespace ST4PlanIdCiz
                     return 0;
                 }
                 temelWorld = mappedWorld ?? temelWorld;
-                EnsureLayer(tr, db, LayerName, 1, LineWeight.LineWeight025);
+                EnsureLayer(tr, db, LayerName, AcColor.FromColorIndex(ColorMethod.ByAci, 1), LineWeight.LineWeight025);
                 if (drawStaBoxes)
                 {
-                    EnsureLayer(tr, db, LayerBoxName, 1, LineWeight.LineWeight020);
-                    EnsureLayer(tr, db, LayerTextName, 3, LineWeight.LineWeight020);
+                    EnsureLayer(tr, db, LayerBoxName, AcColor.FromColorIndex(ColorMethod.ByAci, 1), LineWeight.LineWeight020);
+                    EnsureLayer(tr, db, LayerTextName, AcColor.FromColorIndex(ColorMethod.ByAci, 3), LineWeight.LineWeight020);
                     int nLab = DrawStaBoxesAndLabels(bmp, boxes, pngMinX, pngMinY, pngMaxX, pngMaxY, cols, rows, temelWorld, tr, btr, ed, out int nTxt);
                     ed?.WriteMessage("\nTEMELDONATI: {0} kutu, {1} donati yazisi ({2} / {3}).", nLab, nTxt, LayerBoxName, LayerTextName);
                 }
@@ -123,7 +123,7 @@ namespace ST4PlanIdCiz
                 }
 
                 string ringLayer = string.IsNullOrEmpty(heatLayer) ? LayerName : heatLayer;
-                EnsureLayer(tr, db, ringLayer, heatAci, LineWeight.LineWeight025);
+                EnsureLayer(tr, db, ringLayer, heatColor ?? AcColor.FromRgb(199, 92, 110), LineWeight.LineWeight025);
                 int n = DrawRings(tr, btr, union, ringLayer);
                 ed?.WriteMessage(
                     "\nTEMELDONATI: {0} polyline (renk gecisi, temel icine kirpildi). Mesh yok sayildi.{1} Katman {2}.",
@@ -193,7 +193,7 @@ namespace ST4PlanIdCiz
             Transaction tr,
             BlockTableRecord btr,
             string heatLayer,
-            short heatAci)
+            AcColor heatColor)
         {
             int minX, minY, maxX, maxY, gw, gh;
             bool[,] foundMask;
@@ -215,7 +215,7 @@ namespace ST4PlanIdCiz
             heat = ClipToTemel(heat, temelGeom);
             if (heat == null || heat.IsEmpty) return 0;
             if (string.IsNullOrEmpty(heatLayer)) heatLayer = LayerName;
-            EnsureLayer(tr, db, heatLayer, heatAci, LineWeight.LineWeight025);
+            EnsureLayer(tr, db, heatLayer, heatColor ?? AcColor.FromRgb(199, 92, 110), LineWeight.LineWeight025);
             int n = DrawRings(tr, btr, heat, heatLayer);
             ed?.WriteMessage("\nTEMELDONATI: {0} isi konturu (piksel iz + STA kutu kilidi). Katman {1}.", n, LayerName);
             return n;
@@ -2648,15 +2648,22 @@ namespace ST4PlanIdCiz
             tr.AddNewlyCreatedDBObject(pl, true);
         }
 
-        private static void EnsureLayer(Transaction tr, Database db, string name, short aci, LineWeight lw)
+        private static void EnsureLayer(Transaction tr, Database db, string name, AcColor color, LineWeight lw)
         {
             var lt = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
-            if (lt.Has(name)) return;
+            if (lt.Has(name))
+            {
+                var existing = (LayerTableRecord)tr.GetObject(lt[name], OpenMode.ForWrite);
+                if (color != null)
+                    existing.Color = color;
+                existing.LineWeight = lw;
+                return;
+            }
             lt.UpgradeOpen();
             var rec = new LayerTableRecord
             {
                 Name = name,
-                Color = AcColor.FromColorIndex(ColorMethod.ByAci, aci),
+                Color = color ?? AcColor.FromColorIndex(ColorMethod.ByAci, 1),
                 LineWeight = lw
             };
             var ltt = (LinetypeTable)tr.GetObject(db.LinetypeTableId, OpenMode.ForRead);

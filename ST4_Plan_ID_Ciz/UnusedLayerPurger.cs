@@ -7,7 +7,7 @@ namespace ST4PlanIdCiz
     /// <summary>
     /// Hiçbir nesnenin kullanmadığı katmanları siler (0 / Defpoints / güncel / xref hariç).
     /// STA komutları tüm katman tablosunu önceden açtığı ve antet/şablon ekstra katman getirdiği için katman listesi şişer.
-    /// Yalnızca ST4KATMANTEMIZLE çağırır; her komut sonunda otomatik purge MOVE/COPY fatal error ile ilişkilendirildi.
+    /// Çizim sonunda FinishStaDrawing çağırır. CIZGI (BEYKENT) boş olsa da silinmez.
     /// </summary>
     internal static class UnusedLayerPurger
     {
@@ -17,7 +17,7 @@ namespace ST4PlanIdCiz
             int total = 0;
             try
             {
-                for (int pass = 0; pass < 4; pass++)
+                for (int pass = 0; pass < 2; pass++)
                 {
                     int n = PurgeUnusedLayersOnce(db);
                     total += n;
@@ -53,6 +53,7 @@ namespace ST4PlanIdCiz
                     string name = rec.Name ?? "";
                     if (string.Equals(name, "0", StringComparison.OrdinalIgnoreCase)) continue;
                     if (string.Equals(name, "Defpoints", StringComparison.OrdinalIgnoreCase)) continue;
+                    if (string.Equals(name, BeykentCizgiLayer.Name, StringComparison.OrdinalIgnoreCase)) continue;
                     if (rec.IsDependent) continue;
                     ids.Add(lid);
                 }

@@ -60,8 +60,6 @@ namespace ST4PlanIdCiz
         private const double KesitSiniriBoyunaTasmasiCm = 100.0;
         /// <summary>Kesit dilim sırası: sürekli temel (TEMEL etiketi için).</summary>
         private const int SectionOrderContinuousFoundation = 10;
-        /// <summary>Temel üst kesitte kolon/perde: kesit sınırı üst çizgisinin üstünde, metin alt kenarına bu kadar (cm); TextBottom ile tamamen sınır dışında.</summary>
-        private const double KesitTemelKolonPerdeUstBoslukCm = 20.0;
         /// <summary>Sürekli temel T- etiketi: A-A üstte boşluk (cm).</summary>
         private const double KesitSurekliTemelEtiketGapCm = 5.0;
         /// <summary>Temel sol kesitte sürekli temel T- etiketi: kesit bloğunun sol kenarından bu kadar sola (cm).</summary>
@@ -3803,7 +3801,10 @@ namespace ST4PlanIdCiz
                     double xKp = originX + (aMid - amin);
                     if (kolonPerdeUstunde)
                     {
-                        double yAltKenar = originY + (zHiEff - minZ) + KesitTemelKolonPerdeUstBoslukCm * dm + (rowKp - 1) * (labelH + 3.0 * dm);
+                        // Dikey kesitle aynı boşluk: görünür üst kenardan siniriGap; diğer etiketlerle yukarı yığılma yok.
+                        double zTop = g.Max(s => Math.Max(s.Z0, s.Z1));
+                        if (hasSiniri) zTop = Math.Min(zTop, zHiEff);
+                        double yAltKenar = originY + (zTop - minZ) + siniriGap;
                         AppendEntity(tr, btr, new DBText
                         {
                             Layer = layer,

@@ -10,7 +10,7 @@ namespace ST4PlanIdCiz
     internal static class CommandPaletteManager
     {
         private const int PaletteWidth = 150;
-        private const int PaletteHeight = 490;
+        private const int PaletteHeight = 516;
         private const int MarginX = 8;
         /// <summary>Komut satırı / durum çubuğu üstünde kalsın.</summary>
         private const int MarginBottom = 56;
@@ -142,6 +142,7 @@ namespace ST4PlanIdCiz
             ("Kal\u0131p Plan\u0131",    "KALIP50ST4"),
             ("Kolon Aplikasyon", "KOLON50ST4"),
             ("Temel Plan\u0131",   "TEMEL50ST4"),
+            ("Rd. Temel Plan\u0131", "TEMELDONATI"),
         };
         private static readonly (string label, string cmd)[] S100 =
         {
@@ -164,7 +165,6 @@ namespace ST4PlanIdCiz
         private static readonly (string label, string cmd)[] AltDeneme =
         {
             ("Deneme1 (ilk 2 kat, sade)", "DENEME1"),
-            ("Temel Donati", "TEMELDONATI"),
         };
 
         public CommandPaletteControl()

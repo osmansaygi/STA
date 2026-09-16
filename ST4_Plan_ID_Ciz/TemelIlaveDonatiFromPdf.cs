@@ -21,43 +21,19 @@ namespace ST4PlanIdCiz
     /// </summary>
     internal static class TemelIlaveDonatiFromPdf
     {
-        public const string LayerYazi = "TEMEL ILAVE YAZI (BEYKENT)";
+        private static bool IsXYon(Yon yon) => yon == Yon.XAlt || yon == Yon.XUst;
 
-        public static string HeatLayer(Yon yon)
-        {
-            switch (yon)
-            {
-                case Yon.XAlt: return "TEMEL ILAVE X ALT (BEYKENT)";
-                case Yon.YAlt: return "TEMEL ILAVE Y ALT (BEYKENT)";
-                case Yon.XUst: return "TEMEL ILAVE X UST (BEYKENT)";
-                case Yon.YUst: return "TEMEL ILAVE Y UST (BEYKENT)";
-                default: return "TEMEL ILAVE DONATI (BEYKENT)";
-            }
-        }
+        public static AcColor BoxColor(Yon yon) =>
+            IsXYon(yon) ? AcColor.FromRgb(255, 176, 176) : AcColor.FromRgb(176, 204, 236);
 
-        public static string BoxLayer(Yon yon)
-        {
-            switch (yon)
-            {
-                case Yon.XAlt: return "TEMEL ILAVE KUTU X ALT (BEYKENT)";
-                case Yon.YAlt: return "TEMEL ILAVE KUTU Y ALT (BEYKENT)";
-                case Yon.XUst: return "TEMEL ILAVE KUTU X UST (BEYKENT)";
-                case Yon.YUst: return "TEMEL ILAVE KUTU Y UST (BEYKENT)";
-                default: return "TEMEL ILAVE KUTU (BEYKENT)";
-            }
-        }
+        public static AcColor HeatColor(Yon yon) =>
+            IsXYon(yon) ? AcColor.FromRgb(196, 72, 72) : AcColor.FromRgb(64, 112, 176);
 
-        public static short YonAci(Yon yon)
-        {
-            switch (yon)
-            {
-                case Yon.XAlt: return 1;
-                case Yon.YAlt: return 5;
-                case Yon.XUst: return 6;
-                case Yon.YUst: return 4;
-                default: return 1;
-            }
-        }
+        public static string HeatLayer(Yon yon) =>
+            IsXYon(yon) ? "TEMEL ILAVE X (BEYKENT)" : "TEMEL ILAVE Y (BEYKENT)";
+
+        public static string BoxLayer(Yon yon) =>
+            IsXYon(yon) ? "TEMEL ILAVE KUTU X (BEYKENT)" : "TEMEL ILAVE KUTU Y (BEYKENT)";
 
         public enum Yon
         {
@@ -102,25 +78,10 @@ namespace ST4PlanIdCiz
                 if (Matches(r, yon)) rows.Add(r);
             }
 
-            ed?.WriteMessage("\nTEMELDONATI PDF: {0} satir, {1} = {2} kutu ({3}).",
-                all.Count, YonAd(yon), rows.Count, Path.GetFileName(pdfPath));
+            ed?.WriteMessage("\nTEMELDONATI PDF: {0} satir, {1} = {2} kutu.",
+                all.Count, YonAd(yon), rows.Count);
 
-            EnsureLayer(tr, db, BoxLayer(yon), YonAci(yon), LineWeight.LineWeight020);
-            EnsureLayer(tr, db, LayerYazi, 3, LineWeight.LineWeight020);
-
-            if (temelEnv != null)
-            {
-                var baslik = new DBText
-                {
-                    Layer = LayerYazi,
-                    Height = 20.0,
-                    WidthFactor = 0.85,
-                    TextString = YonAd(yon) + " ilave donati (PDF)",
-                    Position = new Point3d(temelEnv.MinX, temelEnv.MaxY + 40.0, 0)
-                };
-                btr.AppendEntity(baslik);
-                tr.AddNewlyCreatedDBObject(baslik, true);
-            }
+            EnsureLayer(tr, db, BoxLayer(yon), BoxColor(yon), LineWeight.LineWeight020);
 
             int n = 0;
             foreach (var r in rows)
@@ -142,7 +103,7 @@ namespace ST4PlanIdCiz
                 string label = r.Adet + "Ø" + r.Cap + "/" + r.Aralik;
                 var txt = new DBText
                 {
-                    Layer = LayerYazi,
+                    Layer = BoxLayer(yon),
                     Height = 20.0,
                     WidthFactor = 0.85,
                     TextString = label,
@@ -151,12 +112,9 @@ namespace ST4PlanIdCiz
                 btr.AppendEntity(txt);
                 tr.AddNewlyCreatedDBObject(txt, true);
                 n++;
-                ed?.WriteMessage("\nTEMELDONATI PDF: {0}  X=({1:0.00}-{2:0.00}) Y=({3:0.00}-{4:0.00}) m",
-                    label, r.X0, r.X1, r.Y0, r.Y1);
             }
 
-            ed?.WriteMessage("\nTEMELDONATI: {0} kutu+yazi cizildi ({1} / {2}).",
-                n, BoxLayer(yon), LayerYazi);
+            ed?.WriteMessage("\nTEMELDONATI: {0} kutu+yazi cizildi ({1}).", n, BoxLayer(yon));
             return n;
         }
 
@@ -372,7 +330,20 @@ namespace ST4PlanIdCiz
             y = offsetY - ym * 100.0;
         }
 
+        private static string _parseCachePath;
+        private static List<IlaveRow> _parseCache;
+
         private static List<IlaveRow> Parse(string pdfPath)
+        {
+            if (_parseCache != null && string.Equals(_parseCachePath, pdfPath, StringComparison.OrdinalIgnoreCase))
+                return _parseCache;
+            var list = ParseUncached(pdfPath);
+            _parseCachePath = pdfPath;
+            _parseCache = list;
+            return list;
+        }
+
+        private static List<IlaveRow> ParseUncached(string pdfPath)
         {
             var list = new List<IlaveRow>();
             using (var doc = PdfDocument.Open(pdfPath))
@@ -420,15 +391,22 @@ namespace ST4PlanIdCiz
             public int Adet;
         }
 
-        private static void EnsureLayer(Transaction tr, Database db, string name, short aci, LineWeight lw)
+        private static void EnsureLayer(Transaction tr, Database db, string name, AcColor color, LineWeight lw)
         {
             var lt = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
-            if (lt.Has(name)) return;
+            if (lt.Has(name))
+            {
+                var existing = (LayerTableRecord)tr.GetObject(lt[name], OpenMode.ForWrite);
+                if (color != null)
+                    existing.Color = color;
+                existing.LineWeight = lw;
+                return;
+            }
             lt.UpgradeOpen();
             var rec = new LayerTableRecord
             {
                 Name = name,
-                Color = AcColor.FromColorIndex(ColorMethod.ByAci, aci),
+                Color = color,
                 LineWeight = lw
             };
             var ltt = (LinetypeTable)tr.GetObject(db.LinetypeTableId, OpenMode.ForRead);

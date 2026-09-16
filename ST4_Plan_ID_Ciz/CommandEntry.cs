@@ -76,12 +76,25 @@ namespace ST4PlanIdCiz
                 Application.SetSystemVariable("LTSCALE", 10.0);
             }
             catch { /* sürüm / bağlam */ }
+            try
+            {
+                BeykentCizgiLayer.Ensure(doc.Database);
+            }
+            catch { /* katman acilamazsa cizim devam */ }
         }
 
         private static void FinishStaDrawing(Document doc)
         {
             if (doc == null) return;
+            PurgeStaUnusedLayers(doc);
             AcadDocumentViewUtil.ZoomExtentsWithoutNestedCommand(doc);
+        }
+
+        private static void PurgeStaUnusedLayers(Document doc)
+        {
+            if (doc == null) return;
+            try { UnusedLayerPurger.PurgeUnusedLayers(doc.Database, doc.Editor); }
+            catch { }
         }
 
         private static void ConfigureNtsNextGenOverlay()
@@ -180,6 +193,7 @@ namespace ST4PlanIdCiz
             if (doc == null) return;
             ApplyStaDefaultDrawingDisplaySettings(doc);
             IskelePlanRunner.Execute(doc);
+            PurgeStaUnusedLayers(doc);
         }
 
         /// <summary>
@@ -192,6 +206,7 @@ namespace ST4PlanIdCiz
             if (doc == null) return;
             ApplyStaDefaultDrawingDisplaySettings(doc);
             IskeleKesitRunner.Execute(doc);
+            PurgeStaUnusedLayers(doc);
         }
 
         /// <summary>
@@ -308,6 +323,7 @@ namespace ST4PlanIdCiz
                     if (ok)
                         tr.Commit();
                 }
+                PurgeStaUnusedLayers(doc);
             }
             catch (System.Exception ex)
             {
@@ -373,6 +389,7 @@ namespace ST4PlanIdCiz
                     if (ok)
                         tr.Commit();
                 }
+                PurgeStaUnusedLayers(doc);
             }
             catch (System.Exception ex)
             {
@@ -427,7 +444,7 @@ namespace ST4PlanIdCiz
 
                 bool ok = manager.DrawSectionFromUserCut(db, ed, p1Res.Value, p2Res.Value, insRes.Value, letter);
                 if (ok)
-                    AcadDocumentViewUtil.ZoomExtentsWithoutNestedCommand(doc);
+                    FinishStaDrawing(doc);
             }
             catch (System.Exception ex)
             {
@@ -760,12 +777,12 @@ namespace ST4PlanIdCiz
                 using (Bitmap heat = TemelIlaveDonatiFromPdf.TryLoadHeatBitmap(pdfPath, yon, ed))
                 {
                     if (heat != null)
-                        TemelIlaveDonatiFromPng.DrawBitmap(heat, copy.Envelope, copy.TemelGeom, db, ed, tr, btr, drawStaBoxes: false, staBoxes, heatLayer, TemelIlaveDonatiFromPdf.YonAci(yon));
+                        TemelIlaveDonatiFromPng.DrawBitmap(heat, copy.Envelope, copy.TemelGeom, db, ed, tr, btr, drawStaBoxes: false, staBoxes, heatLayer, TemelIlaveDonatiFromPdf.HeatColor(yon));
                     else
                     {
                         string heatPng = TemelIlaveDonatiFromPdf.FindHeatPng(pdfPath, yon);
                         if (!string.IsNullOrEmpty(heatPng))
-                            TemelIlaveDonatiFromPng.Draw(heatPng, copy.Envelope, copy.TemelGeom, db, ed, tr, btr, drawStaBoxes: false, staBoxes, heatLayer, TemelIlaveDonatiFromPdf.YonAci(yon));
+                            TemelIlaveDonatiFromPng.Draw(heatPng, copy.Envelope, copy.TemelGeom, db, ed, tr, btr, drawStaBoxes: false, staBoxes, heatLayer, TemelIlaveDonatiFromPdf.HeatColor(yon));
                         else
                             ed.WriteMessage("\nTEMELDONATI: {0} isi grafigi alinamadi.", yon);
                     }
