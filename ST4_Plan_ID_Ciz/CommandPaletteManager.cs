@@ -164,6 +164,7 @@ namespace ST4PlanIdCiz
         private static readonly (string label, string cmd)[] AltDeneme =
         {
             ("Deneme1 (ilk 2 kat, sade)", "DENEME1"),
+            ("Temel Donati", "TEMELDONATI"),
         };
 
         public CommandPaletteControl()
@@ -280,30 +281,40 @@ namespace ST4PlanIdCiz
                 BackColor = Color.Transparent
             };
 
+            var btnKiris = MakeTabBtn("KIRISDUZELT", 128);
+            var btnMetraj = MakeTabBtn("METRAJ", 162);
+
+            Controls.Add(lbl);
+            Controls.Add(btnKiris);
+            Controls.Add(btnMetraj);
+        }
+
+        private static Button MakeTabBtn(string cmd, int y)
+        {
             var btn = new Button
             {
-                Text = "KIRISDUZELT",
-                Location = new Point(2, 128),
+                Text = cmd,
+                Location = new Point(2, y),
                 Size = new Size(130, 28),
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 8f, FontStyle.Bold),
                 Cursor = Cursors.Hand,
-                Tag = "KIRISDUZELT"
+                Tag = cmd
             };
             btn.FlatAppearance.BorderColor = Color.FromArgb(185, 192, 210);
-            btn.Click += CommandPaletteControl_OnKirisClick;
-
-            Controls.Add(lbl);
-            Controls.Add(btn);
+            btn.Click += OnTabCmd;
+            return btn;
         }
 
-        private static void CommandPaletteControl_OnKirisClick(object sender, EventArgs e)
+        private static void OnTabCmd(object sender, EventArgs e)
         {
             try
             {
+                if (!(sender is Control c) || !(c.Tag is string cmd) || string.IsNullOrWhiteSpace(cmd))
+                    return;
                 var doc = AcApp.DocumentManager.MdiActiveDocument;
                 if (doc == null) return;
-                doc.SendStringToExecute("KIRISDUZELT ", true, false, false);
+                doc.SendStringToExecute(cmd + " ", true, false, false);
             }
             catch { }
         }

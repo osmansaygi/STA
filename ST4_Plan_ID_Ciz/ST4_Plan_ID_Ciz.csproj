@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <PackageReference Include="NetTopologySuite" Version="2.6.0" />
+    <PackageReference Include="PdfPig" Version="0.1.10" />
     <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
     <!-- AutoCAD 2027 yonetilen DLL'ler net48 ile uyumsuz; makinede 2023-2026 yoksa NuGet net48 referanslari. Cikti klasorune kopyalanmaz (AutoCAD zaten saglar). -->
     <PackageReference Include="AutoCAD.NET" Version="24.3.0" Condition="'$(AutoCADInstallDir)' == ''">

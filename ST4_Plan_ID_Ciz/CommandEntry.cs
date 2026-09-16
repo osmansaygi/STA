@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.IO;
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
@@ -314,6 +315,71 @@ namespace ST4PlanIdCiz
             }
         }
 
+        /// <summary>
+        /// STA4CAD *.KSF keşif dosyasını AutoCAD tablosu olarak çizer. Katman şimdilik 0.
+        /// </summary>
+        [CommandMethod("METRAJ")]
+        public void Metraj()
+        {
+            var doc = Application.DocumentManager.MdiActiveDocument;
+            if (doc == null) return;
+            ApplyStaDefaultDrawingDisplaySettings(doc);
+
+            var ed = doc.Editor;
+            var db = doc.Database;
+
+            var opts = new PromptOpenFileOptions("\nMETRAJ: KSF keşif dosyasi secin")
+            {
+                Filter = "KSF Dosyalari (*.ksf)|*.ksf|Tum Dosyalar (*.*)|*.*"
+            };
+            var fileRes = ed.GetFileNameForOpen(opts);
+            if (fileRes.Status != PromptStatus.OK) return;
+
+            KsfDocument ksf;
+            try
+            {
+                byte[] bytes = File.ReadAllBytes(fileRes.StringResult);
+                ksf = KsfParser.Parse(bytes, Path.GetFileName(fileRes.StringResult));
+            }
+            catch (System.Exception ex)
+            {
+                ed.WriteMessage("\nMETRAJ okuma hatasi: {0}", ex.Message);
+                return;
+            }
+
+            try
+            {
+                var pozlar = KesifOzetiPricer.CollectPozNumbers(ksf);
+                ed.WriteMessage("\nMETRAJ: Guncel birim fiyat kontrol ediliyor (CŞIDB YFK, {0} poz)...", pozlar.Count);
+                string fiyatDurum = CsbBirimFiyatCatalog.RefreshFromWeb(pozlar);
+                ed.WriteMessage("\nMETRAJ: {0}", fiyatDurum);
+            }
+            catch (System.Exception ex)
+            {
+                ed.WriteMessage("\nMETRAJ: Fiyat kontrolu atlandi ({0}).", ex.Message);
+            }
+
+            var ptOpts = new PromptPointOptions("\nTablo yerlestirme noktasi (sol-ust): ") { AllowNone = false };
+            var ptRes = ed.GetPoint(ptOpts);
+            if (ptRes.Status != PromptStatus.OK) return;
+
+            try
+            {
+                using (var tr = db.TransactionManager.StartTransaction())
+                {
+                    var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
+                    var btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
+                    bool ok = KsfTableDrawer.Draw(ksf, ptRes.Value, db, ed, tr, btr);
+                    if (ok)
+                        tr.Commit();
+                }
+            }
+            catch (System.Exception ex)
+            {
+                WriteStaCommandError(ed, "METRAJ", ex);
+            }
+        }
+
         [CommandMethod("ST4KESIT")]
         public void St4Kesit()
         {
@@ -608,6 +674,102 @@ namespace ST4PlanIdCiz
             catch (System.Exception ex)
             {
                 WriteStaCommandError(ed, "DENEME1", ex);
+            }
+        }
+
+        /// <summary>Aynı antette 4 temel planı (ölçü / ana donatı / alt ilave / üst ilave). STA TEMEL_PDF X-Y alt ve üst.</summary>
+        [CommandMethod("TEMELDONATI")]
+        public void TemelDonati()
+        {
+            var doc = Application.DocumentManager.MdiActiveDocument;
+            if (doc == null) return;
+            ApplyStaDefaultDrawingDisplaySettings(doc);
+
+            var ed = doc.Editor;
+            var db = doc.Database;
+
+            var st4Opts = new PromptOpenFileOptions("\nTEMELDONATI: ST4 dosyasi secin")
+            {
+                Filter = "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*"
+            };
+            var st4Res = ed.GetFileNameForOpen(st4Opts);
+            if (st4Res.Status != PromptStatus.OK) return;
+
+            var pdfOpts = new PromptOpenFileOptions("\nTEMELDONATI: TEMEL donati PDF (STA rapor) secin")
+            {
+                Filter = "PDF (*.pdf)|*.pdf|Tum Dosyalar (*.*)|*.*"
+            };
+            var pdfRes = ed.GetFileNameForOpen(pdfOpts);
+            if (pdfRes.Status != PromptStatus.OK) return;
+
+            try
+            {
+                ConfigureNtsNextGenOverlay();
+                var parser = new St4Parser();
+                var model = parser.Parse(st4Res.StringResult);
+                GprYapiAksLabels.TryMergeFromGprBesideSt4(st4Res.StringResult, model);
+                WriteGprAxisSummary(ed, model);
+                var manager = new PlanIdDrawingManager(model);
+                var insRes = ed.GetPoint(new PromptPointOptions("\nTEMELDONATI yerlestirme noktasi (sol-alt, TEMEL50 ile ayni): ") { AllowNone = false });
+                if (insRes.Status != PromptStatus.OK) return;
+
+                var copies = new List<PlanIdDrawingManager.TemelPlanCopyLayout>();
+                manager.DrawFoundationPlanWithSections(db, ed, insRes.Value, st4Res.StringResult, TemelFoundationPlanScale.Fifty, 4, copies);
+                if (copies.Count < 4)
+                {
+                    ed.WriteMessage("\nTEMELDONATI: 4 temel kopyasi olusmadi.");
+                    FinishStaDrawing(doc);
+                    return;
+                }
+
+                using (var tr = db.TransactionManager.StartTransaction())
+                {
+                    var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
+                    var btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
+                    DrawTemelIlaveOnCopy(pdfRes.StringResult, copies[2], new[] { TemelIlaveDonatiFromPdf.Yon.XAlt, TemelIlaveDonatiFromPdf.Yon.YAlt }, db, ed, tr, btr);
+                    DrawTemelIlaveOnCopy(pdfRes.StringResult, copies[3], new[] { TemelIlaveDonatiFromPdf.Yon.XUst, TemelIlaveDonatiFromPdf.Yon.YUst }, db, ed, tr, btr);
+                    tr.Commit();
+                }
+                FinishStaDrawing(doc);
+            }
+            catch (System.Exception ex)
+            {
+                WriteStaCommandError(ed, "TEMELDONATI", ex);
+            }
+        }
+
+        private static void DrawTemelIlaveOnCopy(
+            string pdfPath,
+            PlanIdDrawingManager.TemelPlanCopyLayout copy,
+            TemelIlaveDonatiFromPdf.Yon[] yonler,
+            Database db,
+            Editor ed,
+            Transaction tr,
+            BlockTableRecord btr)
+        {
+            if (copy.Envelope == null || copy.TemelGeom == null)
+            {
+                ed.WriteMessage("\nTEMELDONATI: kopya temel zarfi yok, ilave atlandi.");
+                return;
+            }
+            foreach (var yon in yonler)
+            {
+                TemelIlaveDonatiFromPdf.Draw(pdfPath, yon, copy.OffsetX, copy.OffsetY, copy.Envelope, db, ed, tr, btr);
+                var staBoxes = TemelIlaveDonatiFromPdf.CollectCadBoxes(pdfPath, yon, copy.OffsetX, copy.OffsetY);
+                string heatLayer = TemelIlaveDonatiFromPdf.HeatLayer(yon);
+                using (Bitmap heat = TemelIlaveDonatiFromPdf.TryLoadHeatBitmap(pdfPath, yon, ed))
+                {
+                    if (heat != null)
+                        TemelIlaveDonatiFromPng.DrawBitmap(heat, copy.Envelope, copy.TemelGeom, db, ed, tr, btr, drawStaBoxes: false, staBoxes, heatLayer, TemelIlaveDonatiFromPdf.YonAci(yon));
+                    else
+                    {
+                        string heatPng = TemelIlaveDonatiFromPdf.FindHeatPng(pdfPath, yon);
+                        if (!string.IsNullOrEmpty(heatPng))
+                            TemelIlaveDonatiFromPng.Draw(heatPng, copy.Envelope, copy.TemelGeom, db, ed, tr, btr, drawStaBoxes: false, staBoxes, heatLayer, TemelIlaveDonatiFromPdf.YonAci(yon));
+                        else
+                            ed.WriteMessage("\nTEMELDONATI: {0} isi grafigi alinamadi.", yon);
+                    }
+                }
             }
         }
 

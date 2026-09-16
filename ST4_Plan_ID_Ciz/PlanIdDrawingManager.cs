@@ -3168,21 +3168,43 @@ namespace ST4PlanIdCiz
             try { return CascadedPolygonUnion.Union(geoms); } catch { return geoms[0]; }
         }
 
+        public struct TemelPlanCopyLayout
+        {
+            public double OffsetX;
+            public double OffsetY;
+            public Envelope Envelope;
+            public Geometry TemelGeom;
+        }
+
         /// <summary>
         /// Sadece temel planını (ilk kat) ve ona ait plan kesitlerini çizer.
         /// <see cref="TemelFoundationPlanScale.Fifty"/> → TEMEL50ST4; <see cref="TemelFoundationPlanScale.Hundred"/> → TEMEL100ST4.
         /// </summary>
         public void DrawFoundationPlanWithSections(Database db, Editor ed, Point3d baseInsertPoint, string st4SourcePath = null)
         {
-            DrawFoundationPlanWithSections(db, ed, baseInsertPoint, st4SourcePath, TemelFoundationPlanScale.Fifty);
+            DrawFoundationPlanWithSections(db, ed, baseInsertPoint, st4SourcePath, TemelFoundationPlanScale.Fifty, 1, null);
         }
 
         /// <summary>TEMEL50ST4 / TEMEL100ST4: <paramref name="scaleMode"/> antet ve kesit ölçülerini belirler.</summary>
         public void DrawFoundationPlanWithSections(Database db, Editor ed, Point3d baseInsertPoint, string st4SourcePath, TemelFoundationPlanScale scaleMode)
         {
+            DrawFoundationPlanWithSections(db, ed, baseInsertPoint, st4SourcePath, scaleMode, 1, null);
+        }
+
+        /// <summary>TEMELDONATI: <paramref name="planCopyCount"/> adet temel planı aynı antette yan yana.</summary>
+        public void DrawFoundationPlanWithSections(
+            Database db,
+            Editor ed,
+            Point3d baseInsertPoint,
+            string st4SourcePath,
+            TemelFoundationPlanScale scaleMode,
+            int planCopyCount,
+            IList<TemelPlanCopyLayout> copyLayouts)
+        {
             _ntsDrawFactory = NtsGeometryServices.Instance.CreateGeometryFactory();
             _temelFoundationScale = scaleMode;
             string cmdTag = scaleMode == TemelFoundationPlanScale.Hundred ? "TEMEL100ST4" : "TEMEL50ST4";
+            if (planCopyCount < 1) planCopyCount = 1;
             try
             {
                 using (var tr = db.TransactionManager.StartTransaction())
@@ -3201,29 +3223,84 @@ namespace ST4PlanIdCiz
                     var firstFloor = _model.Floors[0];
                     Geometry firstFloorUnion = BuildFloorElementUnion(firstFloor);
                     var firstFloorAxisExt = GetAksSiniriEnvelope(firstFloorUnion);
-                    double offsetX = baseInsertPoint.X - firstFloorAxisExt.Xmin;
+                    double baseOx = baseInsertPoint.X - firstFloorAxisExt.Xmin;
                     double offsetY = baseInsertPoint.Y - firstFloorAxisExt.Ymin;
-                    DrawAxes(tr, btr, offsetX, offsetY, firstFloorAxisExt);
-                    DrawColumns(tr, btr, firstFloor, offsetX, offsetY);
-                    DrawWallsForFloor(tr, btr, firstFloor, offsetX, offsetY);
-                    Geometry temelUnion = BuildTemelUnion(offsetX, offsetY, firstFloor);
-                    Geometry kolonPerdeUnion = BuildKolonPerdeUnion(firstFloor, offsetX, offsetY);
-                    Geometry slabUnionForLabels = BuildSlabFoundationsUnion(offsetX, offsetY);
-                    DrawTemelMerged(tr, btr, offsetX, offsetY, firstFloor, temelUnion);
-                    var temelHatiliRaws = new List<(Geometry geom, double widthCm, double heightDisplayCm, double kot, bool isRadyeTemelHatili)>();
-                    DrawContinuousFoundations(tr, btr, offsetX, offsetY, firstFloor, drawTemelOutline: false, temelUnion, kolonPerdeUnion, temelHatiliRaws, slabUnionForLabels);
-                    DrawSlabFoundations(tr, btr, offsetX, offsetY, drawTemelOutline: false);
-                    DrawTieBeams(tr, btr, firstFloor, offsetX, offsetY, kolonPerdeUnion, temelHatiliRaws);
-                    DrawSingleFootings(tr, btr, firstFloor, offsetX, offsetY, drawTemelOutline: false);
-                    DrawPerdeLabelsForFloor(tr, btr, firstFloor, offsetX, offsetY, kolonPerdeUnion);
-                    DrawPlanSections(tr, btr, db, firstFloor, offsetX, offsetY, firstFloorAxisExt, isFoundationPlan: true, firstFloorUnion,
-                        out double antetLayMinX, out double antetLayMaxX, out double antetLayMinY, out double antetLayMaxY, out double leftSectionMinX);
-                    GetSectionCutBalloonExtents(offsetX, offsetY, firstFloorAxisExt,
-                        out _, out double xRightBalloonTemel, out double yBottomBalloonTemel, out _,
-                        out _, out _, out _, out _);
-                    double fa = TemelFoundationAnnotMul;
-                    double temelBaslikYTop = yBottomBalloonTemel - Temel50BaslikAltAksBalonBoslukCm * fa;
-                    antetLayMinY = Math.Min(antetLayMinY, temelBaslikYTop - 30.0 * fa - 100.0 * fa);
+                    double antetLayMinX = 0, antetLayMaxX = 0, antetLayMinY = 0, antetLayMaxY = 0, leftSectionMinX = 0;
+                    double xRightBalloonTemel = 0;
+                    bool antetInit = false;
+                    double stride = 0;
+                    string[] copyCaptions = { "1 - OLCU", "2 - ANA DONATI", "3 - ALT ILAVE DONATI", "4 - UST ILAVE DONATI" };
+
+                    for (int copyIndex = 0; copyIndex < planCopyCount; copyIndex++)
+                    {
+                        double offsetX = copyIndex == 0 ? baseOx : baseOx + copyIndex * stride;
+                        DrawAxes(tr, btr, offsetX, offsetY, firstFloorAxisExt);
+                        DrawColumns(tr, btr, firstFloor, offsetX, offsetY);
+                        DrawWallsForFloor(tr, btr, firstFloor, offsetX, offsetY);
+                        Geometry temelUnion = BuildTemelUnion(offsetX, offsetY, firstFloor);
+                        Geometry kolonPerdeUnion = BuildKolonPerdeUnion(firstFloor, offsetX, offsetY);
+                        Geometry slabUnionForLabels = BuildSlabFoundationsUnion(offsetX, offsetY);
+                        DrawTemelMerged(tr, btr, offsetX, offsetY, firstFloor, temelUnion);
+                        var temelHatiliRaws = new List<(Geometry geom, double widthCm, double heightDisplayCm, double kot, bool isRadyeTemelHatili)>();
+                        DrawContinuousFoundations(tr, btr, offsetX, offsetY, firstFloor, drawTemelOutline: false, temelUnion, kolonPerdeUnion, temelHatiliRaws, slabUnionForLabels);
+                        DrawSlabFoundations(tr, btr, offsetX, offsetY, drawTemelOutline: false);
+                        DrawTieBeams(tr, btr, firstFloor, offsetX, offsetY, kolonPerdeUnion, temelHatiliRaws);
+                        DrawSingleFootings(tr, btr, firstFloor, offsetX, offsetY, drawTemelOutline: false);
+                        DrawPerdeLabelsForFloor(tr, btr, firstFloor, offsetX, offsetY, kolonPerdeUnion);
+                        DrawFloorTitle(tr, btr, firstFloor, offsetX, offsetY, firstFloorAxisExt, isFoundationPlan: true);
+                        if (planCopyCount > 1 && copyIndex < copyCaptions.Length)
+                            DrawTemelDonatiCopyCaption(tr, btr, offsetX, offsetY, firstFloorAxisExt, copyCaptions[copyIndex]);
+
+                        DrawPlanSections(tr, btr, db, firstFloor, offsetX, offsetY, firstFloorAxisExt, isFoundationPlan: true, firstFloorUnion,
+                            out double layMinX, out double layMaxX, out double layMinY, out double layMaxY, out double leftSec);
+                        GetSectionCutBalloonExtents(offsetX, offsetY, firstFloorAxisExt,
+                            out _, out double xRightBalloon, out double yBottomBalloonTemel, out _,
+                            out _, out _, out _, out _);
+                        double fa = TemelFoundationAnnotMul;
+                        double temelBaslikYTop = yBottomBalloonTemel - Temel50BaslikAltAksBalonBoslukCm * fa;
+                        layMinY = Math.Min(layMinY, temelBaslikYTop - 30.0 * fa - 100.0 * fa);
+
+                        if (!antetInit)
+                        {
+                            antetLayMinX = layMinX;
+                            antetLayMaxX = layMaxX;
+                            antetLayMinY = layMinY;
+                            antetLayMaxY = layMaxY;
+                            leftSectionMinX = leftSec;
+                            antetInit = true;
+                        }
+                        else
+                        {
+                            if (layMinX < antetLayMinX) antetLayMinX = layMinX;
+                            if (layMaxX > antetLayMaxX) antetLayMaxX = layMaxX;
+                            if (layMinY < antetLayMinY) antetLayMinY = layMinY;
+                            if (layMaxY > antetLayMaxY) antetLayMaxY = layMaxY;
+                        }
+                        xRightBalloonTemel = xRightBalloon;
+
+                        if (copyIndex == 0 && planCopyCount > 1)
+                        {
+                            double widthWithSec = xRightBalloon - leftSec;
+                            if (widthWithSec < firstFloorAxisExt.Xmax - firstFloorAxisExt.Xmin)
+                                widthWithSec = firstFloorAxisExt.Xmax - firstFloorAxisExt.Xmin;
+                            stride = Math.Ceiling((widthWithSec + 200.0) / 100.0) * 100.0;
+                        }
+
+                        if (copyLayouts != null)
+                        {
+                            Envelope env = null;
+                            if (temelUnion != null && !temelUnion.IsEmpty && temelUnion.EnvelopeInternal != null)
+                                env = new Envelope(temelUnion.EnvelopeInternal);
+                            copyLayouts.Add(new TemelPlanCopyLayout
+                            {
+                                OffsetX = offsetX,
+                                OffsetY = offsetY,
+                                Envelope = env,
+                                TemelGeom = temelUnion
+                            });
+                        }
+                    }
+
                     double yLowestHorizontalAxis = GetLowestHorizontalColumnAxisY(offsetY, firstFloorAxisExt);
                     TryDrawTemelAntetFromDxf(tr, btr, antetLayMinX, antetLayMinY, antetLayMaxX, antetLayMaxY, leftSectionMinX, xRightBalloonTemel, yLowestHorizontalAxis, st4SourcePath, ed);
 
@@ -3231,17 +3308,62 @@ namespace ST4PlanIdCiz
                     tr.Commit();
 
                     ed.WriteMessage(
-                        "\n{0}: Temel plani cizildi (surekli: {1}, radye: {2}, bag kirisi: {3}, tekil: {4}) ve kesitler olusturuldu.",
+                        "\n{0}: Temel plani cizildi (surekli: {1}, radye: {2}, bag kirisi: {3}, tekil: {4}) ve kesitler olusturuldu.{5}",
                         cmdTag,
                         _model.ContinuousFoundations.Count,
                         _model.SlabFoundations.Count,
                         _model.TieBeams.Count,
-                        _model.SingleFootings.Count);
+                        _model.SingleFootings.Count,
+                        planCopyCount > 1 ? " " + planCopyCount + " kopya, tek antet." : "");
                 }
             }
             finally
             {
                 _temelFoundationScale = null;
+                _ntsDrawFactory = null;
+            }
+        }
+
+        /// <summary>TEMELDONATI: PNG haritasını temel birleşim sınırına oturtmak için dünya envelope + birleşim geometrisi.</summary>
+        public bool TryGetTemelWorldEnvelope(Point3d baseInsertPoint, out Envelope env, out Geometry temelGeom)
+        {
+            return TryGetTemelWorldEnvelope(baseInsertPoint, out env, out temelGeom, out _, out _);
+        }
+
+        /// <summary>STA metre (rapor X/Y) → CAD cm: x = offsetX + X*100, y = offsetY − Y*100.</summary>
+        public bool TryGetTemelWorldEnvelope(
+            Point3d baseInsertPoint,
+            out Envelope env,
+            out Geometry temelGeom,
+            out double offsetX,
+            out double offsetY)
+        {
+            env = null;
+            temelGeom = null;
+            offsetX = offsetY = 0;
+            if (_model?.Floors == null || _model.Floors.Count == 0) return false;
+            _ntsDrawFactory = NtsGeometryServices.Instance.CreateGeometryFactory();
+            try
+            {
+                var firstFloor = _model.Floors[0];
+                Geometry firstFloorUnion = BuildFloorElementUnion(firstFloor);
+                var axisExt = GetAksSiniriEnvelope(firstFloorUnion);
+                offsetX = baseInsertPoint.X - axisExt.Xmin;
+                offsetY = baseInsertPoint.Y - axisExt.Ymin;
+                Geometry temelUnion = BuildTemelUnion(offsetX, offsetY, firstFloor);
+                if (temelUnion != null && !temelUnion.IsEmpty && temelUnion.EnvelopeInternal != null)
+                {
+                    temelGeom = temelUnion;
+                    env = new Envelope(temelUnion.EnvelopeInternal);
+                    return env.Width > 1 && env.Height > 1;
+                }
+                env = new Envelope(
+                    axisExt.Xmin + offsetX, axisExt.Xmax + offsetX,
+                    axisExt.Ymin + offsetY, axisExt.Ymax + offsetY);
+                return env.Width > 1 && env.Height > 1;
+            }
+            finally
+            {
                 _ntsDrawFactory = null;
             }
         }
@@ -16809,6 +16931,17 @@ namespace ST4PlanIdCiz
                 ? "TEMEL PLANI (aks + 1. kat kolon + surekli/radye temel)"
                 : string.Format(CultureInfo.InvariantCulture, "{0} ({1}m)", floor.Name, floor.ElevationM.ToString("0", CultureInfo.InvariantCulture));
             AppendEntity(tr, btr, MakeCenteredText(tr, btr.Database, LayerBaslik, 12, title, titlePos));
+        }
+
+        private void DrawTemelDonatiCopyCaption(
+            Transaction tr, BlockTableRecord btr,
+            double offsetX, double offsetY,
+            (double Xmin, double Xmax, double Ymin, double Ymax) ext,
+            string caption)
+        {
+            if (string.IsNullOrWhiteSpace(caption)) return;
+            var pos = new Point3d(offsetX + (ext.Xmin + ext.Xmax) / 2.0, offsetY + ext.Ymax + 80.0, 0);
+            AppendEntity(tr, btr, MakeCenteredText(tr, btr.Database, LayerBaslik, 20, caption, pos));
         }
 
         private void DrawKalipSimilarFloorNamesNote(Transaction tr, BlockTableRecord btr, List<FloorInfo> otherFloors, double offsetX, double offsetY,
