@@ -10,7 +10,7 @@ namespace ST4PlanIdCiz
     internal static class CommandPaletteManager
     {
         private const int PaletteWidth = 150;
-        private const int PaletteHeight = 516;
+        private const int PaletteHeight = 556;
         private const int MarginX = 8;
         /// <summary>Komut satırı / durum çubuğu üstünde kalsın.</summary>
         private const int MarginBottom = 56;
@@ -165,6 +165,7 @@ namespace ST4PlanIdCiz
         private static readonly (string label, string cmd)[] AltDeneme =
         {
             ("Deneme1 (ilk 2 kat, sade)", "DENEME1"),
+            ("Kolon Dusey", "KOLONDUSEY"),
         };
 
         public CommandPaletteControl()

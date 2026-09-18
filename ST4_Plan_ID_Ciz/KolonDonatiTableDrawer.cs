@@ -266,6 +266,71 @@ namespace ST4PlanIdCiz
             return ReplaceTimesWithAsciiX(NormalizeDiameterSymbol(StripGovdeSuffix(raw)));
         }
 
+        /// <summary>Kesit etiketi: 2×5ø14+2×2ø14 → 14ø14 (aynı çaplar toplanır).</summary>
+        public static string FormatKolonKesitDuseyDonatiOzet(string raw)
+        {
+            if (!TryParseKolonKesitDuseyDonatiByDia(raw, out var byDia) || byDia.Count == 0)
+            {
+                if (string.IsNullOrWhiteSpace(raw)) return null;
+                return StripGovdeSuffix(NormalizeDiameterSymbol(raw.Trim()));
+            }
+            var sb = new StringBuilder();
+            foreach (var kv in byDia)
+            {
+                if (sb.Length > 0) sb.Append('+');
+                sb.Append(kv.Value.ToString(CultureInfo.InvariantCulture));
+                sb.Append('\u00F8');
+                sb.Append(kv.Key.ToString(CultureInfo.InvariantCulture));
+            }
+            return sb.ToString();
+        }
+
+        public static bool TryParseKolonKesitDuseyDonatiByDia(string raw, out SortedDictionary<int, int> byDia)
+        {
+            byDia = new SortedDictionary<int, int>(Comparer<int>.Create((a, b) => b.CompareTo(a)));
+            if (string.IsNullOrWhiteSpace(raw)) return false;
+            string s = StripGovdeSuffix(NormalizeDiameterSymbol(raw.Trim()));
+            if (string.IsNullOrWhiteSpace(s)) return false;
+            var rx = new Regex(@"(\d+)\s*[x×*]\s*(\d+)\s*[\u00F8ØøφΦ]\s*(\d{1,2})|(\d+)\s*[\u00F8ØøφΦ]\s*(\d{1,2})", RegexOptions.IgnoreCase);
+            foreach (Match m in rx.Matches(s))
+            {
+                int count, dia;
+                if (m.Groups[1].Success)
+                {
+                    if (!int.TryParse(m.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int a) ||
+                        !int.TryParse(m.Groups[2].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int b) ||
+                        !int.TryParse(m.Groups[3].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out dia))
+                        continue;
+                    count = a * b;
+                }
+                else
+                {
+                    if (!int.TryParse(m.Groups[4].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out count) ||
+                        !int.TryParse(m.Groups[5].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out dia))
+                        continue;
+                }
+                if (count <= 0 || dia < 6 || dia > 40) continue;
+                if (byDia.ContainsKey(dia)) byDia[dia] += count;
+                else byDia[dia] = count;
+            }
+            return byDia.Count > 0;
+        }
+
+        public static int SumKolonKesitDuseyDonatiAdet(string raw, out int maxDiaMm)
+        {
+            maxDiaMm = 14;
+            if (!TryParseKolonKesitDuseyDonatiByDia(raw, out var byDia) || byDia.Count == 0) return 0;
+            int n = 0;
+            maxDiaMm = 0;
+            foreach (var kv in byDia)
+            {
+                n += kv.Value;
+                if (kv.Key > maxDiaMm) maxDiaMm = kv.Key;
+            }
+            if (maxDiaMm < 6) maxDiaMm = 14;
+            return n;
+        }
+
         /// <summary>
         /// STA4CAD çoklu bodrum GPR: S4B-01 (kısaltma 4B-). Eski/alternatif: SB4-01. Tek bodrum: SB-01 ↔ S1B/SB1.
         /// </summary>
@@ -337,6 +402,55 @@ namespace ST4PlanIdCiz
             return false;
         }
 
+        /// <summary>Kolon data tablosu yazısından kolon no (S15, S2B-15, SB-15).</summary>
+        public static bool TryParseColumnPickText(string text, out int columnNo)
+        {
+            columnNo = 0;
+            if (string.IsNullOrWhiteSpace(text)) return false;
+            string s = text.Trim().ToUpperInvariant().Replace(" ", "");
+            s = Regex.Replace(s, @"\([^)]*\)", "");
+            if (TryParseGprStoryKey(s, out _, out columnNo) && columnNo > 0)
+                return true;
+            var m = Regex.Match(s, @"^S(\d+)$");
+            if (m.Success)
+                return int.TryParse(m.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out columnNo) && columnNo > 0;
+            return false;
+        }
+
+        /// <summary>İlk kattaki GPR kolon kodu (ör. S2B-15).</summary>
+        public static string FormatStoryColumnId(IReadOnlyList<FloorInfo> floors, int floorIndex, int colNo)
+        {
+            var fmt = BuildGprFloorKeyFormats(floors);
+            if (fmt == null || fmt.Length == 0 || floorIndex < 0 || floorIndex >= fmt.Length)
+                return "S-" + colNo.ToString("D2", CultureInfo.InvariantCulture);
+            var keys = GprDataKeysForFloorColumn(fmt[floorIndex].StoryPrefix, fmt[floorIndex].HyphenBeforeColNo, colNo);
+            return keys.Count > 0 ? keys[0] : "S-" + colNo.ToString("D2", CultureInfo.InvariantCulture);
+        }
+
+        public static bool TryGetKolonBetonarmeCell(
+            Dictionary<string, (string ebat, string donati, string etriye)> data,
+            IReadOnlyList<FloorInfo> floors,
+            int floorIndex,
+            int colNo,
+            out string ebat,
+            out string donati,
+            out string etriye)
+        {
+            ebat = donati = etriye = null;
+            if (data == null || floors == null || floorIndex < 0 || floorIndex >= floors.Count) return false;
+            var fmt = BuildGprFloorKeyFormats(floors);
+            if (floorIndex >= fmt.Length) return false;
+            var fk = fmt[floorIndex];
+            foreach (var key in GprDataKeysForFloorColumn(fk.StoryPrefix, fk.HyphenBeforeColNo, colNo))
+            {
+                if (!data.TryGetValue(key, out var t)) continue;
+                if (string.IsNullOrWhiteSpace(ebat) && !string.IsNullOrWhiteSpace(t.ebat)) ebat = t.ebat;
+                if (string.IsNullOrWhiteSpace(donati) && !string.IsNullOrWhiteSpace(t.donati)) donati = t.donati;
+                if (string.IsNullOrWhiteSpace(etriye) && !string.IsNullOrWhiteSpace(t.etriye)) etriye = t.etriye;
+            }
+            return !string.IsNullOrWhiteSpace(donati) || !string.IsNullOrWhiteSpace(etriye) || !string.IsNullOrWhiteSpace(ebat);
+        }
+
         /// <summary>GPR anahtarından kat öneği ve kolon no (S4B-01 STA4CAD, SB01, SB2-01, SB-21, S1-02).</summary>
         private static bool TryParseGprStoryKey(string key, out string storyPrefix, out int columnNo)
         {
@@ -379,7 +493,7 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>GPR 9. sütun etriye: (etriye) ve [ ] kaldırılır; başta rakam+ø ise araya x → 3xø8/15/8.</summary>
-        private static string FormatEtriyeForTableDisplay(string raw)
+        public static string FormatEtriyeForTableDisplay(string raw)
         {
             if (string.IsNullOrWhiteSpace(raw)) return null;
             string s = raw.Trim();

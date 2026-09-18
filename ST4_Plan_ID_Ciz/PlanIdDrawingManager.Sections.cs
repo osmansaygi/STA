@@ -2444,11 +2444,18 @@ namespace ST4PlanIdCiz
             hatch.Color = Color.FromColorIndex(ColorMethod.ByAci, KesitKotWedgeSolidHatchColorIndex);
             btr.AppendEntity(hatch);
             tr.AddNewlyCreatedDBObject(hatch, true);
-            hatch.SetHatchPattern(HatchPatternType.PreDefined, "SOLID");
-            hatch.Associative = false;
-            hatch.AppendLoop(HatchLoopTypes.Outermost, new ObjectIdCollection { pl.ObjectId });
-            try { hatch.EvaluateHatch(true); }
-            catch { try { hatch.EvaluateHatch(false); } catch { } }
+            try
+            {
+                hatch.SetHatchPattern(HatchPatternType.PreDefined, "SOLID");
+                hatch.Associative = false;
+                hatch.AppendLoop(HatchLoopTypes.Outermost, new ObjectIdCollection { pl.ObjectId });
+                try { hatch.EvaluateHatch(true); }
+                catch { try { hatch.EvaluateHatch(false); } catch { } }
+            }
+            catch
+            {
+                try { hatch.Erase(); } catch { }
+            }
         }
 
         /// <summary>

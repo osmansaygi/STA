@@ -554,7 +554,7 @@ namespace ST4PlanIdCiz
                 var manager = new PlanIdDrawingManager(model);
                 var insRes = ed.GetPoint(new PromptPointOptions("\nKOLON50ST4 yerlestirme noktasi (sol-alt): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
-                manager.DrawColumnApplicationPlan(db, ed, insRes.Value, fileRes.StringResult, KolonApplicationPlanScale.Fifty);
+                manager.DrawColumnApplicationPlan(db, ed, insRes.Value, fileRes.StringResult, KolonApplicationPlanScale.Fifty, drawPerdeGorunus: true);
                 FinishStaDrawing(doc);
             }
             catch (System.Exception ex)
@@ -691,6 +691,50 @@ namespace ST4PlanIdCiz
             catch (System.Exception ex)
             {
                 WriteStaCommandError(ed, "DENEME1", ex);
+            }
+        }
+
+        /// <summary>Kolon düşey açılımı (DENEME): yalnız ST4, donatısız, benzer kolonlar tek görünüş.</summary>
+        [CommandMethod("KOLONDUSEY")]
+        public void KolonDusey()
+        {
+            var doc = Application.DocumentManager.MdiActiveDocument;
+            if (doc == null) return;
+            ApplyStaDefaultDrawingDisplaySettings(doc);
+
+            var ed = doc.Editor;
+            var db = doc.Database;
+
+            var st4Opts = new PromptOpenFileOptions("\nKOLONDUSEY icin ST4 Dosyasi Secin")
+            {
+                Filter = "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*"
+            };
+            var fileRes = ed.GetFileNameForOpen(st4Opts);
+            if (fileRes.Status != PromptStatus.OK) return;
+            string st4Path = fileRes.StringResult;
+
+            var insRes = ed.GetPoint(new PromptPointOptions("\nKOLONDUSEY yerlestirme noktasi (sol-alt): ") { AllowNone = false });
+            if (insRes.Status != PromptStatus.OK) return;
+
+            try
+            {
+                ConfigureNtsNextGenOverlay();
+                var parser = new St4Parser();
+                var model = parser.Parse(st4Path);
+                var planMgr = new PlanIdDrawingManager(model);
+                using (var tr = db.TransactionManager.StartTransaction())
+                {
+                    var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
+                    var btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
+                    bool ok = planMgr.DrawKolonDuseyFromSt4(insRes.Value, db, ed, tr, btr, st4Path);
+                    if (ok)
+                        tr.Commit();
+                }
+                FinishStaDrawing(doc);
+            }
+            catch (System.Exception ex)
+            {
+                WriteStaCommandError(ed, "KOLONDUSEY", ex);
             }
         }
 
