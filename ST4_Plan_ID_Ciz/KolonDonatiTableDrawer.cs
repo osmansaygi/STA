@@ -260,10 +260,55 @@ namespace ST4PlanIdCiz
             return s.Replace("\u00D7", "x");
         }
 
-        private static string FormatDonatiDisplay(string raw)
+        public static string FormatDonatiDisplay(string raw)
         {
             if (string.IsNullOrWhiteSpace(raw)) return null;
             return ReplaceTimesWithAsciiX(NormalizeDiameterSymbol(StripGovdeSuffix(raw)));
+        }
+
+        /// <summary>
+        /// Perde GPR: 2x8ø14+2x4ø12(govde) → uç katman adedi/çap ve gövde katman adedi/çap.
+        /// 2x8ø14: iki sıra, her sırada 8 (iki uca bölünür).
+        /// </summary>
+        public static bool TryParsePerdeUcGovdeDonati(
+            string raw,
+            out int ucPerLayer,
+            out int ucDia,
+            out int govdePerLayer,
+            out int govdeDia)
+        {
+            ucPerLayer = 0;
+            ucDia = 14;
+            govdePerLayer = 0;
+            govdeDia = 12;
+            string s = FormatDonatiDisplay(raw);
+            if (string.IsNullOrEmpty(s)) return false;
+            var rx = new Regex(@"^(?:(\d+)\s*[x×*]\s*)?(\d+)\s*[\u00F8ØøφΦ]\s*(\d{1,2})$", RegexOptions.IgnoreCase);
+            bool ParsePart(string part, out int perLayer, out int dia)
+            {
+                perLayer = 0;
+                dia = 0;
+                if (string.IsNullOrWhiteSpace(part)) return false;
+                var m = rx.Match(part.Trim());
+                if (!m.Success) return false;
+                if (!int.TryParse(m.Groups[2].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int n) ||
+                    !int.TryParse(m.Groups[3].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out dia))
+                    return false;
+                if (n <= 0 || dia < 6 || dia > 40) return false;
+                if (m.Groups[1].Success &&
+                    int.TryParse(m.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int layers) &&
+                    layers > 0)
+                    perLayer = n;
+                else
+                    perLayer = n;
+                return perLayer > 0;
+            }
+            var parts = s.Split(new[] { '+' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0) return false;
+            if (!ParsePart(parts[0], out ucPerLayer, out ucDia)) return false;
+            if (parts.Length > 1)
+                ParsePart(parts[1], out govdePerLayer, out govdeDia);
+            return true;
         }
 
         /// <summary>Kesit etiketi: 2×5ø14+2×2ø14 → 14ø14 (aynı çaplar toplanır).</summary>
@@ -451,6 +496,28 @@ namespace ST4PlanIdCiz
             return !string.IsNullOrWhiteSpace(donati) || !string.IsNullOrWhiteSpace(etriye) || !string.IsNullOrWhiteSpace(ebat);
         }
 
+        /// <summary>
+        /// GPR KOLON BETONARME satırında sol hücre "Hcr" ise o kat/eleman kritik perde yüksekliği içindedir
+        /// (TBDY 2018 7.6.2.2 / 7.13.2.4).
+        /// </summary>
+        public static bool TryGetKolonBetonarmeHcr(
+            HashSet<string> hcrKeys,
+            IReadOnlyList<FloorInfo> floors,
+            int floorIndex,
+            int colNo)
+        {
+            if (hcrKeys == null || hcrKeys.Count == 0 || floors == null || floorIndex < 0 || floorIndex >= floors.Count)
+                return false;
+            var fmt = BuildGprFloorKeyFormats(floors);
+            if (floorIndex >= fmt.Length) return false;
+            var fk = fmt[floorIndex];
+            foreach (var key in GprDataKeysForFloorColumn(fk.StoryPrefix, fk.HyphenBeforeColNo, colNo))
+            {
+                if (hcrKeys.Contains(key)) return true;
+            }
+            return false;
+        }
+
         /// <summary>GPR anahtarından kat öneği ve kolon no (S4B-01 STA4CAD, SB01, SB2-01, SB-21, S1-02).</summary>
         private static bool TryParseGprStoryKey(string key, out string storyPrefix, out int columnNo)
         {
@@ -609,7 +676,8 @@ namespace ST4PlanIdCiz
         /// </summary>
         private static void GprPromoteGenericSbKeysToIndexedBasement(
             Dictionary<string, (string ebat, string donati, string etriye)> result,
-            int previousSectionIndex)
+            int previousSectionIndex,
+            HashSet<string> hcrKeys = null)
         {
             if (result == null || result.Count == 0 || previousSectionIndex < 1) return;
             string idx = previousSectionIndex.ToString(CultureInfo.InvariantCulture);
@@ -620,13 +688,21 @@ namespace ST4PlanIdCiz
                 string nk = "SB" + idx + "-" + m.Groups[1].Value;
                 if (result.ContainsKey(nk)) continue;
                 result[nk] = kv.Value;
+                if (hcrKeys != null && hcrKeys.Contains(kv.Key))
+                    hcrKeys.Add(nk);
             }
         }
 
         /// <summary>Kolon id (örn. SB-01) -> (ebat, donati, etriye). GPR: birden fazla bodrumda ardışık KOLON BETONARME blokları; her blok ayrı okunur (.prn ile aynı mantık).</summary>
         public static Dictionary<string, (string ebat, string donati, string etriye)> ParseKolonBetonarmeFromFile(string filePath, out string error)
         {
+            return ParseKolonBetonarmeFromFile(filePath, out error, out _);
+        }
+
+        public static Dictionary<string, (string ebat, string donati, string etriye)> ParseKolonBetonarmeFromFile(string filePath, out string error, out HashSet<string> hcrKeys)
+        {
             error = null;
+            hcrKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var result = new Dictionary<string, (string, string, string)>(StringComparer.OrdinalIgnoreCase);
             bool isGpr = filePath.EndsWith(".gpr", StringComparison.OrdinalIgnoreCase);
             string[] lines;
@@ -710,14 +786,14 @@ namespace ST4PlanIdCiz
                             }
                         }
                     }
-                    AppendKolonBetonarmeSection(lines, iKolon + 1, isGpr, result, gprRawLines, iEnd, true);
+                    AppendKolonBetonarmeSection(lines, iKolon + 1, isGpr, result, hcrKeys, gprRawLines, iEnd, true);
                     int nextFrom = iEnd;
                     if (nextFrom <= iKolon)
                         nextFrom = iKolon + 1;
                     gprSearchFrom = nextFrom;
                 }
                 if (gprSectionCount > 0)
-                    GprPromoteGenericSbKeysToIndexedBasement(result, gprSectionCount);
+                    GprPromoteGenericSbKeysToIndexedBasement(result, gprSectionCount, hcrKeys);
                 return result;
             }
 
@@ -738,7 +814,7 @@ namespace ST4PlanIdCiz
                 if (headerIdx < 0)
                     break;
                 sectionCount++;
-                searchFrom = AppendKolonBetonarmeSection(lines, headerIdx + 1, isGpr, result, null, int.MaxValue, false);
+                searchFrom = AppendKolonBetonarmeSection(lines, headerIdx + 1, isGpr, result, hcrKeys, null, int.MaxValue, false);
             }
 
             if (sectionCount == 0)
@@ -820,7 +896,35 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>Panel / POLIGON KOLON veya dosya sonuna kadar. GPR penceresi: [startIdx, lineEndExclusive).</summary>
-        private static int AppendKolonBetonarmeSection(string[] lines, int startIdx, bool isGpr, Dictionary<string, (string ebat, string donati, string etriye)> result, byte[][] gprRawLines = null, int lineEndExclusive = int.MaxValue, bool gprKolonWindowOnly = false)
+        private static bool GprKolonBlockLineHasHcr(string content, byte[] rawBytes)
+        {
+            if (!string.IsNullOrEmpty(content))
+            {
+                int i = content.IndexOf("Hcr", StringComparison.OrdinalIgnoreCase);
+                if (i >= 0 && i < 16) return true;
+            }
+            if (rawBytes == null || rawBytes.Length < 3) return false;
+            int n = Math.Min(rawBytes.Length, 48);
+            for (int i = 0; i <= n - 3; i++)
+            {
+                byte a = rawBytes[i];
+                if ((a == (byte)'H' || a == (byte)'h') &&
+                    rawBytes[i + 1] == (byte)'c' &&
+                    rawBytes[i + 2] == (byte)'r')
+                    return true;
+            }
+            return false;
+        }
+
+        private static int AppendKolonBetonarmeSection(
+            string[] lines,
+            int startIdx,
+            bool isGpr,
+            Dictionary<string, (string ebat, string donati, string etriye)> result,
+            HashSet<string> hcrKeys = null,
+            byte[][] gprRawLines = null,
+            int lineEndExclusive = int.MaxValue,
+            bool gprKolonWindowOnly = false)
         {
             // Çoklu bodrum: SB2-01 önce yakalanmalı; aksi halde S[BZAC]\d{1,4} yalnızca SB2 (kolon 2 sanılır).
             // S2B-01: STA4CAD çoklu bodrum; S2-01 normal kat — S\d+B-\d+ önce olmalı
@@ -836,6 +940,7 @@ namespace ST4PlanIdCiz
             string currentBx = null, currentBy = null;
             string currentDonati = null, currentEtriye = null;
             bool inBlock = false;
+            bool currentHcr = false;
 
             void FlushCurrent()
             {
@@ -843,7 +948,10 @@ namespace ST4PlanIdCiz
                 {
                     string ebat = GetEbatString(currentBx, currentBy, currentBx != null && currentBx.Equals("Polygon", StringComparison.OrdinalIgnoreCase));
                     result[currentId] = (NormalizeDiameterSymbol(ebat ?? ""), NormalizeDiameterSymbol(currentDonati ?? ""), NormalizeDiameterSymbol(currentEtriye ?? ""));
+                    if (currentHcr && hcrKeys != null)
+                        hcrKeys.Add(currentId);
                 }
+                currentHcr = false;
             }
 
             for (int i = startIdx; i < end; i++)
@@ -911,6 +1019,7 @@ namespace ST4PlanIdCiz
                     currentId = idMatch.Groups[1].Value.Trim().ToUpperInvariant();
                     currentBx = null; currentBy = null; currentDonati = null; currentEtriye = null;
                     inBlock = true;
+                    currentHcr = false;
 
                     var bx = bxRegex.Match(content);
                     if (bx.Success) currentBx = bx.Groups[1].Value;
@@ -927,6 +1036,8 @@ namespace ST4PlanIdCiz
                 }
                 else if (inBlock && currentId != null)
                 {
+                    if (GprKolonBlockLineHasHcr(content, (gprRawLines != null && i < gprRawLines.Length) ? gprRawLines[i] : null))
+                        currentHcr = true;
                     var by = byRegex.Match(content);
                     if (by.Success) currentBy = by.Groups[1].Value;
                     if (polygonRegex.IsMatch(content)) { currentBx = "Polygon"; currentBy = null; }
