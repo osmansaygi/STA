@@ -1229,7 +1229,8 @@ namespace ST4PlanIdCiz
             double? xVertLeft = null,
             double? xVertRight = null,
             IEnumerable<double> extraZsEtriye = null,
-            IEnumerable<(double zLo, double zHi, int sCm, int diaMm)> etriyeBolgeler = null)
+            IEnumerable<(double zLo, double zHi, int sCm, int diaMm)> etriyeBolgeler = null,
+            IEnumerable<(double zLo, double zHi, int sCm, int diaMm)> govdeYatayBolgeler = null)
         {
             ObjectId dimId = GetOrCreatePlanOlcuDimStyle(tr, btr.Database, 10.0, 1.0, PlanOlcuDonatiDimStyleName);
             void Dim(Point3d a, Point3d b, Point3d linePt)
@@ -1305,15 +1306,7 @@ namespace ST4PlanIdCiz
             double xVL = xVertLeft ?? xMin;
             double xDim = xVR + Kolon50GorunusDikeyOlcuSagaCm;
 
-            var zEt = new List<double>();
-            if (extraZsEtriye != null)
-            {
-                foreach (double z in extraZsEtriye.OrderBy(v => v))
-                {
-                    if (zEt.Count == 0 || Math.Abs(z - zEt[zEt.Count - 1]) > 1.5)
-                        zEt.Add(z);
-                }
-            }
+            var zEt = UniqueSortedEtriyeZs(extraZsEtriye);
 
             var zRight = MergeKenarZs(extraZsRight);
             bool hasKenarRight = zRight.Count > zChain.Count;
@@ -1329,27 +1322,54 @@ namespace ST4PlanIdCiz
                     for (int i = 0; i < zEt.Count - 1; i++)
                     {
                         double za = zEt[i], zb = zEt[i + 1];
-                        if (zb - za < 2.0) continue;
-                        int sBest = int.MaxValue;
-                        int diaBest = 8;
-                        foreach (var b in bol)
-                        {
-                            double lo = Math.Max(za, b.zLo);
-                            double hi = Math.Min(zb, b.zHi);
-                            if (hi - lo < 1.0) continue;
-                            if (b.sCm < sBest)
-                            {
-                                sBest = b.sCm;
-                                diaBest = b.diaMm > 0 ? b.diaMm : diaBest;
-                            }
-                        }
-                        if (sBest >= 100) continue;
-                        if (!TryKolonEtriyeAdetAralik(zb - za, sBest, out int adet, out _))
+                        if (!TryEtriyeIntervalAdet(za, zb, bol, out int adet, out int sBest, out int diaBest))
                             continue;
-                        string lab = FormatKolonEtriyeOlcuEtiket(adet, diaBest, sBest);
-                        DrawBeamLabel(tr, btr, btr.Database,
-                            new Point3d(xEt + 16.0, Y((za + zb) * 0.5), 0),
-                            lab, 10.0, Math.PI / 2.0, LayerDonatiYazisiPerde, useMiddleCenter: true);
+                        int sGv = 0, diaGv = diaBest;
+                        bool anyGovdeList = false;
+                        if (govdeYatayBolgeler != null)
+                        {
+                            int sGvBest = int.MaxValue;
+                            foreach (var g in govdeYatayBolgeler)
+                            {
+                                anyGovdeList = true;
+                                double lo = Math.Max(za, g.zLo);
+                                double hi = Math.Min(zb, g.zHi);
+                                if (hi - lo < 1.0) continue;
+                                if (g.sCm < sGvBest)
+                                {
+                                    sGvBest = g.sCm;
+                                    diaGv = g.diaMm > 0 ? g.diaMm : diaGv;
+                                }
+                            }
+                            if (sGvBest < 100) sGv = sGvBest;
+                        }
+                        double xLab = xEt + 16.0;
+                        double yMid = Y((za + zb) * 0.5);
+                        var db = btr.Database;
+                        if (sGv >= 4)
+                        {
+                            string labB = FormatPerdeYatayOlcuEtiket(adet, diaBest, sBest, "basl\u0131k");
+                            int adetGv = adet;
+                            if (TryKolonEtriyeAdetAralik(zb - za, sGv, out int nGv, out _))
+                                adetGv = nGv;
+                            string labG = FormatPerdeYatayOlcuEtiket(adetGv, diaGv, sGv, "govde");
+                            DrawBeamLabel(tr, btr, db, new Point3d(xLab, yMid, 0),
+                                labB, 10.0, Math.PI / 2.0, LayerDonatiYazisiPerde, useMiddleCenter: true);
+                            DrawBeamLabel(tr, btr, db, new Point3d(xLab + 12.0, yMid, 0),
+                                labG, 10.0, Math.PI / 2.0, LayerDonatiYazisiPerde, useMiddleCenter: true);
+                        }
+                        else if (anyGovdeList)
+                        {
+                            string lab = FormatPerdeYatayOlcuEtiket(adet, diaBest, sBest, "basl\u0131k");
+                            DrawBeamLabel(tr, btr, db, new Point3d(xLab, yMid, 0),
+                                lab, 10.0, Math.PI / 2.0, LayerDonatiYazisiPerde, useMiddleCenter: true);
+                        }
+                        else
+                        {
+                            string lab = FormatKolonEtriyeOlcuEtiket(adet, diaBest, sBest);
+                            DrawBeamLabel(tr, btr, db, new Point3d(xLab, yMid, 0),
+                                lab, 10.0, Math.PI / 2.0, LayerDonatiYazisiPerde, useMiddleCenter: true);
+                        }
                     }
                 }
                 double x2 = xEt + KolonDuseyEtriyeOlcuAraCm;
