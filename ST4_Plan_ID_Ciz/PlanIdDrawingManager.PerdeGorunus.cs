@@ -23,6 +23,12 @@ namespace ST4PlanIdCiz
         private const double Kolon50GorunusCiftOlcuAraCm = 18.0;
         private const double KolonDuseyEtriyeOlcuAraCm = 80.0;
         private const double KolonDuseyEtriyeOlcuKolondanCm = 20.0;
+        private const double KolonDuseyAcilimGapFromOlcuCm = 45.0;
+        private const double KolonDuseyAcilimColGapCm = 50.0;
+        private const double KolonDuseyAcilimWidthCm = 200.0;
+        private const double KolonDuseyAcilimSasirCm = 5.0;
+        /// <summary>Kesit değişimi gönye/firkete ve extra filiz açılımları ana şaşırtmanın sağına bu aralıkla dizilir.</summary>
+        private const double KolonDuseyAcilimKesitExtraGapCm = 65.0;
         private const string LayerSheetSummary50 = "SHEETSUMMARY-50";
         private const string LayerSheetView = "SheetView";
         private const double PerdeGorunusAntetGapCm = 20.0;

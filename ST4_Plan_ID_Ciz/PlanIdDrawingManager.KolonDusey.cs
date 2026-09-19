@@ -35,12 +35,14 @@ namespace ST4PlanIdCiz
             _ntsDrawFactory = NtsGeometryServices.Instance.CreateGeometryFactory();
             _kolonDuseyGpr = null;
             _kolonDuseyGprHcr = null;
+            _gprPerdePanelDonati = null;
             try
             {
                 string gprPath = ResolveGprPathNextToSt4(st4SourcePath);
                 if (!string.IsNullOrEmpty(gprPath))
                 {
                     _kolonDuseyGpr = KolonDonatiTableDrawer.ParseKolonBetonarmeFromFile(gprPath, out _, out _kolonDuseyGprHcr);
+                    GprPerdePanelDonatiParser.TryParse(gprPath, out _gprPerdePanelDonati, out _);
                     GprPerdePanelDonatiParser.TryReadMaterials(gprPath, out _rebarFckMPa, out _rebarFykMPa);
                 }
                 if (_model?.Floors == null || _model.Floors.Count == 0 || _model.Columns == null)
@@ -380,7 +382,6 @@ namespace ST4PlanIdCiz
                 kotZs.Add(st.zBot);
                 kotZs.Add(st.zTop);
             }
-            DrawPerdeGorunusKots(tr, btr, X(xMax) + Kolon50GorunusDikeyOlcuSagaCm, Y, kotZs);
             double yMax = Y(zMax);
             double zTb = temelSpans.Count > 0 ? temelSpans.Min(t => t.z0) : stories[0].zBot;
             double zTt = temelSpans.Count > 0 ? temelSpans.Max(t => t.z1) : stories[0].zBot;
@@ -392,6 +393,17 @@ namespace ST4PlanIdCiz
             DrawPerdeGorunusOlculer(
                 tr, btr, X(stories[stories.Count - 1].lo), X(stories[stories.Count - 1].hi), Y, zTb, zTt, storyTops, yMax,
                 null, temelSpans.Count > 0, kenarZsRight, kenarZsLeft, X(colLo), X(colHi), etriyeZs, etriyeBolgeler);
+            double xOlcuSag = X(colHi)
+                + KolonDuseyEtriyeOlcuKolondanCm
+                + KolonDuseyEtriyeOlcuAraCm
+                + Kolon50GorunusCiftOlcuAraCm;
+            double xAcilim = xOlcuSag + KolonDuseyAcilimGapFromOlcuCm;
+            double xAcilimRight = DrawKolonDuseyDonatiAcilim(
+                tr, btr, col, stories, rot, X, Y, zDrawBot, temelSpans, etriyeKiris, xAcilim);
+            double xKot = Math.Max(
+                X(xMax) + Kolon50GorunusDikeyOlcuSagaCm,
+                xAcilimRight + KesitKotDatumGapFromSectionCm);
+            DrawPerdeGorunusKots(tr, btr, xKot, Y, kotZs);
 
             for (int si = 0; si < stories.Count; si++)
             {
@@ -427,7 +439,513 @@ namespace ST4PlanIdCiz
                 yName -= 14.0 * s;
             }
 
-            return planBand + nameW + kotBand + (xMax - xMin) * s + PerdeGorunusSagTasimCm + KolonDuseyEtriyeOlcuAraCm;
+            return planBand + nameW + kotBand + (xMax - xMin) * s
+                + PerdeGorunusSagTasimCm + KolonDuseyEtriyeOlcuAraCm
+                + KolonDuseyAcilimGapFromOlcuCm + KolonDuseyAcilimWidthCm;
+        }
+
+        /// <summary>
+        /// Görünüş sağı: düşey donatı açılımı (kolon / perde / perde başlığı).
+        /// En sağ ölçüden sonra; kotlar bunun sağına kayar.
+        /// </summary>
+        private double DrawKolonDuseyDonatiAcilim(
+            Transaction tr,
+            BlockTableRecord btr,
+            ColumnAxisInfo col,
+            List<(double zBot, double zTop, Geometry poly, double majorDeg, double lo, double hi, int floorIndex)> stories,
+            AffineTransformation rot,
+            Func<double, double> X,
+            Func<double, double> Y,
+            double zDrawBot,
+            List<(double x0, double x1, double z0, double z1)> temelSpans,
+            List<(double x0, double x1, double zb, double zt)> beamRuns,
+            double x0)
+        {
+            if (tr == null || btr == null || col == null || stories == null || stories.Count == 0 || Y == null)
+                return x0;
+            const double pas = 4.0;
+            const double rBend = 2.0;
+            const double k90 = 0.41421356237;
+            const double txtH = 10.0;
+            double fck = _rebarFckMPa > 16.0 ? _rebarFckMPa : 30.0;
+            double fyk = _rebarFykMPa > 200.0 ? _rebarFykMPa : 420.0;
+            bool hasTemel = temelSpans != null && temelSpans.Count > 0;
+            double zTemelBot = hasTemel ? temelSpans.Min(t => t.z0) : stories[0].zBot;
+            ObjectId dimId = GetOrCreatePlanOlcuDimStyle(tr, btr.Database, 10.0, 1.0, PlanOlcuDonatiDimStyleName);
+
+            void DimZ(double xFace, double za, double zb, double xLine)
+            {
+                if (Math.Abs(zb - za) < 2.0) return;
+                double ya = Y(Math.Min(za, zb));
+                double yb = Y(Math.Max(za, zb));
+                var dim = new AlignedDimension(
+                    new Point3d(xFace, ya, 0), new Point3d(xFace, yb, 0),
+                    new Point3d(xLine, (ya + yb) * 0.5, 0), "", dimId)
+                {
+                    Layer = LayerOlcu,
+                    LineWeight = LineWeight.LineWeight020
+                };
+                try { dim.DimfxlenOn = true; } catch { }
+                try { dim.Dimfxlen = 18.0; } catch { }
+                AppendEntity(tr, btr, dim);
+            }
+
+            void Label(double x, double zMid, int n, int dia, double L, bool filizTag = false)
+            {
+                string s = string.Format(CultureInfo.InvariantCulture, "{0}\u00F8{1} L={2:0}", n, dia, L);
+                if (filizTag) s += " FILIZ";
+                DrawBeamLabel(tr, btr, btr.Database, new Point3d(x - 12.0, Y(zMid), 0),
+                    s, txtH, Math.PI / 2.0, LayerDonatiYazisiPerde, useMiddleCenter: true);
+            }
+
+            var kinds = new int[stories.Count]; // 0 kolon, 1 perde, 2 başlık
+            var th = new double[stories.Count];
+            var byDia = new SortedDictionary<int, int>[stories.Count];
+            var faceBars = new List<(double x, int dia)>[stories.Count];
+            var allPtsDia = new List<(Point2d p, int dia)>[stories.Count];
+            var env = new Envelope[stories.Count];
+            for (int i = 0; i < stories.Count; i++)
+            {
+                th[i] = 25.0;
+                byDia[i] = new SortedDictionary<int, int>();
+                faceBars[i] = new List<(double x, int dia)>();
+                allPtsDia[i] = new List<(Point2d p, int dia)>();
+                var st = stories[i];
+                if (st.poly == null || st.poly.IsEmpty) continue;
+                Geometry g;
+                try { g = rot != null ? rot.Transform(st.poly) : st.poly; }
+                catch { g = st.poly; }
+                var e = g.EnvelopeInternal;
+                env[i] = e;
+                if (IsKolonKesitPoligonKesit(g, e)) continue;
+                double longCm = Math.Max(e.Width, e.Height);
+                double shortCm = Math.Min(e.Width, e.Height);
+                th[i] = Math.Max(8.0, shortCm);
+                if (IsDepremPerdeBoyOrani(longCm, shortCm)) kinds[i] = 1;
+                else if (shortCm > 1.0 && shortCm < KolonKesitPerdeBasligiMaxKenarCm - 0.01
+                    && longCm < KolonKesitPerdeMinBoyOrani * shortCm - 0.01)
+                    kinds[i] = 2;
+                string donati = null;
+                if (_kolonDuseyGpr != null && _model?.Floors != null)
+                    KolonDonatiTableDrawer.TryGetKolonBetonarmeCell(
+                        _kolonDuseyGpr, _model.Floors, st.floorIndex, col.ColumnNo, out _, out donati, out _);
+                if (!KolonDonatiTableDrawer.TryParseKolonKesitDuseyDonatiByDia(donati, out byDia[i]) || byDia[i].Count == 0)
+                {
+                    int dia0 = 14;
+                    KolonDonatiTableDrawer.SumKolonKesitDuseyDonatiAdet(donati, out int d);
+                    if (d >= 6) dia0 = d;
+                    int n0 = kinds[i] == 1 ? 18 : 8;
+                    byDia[i] = new SortedDictionary<int, int> { [dia0] = n0 };
+                }
+                if (kinds[i] == 1)
+                {
+                    faceBars[i] = CollectPerdeGorunusLongFaceBars(g, st.floorIndex, col.ColumnNo);
+                    allPtsDia[i] = CollectPerdeKesitBarPoints(e, st.floorIndex, col.ColumnNo)
+                        ?? new List<(Point2d p, int dia)>();
+                }
+                else
+                {
+                    faceBars[i] = CollectKolonGorunusLongFaceBars(g, st.floorIndex, col.ColumnNo);
+                    allPtsDia[i] = CollectKolonKesitBarPointsWithDia(e, st.floorIndex, col.ColumnNo);
+                }
+            }
+
+            int ScaleFace(int facePart, int faceAll, int gprN)
+            {
+                if (facePart <= 0) return 0;
+                if (faceAll <= 0 || gprN <= 0) return facePart;
+                int s = (int)Math.Round(facePart * (double)gprN / faceAll);
+                if (s < 1) s = 1;
+                if (gprN > 0 && s > gprN) s = gprN;
+                return s;
+            }
+
+            var diaOrder = new List<int>();
+            foreach (var d in byDia)
+            {
+                if (d == null) continue;
+                foreach (int k in d.Keys)
+                    if (!diaOrder.Contains(k)) diaOrder.Add(k);
+            }
+            diaOrder.Sort((a, b) => b.CompareTo(a));
+            if (diaOrder.Count == 0) return x0;
+            double xRight = x0;
+            double xKesitExtra0 = x0 + diaOrder.Count * KolonDuseyAcilimColGapCm;
+            int extraSlot = 0;
+            double NextExtraX()
+            {
+                double x = xKesitExtra0 + extraSlot * KolonDuseyAcilimKesitExtraGapCm;
+                extraSlot++;
+                return x;
+            }
+
+            for (int di = 0; di < diaOrder.Count; di++)
+            {
+                int dia = diaOrder[di];
+                double xBar = x0 + di * KolonDuseyAcilimColGapCm;
+                double hookMax = 20.0;
+                int sasirIdx = 0;
+                double NextX()
+                {
+                    double x = xBar + (sasirIdx % 2 == 0 ? 0.0 : KolonDuseyAcilimSasirCm);
+                    sasirIdx++;
+                    return x;
+                }
+
+                for (int i = 0; i < stories.Count; i++)
+                {
+                    int n = 0;
+                    bool hasThis = byDia[i] != null && byDia[i].TryGetValue(dia, out n) && n > 0;
+                    var st = stories[i];
+                    bool last = i == stories.Count - 1;
+                    bool first = i == 0;
+                    bool perdeLike = kinds[i] == 1 || kinds[i] == 2;
+                    bool kolonLike = kinds[i] == 0;
+                    double zCbot = first ? zDrawBot : st.zBot;
+                    double zNet = KolonNetYukseklikUstKot(beamRuns, st.lo, st.hi, zCbot, st.zTop);
+                    if (zNet < zCbot + 2.0) zNet = zCbot + 2.0;
+                    if (zNet > st.zTop) zNet = st.zTop;
+                    double lb = Ts500KenetlenmeLbCm(dia, fck, fyk);
+                    double lap = CeilTo5Cm(Math.Max(perdeLike ? 1.50 * lb : lb, 30.0));
+                    KolonOrtUcdeBindirme(zCbot, zNet, CeilTo5Cm(Math.Max(lb, 30.0)), out double spBot, out double spTop);
+                    double hookIn = Math.Max(2.0 * rBend + 1.0, th[i] - 2.0 * pas);
+                    double phi12 = CeilTo5Cm(12.0 * dia / 10.0);
+                    double bHook = phi12;
+                    if (hasTemel)
+                    {
+                        double a = zCbot - (zTemelBot + 5.0);
+                        double lbk = 0.75 * lb;
+                        if (a + bHook < lbk) bHook = CeilTo5Cm(Math.Max(bHook, lbk - Math.Max(a, 0)));
+                    }
+                    if (bHook > hookMax) hookMax = bHook;
+                    if (hookIn > hookMax) hookMax = hookIn;
+                    bool nextExists = !last && i + 1 < stories.Count && stories[i + 1].poly != null && !stories[i + 1].poly.IsEmpty;
+                    double zHoriz = st.zTop - pas;
+                    if (zHoriz < zCbot + 15.0) zHoriz = zCbot + 20.0;
+                    double hStory = st.zTop - zCbot;
+                    bool combine = hasThis && first && hasTemel && hStory <= 200.0 + 1e-6;
+                    double zStart = perdeLike ? zCbot : spBot;
+
+                    int nCont = hasThis ? n : 0;
+                    int nStop = 0;
+                    int nFilizEx = 0;
+                    double zFilizEx0 = 0, zFilizEx1 = 0;
+                    ResolveFinisGonyeFirkete(dia, hookIn, rBend, out bool extraFirkete, out double extraB, out double extraC);
+
+                    bool nextPerde = nextExists && kinds[i + 1] == 1;
+                    bool nextKolon = nextExists && (kinds[i + 1] == 0 || kinds[i + 1] == 2);
+                    bool kesitDegisti = nextExists && KolonKesitPlanFarkli(st.poly, stories[i + 1].poly, st.majorDeg);
+                    double h16 = st.zTop - zNet;
+                    if (h16 < 6.0) h16 = 6.0;
+                    double upLo = nextExists ? stories[i + 1].lo : st.lo;
+                    double upHi = nextExists ? stories[i + 1].hi : st.hi;
+                    const double kolonIcKenarCm = 5.5;
+
+                    if (nextExists && faceBars[i] != null)
+                    {
+                        var lo = faceBars[i];
+                        var up = faceBars[i + 1] ?? new List<(double x, int dia)>();
+                        int[] matchUp = null;
+                        if (kinds[i] == 1)
+                        {
+                            if (nextKolon)
+                                matchUp = MatchSameDiaBarsTbdY16(lo, up, h16);
+                            else if (nextPerde && kesitDegisti)
+                                matchUp = MatchKolonBarsTbdY16(lo.Select(b => b.x).ToList(), up.Select(b => b.x).ToList(), h16);
+                        }
+                        else
+                            matchUp = MatchKolonBarsTbdY16(lo.Select(b => b.x).ToList(), up.Select(b => b.x).ToList(), h16);
+
+                        if (matchUp != null && hasThis)
+                        {
+                            int nStopFace = 0;
+                            int nFaceDia = 0;
+                            for (int b = 0; b < lo.Count; b++)
+                            {
+                                int dB = lo[b].dia >= 6 ? lo[b].dia : 14;
+                                if (dB != dia) continue;
+                                nFaceDia++;
+                                int upIdx = b < matchUp.Length ? matchUp[b] : -1;
+                                bool matched = upIdx >= 0 && upIdx < up.Count;
+                                bool insideUp = nextKolon && kinds[i] == 1
+                                    ? (lo[b].x >= upLo + kolonIcKenarCm && lo[b].x <= upHi - kolonIcKenarCm)
+                                    : (lo[b].x >= upLo + pas && lo[b].x <= upHi - pas);
+                                if (!matched && !insideUp) nStopFace++;
+                            }
+                            nStop = ScaleFace(nStopFace, nFaceDia, n);
+                            if (nStop > n) nStop = n;
+                            nCont = Math.Max(0, n - nStop);
+                        }
+                    }
+
+                    if (nextExists)
+                    {
+                        var matchedUpX = new List<double>();
+                        var upFace = faceBars[i + 1] ?? new List<(double x, int dia)>();
+                        var loXs = (faceBars[i] ?? new List<(double x, int dia)>()).Select(b => b.x).ToList();
+                        var upXs = upFace.Select(b => b.x).ToList();
+                        int[] matchX = kinds[i] == 1 && nextKolon
+                            ? MatchSameDiaBarsTbdY16(faceBars[i] ?? new List<(double x, int dia)>(), upFace, h16)
+                            : MatchKolonBarsTbdY16(loXs, upXs, h16);
+                        if (matchX != null)
+                        {
+                            for (int b = 0; b < matchX.Length; b++)
+                            {
+                                int ui = matchX[b];
+                                if (ui >= 0 && ui < upXs.Count)
+                                    matchedUpX.Add(upXs[ui]);
+                            }
+                        }
+                        bool countFiliz = (kinds[i] == 1 && nextKolon) || kinds[i] != 1;
+                        if (countFiliz && allPtsDia[i + 1] != null && allPtsDia[i + 1].Count > 0)
+                        {
+                            nFilizEx = CountKesitDegisimUnmatchedBars(
+                                allPtsDia[i], allPtsDia[i + 1], matchedUpX, env[i + 1], dia);
+                            if (nFilizEx > 0)
+                            {
+                                double eFiliz = CeilTo5Cm(Math.Max(1.50 * lb, kinds[i] == 1 ? 30.0 : 40.0 * dia / 10.0));
+                                zFilizEx0 = st.zTop - eFiliz;
+                                if (zFilizEx0 < zCbot + 5.0) zFilizEx0 = zCbot + 5.0;
+                                double lbUp = CeilTo5Cm(Math.Max(lb, 30.0));
+                                double zUpBot = stories[i + 1].zBot;
+                                double zUpNet = KolonNetYukseklikUstKot(
+                                    beamRuns, stories[i + 1].lo, stories[i + 1].hi, zUpBot, stories[i + 1].zTop);
+                                if (zUpNet < zUpBot + 2.0) zUpNet = zUpBot + 2.0;
+                                KolonOrtUcdeBindirme(zUpBot, zUpNet, lbUp, out double spBup, out zFilizEx1);
+                                if (kinds[i] != 1)
+                                    zFilizEx1 = spBup + lbUp;
+                                if (zFilizEx1 < st.zTop + lbUp)
+                                    zFilizEx1 = st.zTop + lbUp;
+                            }
+                        }
+                    }
+
+                    void DimKolonLb(double x)
+                    {
+                        DimZ(x, zCbot, spBot, x + 18.0);
+                        DimZ(x, spBot, spTop, x + 18.0);
+                    }
+                    void DimPerdeFiliz(double x)
+                    {
+                        DimZ(x, zCbot, zCbot + lap, x + 18.0);
+                    }
+                    void DimPerdeKatGecis(double x, double zEnd)
+                    {
+                        if (!perdeLike || nextKolon) return;
+                        double zLapTop = st.zTop + lap;
+                        double zDimTop = Math.Min(zEnd, zLapTop);
+                        if (zDimTop - st.zTop >= 8.0)
+                            DimZ(x, st.zTop, zDimTop, x + 18.0);
+                    }
+                    void HookTxt(double x, double z, double len, bool horiz)
+                    {
+                        DrawBeamLabel(tr, btr, btr.Database,
+                            new Point3d(horiz ? x + len * 0.5 : x + 8.0, horiz ? Y(z) + 5.0 : Y(z), 0),
+                            len.ToString("0", CultureInfo.InvariantCulture),
+                            txtH, horiz ? 0.0 : Math.PI / 2.0, LayerDonatiYazisiPerde, useMiddleCenter: true);
+                    }
+
+                    bool drewFiliz = false;
+                    if (hasThis && first && hasTemel)
+                    {
+                        double zFbot = zTemelBot + 5.0;
+                        double zFtop = kolonLike ? spTop : zCbot + lap;
+                        if (combine)
+                        {
+                            if (last || !nextExists || nCont > 0)
+                            {
+                                double xUse = NextX();
+                                if (last || !nextExists)
+                                {
+                                    if (extraFirkete)
+                                    {
+                                        AppendDonatiPline(tr, btr, new[]
+                                        {
+                                            new Point2d(xUse + bHook, Y(zFbot)),
+                                            new Point2d(xUse + rBend, Y(zFbot)),
+                                            new Point2d(xUse, Y(zFbot + rBend)),
+                                            new Point2d(xUse, Y(zHoriz - rBend)),
+                                            new Point2d(xUse + rBend, Y(zHoriz)),
+                                            new Point2d(xUse + (extraB - rBend), Y(zHoriz)),
+                                            new Point2d(xUse + extraB, Y(zHoriz - rBend)),
+                                            new Point2d(xUse + extraB, Y(zHoriz - extraC))
+                                        }, new[] { 0.0, -k90, 0.0, -k90, 0.0, -k90, 0.0, 0.0 });
+                                        Label(xUse, (zCbot + zHoriz) * 0.5, n, dia, CeilTo5Cm((zHoriz - zFbot) + bHook + extraB + extraC));
+                                        HookTxt(xUse, zFbot, bHook, true);
+                                        DrawBeamLabel(tr, btr, btr.Database, new Point3d(xUse + extraB * 0.5, Y(zHoriz) + 8.0, 0),
+                                            extraB.ToString("0", CultureInfo.InvariantCulture), txtH, 0.0, LayerDonatiYazisiPerde, useMiddleCenter: true);
+                                        DrawBeamLabel(tr, btr, btr.Database, new Point3d(xUse + extraB + 8.0, Y(zHoriz - extraC * 0.5), 0),
+                                            extraC.ToString("0", CultureInfo.InvariantCulture), txtH, Math.PI / 2.0, LayerDonatiYazisiPerde, useMiddleCenter: true);
+                                    }
+                                    else
+                                    {
+                                        AppendDonatiPline(tr, btr, new[]
+                                        {
+                                            new Point2d(xUse + bHook, Y(zFbot)),
+                                            new Point2d(xUse + rBend, Y(zFbot)),
+                                            new Point2d(xUse, Y(zFbot + rBend)),
+                                            new Point2d(xUse, Y(zHoriz - rBend)),
+                                            new Point2d(xUse + rBend, Y(zHoriz)),
+                                            new Point2d(xUse + extraB, Y(zHoriz))
+                                        }, new[] { 0.0, -k90, 0.0, -k90, 0.0, 0.0 });
+                                        Label(xUse, (zCbot + zHoriz) * 0.5, n, dia, CeilTo5Cm((zHoriz - zFbot) + bHook + extraB));
+                                        HookTxt(xUse, zFbot, bHook, true);
+                                        DrawBeamLabel(tr, btr, btr.Database, new Point3d(xUse + extraB * 0.5, Y(zHoriz) + 8.0, 0),
+                                            extraB.ToString("0", CultureInfo.InvariantCulture), txtH, 0.0, LayerDonatiYazisiPerde, useMiddleCenter: true);
+                                    }
+                                }
+                                else
+                                {
+                                    double zEnd = kolonLike ? spTop : st.zTop + lap;
+                                    if (nextExists && kinds[i] == 1 && kinds[i + 1] == 0)
+                                    {
+                                        double lbC = CeilTo5Cm(Math.Max(lb, 30.0));
+                                        double zColNet = KolonNetYukseklikUstKot(
+                                            beamRuns, stories[i + 1].lo, stories[i + 1].hi, stories[i + 1].zBot, stories[i + 1].zTop);
+                                        KolonOrtUcdeBindirme(stories[i + 1].zBot, zColNet, lbC, out _, out zEnd);
+                                    }
+                                    else if (kolonLike && nextExists)
+                                    {
+                                        var up = stories[i + 1];
+                                        double zUpNet = KolonNetYukseklikUstKot(beamRuns, up.lo, up.hi, up.zBot, up.zTop);
+                                        if (zUpNet < up.zBot + 2.0) zUpNet = up.zBot + 2.0;
+                                        KolonOrtUcdeBindirme(up.zBot, zUpNet, CeilTo5Cm(Math.Max(lb, 30.0)), out _, out zEnd);
+                                    }
+                                    AppendDonatiPline(tr, btr, new[]
+                                    {
+                                        new Point2d(xUse + bHook, Y(zFbot)),
+                                        new Point2d(xUse + rBend, Y(zFbot)),
+                                        new Point2d(xUse, Y(zFbot + rBend)),
+                                        new Point2d(xUse, Y(zEnd))
+                                    }, new[] { 0.0, -k90, 0.0, 0.0 });
+                                    Label(xUse, (zCbot + st.zTop) * 0.5, nCont, dia, CeilTo5Cm((zEnd - zFbot) + bHook));
+                                    HookTxt(xUse, zFbot, bHook, true);
+                                    DimPerdeKatGecis(xUse, zEnd);
+                                }
+                                if (kolonLike) DimKolonLb(xUse);
+                                else DimPerdeFiliz(xUse);
+                                drewFiliz = true;
+                            }
+                        }
+                        else if (zFtop - zFbot >= 10.0)
+                        {
+                            double xFiliz = NextX();
+                            AppendDonatiPline(tr, btr, new[]
+                            {
+                                new Point2d(xFiliz + bHook, Y(zFbot)),
+                                new Point2d(xFiliz + rBend, Y(zFbot)),
+                                new Point2d(xFiliz, Y(zFbot + rBend)),
+                                new Point2d(xFiliz, Y(zFtop))
+                            }, new[] { 0.0, -k90, 0.0, 0.0 });
+                            Label(xFiliz, (zFbot + zFtop) * 0.5, n, dia, CeilTo5Cm((zFtop - zFbot) + bHook));
+                            HookTxt(xFiliz, zFbot, bHook, true);
+                            if (kolonLike) DimKolonLb(xFiliz);
+                            else DimPerdeFiliz(xFiliz);
+                            drewFiliz = true;
+                        }
+                    }
+
+                    if (hasThis && !combine)
+                    {
+                        bool firketeTop = last || !nextExists;
+                        double zEndBar = zHoriz;
+                        if (!firketeTop)
+                        {
+                            if (kolonLike && nextExists)
+                            {
+                                var up = stories[i + 1];
+                                double zUpNet = KolonNetYukseklikUstKot(beamRuns, up.lo, up.hi, up.zBot, up.zTop);
+                                if (zUpNet < up.zBot + 2.0) zUpNet = up.zBot + 2.0;
+                                KolonOrtUcdeBindirme(up.zBot, zUpNet, CeilTo5Cm(Math.Max(lb, 30.0)), out _, out zEndBar);
+                            }
+                            else if (nextExists && kinds[i] == 1 && kinds[i + 1] == 0)
+                            {
+                                double lbC = CeilTo5Cm(Math.Max(lb, 30.0));
+                                double zColNet = KolonNetYukseklikUstKot(
+                                    beamRuns, stories[i + 1].lo, stories[i + 1].hi, stories[i + 1].zBot, stories[i + 1].zTop);
+                                KolonOrtUcdeBindirme(stories[i + 1].zBot, zColNet, lbC, out _, out zEndBar);
+                            }
+                            else
+                                zEndBar = st.zTop + lap;
+                        }
+
+                        int nMain = firketeTop ? n : nCont;
+                        if (nMain > 0)
+                        {
+                            double xUse = NextX();
+                            if (firketeTop)
+                            {
+                                if (extraFirkete)
+                                {
+                                    DrawKolonDonatiFirkete(tr, btr, Y, xUse, zStart, zHoriz, 1.0, k90, rBend, extraB, extraC);
+                                    Label(xUse, (zStart + zHoriz) * 0.5, nMain, dia, CeilTo5Cm((zHoriz - zStart) + extraB + extraC));
+                                    DrawBeamLabel(tr, btr, btr.Database, new Point3d(xUse + extraB * 0.5, Y(zHoriz) + 8.0, 0),
+                                        extraB.ToString("0", CultureInfo.InvariantCulture), txtH, 0.0, LayerDonatiYazisiPerde, useMiddleCenter: true);
+                                    DrawBeamLabel(tr, btr, btr.Database, new Point3d(xUse + extraB + 8.0, Y(zHoriz - extraC * 0.5), 0),
+                                        extraC.ToString("0", CultureInfo.InvariantCulture), txtH, Math.PI / 2.0, LayerDonatiYazisiPerde, useMiddleCenter: true);
+                                }
+                                else
+                                {
+                                    DrawKolonDonatiGonye(tr, btr, Y, xUse, zStart, zHoriz, 1.0, k90, rBend, extraB);
+                                    Label(xUse, (zStart + zHoriz) * 0.5, nMain, dia, CeilTo5Cm((zHoriz - zStart) + extraB));
+                                    DrawBeamLabel(tr, btr, btr.Database, new Point3d(xUse + extraB * 0.5, Y(zHoriz) + 8.0, 0),
+                                        extraB.ToString("0", CultureInfo.InvariantCulture), txtH, 0.0, LayerDonatiYazisiPerde, useMiddleCenter: true);
+                                }
+                            }
+                            else
+                            {
+                                AppendDonatiPline(tr, btr, new[]
+                                {
+                                    new Point2d(xUse, Y(zStart)),
+                                    new Point2d(xUse, Y(zEndBar))
+                                }, null);
+                                Label(xUse, (zStart + Math.Min(st.zTop, zEndBar)) * 0.5, nMain, dia, CeilTo5Cm(zEndBar - zStart));
+                                DimPerdeKatGecis(xUse, zEndBar);
+                            }
+                            if (kolonLike && !(first && drewFiliz))
+                                DimKolonLb(xUse);
+                            else if (perdeLike && first && !drewFiliz)
+                                DimPerdeFiliz(xUse);
+                        }
+                    }
+
+                    if (nStop > 0 && nextExists)
+                    {
+                        double xEx = NextExtraX();
+                        if (extraFirkete)
+                        {
+                            DrawKolonDonatiFirkete(tr, btr, Y, xEx, zStart, zHoriz, 1.0, k90, rBend, extraB, extraC);
+                            Label(xEx, (zStart + zHoriz) * 0.5, nStop, dia, CeilTo5Cm((zHoriz - zStart) + extraB + extraC));
+                            DrawBeamLabel(tr, btr, btr.Database, new Point3d(xEx + extraB * 0.5, Y(zHoriz) + 8.0, 0),
+                                extraB.ToString("0", CultureInfo.InvariantCulture), txtH, 0.0, LayerDonatiYazisiPerde, useMiddleCenter: true);
+                            DrawBeamLabel(tr, btr, btr.Database, new Point3d(xEx + extraB + 8.0, Y(zHoriz - extraC * 0.5), 0),
+                                extraC.ToString("0", CultureInfo.InvariantCulture), txtH, Math.PI / 2.0, LayerDonatiYazisiPerde, useMiddleCenter: true);
+                        }
+                        else
+                        {
+                            DrawKolonDonatiGonye(tr, btr, Y, xEx, zStart, zHoriz, 1.0, k90, rBend, extraB);
+                            Label(xEx, (zStart + zHoriz) * 0.5, nStop, dia, CeilTo5Cm((zHoriz - zStart) + extraB));
+                            DrawBeamLabel(tr, btr, btr.Database, new Point3d(xEx + extraB * 0.5, Y(zHoriz) + 8.0, 0),
+                                extraB.ToString("0", CultureInfo.InvariantCulture), txtH, 0.0, LayerDonatiYazisiPerde, useMiddleCenter: true);
+                        }
+                    }
+
+                    if (nFilizEx > 0 && zFilizEx1 - zFilizEx0 >= 10.0)
+                    {
+                        double xFx = NextExtraX();
+                        AppendDonatiPline(tr, btr, new[]
+                        {
+                            new Point2d(xFx, Y(zFilizEx0)),
+                            new Point2d(xFx, Y(zFilizEx1))
+                        }, null);
+                        Label(xFx, (zFilizEx0 + zFilizEx1) * 0.5, nFilizEx, dia, CeilTo5Cm(zFilizEx1 - zFilizEx0), filizTag: true);
+                    }
+                }
+                xRight = Math.Max(xRight, xBar + KolonDuseyAcilimSasirCm + hookMax + 25.0);
+            }
+            if (extraSlot > 0)
+                xRight = Math.Max(xRight, xKesitExtra0 + extraSlot * KolonDuseyAcilimKesitExtraGapCm + 45.0);
+            return xRight;
         }
 
         /// <summary>
@@ -525,7 +1043,6 @@ namespace ST4PlanIdCiz
                 double upHi = nextExists ? stories[i + 1].hi : stories[i].hi;
                 double midHook = nextExists ? 0.5 * (upLo + upHi) : midX;
                 double zHorizPre = stories[i].zTop - pas;
-                double aJointStory = KolonBirlesimDuseyA(beamRuns, stories[i].lo, stories[i].hi, stories[i].zTop, zHorizPre);
                 double zSof = zNetTops[i];
                 if (zSof < zStart + 2.0) zSof = zStart + 2.0;
                 if (zSof > stories[i].zTop) zSof = stories[i].zTop;
@@ -546,41 +1063,7 @@ namespace ST4PlanIdCiz
                         double zHoriz = zHorizPre;
                         if (zHoriz < zStart + 15.0) zHoriz = zStart + 20.0;
                         double hookDir = bx <= midHook ? 1.0 : -1.0;
-                        double bCap = hookIn > 2.0 * rBend ? hookIn : 2.0 * rBend;
-                        if (isBaslik[i])
-                        {
-                            // Perde görünüşü: 4 cm pas, b = kalınlık−2·pas, firkete döşeme altına inmez; 12φ düşey bacak.
-                            double cMin = CeilTo5Cm(12.0 * dia / 10.0);
-                            double zDown = zSof - 10.0;
-                            if (zSof >= stories[i].zTop - 1.0)
-                                zDown = zHoriz - cMin;
-                            if (zDown > zHoriz - cMin)
-                                zDown = zHoriz - cMin;
-                            double c = zHoriz - zDown;
-                            if (c < 2.0 * rBend + 1.0) c = Math.Max(cMin, 2.0 * rBend + 1.0);
-                            DrawKolonDonatiFirkete(tr, btr, Y, x, zStart, zHoriz, hookDir, k90, rBend, bCap, c);
-                        }
-                        else
-                        {
-                            double aJoint = aJointStory;
-                            double need = Math.Max(1.50 * Ts500KenetlenmeLbCm(dia, fck, fyk), 40.0 * dia / 10.0);
-                            double phi12 = CeilTo5Cm(12.0 * dia / 10.0);
-                            if (aJoint + phi12 >= need - 0.01)
-                                DrawKolonDonatiGonye(tr, btr, Y, x, zStart, zHoriz, hookDir, k90, rBend, phi12);
-                            else if (aJoint + bCap >= need - 0.01)
-                            {
-                                double bG = CeilTo5Cm(need - aJoint);
-                                if (bG < phi12) bG = phi12;
-                                if (bG > bCap) bG = bCap;
-                                DrawKolonDonatiGonye(tr, btr, Y, x, zStart, zHoriz, hookDir, k90, rBend, bG);
-                            }
-                            else
-                            {
-                                double c = CeilTo5Cm(need - aJoint - bCap);
-                                if (c < phi12) c = phi12;
-                                DrawKolonDonatiFirkete(tr, btr, Y, x, zStart, zHoriz, hookDir, k90, rBend, bCap, c);
-                            }
-                        }
+                        DrawKolonFinisGonyeFirkete(tr, btr, Y, x, zStart, zHoriz, hookDir, k90, rBend, dia, hookIn);
                     }
                     else if (matched)
                     {
@@ -609,8 +1092,6 @@ namespace ST4PlanIdCiz
                                 matchedUpX.Add(barXs[i + 1][ui]);
                         }
                     }
-                    var loPts = barAllPts[i] ?? new List<Point2d>();
-                    var upPts = barAllPts[i + 1];
                     Envelope eUp = null;
                     try
                     {
@@ -618,33 +1099,8 @@ namespace ST4PlanIdCiz
                         if (gUp != null && !gUp.IsEmpty) eUp = gUp.EnvelopeInternal;
                     }
                     catch { }
-                    double yTop = 0, yBot = 0;
-                    bool hasLongY = TryKolonKesitLongFaceY(eUp, out yTop, out yBot);
-                    const double tol = 2.5;
-                    var filizXs = new List<double>();
-                    foreach (var u in upPts)
-                    {
-                        bool match = false;
-                        foreach (var lo in loPts)
-                        {
-                            double dx = lo.X - u.X, dy = lo.Y - u.Y;
-                            if (dx * dx + dy * dy <= tol * tol) { match = true; break; }
-                        }
-                        if (!match && hasLongY && (Math.Abs(u.Y - yTop) < tol || Math.Abs(u.Y - yBot) < tol))
-                        {
-                            foreach (double mx in matchedUpX)
-                            {
-                                if (Math.Abs(u.X - mx) < tol) { match = true; break; }
-                            }
-                        }
-                        if (match) continue;
-                        bool have = false;
-                        foreach (double fx in filizXs)
-                        {
-                            if (Math.Abs(fx - u.X) < 1.0) { have = true; break; }
-                        }
-                        if (!have) filizXs.Add(u.X);
-                    }
+                    var filizXs = CollectKesitDegisimExtraFilizXs(
+                        barAllPts[i], barAllPts[i + 1], matchedUpX, eUp);
                     int diaU = diaMm[i + 1] >= 6 ? diaMm[i + 1] : dia;
                     double lbU = Ts500KenetlenmeLbCm(diaU, fck, fyk);
                     double eFiliz = CeilTo5Cm(Math.Max(1.50 * lbU, 40.0 * diaU / 10.0));
@@ -728,6 +1184,8 @@ namespace ST4PlanIdCiz
             bool hasTemel = temelSpans != null && temelSpans.Count > 0;
             double zTemelBot = hasTemel ? temelSpans.Min(t => t.z0) : stories[0].zBot;
             var bars = new List<(double x, int dia)>[stories.Count];
+            var allPts = new List<Point2d>[stories.Count];
+            var env = new Envelope[stories.Count];
             var colTh = new double[stories.Count];
             var isPerde = new bool[stories.Count];
             var isKolon = new bool[stories.Count];
@@ -736,12 +1194,14 @@ namespace ST4PlanIdCiz
             {
                 var st = stories[i];
                 bars[i] = new List<(double x, int dia)>();
+                allPts[i] = new List<Point2d>();
                 colTh[i] = 25.0;
                 if (st.poly == null || st.poly.IsEmpty) continue;
                 Geometry g;
                 try { g = rot != null ? rot.Transform(st.poly) : st.poly; }
                 catch { g = st.poly; }
                 var e = g.EnvelopeInternal;
+                env[i] = e;
                 if (IsKolonKesitPoligonKesit(g, e)) continue;
                 double longCm = Math.Max(e.Width, e.Height);
                 double shortCm = Math.Min(e.Width, e.Height);
@@ -750,12 +1210,20 @@ namespace ST4PlanIdCiz
                     isPerde[i] = true;
                     colTh[i] = Math.Max(8.0, shortCm);
                     bars[i] = CollectPerdeGorunusLongFaceBars(g, st.floorIndex, col.ColumnNo);
+                    var pPts = CollectPerdeKesitBarPoints(e, st.floorIndex, col.ColumnNo);
+                    if (pPts != null)
+                    {
+                        allPts[i] = new List<Point2d>(pPts.Count);
+                        for (int k = 0; k < pPts.Count; k++)
+                            allPts[i].Add(pPts[k].p);
+                    }
                 }
                 else
                 {
                     isKolon[i] = true;
                     colTh[i] = Math.Max(8.0, shortCm);
                     bars[i] = CollectKolonGorunusLongFaceBars(g, st.floorIndex, col.ColumnNo);
+                    allPts[i] = CollectKolonKesitBarPoints(e, st.floorIndex, col.ColumnNo);
                 }
             }
 
@@ -775,7 +1243,6 @@ namespace ST4PlanIdCiz
                     && KolonKesitPlanFarkli(stories[i].poly, stories[i + 1].poly, stories[i].majorDeg);
                 double midX = 0.5 * (stories[i].lo + stories[i].hi);
                 double zHorizPre = stories[i].zTop - pas;
-                double aJointStory = KolonBirlesimDuseyA(beamRuns, stories[i].lo, stories[i].hi, stories[i].zTop, zHorizPre);
                 double zSof = KolonNetYukseklikUstKot(beamRuns, stories[i].lo, stories[i].hi, zCbot, stories[i].zTop);
                 if (zSof < zCbot + 2.0) zSof = zCbot + 2.0;
                 if (zSof > stories[i].zTop) zSof = stories[i].zTop;
@@ -831,25 +1298,7 @@ namespace ST4PlanIdCiz
                         double zHoriz = zHorizPre;
                         if (zHoriz < zCbot + 15.0) zHoriz = zCbot + 20.0;
                         double hookDir = bx <= midHook ? 1.0 : -1.0;
-                        double bCap = hookIn > 2.0 * rBend ? hookIn : 2.0 * rBend;
-                        double aJoint = aJointStory;
-                        double need = Math.Max(1.50 * lb, 40.0 * dia / 10.0);
-                        double phi12 = CeilTo5Cm(12.0 * dia / 10.0);
-                        if (aJoint + phi12 >= need - 0.01)
-                            DrawKolonDonatiGonye(tr, btr, Y, x, zCbot, zHoriz, hookDir, k90, rBend, phi12);
-                        else if (aJoint + bCap >= need - 0.01)
-                        {
-                            double bG = CeilTo5Cm(need - aJoint);
-                            if (bG < phi12) bG = phi12;
-                            if (bG > bCap) bG = bCap;
-                            DrawKolonDonatiGonye(tr, btr, Y, x, zCbot, zHoriz, hookDir, k90, rBend, bG);
-                        }
-                        else
-                        {
-                            double c = CeilTo5Cm(need - aJoint - bCap);
-                            if (c < phi12) c = phi12;
-                            DrawKolonDonatiFirkete(tr, btr, Y, x, zCbot, zHoriz, hookDir, k90, rBend, bCap, c);
-                        }
+                        DrawKolonFinisGonyeFirkete(tr, btr, Y, x, zCbot, zHoriz, hookDir, k90, rBend, dia, hookIn);
                     }
                     else if (matched)
                     {
@@ -868,29 +1317,36 @@ namespace ST4PlanIdCiz
 
                 if (nextKolon)
                 {
-                    var usedUp = new bool[bars[i + 1].Count];
-                    if (matchUp != null)
+                    var matchedUpX = new List<double>();
+                    if (matchUp != null && bars[i + 1] != null)
                     {
                         for (int b = 0; b < matchUp.Length; b++)
                         {
                             int ui = matchUp[b];
-                            if (ui >= 0 && ui < usedUp.Length) usedUp[ui] = true;
+                            if (ui >= 0 && ui < bars[i + 1].Count)
+                                matchedUpX.Add(bars[i + 1][ui].x);
                         }
                     }
-                    for (int u = 0; u < bars[i + 1].Count; u++)
+                    var filizXs = CollectKesitDegisimExtraFilizXs(
+                        allPts[i], allPts[i + 1], matchedUpX, env[i + 1]);
+                    int diaU = 14;
+                    foreach (var cb in bars[i + 1])
+                        if (cb.dia > diaU) diaU = cb.dia;
+                    double lbU = Ts500KenetlenmeLbCm(diaU, fck, fyk);
+                    double filizDown = CeilTo5Cm(Math.Max(1.50 * lbU, 30.0));
+                    double zFbot = stories[i].zTop - filizDown;
+                    if (zFbot < zCbot + 5.0) zFbot = zCbot + 5.0;
+                    if (filizXs != null && filizXs.Count > 0 && zKolonLbUst - zFbot >= 10.0)
                     {
-                        if (usedUp[u]) continue;
-                        int diaU = bars[i + 1][u].dia >= 6 ? bars[i + 1][u].dia : 14;
-                        double lbU = Ts500KenetlenmeLbCm(diaU, fck, fyk);
-                        double filizDown = CeilTo5Cm(Math.Max(1.50 * lbU, 30.0));
-                        double zFbot = stories[i].zTop - filizDown;
-                        if (zFbot < zCbot + 5.0) zFbot = zCbot + 5.0;
-                        double x = X(bars[i + 1][u].x);
-                        AppendDonatiPline(tr, btr, new[]
+                        foreach (double fx in filizXs)
                         {
-                            new Point2d(x, Y(zFbot)),
-                            new Point2d(x, Y(zKolonLbUst))
-                        }, null);
+                            double x = X(fx);
+                            AppendDonatiPline(tr, btr, new[]
+                            {
+                                new Point2d(x, Y(zFbot)),
+                                new Point2d(x, Y(zKolonLbUst))
+                            }, null);
+                        }
                     }
                 }
 
@@ -1096,6 +1552,98 @@ namespace ST4PlanIdCiz
             return match;
         }
 
+        /// <summary>
+        /// Kesit değişiminde üst kesitte eşleşmeyen düşeylerin unique X'i — görünüş extra filiz adedi ile aynı.
+        /// </summary>
+        private static List<double> CollectKesitDegisimExtraFilizXs(
+            List<Point2d> loPts,
+            List<Point2d> upPts,
+            List<double> matchedUpX,
+            Envelope eUp)
+        {
+            var filizXs = new List<double>();
+            if (upPts == null || upPts.Count == 0) return filizXs;
+            if (loPts == null) loPts = new List<Point2d>();
+            if (matchedUpX == null) matchedUpX = new List<double>();
+            double yTop = 0, yBot = 0;
+            bool hasLongY = TryKolonKesitLongFaceY(eUp, out yTop, out yBot);
+            const double tol = 2.5;
+            foreach (var u in upPts)
+            {
+                bool match = false;
+                foreach (var lo in loPts)
+                {
+                    double dx = lo.X - u.X, dy = lo.Y - u.Y;
+                    if (dx * dx + dy * dy <= tol * tol) { match = true; break; }
+                }
+                if (!match && hasLongY && (Math.Abs(u.Y - yTop) < tol || Math.Abs(u.Y - yBot) < tol))
+                {
+                    foreach (double mx in matchedUpX)
+                    {
+                        if (Math.Abs(u.X - mx) < tol) { match = true; break; }
+                    }
+                }
+                if (match) continue;
+                bool have = false;
+                foreach (double fx in filizXs)
+                {
+                    if (Math.Abs(fx - u.X) < 1.0) { have = true; break; }
+                }
+                if (!have) filizXs.Add(u.X);
+            }
+            return filizXs;
+        }
+
+        /// <summary>
+        /// Kesit izdüşümündeki kırmızı (eşleşmeyen) daire adedi ile aynı: unique X yok, aynı çap XY eşleşmesi.
+        /// </summary>
+        private static int CountKesitDegisimUnmatchedBars(
+            List<(Point2d p, int dia)> loPts,
+            List<(Point2d p, int dia)> upPts,
+            List<double> matchedUpX,
+            Envelope eUp,
+            int diaFilter)
+        {
+            if (upPts == null || upPts.Count == 0) return 0;
+            if (loPts == null) loPts = new List<(Point2d p, int dia)>();
+            if (matchedUpX == null) matchedUpX = new List<double>();
+            double yTop = 0, yBot = 0;
+            bool hasLongY = TryKolonKesitLongFaceY(eUp, out yTop, out yBot);
+            const double tol = 2.5;
+            int n = 0;
+            foreach (var u in upPts)
+            {
+                int dU = u.dia >= 6 ? u.dia : 14;
+                if (diaFilter >= 6 && dU != diaFilter) continue;
+                bool match = false;
+                foreach (var lo in loPts)
+                {
+                    int dL = lo.dia >= 6 ? lo.dia : 14;
+                    if (dL != dU) continue;
+                    double dx = lo.p.X - u.p.X;
+                    double dy = lo.p.Y - u.p.Y;
+                    if (dx * dx + dy * dy <= tol * tol)
+                    {
+                        match = true;
+                        break;
+                    }
+                }
+                if (!match && hasLongY && (Math.Abs(u.p.Y - yTop) < tol || Math.Abs(u.p.Y - yBot) < tol))
+                {
+                    foreach (double mx in matchedUpX)
+                    {
+                        if (Math.Abs(u.p.X - mx) < tol)
+                        {
+                            match = true;
+                            break;
+                        }
+                    }
+                }
+                if (!match) n++;
+            }
+            return n;
+        }
+
         /// <summary>Eğim yalnız kiriş yüksekliğinde (oba→üst); bitiş X üst kat düşey donatısı.</summary>
         private void DrawKolonDonatiBirAltiGecis(
             Transaction tr, BlockTableRecord btr,
@@ -1120,8 +1668,50 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>
-        /// TBDY 2018 Şekil 7.2 sol: gönye. a yetiyorsa b = 12φ; değilse b artar (kısa kenar−2·paspayı üst sınırı çağıranda).
+        /// Finiş: yönetmelik yok. φ≤12 gönye = 12φ (5 cm katları); dar−2·pas’ı geçerse firkete c=20.
+        /// φ≥14: b = dar−2·pas, firkete c=30.
         /// </summary>
+        private static void ResolveFinisGonyeFirkete(int diaMm, double darEksi2Pas, double rBend, out bool firkete, out double bCm, out double cCm)
+        {
+            double bCap = darEksi2Pas > 2.0 * rBend ? darEksi2Pas : 2.0 * rBend;
+            if (diaMm <= 12)
+            {
+                double gonye = CeilTo5Cm(12.0 * diaMm / 10.0);
+                if (gonye < 5.0) gonye = 5.0;
+                if (gonye > bCap + 0.01)
+                {
+                    firkete = true;
+                    bCm = bCap;
+                    cCm = 20.0;
+                }
+                else
+                {
+                    firkete = false;
+                    bCm = gonye;
+                    cCm = 0.0;
+                }
+            }
+            else
+            {
+                firkete = true;
+                bCm = bCap;
+                cCm = 30.0;
+            }
+        }
+
+        private void DrawKolonFinisGonyeFirkete(
+            Transaction tr, BlockTableRecord btr,
+            Func<double, double> Y,
+            double x, double zStart, double zHoriz, double hookDir,
+            double k90, double rBend, int diaMm, double darEksi2Pas)
+        {
+            ResolveFinisGonyeFirkete(diaMm, darEksi2Pas, rBend, out bool firkete, out double b, out double c);
+            if (firkete)
+                DrawKolonDonatiFirkete(tr, btr, Y, x, zStart, zHoriz, hookDir, k90, rBend, b, c);
+            else
+                DrawKolonDonatiGonye(tr, btr, Y, x, zStart, zHoriz, hookDir, k90, rBend, b);
+        }
+
         private void DrawKolonDonatiGonye(
             Transaction tr, BlockTableRecord btr,
             Func<double, double> Y,
@@ -4384,6 +4974,75 @@ namespace ST4PlanIdCiz
             if (parts.Count == 0) return "";
             parts.Sort(StringComparer.Ordinal);
             return string.Join(",", parts);
+        }
+
+        private FloorInfo FloorAtIndex(int floorIndex)
+        {
+            if (_model?.Floors == null || floorIndex < 0 || floorIndex >= _model.Floors.Count)
+                return null;
+            return _model.Floors[floorIndex];
+        }
+
+        /// <summary>
+        /// Kapama perdesi: GPR PANEL BETONARME (P/PB indisi). S kolon tablosunda değil.
+        /// Finiş katında elemana herhangi bir yüzünden bağlanırsa KALIP50 panel firketesi (TBDY/TS500 Şekil 7.2 değil).
+        /// </summary>
+        private bool KolonKataKapamaPerdeBagli(FloorInfo floor, Geometry colPoly)
+        {
+            if (floor == null || colPoly == null || colPoly.IsEmpty) return false;
+            if (_gprPerdePanelDonati == null || _gprPerdePanelDonati.Count == 0) return false;
+            bool hit = false;
+            ForEachKolonBagliKiris(floor, colPoly, includeWalls: true, (beam, poly, zb, zt) =>
+            {
+                if (hit || poly == null || poly.IsEmpty) return;
+                if (PolygonsMostlyOverlap(poly, colPoly)) return;
+                if (IsGprPanelWall(floor, beam))
+                    hit = true;
+            });
+            return hit;
+        }
+
+        private bool IsGprPanelWall(FloorInfo floor, BeamInfo beam)
+        {
+            if (beam == null || beam.IsWallFlag != 1) return false;
+            if (_gprPerdePanelDonati == null || _gprPerdePanelDonati.Count == 0) return false;
+            int wallNo = GetBeamNumero(beam.BeamId);
+            if (wallNo <= 0) return false;
+            if (TryFindGprPerdePanel(floor, wallNo, out var don) && don != null && don.BarCount > 0)
+                return true;
+            foreach (var kv in _gprPerdePanelDonati)
+            {
+                if (kv.Value != null && kv.Value.WallNo == wallNo && kv.Value.BarCount > 0)
+                    return true;
+            }
+            return false;
+        }
+
+        private static bool PolygonsMostlyOverlap(Geometry a, Geometry b)
+        {
+            if (a == null || b == null || a.IsEmpty || b.IsEmpty) return false;
+            try
+            {
+                double ia = a.Intersection(b).Area;
+                double m = Math.Min(a.Area, b.Area);
+                return m > 1.0 && ia > 0.5 * m;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>Perde başlığı firkete c: döşeme altına inmez, en az 12φ.</summary>
+        private static double PerdeBasligiFirketeCCm(double zHoriz, double zSof, double zTop, double phi12, double rBend)
+        {
+            double cMin = Math.Max(phi12, 5.0);
+            double zDown = zSof - 10.0;
+            if (zSof >= zTop - 1.0)
+                zDown = zHoriz - cMin;
+            if (zDown > zHoriz - cMin)
+                zDown = zHoriz - cMin;
+            double c = zHoriz - zDown;
+            if (c < 2.0 * rBend + 1.0)
+                c = Math.Max(cMin, 2.0 * rBend + 1.0);
+            return c;
         }
 
         private void ForEachKolonBagliKiris(
