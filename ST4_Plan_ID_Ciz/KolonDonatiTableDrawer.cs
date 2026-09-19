@@ -216,10 +216,10 @@ namespace ST4PlanIdCiz
             foreach (var enc in tryEnc)
             {
                 string s = enc.GetString(arr);
-                var m = Regex.Match(s, @"([\d\s+x×\u00D7\u00F8Ø/\.\(\)]+)\(govde\)", RegexOptions.IgnoreCase);
+                var m = Regex.Match(s, @"([\d\s+x×\u00D7\u00F8Ø/\.\[\]\(\)]+)\(govde\)", RegexOptions.IgnoreCase);
                 if (m.Success && m.Groups[1].Value.Trim().Length >= 3)
                     return m.Groups[1].Value.Trim() + "(govde)";
-                m = Regex.Match(s, @"([\d\s+x×\u00D7\u00F8Ø/\.\(\)]+)\(etriye\)", RegexOptions.IgnoreCase);
+                m = Regex.Match(s, @"([\d\s+x×\u00D7\u00F8Ø/\.\[\]\(\)]+)\(etriye\)", RegexOptions.IgnoreCase);
                 if (m.Success && m.Groups[1].Value.Trim().Length >= 2)
                     return m.Groups[1].Value.Trim() + "(etriye)";
             }

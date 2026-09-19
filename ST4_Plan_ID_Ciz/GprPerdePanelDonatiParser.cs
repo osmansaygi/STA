@@ -47,18 +47,31 @@ namespace ST4PlanIdCiz
             {
                 string[] lines = WindowsAnsiEncodings.ReadAllLines(gprFilePath);
                 int n = Math.Min(lines.Length, 1200);
+                double kolonFck = 0, kolonFyk = 0;
                 for (int i = 0; i < n; i++)
                 {
                     string ascii = ToAscii(lines[i]);
                     var cM = RxCClass.Match(ascii);
                     if (cM.Success)
-                        fckMPa = int.Parse(cM.Groups[1].Value);
+                    {
+                        double c = int.Parse(cM.Groups[1].Value);
+                        fckMPa = c;
+                        if (ascii.IndexOf("Kolon", StringComparison.OrdinalIgnoreCase) >= 0)
+                            kolonFck = c;
+                    }
                     var sM = RxFykKgcm.Match(ascii);
                     if (sM.Success)
-                        fykMPa = int.Parse(sM.Groups[1].Value) / 10.0;
+                    {
+                        double fy = int.Parse(sM.Groups[1].Value) / 10.0;
+                        fykMPa = fy;
+                        if (ascii.IndexOf("Kolon", StringComparison.OrdinalIgnoreCase) >= 0)
+                            kolonFyk = fy;
+                    }
                     if (ascii.IndexOf("PANEL BETONARME", StringComparison.OrdinalIgnoreCase) >= 0)
                         break;
                 }
+                if (kolonFck >= 16.0) fckMPa = kolonFck;
+                if (kolonFyk >= 200.0) fykMPa = kolonFyk;
             }
             catch { }
             if (fckMPa < 16.0) fckMPa = 30.0;

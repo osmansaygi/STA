@@ -337,9 +337,11 @@ namespace ST4PlanIdCiz
             // Etriye / düşey donatı: tüm saplanan kirişler (görünüş süzgeci yok).
             var etriyeKiris = new List<(double x0, double x1, double zb, double zt)>(sapKirisRuns);
             DrawKolonGorunusDuseyDonatilar(tr, btr, col, stories, rot, X, Y, zDrawBot, temelSpans, etriyeKiris);
+            DrawPerdeGorunusDuseyDonatilar(tr, btr, col, stories, rot, X, Y, zDrawBot, temelSpans, etriyeKiris);
             var etriyeZs = new List<double>();
             var etriyeBolgeler = new List<(double zLo, double zHi, int sCm, int diaMm)>();
             DrawKolonGorunusEtriyeler(tr, btr, col, stories, rot, X, Y, zDrawBot, etriyeKiris, Ln, temelSpans, etriyeZs, etriyeBolgeler);
+            DrawPerdeGorunusEtriyeler(tr, btr, col, stories, rot, X, Y, zDrawBot, etriyeKiris, Ln, temelSpans, etriyeZs, etriyeBolgeler);
 
             var katHizaZs = new HashSet<double>();
             foreach (var st in stories)
@@ -700,6 +702,370 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>
+        /// KOLONDUSEY perde görünüşü: kesitteki uzun-yüz düşeyler.
+        /// Filiz 1,50 ℓb, perde tabanından. Kesit değişmeden eşleştirme yok (Hcr→normal düz 1,50 ℓb).
+        /// Üstte kolon varsa aynı çap + kiriş 1/6; kolon içi düz ve ekstra filiz, kolon ℓb bölgesi üstüne.
+        /// </summary>
+        private void DrawPerdeGorunusDuseyDonatilar(
+            Transaction tr,
+            BlockTableRecord btr,
+            ColumnAxisInfo col,
+            List<(double zBot, double zTop, Geometry poly, double majorDeg, double lo, double hi, int floorIndex)> stories,
+            AffineTransformation rot,
+            Func<double, double> X,
+            Func<double, double> Y,
+            double zDrawBot,
+            List<(double x0, double x1, double z0, double z1)> temelSpans,
+            List<(double x0, double x1, double zb, double zt)> beamRuns)
+        {
+            if (tr == null || btr == null || col == null || stories == null || stories.Count == 0 || X == null || Y == null)
+                return;
+            const double pas = 4.0;
+            const double rBend = 2.0;
+            const double k90 = 0.41421356237;
+            double fck = _rebarFckMPa > 16.0 ? _rebarFckMPa : 30.0;
+            double fyk = _rebarFykMPa > 200.0 ? _rebarFykMPa : 420.0;
+            bool hasTemel = temelSpans != null && temelSpans.Count > 0;
+            double zTemelBot = hasTemel ? temelSpans.Min(t => t.z0) : stories[0].zBot;
+            var bars = new List<(double x, int dia)>[stories.Count];
+            var colTh = new double[stories.Count];
+            var isPerde = new bool[stories.Count];
+            var isKolon = new bool[stories.Count];
+
+            for (int i = 0; i < stories.Count; i++)
+            {
+                var st = stories[i];
+                bars[i] = new List<(double x, int dia)>();
+                colTh[i] = 25.0;
+                if (st.poly == null || st.poly.IsEmpty) continue;
+                Geometry g;
+                try { g = rot != null ? rot.Transform(st.poly) : st.poly; }
+                catch { g = st.poly; }
+                var e = g.EnvelopeInternal;
+                if (IsKolonKesitPoligonKesit(g, e)) continue;
+                double longCm = Math.Max(e.Width, e.Height);
+                double shortCm = Math.Min(e.Width, e.Height);
+                if (IsDepremPerdeBoyOrani(longCm, shortCm))
+                {
+                    isPerde[i] = true;
+                    colTh[i] = Math.Max(8.0, shortCm);
+                    bars[i] = CollectPerdeGorunusLongFaceBars(g, st.floorIndex, col.ColumnNo);
+                }
+                else
+                {
+                    isKolon[i] = true;
+                    colTh[i] = Math.Max(8.0, shortCm);
+                    bars[i] = CollectKolonGorunusLongFaceBars(g, st.floorIndex, col.ColumnNo);
+                }
+            }
+
+            for (int i = 0; i < stories.Count; i++)
+            {
+                if (!isPerde[i] || bars[i] == null || bars[i].Count == 0) continue;
+                bool last = i == stories.Count - 1;
+                bool first = i == 0;
+                double zCbot = first ? zDrawBot : stories[i].zBot;
+                double hookIn = Math.Max(2.0 * rBend + 1.0, colTh[i] - 2.0 * pas);
+                int n = bars[i].Count;
+                bool nextPerde = !last && i + 1 < stories.Count && isPerde[i + 1]
+                    && bars[i + 1] != null && bars[i + 1].Count > 0;
+                bool nextKolon = !last && i + 1 < stories.Count && isKolon[i + 1]
+                    && bars[i + 1] != null && bars[i + 1].Count > 0;
+                bool kesitDegisti = nextPerde
+                    && KolonKesitPlanFarkli(stories[i].poly, stories[i + 1].poly, stories[i].majorDeg);
+                double midX = 0.5 * (stories[i].lo + stories[i].hi);
+                double zHorizPre = stories[i].zTop - pas;
+                double aJointStory = KolonBirlesimDuseyA(beamRuns, stories[i].lo, stories[i].hi, stories[i].zTop, zHorizPre);
+                double zSof = KolonNetYukseklikUstKot(beamRuns, stories[i].lo, stories[i].hi, zCbot, stories[i].zTop);
+                if (zSof < zCbot + 2.0) zSof = zCbot + 2.0;
+                if (zSof > stories[i].zTop) zSof = stories[i].zTop;
+                double h16 = stories[i].zTop - zSof;
+                if (h16 < 6.0) h16 = 6.0;
+                var xsNow = bars[i].Select(b => b.x).ToList();
+                var xsUp = (nextPerde || nextKolon) ? bars[i + 1].Select(b => b.x).ToList() : null;
+                int[] matchUp = nextKolon
+                    ? MatchSameDiaBarsTbdY16(bars[i], bars[i + 1], h16)
+                    : ((nextPerde && kesitDegisti) ? MatchKolonBarsTbdY16(xsNow, xsUp, h16) : null);
+                double upLo = (nextPerde || nextKolon) ? stories[i + 1].lo : stories[i].lo;
+                double upHi = (nextPerde || nextKolon) ? stories[i + 1].hi : stories[i].hi;
+                double midHook = (nextPerde || nextKolon) ? 0.5 * (upLo + upHi) : midX;
+                const double kolonIcKenarCm = 5.5;
+                double lbKolonBolge = 0;
+                double zKolonLbUst = 0;
+                if (nextKolon)
+                {
+                    int dCol = 14;
+                    foreach (var cb in bars[i + 1])
+                        if (cb.dia > dCol) dCol = cb.dia;
+                    lbKolonBolge = CeilTo5Cm(Math.Max(Ts500KenetlenmeLbCm(dCol, fck, fyk), 30.0));
+                    double zColBot = stories[i + 1].zBot;
+                    double zColNet = KolonNetYukseklikUstKot(
+                        beamRuns, stories[i + 1].lo, stories[i + 1].hi, zColBot, stories[i + 1].zTop);
+                    if (zColNet < zColBot + 2.0) zColNet = zColBot + 2.0;
+                    KolonOrtUcdeBindirme(zColBot, zColNet, lbKolonBolge, out _, out zKolonLbUst);
+                    if (zKolonLbUst < stories[i].zTop + lbKolonBolge)
+                        zKolonLbUst = stories[i].zTop + lbKolonBolge;
+                }
+
+                for (int b = 0; b < n; b++)
+                {
+                    double bx = bars[i][b].x;
+                    int dia = bars[i][b].dia >= 6 ? bars[i][b].dia : 14;
+                    double lb = Ts500KenetlenmeLbCm(dia, fck, fyk);
+                    double lapWall = CeilTo5Cm(Math.Max(1.50 * lb, 30.0));
+                    double zEndCont;
+                    if (nextKolon)
+                        zEndCont = zKolonLbUst;
+                    else if (last || !nextPerde)
+                        zEndCont = stories[i].zTop;
+                    else
+                        zEndCont = stories[i].zTop + lapWall;
+                    double x = X(bx);
+                    int upIdx = matchUp != null && b < matchUp.Length ? matchUp[b] : -1;
+                    bool matched = (nextPerde || nextKolon) && upIdx >= 0 && xsUp != null && upIdx < xsUp.Count;
+                    bool insideUp = nextKolon
+                        ? (bx >= upLo + kolonIcKenarCm && bx <= upHi - kolonIcKenarCm)
+                        : (nextPerde && bx >= upLo + pas && bx <= upHi - pas);
+                    if ((last && !nextKolon) || (!matched && !insideUp))
+                    {
+                        double zHoriz = zHorizPre;
+                        if (zHoriz < zCbot + 15.0) zHoriz = zCbot + 20.0;
+                        double hookDir = bx <= midHook ? 1.0 : -1.0;
+                        double bCap = hookIn > 2.0 * rBend ? hookIn : 2.0 * rBend;
+                        double aJoint = aJointStory;
+                        double need = Math.Max(1.50 * lb, 40.0 * dia / 10.0);
+                        double phi12 = CeilTo5Cm(12.0 * dia / 10.0);
+                        if (aJoint + phi12 >= need - 0.01)
+                            DrawKolonDonatiGonye(tr, btr, Y, x, zCbot, zHoriz, hookDir, k90, rBend, phi12);
+                        else if (aJoint + bCap >= need - 0.01)
+                        {
+                            double bG = CeilTo5Cm(need - aJoint);
+                            if (bG < phi12) bG = phi12;
+                            if (bG > bCap) bG = bCap;
+                            DrawKolonDonatiGonye(tr, btr, Y, x, zCbot, zHoriz, hookDir, k90, rBend, bG);
+                        }
+                        else
+                        {
+                            double c = CeilTo5Cm(need - aJoint - bCap);
+                            if (c < phi12) c = phi12;
+                            DrawKolonDonatiFirkete(tr, btr, Y, x, zCbot, zHoriz, hookDir, k90, rBend, bCap, c);
+                        }
+                    }
+                    else if (matched)
+                    {
+                        double upX = xsUp[upIdx];
+                        DrawKolonDonatiBirAltiGecis(tr, btr, X, Y, bx, upX, zCbot, zSof, stories[i].zTop, zEndCont);
+                    }
+                    else
+                    {
+                        AppendDonatiPline(tr, btr, new[]
+                        {
+                            new Point2d(x, Y(zCbot)),
+                            new Point2d(x, Y(zEndCont))
+                        }, null);
+                    }
+                }
+
+                if (nextKolon)
+                {
+                    var usedUp = new bool[bars[i + 1].Count];
+                    if (matchUp != null)
+                    {
+                        for (int b = 0; b < matchUp.Length; b++)
+                        {
+                            int ui = matchUp[b];
+                            if (ui >= 0 && ui < usedUp.Length) usedUp[ui] = true;
+                        }
+                    }
+                    for (int u = 0; u < bars[i + 1].Count; u++)
+                    {
+                        if (usedUp[u]) continue;
+                        int diaU = bars[i + 1][u].dia >= 6 ? bars[i + 1][u].dia : 14;
+                        double lbU = Ts500KenetlenmeLbCm(diaU, fck, fyk);
+                        double filizDown = CeilTo5Cm(Math.Max(1.50 * lbU, 30.0));
+                        double zFbot = stories[i].zTop - filizDown;
+                        if (zFbot < zCbot + 5.0) zFbot = zCbot + 5.0;
+                        double x = X(bars[i + 1][u].x);
+                        AppendDonatiPline(tr, btr, new[]
+                        {
+                            new Point2d(x, Y(zFbot)),
+                            new Point2d(x, Y(zKolonLbUst))
+                        }, null);
+                    }
+                }
+
+                if (first)
+                {
+                    for (int b = 0; b < n; b++)
+                    {
+                        double bx = bars[i][b].x;
+                        int dia = bars[i][b].dia >= 6 ? bars[i][b].dia : 14;
+                        double lb = Ts500KenetlenmeLbCm(dia, fck, fyk);
+                        double lap = CeilTo5Cm(Math.Max(1.50 * lb, 30.0));
+                        double bHook = CeilTo5Cm(12.0 * dia / 10.0);
+                        double zFilizBot = hasTemel ? zTemelBot + 5.0 : zCbot;
+                        if (hasTemel)
+                        {
+                            double lbk = 0.75 * lb;
+                            double a = zCbot - zFilizBot;
+                            if (a + bHook < lbk) bHook = CeilTo5Cm(Math.Max(bHook, lbk - Math.Max(a, 0)));
+                        }
+                        double zFilizTop = zCbot + lap;
+                        if (zFilizTop - zFilizBot < 10.0) continue;
+                        double x = X(bx);
+                        double hookDir = bx <= midX ? 1.0 : -1.0;
+                        double bulge = hookDir > 0 ? -k90 : k90;
+                        if (hasTemel && zFilizBot < zCbot - 1.0)
+                        {
+                            AppendDonatiPline(tr, btr, new[]
+                            {
+                                new Point2d(x + hookDir * bHook, Y(zFilizBot)),
+                                new Point2d(x + hookDir * rBend, Y(zFilizBot)),
+                                new Point2d(x, Y(zFilizBot + rBend)),
+                                new Point2d(x, Y(zFilizTop))
+                            }, new[] { 0.0, bulge, 0.0, 0.0 });
+                        }
+                        else
+                        {
+                            AppendDonatiPline(tr, btr, new[]
+                            {
+                                new Point2d(x, Y(zCbot)),
+                                new Point2d(x, Y(zFilizTop))
+                            }, null);
+                        }
+                    }
+                }
+            }
+        }
+
+        /// <summary>Perde kesit uzun yüz düşeyler: uç ve gövde çapı ayrı (1,50 ℓb için).</summary>
+        private List<(double x, int dia)> CollectPerdeGorunusLongFaceBars(Geometry gRot, int floorIndex, int colNo)
+        {
+            var bars = new List<(double x, int dia)>();
+            if (gRot == null || gRot.IsEmpty) return bars;
+            var e = gRot.EnvelopeInternal;
+            double lw = Math.Max(e.Width, e.Height);
+            double bw = Math.Min(e.Width, e.Height);
+            if (bw < 8.0 || lw < 6.0 * bw - 0.01) return bars;
+            bool hasHcr = KolonDonatiTableDrawer.TryGetKolonBetonarmeHcr(_kolonDuseyGprHcr, _model?.Floors, floorIndex, colNo);
+            double lu = hasHcr ? Math.Max(2.0 * bw, 0.2 * lw) : Math.Max(bw, 0.1 * lw);
+            if (lu < 40.0) lu = 40.0;
+            double maxLu = (lw - Math.Max(10.0, bw)) * 0.5;
+            if (maxLu < bw) maxLu = lw * 0.45;
+            if (lu > maxLu) lu = maxLu;
+            if (lu < 8.0) return bars;
+
+            double pas = KolonKesitPaspayiCm;
+            double rad = KolonKesitEtriyeRadiusCm;
+            int ucPerLayer = 8, ucDia = 14, govdePerLayer = 0, govdeDia = 12;
+            if (_kolonDuseyGpr != null && _model?.Floors != null &&
+                KolonDonatiTableDrawer.TryGetKolonBetonarmeCell(_kolonDuseyGpr, _model.Floors, floorIndex, colNo, out _, out string donatiRaw, out _) &&
+                KolonDonatiTableDrawer.TryParsePerdeUcGovdeDonati(donatiRaw, out int pUc, out int dUc, out int pGv, out int dGv))
+            {
+                ucPerLayer = pUc;
+                ucDia = dUc;
+                govdePerLayer = pGv;
+                govdeDia = dGv;
+            }
+            if (ucDia < 6) ucDia = 14;
+            if (govdeDia < 6) govdeDia = 12;
+            int nUcEnd = Math.Max(4, ucPerLayer);
+            double govdeSpan = Math.Max(1.0, lw - 2.0 * lu - 2.0 * pas);
+            int nGovdeFace = Math.Max(1, govdePerLayer);
+            const double tbdYGovdeSMaxCm = 25.0;
+            int nGovdeMin = 1 + (int)Math.Ceiling(govdeSpan / tbdYGovdeSMaxCm - 1e-9);
+            if (nGovdeMin < 2) nGovdeMin = 2;
+            if (nGovdeFace < nGovdeMin) nGovdeFace = nGovdeMin;
+
+            double minInner = 2.0 * rad + 2.0;
+            double innerPas = pas;
+            if (lu - 2.0 * pas < minInner)
+                innerPas = Math.Max(0.0, (lu - minInner) * 0.5);
+            double barLo = pas + rad;
+            double sKenar = bw - 2.0 * barLo;
+            double longSpan = lu - innerPas - pas - 2.0 * rad;
+            if (sKenar < 1.0) sKenar = 1.0;
+            if (longSpan < 1.0) longSpan = 1.0;
+            ResolvePerdeUcBarDagilim(nUcEnd, longSpan, sKenar, ucDia / 10.0, out int nLongUse, out _, out _);
+
+            bool longIsX = e.Width >= e.Height;
+            if (longIsX)
+            {
+                double xL0 = e.MinX + barLo, xL1 = e.MinX + lu - innerPas - rad;
+                double xR0 = e.MaxX - lu + innerPas + rad, xR1 = e.MaxX - barLo;
+                if (xL1 < xL0 + 1.0) xL1 = xL0;
+                if (xR1 < xR0 + 1.0) xR0 = xR1;
+                var xsL = PerdeKesitEsitKonumlar(xL0, xL1, nLongUse);
+                var xsR = PerdeKesitEsitKonumlar(xR0, xR1, nLongUse);
+                double innerL = xsL[xsL.Length - 1], innerR = xsR[0];
+                while (nGovdeFace > 0 && (innerR - innerL) / (nGovdeFace + 1) > 25.01)
+                    nGovdeFace++;
+                var xsG = PerdeKesitAraKonumlar(innerL, innerR, nGovdeFace);
+                AddUniquePerdeGorunusBars(bars, xsL, ucDia);
+                AddUniquePerdeGorunusBars(bars, xsG, govdeDia);
+                AddUniquePerdeGorunusBars(bars, xsR, ucDia);
+            }
+            else
+            {
+                AddUniquePerdeGorunusBars(bars, new[] { e.MinX + barLo, e.MaxX - barLo }, ucDia);
+            }
+            bars.Sort((a, b) => a.x.CompareTo(b.x));
+            return bars;
+        }
+
+        private static void AddUniquePerdeGorunusBars(List<(double x, int dia)> dst, double[] src, int dia)
+        {
+            if (dst == null || src == null) return;
+            for (int i = 0; i < src.Length; i++)
+            {
+                bool have = false;
+                for (int j = 0; j < dst.Count; j++)
+                {
+                    if (Math.Abs(dst[j].x - src[i]) < 0.8) { have = true; break; }
+                }
+                if (!have) dst.Add((src[i], dia));
+            }
+        }
+
+        /// <summary>
+        /// Perde→kolon: yalnız aynı çap, kiriş yüksekliğinde |Δx| ≤ h/6.
+        /// </summary>
+        private static int[] MatchSameDiaBarsTbdY16(
+            List<(double x, int dia)> lower,
+            List<(double x, int dia)> upper,
+            double hAvail)
+        {
+            int nL = lower == null ? 0 : lower.Count;
+            var match = new int[nL];
+            for (int i = 0; i < nL; i++) match[i] = -1;
+            if (nL == 0 || upper == null || upper.Count == 0) return match;
+            double dMax = Math.Max(hAvail, 6.0) / 6.0;
+            var usedU = new bool[upper.Count];
+            var usedL = new bool[nL];
+            var cand = new List<(int l, int u, double d)>(nL * upper.Count);
+            for (int l = 0; l < nL; l++)
+            {
+                int dL = lower[l].dia >= 6 ? lower[l].dia : 14;
+                for (int u = 0; u < upper.Count; u++)
+                {
+                    int dU = upper[u].dia >= 6 ? upper[u].dia : 14;
+                    if (dL != dU) continue;
+                    cand.Add((l, u, Math.Abs(lower[l].x - upper[u].x)));
+                }
+            }
+            cand.Sort((a, b) => a.d.CompareTo(b.d));
+            foreach (var p in cand)
+            {
+                if (usedL[p.l] || usedU[p.u]) continue;
+                if (p.d > dMax + 0.05) continue;
+                usedL[p.l] = true;
+                usedU[p.u] = true;
+                match[p.l] = p.u;
+            }
+            return match;
+        }
+
+        /// <summary>
         /// TBDY 2018 7.3.3.2: kesit değişiminde boyuna donatı eğimi 1/6’dan dik olamaz.
         /// Eşleşme: |Δx| ≤ h/6; h = kiriş yüksekliği (oba → kat üstü). Daha yatık eğim serbest.
         /// </summary>
@@ -811,6 +1177,24 @@ namespace ST4PlanIdCiz
                 out var cTl, out var cTr, out _, out _,
                 out int top, out int bot, out _, out _);
             return CollectEdgeCoords(cTl, cTr, Math.Max(top, bot), horizontal: true);
+        }
+
+        private List<(double x, int dia)> CollectKolonGorunusLongFaceBars(Geometry gRot, int floorIndex, int colNo)
+        {
+            var list = new List<(double x, int dia)>();
+            var xs = GetKolonGorunusLongFaceBarXs(gRot, floorIndex, colNo);
+            if (xs == null || xs.Count == 0) return list;
+            int dia = 14;
+            if (_kolonDuseyGpr != null && _model?.Floors != null &&
+                KolonDonatiTableDrawer.TryGetKolonBetonarmeCell(_kolonDuseyGpr, _model.Floors, floorIndex, colNo, out _, out string donati, out _) &&
+                !string.IsNullOrWhiteSpace(donati))
+            {
+                KolonDonatiTableDrawer.SumKolonKesitDuseyDonatiAdet(donati, out int d);
+                if (d >= 6) dia = d;
+            }
+            for (int i = 0; i < xs.Count; i++)
+                list.Add((xs[i], dia));
+            return list;
         }
 
         /// <summary>
@@ -1026,12 +1410,16 @@ namespace ST4PlanIdCiz
             Envelope eLower, int lowerFloorIndex,
             Envelope eUp, int overlayFloorIndex, int colNo, double h16Cm)
         {
-            var upPts = CollectKolonKesitBarPoints(eUp, overlayFloorIndex, colNo);
+            var upPts = CollectKolonKesitBarPointsWithDia(eUp, overlayFloorIndex, colNo);
             if (upPts.Count == 0) return;
-            var loPts = CollectKolonKesitBarPoints(eLower, lowerFloorIndex, colNo);
-            var loXs = CollectKolonKesitLongFaceXs(eLower, lowerFloorIndex, colNo);
-            var upXs = CollectKolonKesitLongFaceXs(eUp, overlayFloorIndex, colNo);
-            int[] match16 = MatchKolonBarsTbdY16(loXs, upXs, h16Cm);
+            bool loIsPerde = eLower != null && IsDepremPerdeBoyOrani(
+                Math.Max(eLower.Width, eLower.Height), Math.Min(eLower.Width, eLower.Height));
+            var loPts = loIsPerde
+                ? CollectPerdeKesitBarPoints(eLower, lowerFloorIndex, colNo)
+                : CollectKolonKesitBarPointsWithDia(eLower, lowerFloorIndex, colNo);
+            var loXs = CollectKesitLongFaceBarsWithDia(loPts, eLower);
+            var upXs = CollectKesitLongFaceBarsWithDia(upPts, eUp);
+            int[] match16 = MatchSameDiaBarsTbdY16(loXs, upXs, h16Cm);
             var matchedUpX = new List<double>();
             if (match16 != null && loXs != null && upXs != null)
             {
@@ -1039,7 +1427,7 @@ namespace ST4PlanIdCiz
                 {
                     int u = match16[i];
                     if (u >= 0 && u < upXs.Count)
-                        matchedUpX.Add(upXs[u]);
+                        matchedUpX.Add(upXs[u].x);
                 }
             }
             const double tol = 2.5;
@@ -1047,29 +1435,32 @@ namespace ST4PlanIdCiz
             bool hasLongY = TryKolonKesitLongFaceY(eUp, out yTop, out yBot);
             foreach (var u in upPts)
             {
+                int dU = u.dia >= 6 ? u.dia : 14;
                 bool match = false;
                 foreach (var lo in loPts)
                 {
-                    double dx = lo.X - u.X;
-                    double dy = lo.Y - u.Y;
+                    int dL = lo.dia >= 6 ? lo.dia : 14;
+                    if (dL != dU) continue;
+                    double dx = lo.p.X - u.p.X;
+                    double dy = lo.p.Y - u.p.Y;
                     if (dx * dx + dy * dy <= tol * tol)
                     {
                         match = true;
                         break;
                     }
                 }
-                if (!match && hasLongY && (Math.Abs(u.Y - yTop) < tol || Math.Abs(u.Y - yBot) < tol))
+                if (!match && hasLongY && (Math.Abs(u.p.Y - yTop) < tol || Math.Abs(u.p.Y - yBot) < tol))
                 {
                     foreach (double mx in matchedUpX)
                     {
-                        if (Math.Abs(u.X - mx) < tol)
+                        if (Math.Abs(u.p.X - mx) < tol)
                         {
                             match = true;
                             break;
                         }
                     }
                 }
-                DrawKolonKesitIzdusumMarkCircle(tr, btr, u.X, u.Y, match ? (short)5 : (short)1);
+                DrawKolonKesitIzdusumMarkCircle(tr, btr, u.p.X, u.p.Y, match ? (short)5 : (short)1);
             }
         }
 
@@ -1082,6 +1473,184 @@ namespace ST4PlanIdCiz
             circ.Color = Color.FromColorIndex(ColorMethod.ByAci, aci);
             circ.LineWeight = LineWeight.LineWeight020;
             AppendEntity(tr, btr, circ);
+        }
+
+        private static List<(double x, int dia)> CollectKesitLongFaceBarsWithDia(
+            List<(Point2d p, int dia)> pts, Envelope e)
+        {
+            var list = new List<(double x, int dia)>();
+            if (pts == null || e == null) return list;
+            if (!TryKolonKesitLongFaceY(e, out double yTop, out double yBot)) return list;
+            const double tol = 2.5;
+            foreach (var t in pts)
+            {
+                if (Math.Abs(t.p.Y - yTop) > tol && Math.Abs(t.p.Y - yBot) > tol) continue;
+                bool have = false;
+                for (int i = 0; i < list.Count; i++)
+                {
+                    if (Math.Abs(list[i].x - t.p.X) < 0.8) { have = true; break; }
+                }
+                if (!have) list.Add((t.p.X, t.dia >= 6 ? t.dia : 14));
+            }
+            list.Sort((a, b) => a.x.CompareTo(b.x));
+            return list;
+        }
+
+        private int ResolveKolonKesitDonatiDiaMm(int floorIndex, int colNo)
+        {
+            int dia = 14;
+            if (_kolonDuseyGpr != null && _model?.Floors != null &&
+                KolonDonatiTableDrawer.TryGetKolonBetonarmeCell(_kolonDuseyGpr, _model.Floors, floorIndex, colNo, out _, out string donati, out _) &&
+                !string.IsNullOrWhiteSpace(donati))
+            {
+                KolonDonatiTableDrawer.SumKolonKesitDuseyDonatiAdet(donati, out int d);
+                if (d >= 6) dia = d;
+            }
+            return dia;
+        }
+
+        private List<(Point2d p, int dia)> CollectKolonKesitBarPointsWithDia(Envelope e, int floorIndex, int colNo)
+        {
+            var list = new List<(Point2d p, int dia)>();
+            var raw = CollectKolonKesitBarPoints(e, floorIndex, colNo);
+            int dia = ResolveKolonKesitDonatiDiaMm(floorIndex, colNo);
+            for (int i = 0; i < raw.Count; i++)
+                list.Add((raw[i], dia));
+            return list;
+        }
+
+        /// <summary>Perde kesitte çizilen düşeyler: uç ve gövde çapı ayrı (kesit eşleşmesi görünüşle aynı).</summary>
+        private List<(Point2d p, int dia)> CollectPerdeKesitBarPoints(Envelope e, int floorIndex, int colNo)
+        {
+            var pts = new List<(Point2d p, int dia)>();
+            if (e == null) return pts;
+            double lw = Math.Max(e.Width, e.Height);
+            double bw = Math.Min(e.Width, e.Height);
+            if (bw < 8.0 || lw < 6.0 * bw - 0.01) return pts;
+            bool hasHcr = KolonDonatiTableDrawer.TryGetKolonBetonarmeHcr(_kolonDuseyGprHcr, _model?.Floors, floorIndex, colNo);
+            double lu = hasHcr ? Math.Max(2.0 * bw, 0.2 * lw) : Math.Max(bw, 0.1 * lw);
+            if (lu < 40.0) lu = 40.0;
+            double maxLu = (lw - Math.Max(10.0, bw)) * 0.5;
+            if (maxLu < bw) maxLu = lw * 0.45;
+            if (lu > maxLu) lu = maxLu;
+            if (lu < 8.0) return pts;
+
+            double pas = KolonKesitPaspayiCm;
+            double rad = KolonKesitEtriyeRadiusCm;
+            int ucPerLayer = 8, ucDia = 14, govdePerLayer = 0, govdeDia = 12;
+            if (_kolonDuseyGpr != null && _model?.Floors != null &&
+                KolonDonatiTableDrawer.TryGetKolonBetonarmeCell(_kolonDuseyGpr, _model.Floors, floorIndex, colNo, out _, out string donatiRaw, out _) &&
+                KolonDonatiTableDrawer.TryParsePerdeUcGovdeDonati(donatiRaw, out int pUc, out int dUc, out int pGv, out int dGv))
+            {
+                ucPerLayer = pUc;
+                ucDia = dUc;
+                govdePerLayer = pGv;
+                govdeDia = dGv;
+            }
+            if (ucDia < 6) ucDia = 14;
+            if (govdeDia < 6) govdeDia = 12;
+            int nUcEnd = Math.Max(4, ucPerLayer);
+            double govdeSpan = Math.Max(1.0, lw - 2.0 * lu - 2.0 * pas);
+            int nGovdeFace = Math.Max(1, govdePerLayer);
+            const double tbdYGovdeSMaxCm = 25.0;
+            int nGovdeMin = 1 + (int)Math.Ceiling(govdeSpan / tbdYGovdeSMaxCm - 1e-9);
+            if (nGovdeMin < 2) nGovdeMin = 2;
+            if (nGovdeFace < nGovdeMin) nGovdeFace = nGovdeMin;
+
+            double minInner = 2.0 * rad + 2.0;
+            double innerPas = pas;
+            if (lu - 2.0 * pas < minInner)
+                innerPas = Math.Max(0.0, (lu - minInner) * 0.5);
+            double barLo = pas + rad;
+            double sKenar = bw - 2.0 * barLo;
+            double longSpan = lu - innerPas - pas - 2.0 * rad;
+            if (sKenar < 1.0) sKenar = 1.0;
+            if (longSpan < 1.0) longSpan = 1.0;
+            ResolvePerdeUcBarDagilim(nUcEnd, longSpan, sKenar, ucDia / 10.0, out int nLongUse, out int nEndUse, out bool useInner);
+
+            void Add(double x, double y, int dia)
+            {
+                pts.Add((new Point2d(x, y), dia));
+            }
+            void AddCiftX(double[] xs, double yBot, double yTop, int dia)
+            {
+                if (xs == null) return;
+                for (int i = 0; i < xs.Length; i++)
+                {
+                    Add(xs[i], yBot, dia);
+                    Add(xs[i], yTop, dia);
+                }
+            }
+            void AddCiftY(double xL, double xR, double[] ys, int dia)
+            {
+                if (ys == null) return;
+                for (int i = 0; i < ys.Length; i++)
+                {
+                    Add(xL, ys[i], dia);
+                    Add(xR, ys[i], dia);
+                }
+            }
+            void AddKenar(double fixedC, double a, double b, int nEnd, bool alongY, int dia)
+            {
+                if (nEnd < 3) return;
+                var ps = PerdeKesitEsitKonumlar(a, b, nEnd);
+                for (int i = 1; i < ps.Length - 1; i++)
+                {
+                    if (alongY) Add(fixedC, ps[i], dia);
+                    else Add(ps[i], fixedC, dia);
+                }
+            }
+
+            bool longIsX = e.Width >= e.Height;
+            if (longIsX)
+            {
+                double yBot = e.MinY + barLo, yTop = e.MaxY - barLo;
+                double xL0 = e.MinX + barLo, xL1 = e.MinX + lu - innerPas - rad;
+                double xR0 = e.MaxX - lu + innerPas + rad, xR1 = e.MaxX - barLo;
+                if (xL1 < xL0 + 1.0) xL1 = xL0;
+                if (xR1 < xR0 + 1.0) xR0 = xR1;
+                var xsL = PerdeKesitEsitKonumlar(xL0, xL1, nLongUse);
+                var xsR = PerdeKesitEsitKonumlar(xR0, xR1, nLongUse);
+                AddCiftX(xsL, yBot, yTop, ucDia);
+                AddCiftX(xsR, yBot, yTop, ucDia);
+                AddKenar(xL0, yBot, yTop, nEndUse, alongY: true, ucDia);
+                AddKenar(xR1, yBot, yTop, nEndUse, alongY: true, ucDia);
+                if (useInner)
+                {
+                    AddKenar(xL1, yBot, yTop, nEndUse, alongY: true, ucDia);
+                    AddKenar(xR0, yBot, yTop, nEndUse, alongY: true, ucDia);
+                }
+                double innerL = xsL[xsL.Length - 1], innerR = xsR[0];
+                while (nGovdeFace > 0 && (innerR - innerL) / (nGovdeFace + 1) > 25.01)
+                    nGovdeFace++;
+                var xsG = PerdeKesitAraKonumlar(innerL, innerR, nGovdeFace);
+                AddCiftX(xsG, yBot, yTop, govdeDia);
+            }
+            else
+            {
+                double xL = e.MinX + barLo, xR = e.MaxX - barLo;
+                double yB0 = e.MinY + barLo, yB1 = e.MinY + lu - innerPas - rad;
+                double yT0 = e.MaxY - lu + innerPas + rad, yT1 = e.MaxY - barLo;
+                if (yB1 < yB0 + 1.0) yB1 = yB0;
+                if (yT1 < yT0 + 1.0) yT0 = yT1;
+                var ysB = PerdeKesitEsitKonumlar(yB0, yB1, nLongUse);
+                var ysT = PerdeKesitEsitKonumlar(yT0, yT1, nLongUse);
+                AddCiftY(xL, xR, ysB, ucDia);
+                AddCiftY(xL, xR, ysT, ucDia);
+                AddKenar(yB0, xL, xR, nEndUse, alongY: false, ucDia);
+                AddKenar(yT1, xL, xR, nEndUse, alongY: false, ucDia);
+                if (useInner)
+                {
+                    AddKenar(yB1, xL, xR, nEndUse, alongY: false, ucDia);
+                    AddKenar(yT0, xL, xR, nEndUse, alongY: false, ucDia);
+                }
+                double innerB = ysB[ysB.Length - 1], innerT = ysT[0];
+                while (nGovdeFace > 0 && (innerT - innerB) / (nGovdeFace + 1) > 25.01)
+                    nGovdeFace++;
+                var ysG = PerdeKesitAraKonumlar(innerB, innerT, nGovdeFace);
+                AddCiftY(xL, xR, ysG, govdeDia);
+            }
+            return pts;
         }
 
         private List<Point2d> CollectKolonKesitBarPoints(Envelope e, int floorIndex, int colNo)
@@ -1610,6 +2179,298 @@ namespace ST4PlanIdCiz
                     }
                 }
                 DrawKolonEtriyeSabitKopyalar(tr, btr, X, Y, Ln, x0, x1, st.lo, sabitZs, etriyeBolgeler);
+            }
+        }
+
+        /// <summary>
+        /// TBDY 2018 7.6.4–7.6.5: kolon etriye şeması (hepsi değil). Uç ℓu’da s_son, gövde web’de s_2.
+        /// </summary>
+        private void DrawPerdeGorunusEtriyeler(
+            Transaction tr,
+            BlockTableRecord btr,
+            ColumnAxisInfo col,
+            List<(double zBot, double zTop, Geometry poly, double majorDeg, double lo, double hi, int floorIndex)> stories,
+            AffineTransformation rot,
+            Func<double, double> X,
+            Func<double, double> Y,
+            double zDrawBot,
+            List<(double x0, double x1, double zb, double zt)> beamRuns,
+            Action<double, double, double, double, string> Ln,
+            List<(double x0, double x1, double z0, double z1)> temelSpans,
+            List<double> etriyeZs,
+            List<(double zLo, double zHi, int sCm, int diaMm)> etriyeBolgeler)
+        {
+            if (tr == null || btr == null || col == null || stories == null || X == null || Y == null || Ln == null)
+                return;
+            for (int i = 0; i < stories.Count; i++)
+            {
+                var st = stories[i];
+                if (st.poly == null || st.poly.IsEmpty) continue;
+                Geometry g;
+                try { g = rot != null ? rot.Transform(st.poly) : st.poly; }
+                catch { g = st.poly; }
+                var e = g.EnvelopeInternal;
+                if (IsKolonKesitPoligonKesit(g, e)) continue;
+                double longCm = Math.Max(e.Width, e.Height);
+                double shortCm = Math.Min(e.Width, e.Height);
+                if (!IsDepremPerdeBoyOrani(longCm, shortCm)) continue;
+
+                string etRaw = null;
+                if (_kolonDuseyGpr != null && _model?.Floors != null)
+                    KolonDonatiTableDrawer.TryGetKolonBetonarmeCell(
+                        _kolonDuseyGpr, _model.Floors, st.floorIndex, col.ColumnNo, out _, out _, out etRaw);
+                ParsePerdeEtriyeAralikCm(etRaw, out double sGovde, out double sUc);
+                int sUcCm = Math.Max(5, (int)Math.Round(sUc));
+                int sGvCm = Math.Max(5, (int)Math.Round(sGovde));
+                int diaEt = 8;
+                TryParseEtriyeDiaMm(etRaw, out diaEt);
+
+                double lu = ResolvePerdeUcBolgeLuCm(longCm, shortCm, st.floorIndex, col.ColumnNo);
+                double z0 = i == 0 ? zDrawBot : st.zBot;
+                double z1 = st.zTop;
+                bool isLastStory = i == stories.Count - 1;
+                if (isLastStory) z1 = st.zTop - 5.0;
+                if (z1 <= z0 + 8.0) z1 = st.zTop;
+
+                var faceBars = CollectPerdeGorunusLongFaceBars(g, st.floorIndex, col.ColumnNo);
+                double splitL = st.lo + lu;
+                double splitR = st.hi - lu;
+                double lLo = st.lo + KolonKesitPaspayiCm + KolonKesitDuseyDonatiRadiusCm;
+                double lHi = splitL - KolonKesitPaspayiCm - KolonKesitDuseyDonatiRadiusCm;
+                double rLo = splitR + KolonKesitPaspayiCm + KolonKesitDuseyDonatiRadiusCm;
+                double rHi = st.hi - KolonKesitPaspayiCm - KolonKesitDuseyDonatiRadiusCm;
+                if (faceBars != null && faceBars.Count > 0)
+                {
+                    var leftXs = new List<double>();
+                    var rightXs = new List<double>();
+                    foreach (var b in faceBars)
+                    {
+                        if (b.x <= splitL + 0.8) leftXs.Add(b.x);
+                        if (b.x >= splitR - 0.8) rightXs.Add(b.x);
+                    }
+                    if (leftXs.Count > 0)
+                    {
+                        lLo = leftXs.Min();
+                        lHi = leftXs.Max();
+                    }
+                    if (rightXs.Count > 0)
+                    {
+                        rLo = rightXs.Min();
+                        rHi = rightXs.Max();
+                    }
+                }
+                if (lHi < lLo) lHi = lLo;
+                if (rHi < rLo) rHi = rLo;
+                double xUcL0 = X(lLo - 1.0);
+                double xUcL1 = X(lHi + 1.0);
+                double xUcR0 = X(rLo - 1.0);
+                double xUcR1 = X(rHi + 1.0);
+                if (xUcL1 < xUcL0) { double t = xUcL0; xUcL0 = xUcL1; xUcL1 = t; }
+                if (xUcR1 < xUcR0) { double t = xUcR0; xUcR0 = xUcR1; xUcR1 = t; }
+
+                void UcEt(double z)
+                {
+                    Ln(xUcL0, Y(z), xUcL1, Y(z), LayerEtriye);
+                    Ln(xUcR0, Y(z), xUcR1, Y(z), LayerEtriye);
+                }
+
+                UcEt(z0);
+                UcEt(z1);
+                etriyeZs?.Add(z0);
+                etriyeZs?.Add(z1);
+                if (!isLastStory)
+                    etriyeZs?.Add(st.zTop);
+                if (etriyeBolgeler != null)
+                    etriyeBolgeler.Add((z0, st.zTop, sUcCm, diaEt));
+
+                var bolUc = new List<(double zLo, double zHi, int sCm, int diaMm)> { (z0, z1, sUcCm, diaEt) };
+                DrawPerdeEtriyeSabitKopyalar(tr, btr, X, Y, st.lo, new List<double> { z0, z1 }, bolUc, UcEt, kopyaOlcu: true);
+
+                if (i == 0 && temelSpans != null && temelSpans.Count > 0)
+                {
+                    // Kolon görünüşü ile aynı: TBDY 7.3.4.1 alt sarılma temel içinde ≥ bmin;
+                    // çanak/tekil temelde tüm temel yüksekliği. Perde uç etriye aralığı s_son.
+                    double zTb = temelSpans.Min(t => t.z0);
+                    double zCover = zTb + 5.0;
+                    if (z0 - zCover >= 8.0)
+                    {
+                        FloorInfo fl = (_model?.Floors != null && st.floorIndex >= 0 && st.floorIndex < _model.Floors.Count)
+                            ? _model.Floors[st.floorIndex] : null;
+                        bool canak = KolonOtururTekilTemel(st.poly, fl);
+                        double hNeed = canak ? (z0 - zCover) : shortCm;
+                        double zEnd = z0 - hNeed;
+                        if (zEnd < zCover) zEnd = zCover;
+                        int sCm = sUcCm;
+                        double zFondBotEt = double.NaN;
+                        for (double z = z0 - sCm; z >= zEnd - 0.05; z -= sCm)
+                        {
+                            if (z < zCover - 0.05) break;
+                            UcEt(z);
+                            zFondBotEt = z;
+                        }
+                        if (!double.IsNaN(zFondBotEt))
+                        {
+                            etriyeZs?.Add(zFondBotEt);
+                            etriyeBolgeler?.Add((zFondBotEt, z0, sUcCm, diaEt));
+                        }
+                    }
+                }
+
+                DrawPerdeGorunusGovdeYataySematik(tr, btr, X, Y, Ln, st.lo, st.hi, z0, z1, sUcCm, sGvCm);
+            }
+        }
+
+        /// <summary>GPR φ8/[13]/8: köşeli parantez gövde aralığı; çap sonrası ilk sayı gövde yatay, son sayı uç etriye.</summary>
+        private static void ParsePerdeEtriyeAralikCm(string etriye, out double sGovde, out double sUc)
+        {
+            sGovde = 15.0;
+            sUc = 8.0;
+            if (string.IsNullOrWhiteSpace(etriye)) return;
+            string s = etriye.Replace("[", string.Empty).Replace("]", string.Empty);
+            var m = Regex.Match(s,
+                @"[\u00F8\u00D8ØøφΦ]?\s*\d{1,2}\s*/\s*(\d{1,2})(?:\s*/\s*(\d{1,2}))?");
+            if (!m.Success)
+            {
+                var nums = new List<double>();
+                foreach (Match n in Regex.Matches(s, @"/(\d{1,2})"))
+                {
+                    if (int.TryParse(n.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int v) && v >= 4 && v <= 30)
+                        nums.Add(v);
+                }
+                if (nums.Count == 1)
+                    sGovde = sUc = nums[0];
+                else if (nums.Count >= 2)
+                {
+                    sGovde = nums[0];
+                    sUc = nums[nums.Count - 1];
+                }
+                return;
+            }
+            if (int.TryParse(m.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int a) && a >= 4 && a <= 30)
+                sGovde = a;
+            if (m.Groups[2].Success &&
+                int.TryParse(m.Groups[2].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int b) && b >= 4 && b <= 30)
+                sUc = b;
+            else
+                sUc = sGovde;
+        }
+
+        /// <summary>
+        /// Görünüş gövde yatay: uç etriye orta kopyasının biraz altında 3 şematik çubuk + aralarında kopya ölçü.
+        /// Kesit gibi perde kenarından 7 cm’ye kadar uzar.
+        /// </summary>
+        private void DrawPerdeGorunusGovdeYataySematik(
+            Transaction tr,
+            BlockTableRecord btr,
+            Func<double, double> X,
+            Func<double, double> Y,
+            Action<double, double, double, double, string> Ln,
+            double lo,
+            double hi,
+            double z0,
+            double z1,
+            int sUcCm,
+            int sGvCm)
+        {
+            if (tr == null || btr == null || X == null || Y == null || Ln == null) return;
+            if (z1 <= z0 + 20.0 || sGvCm < 4) return;
+            double gLo = lo + PerdeKesitYatayKenarCm;
+            double gHi = hi - PerdeKesitYatayKenarCm;
+            if (gHi < gLo) { double t = gLo; gLo = gHi; gHi = t; }
+            if (gHi - gLo < 8.0) return;
+
+            double zMid = 0.5 * (z0 + z1);
+            double sActUc = sUcCm;
+            if (z1 - z0 > 180.0 && TryKolonEtriyeAdetAralik(z1 - z0, sUcCm, out _, out double sA) && sA >= 5.0)
+                sActUc = sA;
+            const double gapCm = 10.0;
+            double zHiGv = zMid - sActUc - gapCm;
+            double zMidGv = zHiGv - sGvCm;
+            double zLoGv = zMidGv - sGvCm;
+            double zBotLimit = z0 + sActUc + 4.0;
+            if (zLoGv < zBotLimit)
+            {
+                double shift = zBotLimit - zLoGv;
+                zLoGv += shift;
+                zMidGv += shift;
+                zHiGv += shift;
+            }
+            if (zHiGv > z1 - 4.0 || zLoGv < z0 + 2.0) return;
+
+            double x0 = X(gLo);
+            double x1 = X(gHi);
+            if (x1 < x0) { double t = x0; x0 = x1; x1 = t; }
+            Ln(x0, Y(zLoGv), x1, Y(zLoGv), LayerDonatiGovde);
+            Ln(x0, Y(zMidGv), x1, Y(zMidGv), LayerDonatiGovde);
+            Ln(x0, Y(zHiGv), x1, Y(zHiGv), LayerDonatiGovde);
+            double olcuX = 0.5 * (gLo + gHi);
+            DrawKolonEtriyeKopyaOlcu(tr, btr, X, Y, olcuX, zLoGv, zMidGv);
+            DrawKolonEtriyeKopyaOlcu(tr, btr, X, Y, olcuX, zMidGv, zHiGv);
+        }
+
+        private double ResolvePerdeUcBolgeLuCm(double lw, double bw, int floorIndex, int colNo)
+        {
+            bool hasHcr = KolonDonatiTableDrawer.TryGetKolonBetonarmeHcr(_kolonDuseyGprHcr, _model?.Floors, floorIndex, colNo);
+            double lu = hasHcr ? Math.Max(2.0 * bw, 0.2 * lw) : Math.Max(bw, 0.1 * lw);
+            if (lu < 40.0) lu = 40.0;
+            double maxLu = (lw - Math.Max(10.0, bw)) * 0.5;
+            if (maxLu < bw) maxLu = lw * 0.45;
+            if (lu > maxLu) lu = maxLu;
+            if (lu < 8.0) lu = 8.0;
+            return lu;
+        }
+
+        private void DrawPerdeEtriyeSabitKopyalar(
+            Transaction tr,
+            BlockTableRecord btr,
+            Func<double, double> X,
+            Func<double, double> Y,
+            double olcuX,
+            List<double> sabitZs,
+            List<(double zLo, double zHi, int sCm, int diaMm)> bolgeler,
+            Action<double> drawAtZ,
+            bool kopyaOlcu)
+        {
+            if (tr == null || btr == null || X == null || Y == null || drawAtZ == null) return;
+            if (sabitZs == null || sabitZs.Count < 2) return;
+            var zs = sabitZs.Distinct().OrderBy(v => v).ToList();
+            var kopyaZs = new List<double>();
+            bool Yakin(List<double> src, double z)
+            {
+                foreach (double d in src)
+                    if (Math.Abs(d - z) < 1.5) return true;
+                return false;
+            }
+            void KopyaFrom(double zFrom, double zTo)
+            {
+                if (Math.Abs(zTo - zFrom) < 1.5) return;
+                if (Yakin(zs, zTo)) return;
+                if (!Yakin(kopyaZs, zTo))
+                {
+                    drawAtZ(zTo);
+                    kopyaZs.Add(zTo);
+                }
+                if (kopyaOlcu)
+                    DrawKolonEtriyeKopyaOlcu(tr, btr, X, Y, olcuX, zFrom, zTo);
+            }
+            for (int i = 0; i < zs.Count - 1; i++)
+            {
+                double za = zs[i], zb = zs[i + 1];
+                int sCode = KolonEtriyeBolgeSMin(bolgeler, za, zb, out _);
+                if (!TryKolonEtriyeAdetAralik(zb - za, sCode, out _, out double sAct)) continue;
+                KopyaFrom(za, za + sAct);
+                KopyaFrom(zb, zb - sAct);
+                if (zb - za > 180.0)
+                {
+                    double zMid = 0.5 * (za + zb);
+                    if (!Yakin(zs, zMid) && !Yakin(kopyaZs, zMid))
+                    {
+                        drawAtZ(zMid);
+                        kopyaZs.Add(zMid);
+                    }
+                    KopyaFrom(zMid, zMid - sAct);
+                    KopyaFrom(zMid, zMid + sAct);
+                }
             }
         }
 
@@ -3145,23 +4006,41 @@ namespace ST4PlanIdCiz
                 KolonDonatiTableDrawer.SumKolonKesitDuseyDonatiAdet(donati, out int d);
                 if (d >= 6) diaLong = d;
                 double bMin = Math.Min(e.Width, e.Height);
-                string etText = FormatKolonEtriyeYazisiTbdY(etriye, bMin, diaLong, isPerdeBasligi || isPerdeKesit, out _);
-                if (!string.IsNullOrWhiteSpace(donText))
+                if (isPerdeKesit)
                 {
-                    DrawBeamLabel(tr, btr, btr.Database, new Point3d(e.MinX, y, 0),
-                        donText, h, 0.0, LayerDonatiYazisiPerde, bottomLeftAligned: true);
-                    if (!string.IsNullOrWhiteSpace(origNote))
+                    FormatPerdeEtriyeKesitYazilari(etriye, out string etUc, out string etGovde);
+                    if (!string.IsNullOrWhiteSpace(etUc))
                     {
-                        double noteX = e.MinX + 0.7 * h * donText.Length + 3.0;
-                        DrawKolonKesitEskiGprDonatiNotu(tr, btr, new Point3d(noteX, y + 0.5 * h, 0), origNote, h);
+                        DrawBeamLabel(tr, btr, btr.Database, new Point3d(e.MinX, y, 0),
+                            etUc, h, 0.0, LayerDonatiYazisiPerde, bottomLeftAligned: true);
+                        if (!string.IsNullOrWhiteSpace(etGovde))
+                        {
+                            double xGv = e.MinX + 0.85 * h * Math.Max(4, etUc.Length) + 22.0;
+                            DrawKolonKesitRenkliYazi(tr, btr, new Point3d(xGv, y, 0), etGovde, h, 1);
+                        }
+                        y += h + 2.0;
                     }
-                    y += h + 2.0;
                 }
-                if (!string.IsNullOrWhiteSpace(etText))
+                else
                 {
-                    DrawBeamLabel(tr, btr, btr.Database, new Point3d(e.MinX, y, 0),
-                        etText, h, 0.0, LayerDonatiYazisiPerde, bottomLeftAligned: true);
-                    y += h + 2.0;
+                    if (!string.IsNullOrWhiteSpace(donText))
+                    {
+                        DrawBeamLabel(tr, btr, btr.Database, new Point3d(e.MinX, y, 0),
+                            donText, h, 0.0, LayerDonatiYazisiPerde, bottomLeftAligned: true);
+                        if (!string.IsNullOrWhiteSpace(origNote))
+                        {
+                            double noteX = e.MinX + 0.7 * h * donText.Length + 3.0;
+                            DrawKolonKesitEskiGprDonatiNotu(tr, btr, new Point3d(noteX, y + 0.5 * h, 0), origNote, h);
+                        }
+                        y += h + 2.0;
+                    }
+                    string etText = FormatKolonEtriyeYazisiTbdY(etriye, bMin, diaLong, isPerdeBasligi, out _);
+                    if (!string.IsNullOrWhiteSpace(etText))
+                    {
+                        DrawBeamLabel(tr, btr, btr.Database, new Point3d(e.MinX, y, 0),
+                            etText, h, 0.0, LayerDonatiYazisiPerde, bottomLeftAligned: true);
+                        y += h + 2.0;
+                    }
                 }
             }
             if (hasHcr)
@@ -3169,6 +4048,57 @@ namespace ST4PlanIdCiz
                 DrawBeamLabel(tr, btr, btr.Database, new Point3d(e.MinX, y, 0),
                     "KR", h, 0.0, LayerYazi, bottomLeftAligned: true);
             }
+        }
+
+        /// <summary>Perde kesit: φ8/[13]/8 → φ8/8 etriye, φ8/13 gövde yatay. Uç=gövde olsa da (φ8/[13]/13) kırmızı gövde yazılır.</summary>
+        private static void FormatPerdeEtriyeKesitYazilari(string etRaw, out string etUc, out string etGovde)
+        {
+            etUc = null;
+            etGovde = null;
+            string lab = KolonDonatiTableDrawer.FormatEtriyeForTableDisplay(etRaw);
+            if (string.IsNullOrWhiteSpace(lab)) lab = etRaw;
+            if (string.IsNullOrWhiteSpace(lab)) return;
+            lab = lab.Replace("[", string.Empty).Replace("]", string.Empty);
+            var m = Regex.Match(lab,
+                @"([\u00F8\u00D8ØøφΦ\u03C6\u03A6]\s*\d{1,2})\s*/\s*(\d{1,2})(?:\s*/\s*(\d{1,2}))?");
+            if (m.Success)
+            {
+                string dia = m.Groups[1].Value.Replace(" ", "");
+                string sGv = m.Groups[2].Value;
+                string sUc = m.Groups[3].Success && m.Groups[3].Value.Length > 0 ? m.Groups[3].Value : sGv;
+                etUc = KolonDonatiTableDrawer.NormalizeDiameterSymbol(dia + "/" + sUc);
+                etGovde = KolonDonatiTableDrawer.NormalizeDiameterSymbol(dia + "/" + sGv);
+                return;
+            }
+            ParsePerdeEtriyeAralikCm(etRaw ?? lab, out double sGvCmD, out double sUcCmD);
+            int diaMm = 8;
+            TryParseEtriyeDiaMm(etRaw ?? lab, out diaMm);
+            string d = "\u00F8" + diaMm.ToString(CultureInfo.InvariantCulture);
+            int sUcCm = Math.Max(5, (int)Math.Round(sUcCmD));
+            int sGvCm = Math.Max(5, (int)Math.Round(sGvCmD));
+            etUc = KolonDonatiTableDrawer.NormalizeDiameterSymbol(d + "/" + sUcCm.ToString(CultureInfo.InvariantCulture));
+            etGovde = KolonDonatiTableDrawer.NormalizeDiameterSymbol(d + "/" + sGvCm.ToString(CultureInfo.InvariantCulture));
+        }
+
+        private void DrawKolonKesitRenkliYazi(Transaction tr, BlockTableRecord btr, Point3d pos, string text, double h, short aci)
+        {
+            if (tr == null || btr == null || string.IsNullOrWhiteSpace(text)) return;
+            ObjectId styleId = GetOrCreateYaziBeykentTextStyle(tr, btr.Database);
+            var txt = new DBText
+            {
+                Layer = LayerDonatiYazisiPerde,
+                TextStyleId = styleId,
+                Height = h,
+                TextString = KolonDonatiTableDrawer.NormalizeDiameterSymbol(text),
+                Position = pos,
+                HorizontalMode = TextHorizontalMode.TextLeft,
+                VerticalMode = TextVerticalMode.TextBottom,
+                AlignmentPoint = pos,
+                Rotation = 0,
+                Color = Color.FromColorIndex(ColorMethod.ByAci, aci),
+                LineWeight = LineWeight.LineWeight020
+            };
+            AppendEntity(tr, btr, txt);
         }
 
         private void DrawKolonKesitEskiGprDonatiNotu(
