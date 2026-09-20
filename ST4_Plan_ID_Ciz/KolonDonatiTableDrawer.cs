@@ -1149,6 +1149,26 @@ namespace ST4PlanIdCiz
             return new GprFloorKeyFmt { StoryPrefix = GprPrefixFromFloorNameFallback(floorName), HyphenBeforeColNo = true };
         }
 
+        /// <summary>Kesit üstü etiket: SB-08 (80/35).</summary>
+        public static string FormatKolonPerdeKesitEtiket(
+            IReadOnlyList<FloorInfo> floors, int floorIndex, int colNo, double widthCm, double heightCm)
+        {
+            GprFloorKeyFmt fk;
+            if (floors != null && floorIndex >= 0 && floorIndex < floors.Count)
+                fk = GetGprFloorKeyFormat(floors[floorIndex].ShortName, floors[floorIndex].Name);
+            else
+                fk = new GprFloorKeyFmt { StoryPrefix = "S1", HyphenBeforeColNo = true };
+            string prefix = string.IsNullOrEmpty(fk.StoryPrefix) ? "S1" : fk.StoryPrefix;
+            string n = colNo.ToString("D2", CultureInfo.InvariantCulture);
+            string id = prefix + "-" + n;
+            int w = (int)Math.Round(Math.Abs(widthCm));
+            int h = (int)Math.Round(Math.Abs(heightCm));
+            if (w < 1) w = 1;
+            if (h < 1) h = 1;
+            return id + " (" + w.ToString(CultureInfo.InvariantCulture) + "/"
+                + h.ToString(CultureInfo.InvariantCulture) + ")";
+        }
+
         private static string GprPrefixFromFloorNameFallback(string floorName)
         {
             string nu = (floorName ?? string.Empty).Trim().ToUpperInvariant();

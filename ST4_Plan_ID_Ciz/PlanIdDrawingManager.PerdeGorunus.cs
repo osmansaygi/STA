@@ -21,8 +21,42 @@ namespace ST4PlanIdCiz
         private const double Kolon50GorunusOlcuUstBoslukCm = 30.0;
         private const double Kolon50GorunusDikeyOlcuSagaCm = 50.0;
         private const double Kolon50GorunusCiftOlcuAraCm = 18.0;
-        private const double KolonDuseyEtriyeOlcuAraCm = 80.0;
-        private const double KolonDuseyEtriyeOlcuKolondanCm = 20.0;
+        /// <summary>Kopya etriye (sol) ve etriye bölge ölçüsü (sağ): yüzden 15 cm.</summary>
+        private const double KolonDuseyEtriyeOlcuKolondanCm = 15.0;
+        /// <summary>Etriye bölge ölçüsünden ilk etikete ve çift etiketin birbirine uzaklığı.</summary>
+        private const double KolonDuseyEtriyeEtiketOfsetCm = 18.0;
+        /// <summary>Sağ etriye etiketlerini bölge ölçüsüne bu kadar yaklaştır.</summary>
+        private const double KolonDuseyEtriyeEtiketSolaKaydirCm = 5.0;
+        /// <summary>Açılım düşey donatı etiketini çubuğa bu kadar yaklaştır (sağa).</summary>
+        private const double KolonDuseyAcilimDuseyEtiketSagaCm = 2.0;
+        /// <summary>Temel filizi gönye boy yazısını kancanın üstüne kaydır.</summary>
+        private const double KolonDuseyAcilimFilizGonyeYaziYukariCm = 5.0;
+        /// <summary>Kat hizası (KESIT GORUNUS) uç boşluğu: kot/kesit sınırı/kolon yüzü.</summary>
+        private const double KolonDuseyKatHizaKenarBoslukCm = 5.0;
+        /// <summary>Görünüş: kiriş/perde kesiti kolon-perde sol yüzünden.</summary>
+        private const double KolonDuseyKenarKesitSolCm = 80.0;
+        /// <summary>Görünüş: kiriş/perde kesiti kolon-perde sağ yüzünden.</summary>
+        private const double KolonDuseyKenarKesitSagCm = 110.0;
+        /// <summary>En sağ etriye etiketinden kiriş/kat düşey ölçüsüne.</summary>
+        private const double KolonDuseyGorunusKatOlcuEtikettenCm = 30.0;
+        /// <summary>Görünüş sağı: bölge + etiket(ler) + kat ölçüsü (+ kenar payı).</summary>
+        private static double KolonDuseyGorunusSagOlcuYiginCm(bool ciftEtiket)
+        {
+            double w = KolonDuseyEtriyeOlcuKolondanCm
+                + KolonDuseyEtriyeEtiketOfsetCm
+                + KolonDuseyGorunusKatOlcuEtikettenCm
+                + Kolon50GorunusCiftOlcuAraCm;
+            if (ciftEtiket)
+                w += KolonDuseyEtriyeEtiketOfsetCm;
+            return w;
+        }
+        /// <summary>Kot tepe noktası, görünüşteki en sağ düşey donatı açılım çizgisinden sağda (cm).</summary>
+        private const double KolonDuseyKotAcilimSagCm = 60.0;
+        /// <summary>Plan kesit takımı, kolon/perde sol yüzünden solda (cm).</summary>
+        private const double KolonDuseyKesitSoldaCm = 120.0;
+        /// <summary>Kesit üst çizgisi, o katın görünüş üst çizgisinin altında (cm).</summary>
+        private const double KolonDuseyKesitUstKottanAsagiCm = 120.0;
+        /// <summary>En sağ ölçüden düşey açılıma boşluk.</summary>
         private const double KolonDuseyAcilimGapFromOlcuCm = 45.0;
         private const double KolonDuseyAcilimColGapCm = 50.0;
         private const double KolonDuseyAcilimWidthCm = 200.0;
@@ -53,6 +87,7 @@ namespace ST4PlanIdCiz
         private const string LayerDosemeGovde = "DOSEME (BEYKENT)";
         private const string LayerDonatiGovde = "DONATI (BEYKENT)";
         private const string LayerDonatiYazisiPerde = "DONATI YAZISI (BEYKENT)";
+        private const string LayerEtiketCizgisi = "ETIKET CIZGISI (BEYKENT)";
         private const string LayerCirozBeykent = "CIROZ (BEYKENT)";
 
         private sealed class Kolon50GorunusPending
@@ -1187,12 +1222,15 @@ namespace ST4PlanIdCiz
             BlockTableRecord btr,
             double xRight,
             Func<double, double> Y,
-            List<double> zs)
+            List<double> zs,
+            bool xIsApex = false)
         {
             if (zs == null || zs.Count == 0) return;
             Database db = btr.Database;
             ObjectId styleId = GetOrCreateYaziBeykentTextStyle(tr, db);
-            double apexX = xRight + KesitKotDatumGapFromSectionCm + Kolon50GorunusKotSagaKaydirCm;
+            double apexX = xIsApex
+                ? xRight
+                : xRight + KesitKotDatumGapFromSectionCm + Kolon50GorunusKotSagaKaydirCm;
             const double rot = 0.0;
             var uniq = new List<double>();
             foreach (double z in zs.OrderBy(v => v))
@@ -1233,7 +1271,7 @@ namespace ST4PlanIdCiz
             IEnumerable<(double zLo, double zHi, int sCm, int diaMm)> govdeYatayBolgeler = null)
         {
             ObjectId dimId = GetOrCreatePlanOlcuDimStyle(tr, btr.Database, 10.0, 1.0, PlanOlcuDonatiDimStyleName);
-            void Dim(Point3d a, Point3d b, Point3d linePt)
+            void Dim(Point3d a, Point3d b, Point3d linePt, double fxlen)
             {
                 var dim = new AlignedDimension(a, b, linePt, "", dimId)
                 {
@@ -1241,7 +1279,7 @@ namespace ST4PlanIdCiz
                     LineWeight = LineWeight.LineWeight020
                 };
                 try { dim.DimfxlenOn = true; } catch { }
-                try { dim.Dimfxlen = Kolon50GorunusCiftOlcuAraCm; } catch { }
+                try { dim.Dimfxlen = fxlen; } catch { }
                 AppendEntity(tr, btr, dim);
             }
 
@@ -1260,7 +1298,8 @@ namespace ST4PlanIdCiz
             {
                 double a = uniq[i], b = uniq[i + 1];
                 if (b - a < 8.0) continue;
-                Dim(new Point3d(a, yTop, 0), new Point3d(b, yTop, 0), new Point3d((a + b) * 0.5, yDimTop, 0));
+                Dim(new Point3d(a, yTop, 0), new Point3d(b, yTop, 0),
+                    new Point3d((a + b) * 0.5, yDimTop, 0), Kolon50GorunusCiftOlcuAraCm);
             }
 
             var zChain = new List<double>();
@@ -1273,7 +1312,7 @@ namespace ST4PlanIdCiz
                         zChain.Add(z);
                 }
             }
-            void DrawZDims(List<double> zs, double xFace, double xLine)
+            void DrawZDims(List<double> zs, double xFace, double xLine, double fxlen)
             {
                 if (zs == null) return;
                 for (int i = 0; i < zs.Count - 1; i++)
@@ -1281,7 +1320,8 @@ namespace ST4PlanIdCiz
                     double za = zs[i], zb = zs[i + 1];
                     if (zb - za < 2.0) continue;
                     double ya = Y(za), yb = Y(zb);
-                    Dim(new Point3d(xFace, ya, 0), new Point3d(xFace, yb, 0), new Point3d(xLine, (ya + yb) * 0.5, 0));
+                    Dim(new Point3d(xFace, ya, 0), new Point3d(xFace, yb, 0),
+                        new Point3d(xLine, (ya + yb) * 0.5, 0), fxlen);
                 }
             }
 
@@ -1314,7 +1354,20 @@ namespace ST4PlanIdCiz
             if (zEt.Count >= 2)
             {
                 double xEt = xVR + KolonDuseyEtriyeOlcuKolondanCm;
-                DrawZDims(zEt, xVR, xEt);
+                DrawZDims(zEt, xVR, xEt, KolonDuseyEtriyeOlcuKolondanCm);
+                bool ciftEtiket = false;
+                if (govdeYatayBolgeler != null)
+                {
+                    foreach (var g in govdeYatayBolgeler)
+                    {
+                        if (g.sCm >= 4 && g.sCm < 100) { ciftEtiket = true; break; }
+                    }
+                }
+                double xLab = xEt + KolonDuseyEtriyeEtiketOfsetCm;
+                double xLabDraw = xLab - KolonDuseyEtriyeEtiketSolaKaydirCm;
+                double xLabOuter = ciftEtiket
+                    ? xLab + KolonDuseyEtriyeEtiketOfsetCm
+                    : xLab;
                 if (etriyeBolgeler != null)
                 {
                     var bol = etriyeBolgeler as IList<(double zLo, double zHi, int sCm, int diaMm)>
@@ -1343,7 +1396,6 @@ namespace ST4PlanIdCiz
                             }
                             if (sGvBest < 100) sGv = sGvBest;
                         }
-                        double xLab = xEt + 16.0;
                         double yMid = Y((za + zb) * 0.5);
                         var db = btr.Database;
                         if (sGv >= 4)
@@ -1353,44 +1405,44 @@ namespace ST4PlanIdCiz
                             if (TryKolonEtriyeAdetAralik(zb - za, sGv, out int nGv, out _))
                                 adetGv = nGv;
                             string labG = FormatPerdeYatayOlcuEtiket(adetGv, diaGv, sGv, "govde");
-                            DrawBeamLabel(tr, btr, db, new Point3d(xLab, yMid, 0),
+                            DrawBeamLabel(tr, btr, db, new Point3d(xLabDraw, yMid, 0),
                                 labB, 10.0, Math.PI / 2.0, LayerDonatiYazisiPerde, useMiddleCenter: true);
-                            DrawBeamLabel(tr, btr, db, new Point3d(xLab + 12.0, yMid, 0),
+                            DrawBeamLabel(tr, btr, db, new Point3d(xLabDraw + KolonDuseyEtriyeEtiketOfsetCm, yMid, 0),
                                 labG, 10.0, Math.PI / 2.0, LayerDonatiYazisiPerde, useMiddleCenter: true);
                         }
                         else if (anyGovdeList)
                         {
                             string lab = FormatPerdeYatayOlcuEtiket(adet, diaBest, sBest, "basl\u0131k");
-                            DrawBeamLabel(tr, btr, db, new Point3d(xLab, yMid, 0),
+                            DrawBeamLabel(tr, btr, db, new Point3d(xLabDraw, yMid, 0),
                                 lab, 10.0, Math.PI / 2.0, LayerDonatiYazisiPerde, useMiddleCenter: true);
                         }
                         else
                         {
                             string lab = FormatKolonEtriyeOlcuEtiket(adet, diaBest, sBest);
-                            DrawBeamLabel(tr, btr, db, new Point3d(xLab, yMid, 0),
+                            DrawBeamLabel(tr, btr, db, new Point3d(xLabDraw, yMid, 0),
                                 lab, 10.0, Math.PI / 2.0, LayerDonatiYazisiPerde, useMiddleCenter: true);
                         }
                     }
                 }
-                double x2 = xEt + KolonDuseyEtriyeOlcuAraCm;
+                double x2 = xLabOuter + KolonDuseyGorunusKatOlcuEtikettenCm;
                 if (hasKenarRight)
                 {
-                    DrawZDims(zRight, xVR, x2);
-                    DrawZDims(zChain, xVR, x2 + Kolon50GorunusCiftOlcuAraCm);
+                    DrawZDims(zRight, xVR, x2, Kolon50GorunusCiftOlcuAraCm);
+                    DrawZDims(zChain, xVR, x2 + Kolon50GorunusCiftOlcuAraCm, Kolon50GorunusCiftOlcuAraCm);
                 }
                 else
-                    DrawZDims(zChain, xVR, x2);
+                    DrawZDims(zChain, xVR, x2, Kolon50GorunusCiftOlcuAraCm);
             }
             else
             {
-                DrawZDims(zChain, xVR, xDim);
+                DrawZDims(zChain, xVR, xDim, Kolon50GorunusCiftOlcuAraCm);
                 if (hasKenarRight)
-                    DrawZDims(zRight, xVR, xDim - Kolon50GorunusCiftOlcuAraCm);
+                    DrawZDims(zRight, xVR, xDim - Kolon50GorunusCiftOlcuAraCm, Kolon50GorunusCiftOlcuAraCm);
             }
 
             var zLeft = MergeKenarZs(extraZsLeft);
             if (zLeft.Count > zChain.Count)
-                DrawZDims(zLeft, xVL, xVL - Kolon50GorunusDikeyOlcuSagaCm);
+                DrawZDims(zLeft, xVL, xVL - Kolon50GorunusDikeyOlcuSagaCm, Kolon50GorunusCiftOlcuAraCm);
         }
 
         private static void ResolvePerdeBxBy(
