@@ -376,6 +376,28 @@ namespace ST4PlanIdCiz
             return n;
         }
 
+        /// <summary>GPR düşey çaplarının küçüğü (gövde). Yoksa 12.</summary>
+        public static int MinKolonKesitDuseyDonatiCapMm(string raw)
+        {
+            if (!TryParseKolonKesitDuseyDonatiByDia(raw, out var byDia) || byDia.Count == 0) return 12;
+            int min = int.MaxValue;
+            foreach (var kv in byDia)
+            {
+                if (kv.Key >= 6 && kv.Key < min) min = kv.Key;
+            }
+            return min == int.MaxValue ? 12 : min;
+        }
+
+        /// <summary>Düşey donatı toplam alanı (cm²): n × π × φ² / 400.</summary>
+        public static double SumKolonKesitDuseyDonatiAlanCm2(string raw)
+        {
+            if (!TryParseKolonKesitDuseyDonatiByDia(raw, out var byDia) || byDia.Count == 0) return 0;
+            double a = 0;
+            foreach (var kv in byDia)
+                a += kv.Value * Math.PI * kv.Key * kv.Key / 400.0;
+            return a;
+        }
+
         /// <summary>
         /// STA4CAD çoklu bodrum GPR: S4B-01 (kısaltma 4B-). Eski/alternatif: SB4-01. Tek bodrum: SB-01 ↔ S1B/SB1.
         /// </summary>
@@ -895,16 +917,25 @@ namespace ST4PlanIdCiz
             return string.IsNullOrWhiteSpace(fromBytes) ? fallback : fromBytes.Trim();
         }
 
-        /// <summary>Panel / POLIGON KOLON veya dosya sonuna kadar. GPR penceresi: [startIdx, lineEndExclusive).</summary>
+        /// <summary>
+        /// Sol hücre Hcr (MS_A_01 SB-20: kutu içinde " Hcr", satır başı).
+        /// TBDY 2018 kritik perde yüksekliği.
+        /// </summary>
         private static bool GprKolonBlockLineHasHcr(string content, byte[] rawBytes)
         {
             if (!string.IsNullOrEmpty(content))
             {
                 int i = content.IndexOf("Hcr", StringComparison.OrdinalIgnoreCase);
-                if (i >= 0 && i < 16) return true;
+                if (i >= 0 && i < 40)
+                {
+                    int cut = content.IndexOf("X-(", StringComparison.OrdinalIgnoreCase);
+                    if (cut < 0) cut = content.IndexOf("x =", StringComparison.OrdinalIgnoreCase);
+                    if (cut < 0 || i < cut)
+                        return true;
+                }
             }
             if (rawBytes == null || rawBytes.Length < 3) return false;
-            int n = Math.Min(rawBytes.Length, 48);
+            int n = Math.Min(rawBytes.Length, 96);
             for (int i = 0; i <= n - 3; i++)
             {
                 byte a = rawBytes[i];
@@ -1167,6 +1198,26 @@ namespace ST4PlanIdCiz
             if (h < 1) h = 1;
             return id + " (" + w.ToString(CultureInfo.InvariantCulture) + "/"
                 + h.ToString(CultureInfo.InvariantCulture) + ")";
+        }
+
+        /// <summary>Poligon kat kesit üstü: S7-36 (POLIGON) — yalnızca küçük kolon no.</summary>
+        public static string FormatPoligonKolonKesitEtiket(
+            IReadOnlyList<FloorInfo> floors, int floorIndex, IReadOnlyList<int> colNos)
+        {
+            int first = 0;
+            if (colNos != null)
+            {
+                foreach (int n in colNos)
+                {
+                    if (n < 1) continue;
+                    if (first < 1 || n < first) first = n;
+                }
+            }
+            if (first < 1) first = 1;
+            string one = FormatKolonPerdeKesitEtiket(floors, floorIndex, first, 1, 1);
+            int par = one.LastIndexOf(" (", StringComparison.Ordinal);
+            string head = par > 0 ? one.Substring(0, par) : one;
+            return head + " (POLIGON)";
         }
 
         private static string GprPrefixFromFloorNameFallback(string floorName)

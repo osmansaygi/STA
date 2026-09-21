@@ -452,7 +452,12 @@ namespace ST4PlanIdCiz
         /// <summary>Kolon poligonu (tip 3 dahil), offset ile. Tablo/kiriş kesişimi için.</summary>
         private Geometry GetColumnPolygonForTable(FloorInfo floor, ColumnAxisInfo col, double offsetX, double offsetY, GeometryFactory factory)
         {
-            if (!_axisService.TryIntersect(col.AxisXId, col.AxisYId, out Point2d axisNode)) return null;
+            bool hasAxis = _axisService.TryIntersect(col.AxisXId, col.AxisYId, out Point2d axisNode);
+            if (!hasAxis)
+            {
+                if (col.ColumnType != 3) return null;
+                axisNode = new Point2d(0.0, 0.0);
+            }
             int sectionId = ResolveColumnSectionId(floor.FloorNo, col.ColumnNo);
             int polygonSectionId = ResolvePolygonPositionSectionId(floor.FloorNo, col.ColumnNo);
             if (col.ColumnType != 3 && (sectionId <= 0 || !_model.ColumnDimsBySectionId.ContainsKey(sectionId)) && col.ColumnId > 0 && _model.ColumnDimsBySectionId.ContainsKey(col.ColumnId))
@@ -466,7 +471,11 @@ namespace ST4PlanIdCiz
             if (col.ColumnType == 3)
             {
                 if (polygonSectionId <= 0 || !TryGetPolygonColumn(polygonSectionId, center, col.AngleDeg, out var polyPoints))
-                    return null;
+                {
+                    if (polygonSectionId <= 0 || !TryGetPolygonColumn(polygonSectionId, new Point2d(0, 0), col.AngleDeg, out polyPoints))
+                        return null;
+                }
+                if (polyPoints == null || polyPoints.Length < 3) return null;
                 coords = new Coordinate[polyPoints.Length + 1];
                 for (int i = 0; i < polyPoints.Length; i++)
                     coords[i] = new Coordinate(polyPoints[i].X, polyPoints[i].Y);
@@ -16659,7 +16668,7 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>Kiriş/perde etiketi: bottomLeftAligned false ise Right, true ise Left; topAligned true ise üst; useMiddleCenter true ise orta merkez. layer verilmezse KIRIS ISMI.</summary>
-        private void DrawBeamLabel(Transaction tr, BlockTableRecord btr, Database db, Point3d insertionPoint, string labelText, double textHeightCm, double rotationRad, string layer = null, bool bottomLeftAligned = true, bool topAligned = false, bool useMiddleCenter = false)
+        private void DrawBeamLabel(Transaction tr, BlockTableRecord btr, Database db, Point3d insertionPoint, string labelText, double textHeightCm, double rotationRad, string layer = null, bool bottomLeftAligned = true, bool topAligned = false, bool useMiddleCenter = false, short? colorAci = null)
         {
             if (string.IsNullOrEmpty(layer)) layer = LayerKirisYazisi;
             ObjectId textStyleId = GetOrCreateYaziBeykentTextStyle(tr, db);
@@ -16675,6 +16684,11 @@ namespace ST4PlanIdCiz
                 AlignmentPoint = insertionPoint,
                 Rotation = rotationRad
             };
+            if (colorAci.HasValue && colorAci.Value >= 0 && colorAci.Value <= 256)
+            {
+                try { txt.Color = Color.FromColorIndex(ColorMethod.ByAci, colorAci.Value); }
+                catch { }
+            }
             if (useMiddleCenter || !bottomLeftAligned || topAligned)
             {
                 try { txt.AdjustAlignment(db); } catch { }
