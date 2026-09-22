@@ -87,9 +87,15 @@ namespace ST4PlanIdCiz
 
             Dictionary<string, GprDosemeDonatiXy> best = null;
             int bestCount = 0;
+            byte[] fileBytes = null;
+            try { fileBytes = File.ReadAllBytes(gprFilePath); }
+            catch { fileBytes = null; }
+
             try
             {
-                string[] linesSafe = WindowsAnsiEncodings.ReadAllLines(gprFilePath);
+                string[] linesSafe = fileBytes != null
+                    ? WindowsAnsiEncodings.SplitLines(WindowsAnsiEncodings.DecodeFileBytes(fileBytes))
+                    : WindowsAnsiEncodings.ReadAllLines(gprFilePath);
                 if (TryParseLines(linesSafe, out Dictionary<string, GprDosemeDonatiXy> dictSafe) && dictSafe != null && dictSafe.Count > 0)
                 {
                     best = dictSafe;
@@ -99,12 +105,21 @@ namespace ST4PlanIdCiz
             catch
             {
             }
+            // Yeterli anahtar bulunduysa ekstra kodlama denemelerini atla (10MB GPR’de büyük kazanç).
+            if (bestCount >= 20)
+            {
+                slabIdToDonatiXy = best;
+                return true;
+            }
             foreach (Encoding enc in encodings)
             {
                 string[] lines;
                 try
                 {
-                    lines = File.ReadAllLines(gprFilePath, enc);
+                    if (fileBytes != null)
+                        lines = enc.GetString(fileBytes).Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+                    else
+                        lines = File.ReadAllLines(gprFilePath, enc);
                 }
                 catch
                 {

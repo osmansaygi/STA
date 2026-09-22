@@ -179,10 +179,11 @@ namespace ST4PlanIdCiz
                             {
                                 if (img == null || img.WidthInSamples < 400 || img.HeightInSamples < 400) continue;
                                 double top = img.Bounds.Top;
-                                if (top > titleY + 12) continue;
                                 if (img.Bounds.Bottom > titleY + 4) continue;
-                                double gap = titleY - top;
-                                if (gap < -8) continue;
+                                // Başlık ile grafiğin üst kenarı arasındaki boşluk sürücüye göre
+                                // değişir (doPDF sayfayı küçültüp kaydırıyor); en yakın grafik seçilir.
+                                double gap = Math.Abs(titleY - top);
+                                if (titleY - top < -20) continue;
                                 if (gap < bestGap)
                                 {
                                     bestGap = gap;
@@ -217,33 +218,49 @@ namespace ST4PlanIdCiz
             }
         }
 
+        /// <summary>
+        /// Başlık satırları: harf taban çizgisi (baseline) + tolerans ile kümelenir.
+        /// Glyph kutusunun altı kullanılamaz; "y/ğ" gibi alt uzantılı harfler ayrı düşer.
+        /// Sabit ızgara da kullanılamaz: doPDF aynı satırın harflerini ~0,2 pt kaydırarak
+        /// yazdığı için "X yönü Üst ... grafiği" başlığı ikiye bölünüp bulunamıyordu
+        /// (Microsoft Print to PDF tek taban çizgisi yazdığı için sorun çıkmıyordu).
+        /// </summary>
         private static List<double> FindTitleYs(Page page, Yon yon)
         {
             var ys = new List<double>();
             if (page?.Letters == null) return ys;
-            var buckets = new Dictionary<int, List<Letter>>();
-            foreach (var L in page.Letters)
+            var letters = new List<Letter>(page.Letters);
+            letters.Sort((a, b) => LetterBaselineY(b).CompareTo(LetterBaselineY(a)));
+            int i = 0;
+            while (i < letters.Count)
             {
-                int key = (int)Math.Round(L.GlyphRectangle.Bottom * 2.0);
-                List<Letter> list;
-                if (!buckets.TryGetValue(key, out list))
+                double yTop = LetterBaselineY(letters[i]);
+                var line = new List<Letter>();
+                while (i < letters.Count && yTop - LetterBaselineY(letters[i]) <= TitleBaselineTolPt)
                 {
-                    list = new List<Letter>();
-                    buckets[key] = list;
+                    line.Add(letters[i]);
+                    i++;
                 }
-                list.Add(L);
-            }
-            foreach (var kv in buckets)
-            {
-                kv.Value.Sort((a, b) => a.GlyphRectangle.Left.CompareTo(b.GlyphRectangle.Left));
+                line.Sort((a, b) => a.GlyphRectangle.Left.CompareTo(b.GlyphRectangle.Left));
                 var sb = new StringBuilder();
-                foreach (var L in kv.Value) sb.Append(L.Value);
-                if (!LineMatchesYon(sb.ToString(), yon)) continue;
                 double y = 0;
-                foreach (var L in kv.Value) y += L.GlyphRectangle.Bottom;
-                ys.Add(y / kv.Value.Count);
+                foreach (var L in line)
+                {
+                    sb.Append(L.Value);
+                    y += LetterBaselineY(L);
+                }
+                if (!LineMatchesYon(sb.ToString(), yon)) continue;
+                ys.Add(y / line.Count);
             }
             return ys;
+        }
+
+        private const double TitleBaselineTolPt = 1.2;
+
+        private static double LetterBaselineY(Letter L)
+        {
+            double y = L.StartBaseLine.Y;
+            return y > 0 ? y : L.GlyphRectangle.Bottom;
         }
 
         private static bool LineMatchesYon(string line, Yon yon)

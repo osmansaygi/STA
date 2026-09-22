@@ -540,6 +540,73 @@ namespace ST4PlanIdCiz
             return false;
         }
 
+        private static readonly Regex SarilmaKolSatirRx = new Regex(
+            @"^[^A-Za-z0-9]*(S[A-Z0-9]*-?\d+)\s*[^A-Za-z0-9]+Malz.*?b/d\s*=\s*(\d+(?:[.,]\d+)?)\s*[^\d\s]\s*(\d+(?:[.,]\d+)?).*?X/Y\s*kol\s*:\s*(\d+)\s*/\s*(\d+)",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+        private static readonly Regex SarilmaBkRx = new Regex(
+            @"^[^A-Za-z0-9]*([XY])\s*yonu\s*[^A-Za-z0-9]*bk\s*=\s*(\d+(?:[.,]\d+)?)",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+        /// <summary>
+        /// GPR "KOLON SARILMA BÖLGESİ ENİNE DONATI KONTROLU TBDY2018-7.3.4" tablosu:
+        /// eleman → X/Y kol (etriye + çiroz kol adedi) ve bk (kolların dizildiği çekirdek boyu, cm).
+        /// bk satırı yoksa X yönü kolları d, Y yönü kolları b boyunca dizilir.
+        /// </summary>
+        public static Dictionary<string, (int xKol, int yKol, double bkX, double bkY)> ParseKolonSarilmaKolFromLines(string[] lines)
+        {
+            var result = new Dictionary<string, (int xKol, int yKol, double bkX, double bkY)>(StringComparer.OrdinalIgnoreCase);
+            if (lines == null) return result;
+            double Num(string s) => double.TryParse(s.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out double v) ? v : 0;
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string ln = lines[i];
+                if (string.IsNullOrEmpty(ln) || ln.IndexOf("kol:", StringComparison.OrdinalIgnoreCase) < 0) continue;
+                var m = SarilmaKolSatirRx.Match(ln);
+                if (!m.Success) continue;
+                string key = m.Groups[1].Value.Trim().ToUpperInvariant();
+                if (result.ContainsKey(key)) continue;
+                double b = Num(m.Groups[2].Value), d = Num(m.Groups[3].Value);
+                int.TryParse(m.Groups[4].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int xKol);
+                int.TryParse(m.Groups[5].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int yKol);
+                if (xKol <= 0 || yKol <= 0) continue;
+                double bkX = Math.Max(0, d - 8.0), bkY = Math.Max(0, b - 8.0);
+                for (int j = i + 1; j < Math.Min(lines.Length, i + 8); j++)
+                {
+                    string lj = lines[j];
+                    if (string.IsNullOrEmpty(lj)) continue;
+                    if (SarilmaKolSatirRx.IsMatch(lj)) break;
+                    var mb = SarilmaBkRx.Match(lj);
+                    if (!mb.Success) continue;
+                    double bk = Num(mb.Groups[2].Value);
+                    if (bk <= 0) continue;
+                    if (char.ToUpperInvariant(mb.Groups[1].Value[0]) == 'X') bkX = bk;
+                    else bkY = bk;
+                }
+                result[key] = (xKol, yKol, bkX, bkY);
+            }
+            return result;
+        }
+
+        public static bool TryGetKolonSarilmaKol(
+            Dictionary<string, (int xKol, int yKol, double bkX, double bkY)> data,
+            IReadOnlyList<FloorInfo> floors,
+            int floorIndex,
+            int colNo,
+            out (int xKol, int yKol, double bkX, double bkY) kol)
+        {
+            kol = default;
+            if (data == null || data.Count == 0 || floors == null || floorIndex < 0 || floorIndex >= floors.Count)
+                return false;
+            var fmt = BuildGprFloorKeyFormats(floors);
+            if (floorIndex >= fmt.Length) return false;
+            var fk = fmt[floorIndex];
+            foreach (var key in GprDataKeysForFloorColumn(fk.StoryPrefix, fk.HyphenBeforeColNo, colNo))
+            {
+                if (data.TryGetValue(key, out kol)) return true;
+            }
+            return false;
+        }
+
         /// <summary>GPR anahtarından kat öneği ve kolon no (S4B-01 STA4CAD, SB01, SB2-01, SB-21, S1-02).</summary>
         private static bool TryParseGprStoryKey(string key, out string storyPrefix, out int columnNo)
         {

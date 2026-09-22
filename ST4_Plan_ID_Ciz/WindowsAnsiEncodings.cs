@@ -130,7 +130,7 @@ namespace ST4PlanIdCiz
             return new string(chars);
         }
 
-        private static string[] SplitLines(string text)
+        public static string[] SplitLines(string text)
         {
             if (string.IsNullOrEmpty(text)) return Array.Empty<string>();
             var lines = new List<string>();

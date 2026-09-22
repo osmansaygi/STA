@@ -10,7 +10,7 @@ namespace ST4PlanIdCiz
     internal static class CommandPaletteManager
     {
         private const int PaletteWidth = 150;
-        private const int PaletteHeight = 556;
+        private const int PaletteHeight = 640;
         private const int MarginX = 8;
         /// <summary>Komut satırı / durum çubuğu üstünde kalsın.</summary>
         private const int MarginBottom = 56;
@@ -141,8 +141,14 @@ namespace ST4PlanIdCiz
         {
             ("Kal\u0131p Plan\u0131",    "KALIP50ST4"),
             ("Kolon Aplikasyon", "KOLON50ST4"),
+            ("Kolon D\u00fc\u015fey", "KOLONDUSEY"),
             ("Temel Plan\u0131",   "TEMEL50ST4"),
             ("Rd. Temel Plan\u0131", "TEMELDONATI"),
+        };
+        private static readonly (string label, string cmd)[] S25 =
+        {
+            ("Kolon D\u00fc\u015fey", "KOLONDUSEY25"),
+            ("Kolon D\u00fc\u015fey - 2", "KOLONDUSEY2"),
         };
         private static readonly (string label, string cmd)[] S100 =
         {
@@ -165,7 +171,7 @@ namespace ST4PlanIdCiz
         private static readonly (string label, string cmd)[] AltDeneme =
         {
             ("Deneme1 (ilk 2 kat, sade)", "DENEME1"),
-            ("Kolon Dusey", "KOLONDUSEY"),
+            ("Kapama Perde", "KAPAMADETAY"),
         };
 
         public CommandPaletteControl()
@@ -177,6 +183,7 @@ namespace ST4PlanIdCiz
 
             int y = 4;
             y = AddSection("\u00d6L\u00c7EK 1:50", S50, y);
+            y = AddSection("\u00d6L\u00c7EK 1:25", S25, y);
             y = AddSection("\u00d6L\u00c7EK 1:100", S100, y);
             y = AddSection("\u0130SKELE", Isk, y);
             y = AddSection("GENEL", Gen, y);

@@ -172,6 +172,21 @@ namespace ST4PlanIdCiz
         /// <summary>KALIP50: bina şema birleştirilmiş kot Z listesi (cm), antet başına yeniden hesaplanmaz.</summary>
         private List<double> _kalip50BinaSemaKotZsAsc;
         private double[] _kalip50BinaSemaKotCrowdedShiftLower;
+        /// <summary>Oturum: GetColumnTableExtraData kat bazlı önbellek.</summary>
+        private Dictionary<int, Dictionary<int, (double altKotCm, double yukseklikCm, double? kirisUstAltFarkCm)>> _columnTableExtraByFloorNo;
+        /// <summary>Oturum: MergeSameIdBeamsOnFloor sonucu.</summary>
+        private Dictionary<int, List<BeamInfo>> _mergedBeamsByFloorNo;
+        /// <summary>Oturum: ham kiriş listesi (IsWallFlag ayrılmadan, kat filtresi).</summary>
+        private Dictionary<int, List<BeamInfo>> _rawBeamsByFloorNo;
+        /// <summary>Oturum: GetColumnFoundationHeights (ilk kat).</summary>
+        private Dictionary<int, (double? temelCm, double? hatilCm)> _columnFoundationHeightsCache;
+        private int _columnFoundationHeightsFloorNo = int.MinValue;
+        /// <summary>Oturum: temel / hatıl plan izleri (CollectTemel* için bir kez).</summary>
+        private List<(Geometry poly, double z0, double z1)> _temelFootprintCache;
+        private List<(Geometry poly, double z0, double z1)> _hatilFootprintCache;
+        private int _temelFootprintCacheFloorNo = int.MinValue;
+        /// <summary>Oturum: GetColumnPolygonForTable (ox=oy=0).</summary>
+        private Dictionary<(int floorNo, int colNo), Geometry> _columnPolyTableCache;
         private bool _kolon50DrawPerdeGorunus;
         private List<Kolon50GorunusPending> _kolon50GorunusPending;
         private Dictionary<int, GprPerdePanelDonati> _gprPerdePanelDonati;
@@ -230,7 +245,10 @@ namespace ST4PlanIdCiz
         {
             var result = new Dictionary<int, (double?, double?)>();
             if (firstFloor == null) return result;
-            var factory = NtsGeometryServices.Instance.CreateGeometryFactory();
+            if (_columnFoundationHeightsCache != null
+                && _columnFoundationHeightsFloorNo == firstFloor.FloorNo)
+                return _columnFoundationHeightsCache;
+            var factory = _ntsDrawFactory ?? NtsGeometryServices.Instance.CreateGeometryFactory();
             const double offsetX = 0.0, offsetY = 0.0;
 
             foreach (var col in _model.Columns)
@@ -347,6 +365,8 @@ namespace ST4PlanIdCiz
                 }
                 result[colNo] = (temelCm, hatilCm);
             }
+            _columnFoundationHeightsCache = result;
+            _columnFoundationHeightsFloorNo = firstFloor.FloorNo;
             return result;
         }
 
@@ -387,6 +407,11 @@ namespace ST4PlanIdCiz
         {
             var result = new Dictionary<int, (double, double, double?)>();
             if (floor == null) return result;
+            if (_columnTableExtraByFloorNo != null
+                && _columnTableExtraByFloorNo.TryGetValue(floor.FloorNo, out var cached)
+                && cached != null)
+                return cached;
+
             double floorElevM = floor.ElevationM;
             double baseKotuM = _model.BuildingBaseKotu;
             double defaultAltKotCm = (baseKotuM + floorElevM) * 100.0;
@@ -395,8 +420,12 @@ namespace ST4PlanIdCiz
             if (floorIdx >= 0 && floorIdx < _model.Floors.Count - 1)
                 defaultYukseklikCm = (_model.Floors[floorIdx + 1].ElevationM - floorElevM) * 100.0;
 
-            var factory = NtsGeometryServices.Instance.CreateGeometryFactory();
+            var factory = _ntsDrawFactory ?? NtsGeometryServices.Instance.CreateGeometryFactory();
             const double ox = 0.0, oy = 0.0;
+            var beamsOnFloor = GetRawBeamsOnFloor(floor.FloorNo)
+                .Where(b => b.IsWallFlag != 1)
+                .ToList();
+            double floorLevelCm = (baseKotuM + floorElevM) * 100.0;
 
             foreach (var col in _model.Columns)
             {
@@ -422,16 +451,20 @@ namespace ST4PlanIdCiz
 
                 Geometry colPoly = GetColumnPolygonForTable(floor, col, ox, oy, factory);
                 double? kirisFark = null;
-                if (colPoly != null && !colPoly.IsEmpty)
+                if (colPoly != null && !colPoly.IsEmpty && beamsOnFloor.Count > 0)
                 {
-                    var beamsOnFloor = _model.Beams.Where(b => GetBeamFloorNo(b.BeamId) == floor.FloorNo && b.IsWallFlag != 1).ToList();
                     double maxUst = double.MinValue;
                     double minAlt = double.MaxValue;
-                    double floorLevelCm = (baseKotuM + floorElevM) * 100.0;
+                    var colEnv = colPoly.EnvelopeInternal;
                     foreach (var beam in beamsOnFloor)
                     {
                         if (!_axisService.TryIntersect(beam.FixedAxisId, beam.StartAxisId, out Point2d p1) ||
                             !_axisService.TryIntersect(beam.FixedAxisId, beam.EndAxisId, out Point2d p2))
+                            continue;
+                        double minX = Math.Min(p1.X, p2.X), maxX = Math.Max(p1.X, p2.X);
+                        double minY = Math.Min(p1.Y, p2.Y), maxY = Math.Max(p1.Y, p2.Y);
+                        if (maxX < colEnv.MinX - 1.0 || minX > colEnv.MaxX + 1.0
+                            || maxY < colEnv.MinY - 1.0 || minY > colEnv.MaxY + 1.0)
                             continue;
                         var line = factory.CreateLineString(new[] { new Coordinate(p1.X, p1.Y), new Coordinate(p2.X, p2.Y) });
                         if (!colPoly.Intersects(line)) continue;
@@ -446,12 +479,44 @@ namespace ST4PlanIdCiz
                 }
                 result[col.ColumnNo] = (altKotCm, yukseklikCm, kirisFark);
             }
+            if (_columnTableExtraByFloorNo == null)
+                _columnTableExtraByFloorNo = new Dictionary<int, Dictionary<int, (double, double, double?)>>();
+            _columnTableExtraByFloorNo[floor.FloorNo] = result;
             return result;
+        }
+
+        private List<BeamInfo> GetRawBeamsOnFloor(int floorNo)
+        {
+            if (_rawBeamsByFloorNo == null)
+                _rawBeamsByFloorNo = new Dictionary<int, List<BeamInfo>>();
+            if (_rawBeamsByFloorNo.TryGetValue(floorNo, out var list) && list != null)
+                return list;
+            list = new List<BeamInfo>();
+            if (_model?.Beams != null)
+            {
+                foreach (var b in _model.Beams)
+                {
+                    if (GetBeamFloorNo(b.BeamId) == floorNo)
+                        list.Add(b);
+                }
+            }
+            _rawBeamsByFloorNo[floorNo] = list;
+            return list;
         }
 
         /// <summary>Kolon poligonu (tip 3 dahil), offset ile. Tablo/kiriş kesişimi için.</summary>
         private Geometry GetColumnPolygonForTable(FloorInfo floor, ColumnAxisInfo col, double offsetX, double offsetY, GeometryFactory factory)
         {
+            bool cacheable = floor != null && col != null
+                && Math.Abs(offsetX) < 1e-9 && Math.Abs(offsetY) < 1e-9;
+            if (cacheable)
+            {
+                if (_columnPolyTableCache == null)
+                    _columnPolyTableCache = new Dictionary<(int, int), Geometry>();
+                var key = (floor.FloorNo, col.ColumnNo);
+                if (_columnPolyTableCache.TryGetValue(key, out var cached))
+                    return cached;
+            }
             bool hasAxis = _axisService.TryIntersect(col.AxisXId, col.AxisYId, out Point2d axisNode);
             if (!hasAxis)
             {
@@ -493,7 +558,10 @@ namespace ST4PlanIdCiz
                 for (int i = 0; i < 4; i++) coords[i] = new Coordinate(rect[i].X, rect[i].Y);
                 coords[4] = coords[0];
             }
-            return factory.CreatePolygon(factory.CreateLinearRing(coords));
+            Geometry created = factory.CreatePolygon(factory.CreateLinearRing(coords));
+            if (cacheable)
+                _columnPolyTableCache[(floor.FloorNo, col.ColumnNo)] = created;
+            return created;
         }
 
         public void Draw(Database db, Editor ed)
@@ -9954,17 +10022,7 @@ namespace ST4PlanIdCiz
             ObjectId yaziId = GetOrCreateYaziBeykentTextStyle(tr, db);
             var dst = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
             if (dst.Has(styleName))
-            {
-                ObjectId id = dst[styleName];
-                try
-                {
-                    var existing = (DimStyleTableRecord)tr.GetObject(id, OpenMode.ForWrite);
-                    if (!yaziId.IsNull) existing.Dimtxsty = yaziId;
-                    ApplyAksPlanOlcuDimStyleArrowsAndSize(existing, dimTextHeightCm, lineGeomScale);
-                }
-                catch { }
-                return id;
-            }
+                return dst[styleName];
 
             var newRec = new DimStyleTableRecord();
             newRec.Name = styleName;
@@ -9990,6 +10048,9 @@ namespace ST4PlanIdCiz
         private static ObjectId GetOrCreateEtriyeOlcuDimStyle(Transaction tr, Database db, double dimTextHeightCm)
         {
             ObjectId yaziId = GetOrCreateEtriyeOlcuYaziTextStyle(tr, db);
+            var dst = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
+            if (dst.Has(EtriyeOlcuDimStyleName))
+                return dst[EtriyeOlcuDimStyleName];
             ObjectId id = GetOrCreatePlanOlcuDimStyle(tr, db, dimTextHeightCm, 1.0, EtriyeOlcuDimStyleName);
             try
             {
@@ -10008,16 +10069,7 @@ namespace ST4PlanIdCiz
         {
             var txtTable = (TextStyleTable)tr.GetObject(db.TextStyleTableId, OpenMode.ForRead);
             if (txtTable.Has(EtriyeOlcuYaziStyleName))
-            {
-                ObjectId id = txtTable[EtriyeOlcuYaziStyleName];
-                try
-                {
-                    var existing = (TextStyleTableRecord)tr.GetObject(id, OpenMode.ForWrite);
-                    existing.XScale = 0.7;
-                }
-                catch { }
-                return id;
-            }
+                return txtTable[EtriyeOlcuYaziStyleName];
             var rec = new TextStyleTableRecord { Name = EtriyeOlcuYaziStyleName };
             try
             {
@@ -10058,6 +10110,112 @@ namespace ST4PlanIdCiz
             tr.AddNewlyCreatedDBObject(rec, true);
             txtTable.DowngradeOpen();
             return id;
+        }
+
+        private static string DimStyleNameWith25Suffix(string baseName)
+        {
+            if (string.IsNullOrWhiteSpace(baseName)) baseName = PlanOlcuDimStyleName;
+            if (baseName.EndsWith(" 25", StringComparison.Ordinal) || baseName.EndsWith("_25", StringComparison.Ordinal))
+                return baseName;
+            return baseName + " 25";
+        }
+
+        private static ObjectId MapDimStyleTo25(
+            Transaction tr, Database db, ObjectId srcDimStyleId, double origDimTxtCm,
+            Dictionary<ObjectId, ObjectId> dimStyleMap)
+        {
+            if (tr == null || db == null) return ObjectId.Null;
+            if (!srcDimStyleId.IsNull && dimStyleMap != null && dimStyleMap.TryGetValue(srcDimStyleId, out var cached) && !cached.IsNull)
+                return cached;
+            string srcName = PlanOlcuDimStyleName;
+            DimStyleTableRecord src = null;
+            if (!srcDimStyleId.IsNull)
+            {
+                try { src = tr.GetObject(srcDimStyleId, OpenMode.ForRead, false) as DimStyleTableRecord; } catch { src = null; }
+                if (src != null && !string.IsNullOrEmpty(src.Name)) srcName = src.Name;
+            }
+            string dstName = DimStyleNameWith25Suffix(srcName);
+            ObjectId yaziBeykent = GetOrCreateYaziBeykentTextStyle(tr, db);
+            var dst = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
+            ObjectId dstId;
+            if (dst.Has(dstName))
+            {
+                dstId = dst[dstName];
+            }
+            else
+            {
+                var rec = new DimStyleTableRecord { Name = dstName };
+                try { rec.Dimclrt = Color.FromColorIndex(ColorMethod.ByAci, 7); } catch { }
+                try { rec.Dimtad = 1; } catch { }
+                try { rec.Dimtih = false; } catch { }
+                try { rec.Dimtoh = false; } catch { }
+                try { rec.Dimtofl = true; } catch { }
+                try { rec.Dimaunit = 0; } catch { }
+                try { rec.Dimadec = 0; } catch { }
+                if (src != null)
+                {
+                    try { rec.Dimexo = src.Dimexo; } catch { }
+                    try { rec.Dimgap = src.Dimgap; } catch { }
+                    try { rec.Dimexe = src.Dimexe; } catch { }
+                    try { rec.Dimtix = src.Dimtix; } catch { }
+                    try { rec.Dimrnd = src.Dimrnd; } catch { }
+                    try { rec.Dimdec = src.Dimdec; } catch { }
+                    try { rec.Dimtdec = src.Dimtdec; } catch { }
+                    try { rec.Dimzin = src.Dimzin; } catch { }
+                    try { rec.Dimlunit = src.Dimlunit; } catch { }
+                }
+                try { if (!yaziBeykent.IsNull) rec.Dimtxsty = yaziBeykent; } catch { }
+                double txt = origDimTxtCm > 0.05 ? origDimTxtCm : 10.0;
+                ApplyAksPlanOlcuDimStyleArrowsAndSize(rec, txt, 1.0);
+                try { rec.Dimscale = 1.0; } catch { }
+                try { rec.Dimlfac = 0.5; } catch { }
+                try { rec.Dimtxt = txt; } catch { }
+                try { rec.Dimasz = OlcuDimArrowTickSizeCm; } catch { }
+                try { rec.Dimtsz = OlcuDimArrowTickSizeCm; } catch { }
+                ApplyAksPlanOlcuDimPrecision(rec);
+                dst.UpgradeOpen();
+                dstId = dst.Add(rec);
+                tr.AddNewlyCreatedDBObject(rec, true);
+                dst.DowngradeOpen();
+            }
+            if (dimStyleMap != null && !srcDimStyleId.IsNull) dimStyleMap[srcDimStyleId] = dstId;
+            return dstId;
+        }
+
+        /// <summary>
+        /// 1:25 ölçü stilleri: Symbols and Arrows → Arrow size = 3 (DIMSCALE 2 ile diyalogda 6 görünmesin).
+        /// Entity açık ForWrite iken stil yazılmaz.
+        /// </summary>
+        private static void ForceKolonDusey25DimStyleArrows(Transaction tr, Database db)
+        {
+            if (tr == null || db == null) return;
+            DimStyleTable dst;
+            try { dst = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead); }
+            catch { return; }
+            var ids = new List<ObjectId>();
+            foreach (ObjectId id in dst)
+            {
+                if (id.IsNull || id.IsErased) continue;
+                DimStyleTableRecord rec;
+                try { rec = tr.GetObject(id, OpenMode.ForRead, false) as DimStyleTableRecord; }
+                catch { continue; }
+                if (rec == null || string.IsNullOrEmpty(rec.Name)) continue;
+                if (rec.Name.EndsWith(" 25", StringComparison.Ordinal) || rec.Name.EndsWith("_25", StringComparison.Ordinal))
+                    ids.Add(id);
+            }
+            for (int i = 0; i < ids.Count; i++)
+            {
+                try
+                {
+                    var rec = (DimStyleTableRecord)tr.GetObject(ids[i], OpenMode.ForWrite, false);
+                    if (rec == null) continue;
+                    rec.Dimscale = 1.0;
+                    rec.Dimlfac = 0.5;
+                    rec.Dimasz = OlcuDimArrowTickSizeCm;
+                    rec.Dimtsz = OlcuDimArrowTickSizeCm;
+                }
+                catch { }
+            }
         }
 
         private DBText MakeCenteredAxisLabelText(Transaction tr, Database db, double height, string value, Point3d p)
@@ -10128,27 +10286,58 @@ namespace ST4PlanIdCiz
         /// <summary>Kolon kesit: floorNo*100+colNo, floorNo*1000+colNo (TZN 1001,2001,8001), 1000+colNo. 2xx-9xx, 14xx, 2xxx-9xxx varsa 1000+colNo yok.</summary>
         private int ResolveColumnSectionId(int floorNo, int colNo)
         {
-            int sid = floorNo * 100 + colNo;
-            if (_model.ColumnDimsBySectionId.ContainsKey(sid)) return sid;
-            sid = floorNo * 1000 + colNo;
-            if (_model.ColumnDimsBySectionId.ContainsKey(sid)) return sid;
+            // ST4 başlık ColumnFloorKeyStep varsa önce onu kullan (1000’lik projelerde *100 yanlış eşleşmesin).
+            int step = _model.ColumnFloorKeyStep > 0 ? _model.ColumnFloorKeyStep : 0;
+            if (step > 0)
+            {
+                int sidStep = floorNo * step + colNo;
+                if (_model.ColumnDimsBySectionId.ContainsKey(sidStep)) return sidStep;
+                int other = step == 1000 ? 100 : 1000;
+                if (other != step)
+                {
+                    int sidOther = floorNo * other + colNo;
+                    if (_model.ColumnDimsBySectionId.ContainsKey(sidOther)) return sidOther;
+                }
+            }
+            else
+            {
+                int sid = floorNo * 100 + colNo;
+                if (_model.ColumnDimsBySectionId.ContainsKey(sid)) return sid;
+                sid = floorNo * 1000 + colNo;
+                if (_model.ColumnDimsBySectionId.ContainsKey(sid)) return sid;
+            }
             bool hasFloorSpecific = _model.ColumnDimsBySectionId.Keys.Any(id => (id >= 200 && id < 1000) || (id >= 1400 && id < 1500) || (id >= 2000 && id < 10000));
             if (hasFloorSpecific) return 0;
-            sid = 1000 + colNo;
-            return _model.ColumnDimsBySectionId.ContainsKey(sid) ? sid : 0;
+            int sidFallback = 1000 + colNo;
+            return _model.ColumnDimsBySectionId.ContainsKey(sidFallback) ? sidFallback : 0;
         }
 
-        /// <summary>Poligon: floorNo*100+colNo, floorNo*1000+colNo. 2xx-9xx, 14xx, 2xxx-9xxx varsa 1000+colNo yok.</summary>
+        /// <summary>Poligon: ColumnFloorKeyStep varsa floorNo*step+colNo; yoksa *100 / *1000.</summary>
         private int ResolvePolygonPositionSectionId(int floorNo, int colNo)
         {
-            int sid = floorNo * 100 + colNo;
-            if (_model.PolygonColumnSectionByPositionSectionId.ContainsKey(sid)) return sid;
-            sid = floorNo * 1000 + colNo;
-            if (_model.PolygonColumnSectionByPositionSectionId.ContainsKey(sid)) return sid;
+            int step = _model.ColumnFloorKeyStep > 0 ? _model.ColumnFloorKeyStep : 0;
+            if (step > 0)
+            {
+                int sidStep = floorNo * step + colNo;
+                if (_model.PolygonColumnSectionByPositionSectionId.ContainsKey(sidStep)) return sidStep;
+                int other = step == 1000 ? 100 : 1000;
+                if (other != step)
+                {
+                    int sidOther = floorNo * other + colNo;
+                    if (_model.PolygonColumnSectionByPositionSectionId.ContainsKey(sidOther)) return sidOther;
+                }
+            }
+            else
+            {
+                int sid = floorNo * 100 + colNo;
+                if (_model.PolygonColumnSectionByPositionSectionId.ContainsKey(sid)) return sid;
+                sid = floorNo * 1000 + colNo;
+                if (_model.PolygonColumnSectionByPositionSectionId.ContainsKey(sid)) return sid;
+            }
             bool hasFloorSpecific = _model.PolygonColumnSectionByPositionSectionId.Keys.Any(id => (id >= 200 && id < 1000) || (id >= 1400 && id < 1500) || (id >= 2000 && id < 10000));
             if (hasFloorSpecific) return 0;
-            sid = 1000 + colNo;
-            return _model.PolygonColumnSectionByPositionSectionId.ContainsKey(sid) ? sid : 0;
+            int sidFallback = 1000 + colNo;
+            return _model.PolygonColumnSectionByPositionSectionId.ContainsKey(sidFallback) ? sidFallback : 0;
         }
 
         private void DrawColumns(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY)
@@ -11692,7 +11881,27 @@ namespace ST4PlanIdCiz
 
             // Perdeler: aynı akstaki birleştirme listesi kullanılır. Kirişler: birleştirme iptal, modeldeki ham kayıtlar kullanılır.
             var beamsForWalls = MergeSameIdBeamsOnFloor(floor.FloorNo);
-            var beamsForDrawing = _model.Beams.Where(b => GetBeamFloorNo(b.BeamId) == floor.FloorNo && b.IsWallFlag != 1).ToList();
+            var beamsForDrawing = GetRawBeamsOnFloor(floor.FloorNo).Where(b => b.IsWallFlag != 1).ToList();
+
+            // Kiriş–kolon uç çekmesi: kolon poligonları bir kez (beams × columns NTS maliyetini keser).
+            var floorColumnPolys = new List<(Polygon poly, Point2d center, Envelope env)>();
+            foreach (var col in _model.Columns)
+            {
+                int sectionId = ResolveColumnSectionId(floor.FloorNo, col.ColumnNo);
+                int polygonSectionId = ResolvePolygonPositionSectionId(floor.FloorNo, col.ColumnNo);
+                if (col.ColumnType == 3)
+                {
+                    if (polygonSectionId <= 0 || !_model.PolygonColumnSectionByPositionSectionId.ContainsKey(polygonSectionId))
+                        continue;
+                }
+                else if (sectionId <= 0 || !_model.ColumnDimsBySectionId.ContainsKey(sectionId))
+                    continue;
+                Polygon colPoly = GetColumnPolygon(floor, col, offsetX, offsetY, factory);
+                if (colPoly == null || colPoly.IsEmpty) continue;
+                if (!TryGetColumnCenterAtIntersection(floor, col.AxisXId, col.AxisYId, offsetX, offsetY, out Point2d colCenter))
+                    continue;
+                floorColumnPolys.Add((colPoly, colCenter, colPoly.EnvelopeInternal));
+            }
 
             foreach (var beam in beamsForWalls)
             {
@@ -11791,18 +12000,18 @@ namespace ST4PlanIdCiz
                         Geometry beamPoly = factory.CreatePolygon(factory.CreateLinearRing(beamCoords));
                         const double intersectionToleranceCm = 0.2;
                         Geometry beamPolyTol = beamPoly.Buffer(intersectionToleranceCm);
+                        var beamEnv = beamPolyTol.EnvelopeInternal;
                         double tMin = len;
                         double tMax = 0;
-                        // Kiriş hangi katta ise o kattaki kolonları baz al (sadece bu katta kesiti çözülen kolonlar)
-                        foreach (var col in _model.Columns)
+                        // Kiriş hangi katta ise o kattaki kolonları baz al (önceden üretilmiş poligonlar)
+                        foreach (var colEntry in floorColumnPolys)
                         {
-                            int sectionId = ResolveColumnSectionId(floor.FloorNo, col.ColumnNo);
-                            int polygonSectionId = ResolvePolygonPositionSectionId(floor.FloorNo, col.ColumnNo);
-                            if (col.ColumnType == 3) { if (polygonSectionId <= 0 || !_model.PolygonColumnSectionByPositionSectionId.ContainsKey(polygonSectionId)) continue; }
-                            else if (sectionId <= 0 || !_model.ColumnDimsBySectionId.ContainsKey(sectionId)) continue;
-                            Polygon colPoly = GetColumnPolygon(floor, col, offsetX, offsetY, factory);
-                            if (colPoly == null || colPoly.IsEmpty || !beamPolyTol.Intersects(colPoly)) continue;
-                            if (!TryGetColumnCenterAtIntersection(floor, col.AxisXId, col.AxisYId, offsetX, offsetY, out Point2d colCenter)) continue;
+                            var colEnv = colEntry.env;
+                            if (colEnv.MaxX < beamEnv.MinX || colEnv.MinX > beamEnv.MaxX
+                                || colEnv.MaxY < beamEnv.MinY || colEnv.MinY > beamEnv.MaxY)
+                                continue;
+                            if (!beamPolyTol.Intersects(colEntry.poly)) continue;
+                            Point2d colCenter = colEntry.center;
                             double t = (colCenter - a0).DotProduct(axisU);
                             if (t <= len * 0.5)
                                 tMin = Math.Min(tMin, t);
@@ -12725,12 +12934,14 @@ namespace ST4PlanIdCiz
             string storyId = floor != null && !string.IsNullOrEmpty(floor.ShortName) ? floor.ShortName : (floor?.FloorNo.ToString(CultureInfo.InvariantCulture) ?? "B");
             Database db = btr.Database;
             ObjectId slabLabelStyleId = GetOrCreateYaziBeykentTextStyle(tr, db);
+            if (_kalip50DrawSlabBoundaryPolylinesOnDosemeHatti
+                && !(_kalip50ClassifyDosemeHattiTopologyLayers && _kalip50Deneme1DosemeHattiGeoms != null))
+                EnsurePlanLayer(tr, db, LayerDosemeHatti, 71, LineWeight.LineWeight030, useDashed: false);
 
             var slabRecords = new List<(SlabInfo slab, Geometry toDraw, Point2d center)>();
             var labelSlabsNoGeometry = new HashSet<int>();
-            foreach (var slab in _model.Slabs)
+            foreach (var slab in slabsOnFloor)
             {
-                if (GetSlabFloorNo(slab.SlabId) != floorNo) continue;
                 if (_kalip50ExcludeStairAdjacentAndBelowFloorSlabs && _model.StairSlabIds.Contains(slab.SlabId)) continue;
                 if (_kalip50ExcludeStairAdjacentAndBelowFloorSlabs && slab.OffsetFromFloorCm < 0
                     && stairFootprintUnionKalip50 != null && !stairFootprintUnionKalip50.IsEmpty
@@ -12843,7 +13054,6 @@ namespace ST4PlanIdCiz
                         }
                         else
                         {
-                            EnsurePlanLayer(tr, btr.Database, LayerDosemeHatti, 71, LineWeight.LineWeight030, useDashed: false);
                             DrawGeometryRingsAsPolylines(tr, btr, toDraw, LayerDosemeHatti, addHatch: false, applySmallTriangleTrim: false);
                         }
                     }
@@ -13234,10 +13444,8 @@ namespace ST4PlanIdCiz
                 blockHeight += mainToQCm + qToUstKotCm;
             double topElevM = _model.BuildingBaseKotu + (floor?.ElevationM ?? 0) + slab.OffsetFromFloorCm / 100.0;
             double bottomElevM = topElevM - thickness / 100.0;
-            string topElevStr = string.Format(CultureInfo.InvariantCulture, "{0:+0.00;-0.00;0.00}", topElevM);
-            string bottomElevStr = string.Format(CultureInfo.InvariantCulture, "{0:+0.00;-0.00;0.00}", bottomElevM);
-            if (topElevM == 0) topElevStr = "±" + topElevStr;
-            if (bottomElevM == 0) bottomElevStr = "±" + bottomElevStr;
+            string topElevStr = FormatKotElevationMeters(topElevM);
+            string bottomElevStr = FormatKotElevationMeters(bottomElevM);
             blockWidth = Math.Max(blockWidth, Math.Max(EstimateTextWidthCm(topElevStr, kotTextHeightCm), EstimateTextWidthCm(bottomElevStr, kotTextHeightCm)));
             blockHeight += kotTextHeightCm + kotArasiMesafeCm + kotTextHeightCm;
             double leftX = center.X - blockWidth / 2.0;
@@ -13439,10 +13647,8 @@ namespace ST4PlanIdCiz
 
             double topElevM = _model.BuildingBaseKotu;
             double bottomElevM = topElevM - thickness / 100.0;
-            string topElevStr = string.Format(CultureInfo.InvariantCulture, "{0:+0.00;-0.00;0.00}", topElevM);
-            string bottomElevStr = string.Format(CultureInfo.InvariantCulture, "{0:+0.00;-0.00;0.00}", bottomElevM);
-            if (topElevM == 0) topElevStr = "±" + topElevStr;
-            if (bottomElevM == 0) bottomElevStr = "±" + bottomElevStr;
+            string topElevStr = FormatKotElevationMeters(topElevM);
+            string bottomElevStr = FormatKotElevationMeters(bottomElevM);
             blockWidth = Math.Max(blockWidth, Math.Max(EstimateTextWidthCm(topElevStr, kotTextHeightCm), EstimateTextWidthCm(bottomElevStr, kotTextHeightCm)));
             double leftX = center.X - blockWidth / 2.0;
             double mainY = center.Y + blockHeight / 2.0 - labelHeightCm;
@@ -13611,10 +13817,8 @@ namespace ST4PlanIdCiz
             double ustKotAsagiKaydirCm = 10.322 * ann;
             double altKotAsagiKaydirCm = 2.322 * ann;
             double leftX = centerX - blockHalfWidthCm + kotBlockSagaKaydirCm;
-            string topElevStr = string.Format(CultureInfo.InvariantCulture, "{0:+0.00;-0.00;0.00}", topElevM);
-            string bottomElevStr = string.Format(CultureInfo.InvariantCulture, "{0:+0.00;-0.00;0.00}", bottomElevM);
-            if (topElevM == 0) topElevStr = "±" + topElevStr;
-            if (bottomElevM == 0) bottomElevStr = "±" + bottomElevStr;
+            string topElevStr = FormatKotElevationMeters(topElevM);
+            string bottomElevStr = FormatKotElevationMeters(bottomElevM);
             ObjectId textStyleId = GetOrCreateYaziBeykentTextStyle(tr, db);
             double topY = centerY + kotArasiMesafeCm * 0.5 + kotTextHeightCm * 0.5 - ustKotAsagiKaydirCm;
             double bottomY = centerY - kotArasiMesafeCm * 0.5 - kotTextHeightCm * 0.5 - altKotAsagiKaydirCm;
@@ -13907,7 +14111,8 @@ namespace ST4PlanIdCiz
             out double placedAntetOuterTopAfterStretch,
             bool scaleTwoTimes = false,
             bool useKolonAntetScaleOneHundred = false,
-            bool useKalipAntetScaleOneHundred = false)
+            bool useKalipAntetScaleOneHundred = false,
+            bool fitSheetViewHeightToContent = false)
         {
             placedAntetOuterLeftAfterStretch = targetSheetViewLeft;
             placedAntetOuterRightAfterStretch = targetSheetViewLeft + (AntetDxfSheetViewXmax - AntetDxfSheetViewXmin);
@@ -13985,13 +14190,21 @@ namespace ST4PlanIdCiz
                     StretchAntetRightBandWithoutScaling(tr, rootEntityIds, placedSheetViewRight, deltaRight);
 
                 // KOLON50: +4500 cm. KOLON100: 2× sonrası 9000 cm hedefi için germe öncesi +4500 cm.
+                // fitSheetViewHeightToContent: SheetView üstü = layoutMaxY (içerik+pay); Out üstü SheetView'ın 50 cm üstü.
                 double sheetOutAddCm = scaleTwoTimes ? (TemelAntetSheetViewOutBaslangicYukseklikCm * 0.5) : TemelAntetBaslangicYukseklikCm;
                 double stretchStepCm = scaleTwoTimes ? (TemelAntetEkStretchAdimCm * 0.5) : TemelAntetEkStretchAdimCm;
+                double placedSheetViewTopConst = 5758.942367378282;
+                double outTopAboveSheetViewTop = AntetDxfSheetViewOutYmax - placedSheetViewTopConst;
                 double targetSheetViewOutTop = placedSheetViewOutBottom + sheetOutAddCm;
                 double stretchNeedTopPreScale = layoutMaxY;
                 if (scaleTwoTimes)
                     stretchNeedTopPreScale = targetSheetViewBottom + (layoutMaxY - targetSheetViewBottom) * 0.5;
-                if (stretchNeedTopPreScale > targetSheetViewOutTop + 1e-6)
+                if (fitSheetViewHeightToContent)
+                {
+                    // layoutMaxY = SheetView iç üst (içerik üstü + pay); Out bir miktar daha yukarıda.
+                    targetSheetViewOutTop = stretchNeedTopPreScale + outTopAboveSheetViewTop;
+                }
+                else if (stretchNeedTopPreScale > targetSheetViewOutTop + 1e-6)
                 {
                     double overflow = stretchNeedTopPreScale - targetSheetViewOutTop;
                     targetSheetViewOutTop += Math.Ceiling(overflow / stretchStepCm) * stretchStepCm;
@@ -14913,8 +15126,7 @@ namespace ST4PlanIdCiz
                 hatch.ColorIndex = dtxSolidRobustColorAci;
             }
             hatch.AppendLoop(HatchLoopTypes.Outermost, new ObjectIdCollection { plId });
-            try { hatch.EvaluateHatch(true); }
-            catch { try { hatch.EvaluateHatch(false); } catch { } }
+            SafeEvaluateHatch(hatch);
 
             if (dtxSolidRobust &&
                 string.Equals(patternName, "SOLID", StringComparison.OrdinalIgnoreCase) &&
@@ -14925,9 +15137,9 @@ namespace ST4PlanIdCiz
                     hatch.SetHatchPattern(HatchPatternType.PreDefined, "ANSI31");
                     hatch.PatternScale = Math.Max(patternScale, 20.0);
                     hatch.PatternAngle = patternAngleRad;
-                    hatch.EvaluateHatch(true);
+                    SafeEvaluateHatch(hatch);
                 }
-                catch { try { hatch.EvaluateHatch(false); } catch { } }
+                catch { }
             }
 
             try { pl.Erase(); } catch { }
@@ -16670,6 +16882,10 @@ namespace ST4PlanIdCiz
         /// <summary>Kiriş/perde etiketi: bottomLeftAligned false ise Right, true ise Left; topAligned true ise üst; useMiddleCenter true ise orta merkez. layer verilmezse KIRIS ISMI.</summary>
         private void DrawBeamLabel(Transaction tr, BlockTableRecord btr, Database db, Point3d insertionPoint, string labelText, double textHeightCm, double rotationRad, string layer = null, bool bottomLeftAligned = true, bool topAligned = false, bool useMiddleCenter = false, short? colorAci = null)
         {
+            if (tr == null || btr == null || db == null) return;
+            if (!IsFinitePoint(insertionPoint) || !IsFiniteCoord(textHeightCm)
+                || textHeightCm < 0.05 || textHeightCm > 1e4)
+                return;
             if (string.IsNullOrEmpty(layer)) layer = LayerKirisYazisi;
             ObjectId textStyleId = GetOrCreateYaziBeykentTextStyle(tr, db);
             var txt = new DBText
@@ -17367,37 +17583,132 @@ namespace ST4PlanIdCiz
             return pl;
         }
 
+        private static bool IsFiniteCoord(double v) =>
+            !double.IsNaN(v) && !double.IsInfinity(v);
+
+        private static bool IsFinitePoint(Point3d p) =>
+            IsFiniteCoord(p.X) && IsFiniteCoord(p.Y) && IsFiniteCoord(p.Z);
+
+        /// <summary>NaN/Inf veya sıfır uzunluk ölçü AutoCAD fatal error üretebilir; ekleme.</summary>
+        private static bool EntityGeometryIsSafe(Entity e)
+        {
+            if (e == null) return false;
+            try
+            {
+                if (e is Line ln)
+                    return IsFinitePoint(ln.StartPoint) && IsFinitePoint(ln.EndPoint);
+                if (e is Circle c)
+                    return IsFinitePoint(c.Center) && IsFiniteCoord(c.Radius)
+                        && c.Radius > 1e-6 && c.Radius < 1e7;
+                if (e is Polyline pl)
+                {
+                    int n = pl.NumberOfVertices;
+                    if (n < 1 || n > 8000) return false;
+                    for (int i = 0; i < n; i++)
+                    {
+                        var p = pl.GetPoint2dAt(i);
+                        if (!IsFiniteCoord(p.X) || !IsFiniteCoord(p.Y)) return false;
+                        if (!IsFiniteCoord(pl.GetBulgeAt(i))) return false;
+                    }
+                    return true;
+                }
+                if (e is AlignedDimension ad)
+                {
+                    if (!IsFinitePoint(ad.XLine1Point) || !IsFinitePoint(ad.XLine2Point)
+                        || !IsFinitePoint(ad.DimLinePoint))
+                        return false;
+                    double d = ad.XLine1Point.DistanceTo(ad.XLine2Point);
+                    return d > 1e-4 && d < 1e7;
+                }
+                if (e is DBText t)
+                    return IsFinitePoint(t.Position) && IsFiniteCoord(t.Height)
+                        && t.Height > 1e-6 && t.Height < 1e5;
+                if (e is MText mt)
+                    return IsFinitePoint(mt.Location) && IsFiniteCoord(mt.TextHeight)
+                        && mt.TextHeight > 1e-6 && mt.TextHeight < 1e5;
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static void DisposeEntityQuiet(Entity e)
+        {
+            if (e == null) return;
+            try { if (!e.IsDisposed && e.ObjectId.IsNull) e.Dispose(); } catch { }
+        }
+
         private static void AppendEntity(Transaction tr, BlockTableRecord btr, Entity e)
         {
-            if (e is Autodesk.AutoCAD.DatabaseServices.Dimension dim)
-                ApplyOlcuDimPrecisionToEntity(dim);
-            btr.AppendEntity(e);
-            tr.AddNewlyCreatedDBObject(e, true);
+            if (tr == null || btr == null || e == null) return;
+            if (!EntityGeometryIsSafe(e))
+            {
+                DisposeEntityQuiet(e);
+                return;
+            }
+            try
+            {
+                if (e is Autodesk.AutoCAD.DatabaseServices.Dimension dim)
+                    ApplyOlcuDimPrecisionToEntity(dim);
+                btr.AppendEntity(e);
+                tr.AddNewlyCreatedDBObject(e, true);
+            }
+            catch
+            {
+                DisposeEntityQuiet(e);
+            }
         }
 
         /// <summary>Entity ekler ve ObjectId döndürür (tarama boundary için).</summary>
         private static ObjectId AppendEntityReturnId(Transaction tr, BlockTableRecord btr, Entity e)
         {
-            if (e is Autodesk.AutoCAD.DatabaseServices.Dimension dim)
-                ApplyOlcuDimPrecisionToEntity(dim);
-            btr.AppendEntity(e);
-            tr.AddNewlyCreatedDBObject(e, true);
-            return e.ObjectId;
+            if (tr == null || btr == null || e == null) return ObjectId.Null;
+            if (!EntityGeometryIsSafe(e))
+            {
+                DisposeEntityQuiet(e);
+                return ObjectId.Null;
+            }
+            try
+            {
+                if (e is Autodesk.AutoCAD.DatabaseServices.Dimension dim)
+                    ApplyOlcuDimPrecisionToEntity(dim);
+                btr.AppendEntity(e);
+                tr.AddNewlyCreatedDBObject(e, true);
+                return e.ObjectId;
+            }
+            catch
+            {
+                DisposeEntityQuiet(e);
+                return ObjectId.Null;
+            }
+        }
+
+        private static void SafeEvaluateHatch(Hatch hatch)
+        {
+            if (hatch == null) return;
+            try { hatch.EvaluateHatch(true); }
+            catch { try { hatch.EvaluateHatch(false); } catch { } }
         }
 
         /// <summary>Kiriş uzatma işareti: daire sınırı içine kırmızı solid dolgu (resimdeki kırmızı nokta gibi).</summary>
         private static void AppendHatchSolidRed(Transaction tr, BlockTableRecord btr, ObjectId boundaryId)
         {
-            var hatch = new Hatch();
-            btr.AppendEntity(hatch);
-            tr.AddNewlyCreatedDBObject(hatch, true);
-            hatch.SetHatchPattern(HatchPatternType.PreDefined, "SOLID");
-            hatch.Color = Color.FromColorIndex(ColorMethod.ByAci, 1);
-            hatch.Layer = "KIRIS UZATMA ISARET (BEYKENT)";
-            hatch.Associative = false;
-            var ids = new ObjectIdCollection { boundaryId };
-            hatch.AppendLoop(HatchLoopTypes.Outermost, ids);
-            hatch.EvaluateHatch(true);
+            if (tr == null || btr == null || boundaryId.IsNull || !boundaryId.IsValid) return;
+            try
+            {
+                var hatch = new Hatch();
+                btr.AppendEntity(hatch);
+                tr.AddNewlyCreatedDBObject(hatch, true);
+                hatch.SetHatchPattern(HatchPatternType.PreDefined, "SOLID");
+                hatch.Color = Color.FromColorIndex(ColorMethod.ByAci, 1);
+                hatch.Layer = "KIRIS UZATMA ISARET (BEYKENT)";
+                hatch.Associative = false;
+                hatch.AppendLoop(HatchLoopTypes.Outermost, new ObjectIdCollection { boundaryId });
+                SafeEvaluateHatch(hatch);
+            }
+            catch { }
         }
 
         /// <summary>Kapalı polyline sınırı içine SOLID tarama; renk ve katman parametre (DENEME1 DTX/DTY vb.).</summary>
@@ -17412,23 +17723,26 @@ namespace ST4PlanIdCiz
             hatch.Layer = layer;
             hatch.Associative = false;
             hatch.AppendLoop(HatchLoopTypes.Outermost, new ObjectIdCollection { boundaryId });
-            try { hatch.EvaluateHatch(true); }
-            catch { try { hatch.EvaluateHatch(false); } catch { } }
+            SafeEvaluateHatch(hatch);
         }
 
         /// <summary>Mavi işaret: daire sınırı içine mavi solid dolgu (kırmızı işarete bağlı kirişin karşı ucu; başka kiriş içinde değilse).</summary>
         private static void AppendHatchSolidBlue(Transaction tr, BlockTableRecord btr, ObjectId boundaryId)
         {
-            var hatch = new Hatch();
-            btr.AppendEntity(hatch);
-            tr.AddNewlyCreatedDBObject(hatch, true);
-            hatch.SetHatchPattern(HatchPatternType.PreDefined, "SOLID");
-            hatch.Color = Color.FromColorIndex(ColorMethod.ByAci, 5);
-            hatch.Layer = "KIRIS UZATMA ISARET MAVI (BEYKENT)";
-            hatch.Associative = false;
-            var ids = new ObjectIdCollection { boundaryId };
-            hatch.AppendLoop(HatchLoopTypes.Outermost, ids);
-            hatch.EvaluateHatch(true);
+            if (tr == null || btr == null || boundaryId.IsNull || !boundaryId.IsValid) return;
+            try
+            {
+                var hatch = new Hatch();
+                btr.AppendEntity(hatch);
+                tr.AddNewlyCreatedDBObject(hatch, true);
+                hatch.SetHatchPattern(HatchPatternType.PreDefined, "SOLID");
+                hatch.Color = Color.FromColorIndex(ColorMethod.ByAci, 5);
+                hatch.Layer = "KIRIS UZATMA ISARET MAVI (BEYKENT)";
+                hatch.Associative = false;
+                hatch.AppendLoop(HatchLoopTypes.Outermost, new ObjectIdCollection { boundaryId });
+                SafeEvaluateHatch(hatch);
+            }
+            catch { }
         }
 
         /// <summary>
@@ -17437,45 +17751,57 @@ namespace ST4PlanIdCiz
         /// </summary>
         private static void AppendHatchAnsi33(Transaction tr, BlockTableRecord btr, ObjectId boundaryId, double patternAngleRad = 0, double patternScale = 1.0)
         {
-            var hatch = new Hatch();
-            btr.AppendEntity(hatch);
-            tr.AddNewlyCreatedDBObject(hatch, true);
-            hatch.SetHatchPattern(HatchPatternType.PreDefined, "ANSI33");
-            hatch.PatternAngle = 0; // Tüm taramalarda sabit açı
-            hatch.PatternScale = patternScale;
-            hatch.Layer = LayerTarama;
-            hatch.Associative = false;
-            var ids = new ObjectIdCollection { boundaryId };
-            hatch.AppendLoop(HatchLoopTypes.Outermost, ids);
-            hatch.EvaluateHatch(true);
+            if (tr == null || btr == null || boundaryId.IsNull || !boundaryId.IsValid) return;
+            try
+            {
+                var hatch = new Hatch();
+                btr.AppendEntity(hatch);
+                tr.AddNewlyCreatedDBObject(hatch, true);
+                hatch.SetHatchPattern(HatchPatternType.PreDefined, "ANSI33");
+                hatch.PatternAngle = 0;
+                hatch.PatternScale = patternScale;
+                hatch.Layer = LayerTarama;
+                hatch.Associative = false;
+                hatch.AppendLoop(HatchLoopTypes.Outermost, new ObjectIdCollection { boundaryId });
+                SafeEvaluateHatch(hatch);
+            }
+            catch { }
         }
 
         /// <summary>Önceden tanımlı desen (ör. grobeton AR-CONC); tarama ayrı katmanda (genelde <see cref="LayerTarama"/>).</summary>
         private static void AppendHatchPredefined(Transaction tr, BlockTableRecord btr, ObjectId boundaryId, string patternName, double patternScale, double patternAngleRad, string hatchLayer, bool associativeHatch = false)
         {
-            var hatch = new Hatch();
-            btr.AppendEntity(hatch);
-            tr.AddNewlyCreatedDBObject(hatch, true);
-            hatch.SetHatchPattern(HatchPatternType.PreDefined, patternName);
-            hatch.PatternScale = patternScale;
-            hatch.PatternAngle = patternAngleRad;
-            hatch.Layer = hatchLayer;
-            hatch.Associative = associativeHatch;
-            var ids = new ObjectIdCollection { boundaryId };
-            hatch.AppendLoop(HatchLoopTypes.Outermost, ids);
-            try { hatch.EvaluateHatch(true); }
-            catch { try { hatch.EvaluateHatch(false); } catch { } }
+            if (tr == null || btr == null || boundaryId.IsNull || !boundaryId.IsValid
+                || string.IsNullOrEmpty(patternName) || string.IsNullOrEmpty(hatchLayer))
+                return;
+            try
+            {
+                var hatch = new Hatch();
+                btr.AppendEntity(hatch);
+                tr.AddNewlyCreatedDBObject(hatch, true);
+                hatch.SetHatchPattern(HatchPatternType.PreDefined, patternName);
+                hatch.PatternScale = patternScale;
+                hatch.PatternAngle = patternAngleRad;
+                hatch.Layer = hatchLayer;
+                hatch.Associative = associativeHatch;
+                hatch.AppendLoop(HatchLoopTypes.Outermost, new ObjectIdCollection { boundaryId });
+                SafeEvaluateHatch(hatch);
+            }
+            catch { }
         }
 
         private List<BeamInfo> MergeSameIdBeamsOnFloor(int floorNo)
         {
+            if (_mergedBeamsByFloorNo == null)
+                _mergedBeamsByFloorNo = new Dictionary<int, List<BeamInfo>>();
+            if (_mergedBeamsByFloorNo.TryGetValue(floorNo, out var cachedMerged) && cachedMerged != null)
+                return cachedMerged;
+
             var grouped = new Dictionary<string, List<(double S1, double S2, int StartAxis, int EndAxis, BeamInfo Beam)>>();
             var passthrough = new List<BeamInfo>();
 
-            foreach (var beam in _model.Beams)
+            foreach (var beam in GetRawBeamsOnFloor(floorNo))
             {
-                int beamFloor = GetBeamFloorNo(beam.BeamId);
-                if (beamFloor != floorNo) continue;
                 if (!_axisService.TryIntersect(beam.FixedAxisId, beam.StartAxisId, out Point2d p1) ||
                     !_axisService.TryIntersect(beam.FixedAxisId, beam.EndAxisId, out Point2d p2))
                 {
@@ -17571,6 +17897,7 @@ namespace ST4PlanIdCiz
             }
 
             merged.AddRange(passthrough);
+            _mergedBeamsByFloorNo[floorNo] = merged;
             return merged;
         }
     }

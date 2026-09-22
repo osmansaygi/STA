@@ -46,6 +46,20 @@ namespace ST4PlanIdCiz
             try
             {
                 string[] lines = WindowsAnsiEncodings.ReadAllLines(gprFilePath);
+                TryReadMaterialsFromLines(lines, out fckMPa, out fykMPa);
+            }
+            catch { }
+            if (fckMPa < 16.0) fckMPa = 30.0;
+            if (fykMPa < 200.0) fykMPa = 420.0;
+        }
+
+        public static void TryReadMaterialsFromLines(string[] lines, out double fckMPa, out double fykMPa)
+        {
+            fckMPa = 30.0;
+            fykMPa = 420.0;
+            if (lines == null || lines.Length == 0) return;
+            try
+            {
                 int n = Math.Min(lines.Length, 1200);
                 double kolonFck = 0, kolonFyk = 0;
                 for (int i = 0; i < n; i++)
@@ -93,6 +107,18 @@ namespace ST4PlanIdCiz
             catch (Exception ex)
             {
                 error = "GPR okunamadi: " + ex.Message;
+                return false;
+            }
+            return TryParseLines(lines, out map, out error);
+        }
+
+        public static bool TryParseLines(string[] lines, out Dictionary<int, GprPerdePanelDonati> map, out string error)
+        {
+            map = null;
+            error = null;
+            if (lines == null || lines.Length == 0)
+            {
+                error = "GPR yok.";
                 return false;
             }
             var dict = ParseLines(lines);

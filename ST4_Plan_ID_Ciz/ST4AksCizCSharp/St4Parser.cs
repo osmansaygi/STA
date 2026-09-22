@@ -807,10 +807,20 @@ namespace ST4AksCizCSharp
                     floorNo = parsed;
                 else
                     floorNo = (i - 2) / 3;
-                if (floorNo <= 0) continue;
 
                 double elev = 0.0;
                 if (p.Count > 0) St4Text.TryParseDouble(p[0], out elev);
+                // FloorNo 0 = Su basman: Floors'a eklenmez (indeks kaymasın); kot ayrı saklanır.
+                if (floorNo <= 0)
+                {
+                    if (floorNo == 0)
+                    {
+                        model.HasSubasmanStory = true;
+                        model.SubasmanElevationM = elev;
+                    }
+                    continue;
+                }
+
                 string name = storyLines[i - 2].Trim();
                 string shortName = storyLines[i - 1].Trim();
                 model.Floors.Add(new FloorInfo(floorNo, name, shortName, elev));

@@ -1263,6 +1263,21 @@ namespace ST4PlanIdCiz
             _kalip50FloorNoToModelIndex = null;
             _kalip50BinaSemaKotZsAsc = null;
             _kalip50BinaSemaKotCrowdedShiftLower = null;
+            ClearFloorGeometrySessionCaches();
+        }
+
+        /// <summary>Kat kiriş/kolon ekstra veri önbelleklerini temizle (komut başı / KALIP oturum sonu).</summary>
+        private void ClearFloorGeometrySessionCaches()
+        {
+            _columnTableExtraByFloorNo = null;
+            _mergedBeamsByFloorNo = null;
+            _rawBeamsByFloorNo = null;
+            _columnFoundationHeightsCache = null;
+            _columnFoundationHeightsFloorNo = int.MinValue;
+            _temelFootprintCache = null;
+            _hatilFootprintCache = null;
+            _temelFootprintCacheFloorNo = int.MinValue;
+            _columnPolyTableCache = null;
         }
 
         private void EnsureKalip50FloorOrderCaches()
@@ -2501,12 +2516,12 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>Kesit kotu: <see cref="DBText"/> (MText değil); plan kotlarıyla aynı LEFT + BOTTOM + <c>AdjustAlignment(db)</c>.</summary>
-        private static void AppendKesitKotElevationDbText(Transaction tr, BlockTableRecord btr, Database db, ObjectId textStyleId, string text, double x, double y, double rotationRad)
+        private static ObjectId AppendKesitKotElevationDbText(Transaction tr, BlockTableRecord btr, Database db, ObjectId textStyleId, string text, double x, double y, double rotationRad)
         {
-            AppendKesitKotElevationDbText(tr, btr, db, textStyleId, text, x, y, rotationRad, KesitKotTextHeightCm);
+            return AppendKesitKotElevationDbText(tr, btr, db, textStyleId, text, x, y, rotationRad, KesitKotTextHeightCm);
         }
 
-        private static void AppendKesitKotElevationDbText(Transaction tr, BlockTableRecord btr, Database db, ObjectId textStyleId, string text, double x, double y, double rotationRad, double textHeightCm)
+        private static ObjectId AppendKesitKotElevationDbText(Transaction tr, BlockTableRecord btr, Database db, ObjectId textStyleId, string text, double x, double y, double rotationRad, double textHeightCm)
         {
             var txt = new DBText();
             txt.SetDatabaseDefaults();
@@ -2521,6 +2536,7 @@ namespace ST4PlanIdCiz
             txt.Rotation = rotationRad;
             try { txt.AdjustAlignment(db); } catch { /* sürüm farkı */ }
             AppendEntity(tr, btr, txt);
+            return txt.ObjectId;
         }
 
         /// <summary>Kesit şemasında kotlar: referans üçgen + metin (<see cref="LayerKotCizgisi"/>, <see cref="LayerKotYazi"/>).</summary>
@@ -2643,13 +2659,18 @@ namespace ST4PlanIdCiz
             return -1;
         }
 
+        /// <summary>Kot yazısı (m): 0.00 ise başına ± (zaten varsa eklenmez); artı/eksi iki ondalık.</summary>
+        private static string FormatKotElevationMeters(double m)
+        {
+            double rounded = Math.Round(m, 2, MidpointRounding.AwayFromZero);
+            if (Math.Abs(rounded) < 0.005)
+                return "\u00B10.00";
+            return string.Format(CultureInfo.InvariantCulture, "{0:+0.00;-0.00}", rounded);
+        }
+
         private static string FormatKesitKotElevationString(double zCm)
         {
-            double m = zCm / 100.0;
-            string s = string.Format(CultureInfo.InvariantCulture, "{0:+0.00;-0.00;0.00}", m);
-            if (Math.Abs(m) < 1e-9)
-                s = "±" + s.TrimStart('+');
-            return KolonDonatiTableDrawer.NormalizeDiameterSymbol(s);
+            return KolonDonatiTableDrawer.NormalizeDiameterSymbol(FormatKotElevationMeters(zCm / 100.0));
         }
 
         private static void AppendClosedRectanglePolyline(Transaction tr, BlockTableRecord btr, double xLo, double yLo, double xHi, double yHi, string layer, bool addGrobetonArConcHatch = false)

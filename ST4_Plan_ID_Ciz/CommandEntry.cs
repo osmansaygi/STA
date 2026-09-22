@@ -86,7 +86,7 @@ namespace ST4PlanIdCiz
         private static void FinishStaDrawing(Document doc)
         {
             if (doc == null) return;
-            PurgeStaUnusedLayers(doc);
+            // Katman purge komut bitiminde AutoCAD fatal error üretebiliyor; ST4KATMANTEMIZLE ile elle.
             AcadDocumentViewUtil.ZoomExtentsWithoutNestedCommand(doc);
         }
 
@@ -129,6 +129,13 @@ namespace ST4PlanIdCiz
             ed.WriteMessage("\n{0} hata: {1}", commandTag, e.Message);
             if (e.InnerException != null)
                 ed.WriteMessage("  Inner: {0}", e.InnerException.Message);
+        }
+
+        /// <summary>STA komut paletini yeniden açar.</summary>
+        [CommandMethod("STAPANEL")]
+        public void StaPanel()
+        {
+            CommandPaletteManager.Show();
         }
 
         /// <summary>Aktif çizimde hiç nesne kullanmayan katmanları siler (0 / Defpoints / güncel katman / xref hariç). Herhangi bir DWG.</summary>
@@ -738,6 +745,139 @@ namespace ST4PlanIdCiz
             }
         }
 
+        /// <summary>Kolon düşey açılımı 1:25: 1:50 çizimin 2× scale hali; yazılar yarı, ölçüler 1:50 yazı boyunda.</summary>
+        [CommandMethod("KOLONDUSEY25")]
+        public void KolonDusey25()
+        {
+            var doc = Application.DocumentManager.MdiActiveDocument;
+            if (doc == null) return;
+            ApplyStaDefaultDrawingDisplaySettings(doc);
+
+            var ed = doc.Editor;
+            var db = doc.Database;
+
+            var st4Opts = new PromptOpenFileOptions("\nKOLONDUSEY25 icin ST4 Dosyasi Secin")
+            {
+                Filter = "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*"
+            };
+            var fileRes = ed.GetFileNameForOpen(st4Opts);
+            if (fileRes.Status != PromptStatus.OK) return;
+            string st4Path = fileRes.StringResult;
+
+            var insRes = ed.GetPoint(new PromptPointOptions("\nKOLONDUSEY25 yerlestirme noktasi (sol-alt): ") { AllowNone = false });
+            if (insRes.Status != PromptStatus.OK) return;
+
+            try
+            {
+                ConfigureNtsNextGenOverlay();
+                var parser = new St4Parser();
+                var model = parser.Parse(st4Path);
+                var planMgr = new PlanIdDrawingManager(model);
+                using (var tr = db.TransactionManager.StartTransaction())
+                {
+                    var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
+                    var btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
+                    bool ok = planMgr.DrawKolonDuseyFromSt4(insRes.Value, db, ed, tr, btr, st4Path, olcek25: true);
+                    if (ok)
+                        tr.Commit();
+                }
+                FinishStaDrawing(doc);
+            }
+            catch (System.Exception ex)
+            {
+                WriteStaCommandError(ed, "KOLONDUSEY25", ex);
+            }
+        }
+
+        /// <summary>KOLONDUSEY2: 1:25; her kat (veya benzer kat grubu) ayrı açılım üst üste, ayrı antet.</summary>
+        [CommandMethod("KOLONDUSEY2")]
+        public void KolonDusey2()
+        {
+            var doc = Application.DocumentManager.MdiActiveDocument;
+            if (doc == null) return;
+            ApplyStaDefaultDrawingDisplaySettings(doc);
+
+            var ed = doc.Editor;
+            var db = doc.Database;
+
+            var st4Opts = new PromptOpenFileOptions("\nKOLONDUSEY2 icin ST4 Dosyasi Secin")
+            {
+                Filter = "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*"
+            };
+            var fileRes = ed.GetFileNameForOpen(st4Opts);
+            if (fileRes.Status != PromptStatus.OK) return;
+            string st4Path = fileRes.StringResult;
+
+            var insRes = ed.GetPoint(new PromptPointOptions("\nKOLONDUSEY2 yerlestirme noktasi (sol-alt): ") { AllowNone = false });
+            if (insRes.Status != PromptStatus.OK) return;
+
+            try
+            {
+                ConfigureNtsNextGenOverlay();
+                var parser = new St4Parser();
+                var model = parser.Parse(st4Path);
+                var planMgr = new PlanIdDrawingManager(model);
+                using (var tr = db.TransactionManager.StartTransaction())
+                {
+                    var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
+                    var btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
+                    bool ok = planMgr.DrawKolonDuseyFromSt4(insRes.Value, db, ed, tr, btr, st4Path, olcek25: true, katKatCiz: true);
+                    if (ok)
+                        tr.Commit();
+                }
+                FinishStaDrawing(doc);
+            }
+            catch (System.Exception ex)
+            {
+                WriteStaCommandError(ed, "KOLONDUSEY2", ex);
+            }
+        }
+
+        /// <summary>Kapama perdesi (GPR panel) düşey açılım; KOLONDUSEY ile aynı antet.</summary>
+        [CommandMethod("KAPAMADETAY")]
+        public void KapamaDetay()
+        {
+            var doc = Application.DocumentManager.MdiActiveDocument;
+            if (doc == null) return;
+            ApplyStaDefaultDrawingDisplaySettings(doc);
+
+            var ed = doc.Editor;
+            var db = doc.Database;
+
+            var st4Opts = new PromptOpenFileOptions("\nKAPAMADETAY icin ST4 Dosyasi Secin")
+            {
+                Filter = "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*"
+            };
+            var fileRes = ed.GetFileNameForOpen(st4Opts);
+            if (fileRes.Status != PromptStatus.OK) return;
+            string st4Path = fileRes.StringResult;
+
+            var insRes = ed.GetPoint(new PromptPointOptions(
+                "\nKAPAMADETAY yerlesim noktasi (SheetViewOut sol-altin 50 cm solu): ") { AllowNone = false });
+            if (insRes.Status != PromptStatus.OK) return;
+
+            try
+            {
+                ConfigureNtsNextGenOverlay();
+                var parser = new St4Parser();
+                var model = parser.Parse(st4Path);
+                var planMgr = new PlanIdDrawingManager(model);
+                using (var tr = db.TransactionManager.StartTransaction())
+                {
+                    var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
+                    var btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
+                    bool ok = planMgr.DrawKapamaDetayFromSt4(insRes.Value, db, ed, tr, btr, st4Path);
+                    if (ok)
+                        tr.Commit();
+                }
+                FinishStaDrawing(doc);
+            }
+            catch (System.Exception ex)
+            {
+                WriteStaCommandError(ed, "KAPAMADETAY", ex);
+            }
+        }
+
         /// <summary>Aynı antette 4 temel planı (ölçü / ana donatı / alt ilave / üst ilave). STA TEMEL_PDF X-Y alt ve üst.</summary>
         [CommandMethod("TEMELDONATI")]
         public void TemelDonati()
@@ -818,19 +958,25 @@ namespace ST4PlanIdCiz
                 TemelIlaveDonatiFromPdf.Draw(pdfPath, yon, copy.OffsetX, copy.OffsetY, copy.Envelope, db, ed, tr, btr);
                 var staBoxes = TemelIlaveDonatiFromPdf.CollectCadBoxes(pdfPath, yon, copy.OffsetX, copy.OffsetY);
                 string heatLayer = TemelIlaveDonatiFromPdf.HeatLayer(yon);
+                var heatColor = TemelIlaveDonatiFromPdf.HeatColor(yon);
+                int cizilen = 0;
                 using (Bitmap heat = TemelIlaveDonatiFromPdf.TryLoadHeatBitmap(pdfPath, yon, ed))
                 {
                     if (heat != null)
-                        TemelIlaveDonatiFromPng.DrawBitmap(heat, copy.Envelope, copy.TemelGeom, db, ed, tr, btr, drawStaBoxes: false, staBoxes, heatLayer, TemelIlaveDonatiFromPdf.HeatColor(yon));
+                        cizilen = TemelIlaveDonatiFromPng.DrawBitmap(heat, copy.Envelope, copy.TemelGeom, db, ed, tr, btr, drawStaBoxes: false, staBoxes, heatLayer, heatColor);
                     else
                     {
                         string heatPng = TemelIlaveDonatiFromPdf.FindHeatPng(pdfPath, yon);
                         if (!string.IsNullOrEmpty(heatPng))
-                            TemelIlaveDonatiFromPng.Draw(heatPng, copy.Envelope, copy.TemelGeom, db, ed, tr, btr, drawStaBoxes: false, staBoxes, heatLayer, TemelIlaveDonatiFromPdf.HeatColor(yon));
+                            cizilen = TemelIlaveDonatiFromPng.Draw(heatPng, copy.Envelope, copy.TemelGeom, db, ed, tr, btr, drawStaBoxes: false, staBoxes, heatLayer, heatColor);
                         else
                             ed.WriteMessage("\nTEMELDONATI: {0} isi grafigi alinamadi.", yon);
                     }
                 }
+                // İlave donatı kutusu olan her bölgede ilave bölgesi de bulunmak zorundadır:
+                // grafik hiç okunamadıysa bölge doğrudan STA kutularından çizilir.
+                if (cizilen <= 0 && staBoxes.Count > 0)
+                    TemelIlaveDonatiFromPng.DrawStaBoxesAsHeat(staBoxes, copy.TemelGeom, db, ed, tr, btr, heatLayer, heatColor);
             }
         }
 

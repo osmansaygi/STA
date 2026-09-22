@@ -1460,8 +1460,9 @@ namespace ST4PlanIdCiz
         {
             double m = absM;
             string s = string.Format(CultureInfo.InvariantCulture, "{0:+0.00;-0.00;0.00}", m);
-            if (Math.Abs(m) < 1e-9)
-                s = "±" + s.TrimStart('+');
+            double rounded = Math.Round(m, 2, MidpointRounding.AwayFromZero);
+            if (Math.Abs(rounded) < 0.005)
+                s = "\u00B10.00";
             return KolonDonatiTableDrawer.NormalizeDiameterSymbol(s);
         }
 

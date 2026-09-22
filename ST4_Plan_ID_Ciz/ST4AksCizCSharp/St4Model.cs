@@ -52,6 +52,11 @@ namespace ST4AksCizCSharp
         /// <summary>Bina taban kotu (m). Dosya 10. satır 1. sütun (örn. -3.31).</summary>
         public double BuildingBaseKotu { get; set; }
 
+        /// <summary>Story'de Su basman (FloorNo 0) var mı. Floors listesine eklenmez.</summary>
+        public bool HasSubasmanStory { get; set; }
+        /// <summary>Subasman kat elevasyonu (m, bina tabanına göre). Örn. 1.2 → abs = BuildingBase + 1.2.</summary>
+        public double SubasmanElevationM { get; set; }
+
         /// <summary>GPR "YAPI AKS BİLGİLERİ" tablosu: X aks satır sırası (1…) → özel etiket (yalnızca isim doluysa).</summary>
         public Dictionary<int, string> GprAxisXLabelByRow { get; } = new Dictionary<int, string>();
         /// <summary>GPR: Y aks satır sırası (1…) → özel etiket.</summary>

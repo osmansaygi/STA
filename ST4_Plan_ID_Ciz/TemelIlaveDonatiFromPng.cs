@@ -96,7 +96,7 @@ namespace ST4PlanIdCiz
                 if (!TryBuildExtraRebarMask(bmp, temelWorld, temelGeom, db, ed, tr, btr, staCadBoxes, out mask, out cols, out rows, out boxCount, out Envelope mappedWorld, out boxes, out pngMinX, out pngMinY, out pngMaxX, out pngMaxY))
                 {
                     ed?.WriteMessage("\nTEMELDONATI: Ilave donati renk gecisi bulunamadi (mavi mesh + kutu ici isi haritasi beklenir).");
-                    return 0;
+                    return DrawStaBoxesAsHeat(staCadBoxes, temelGeom, db, ed, tr, btr, heatLayer, heatColor);
                 }
                 temelWorld = mappedWorld ?? temelWorld;
                 EnsureLayer(tr, db, LayerName, AcColor.FromColorIndex(ColorMethod.ByAci, 1), LineWeight.LineWeight025);
@@ -109,16 +109,11 @@ namespace ST4PlanIdCiz
                 }
 
                 Geometry union = BuildSmoothedUnion(mask, cols, rows, temelWorld);
+                union = ClipToTemel(union, temelGeom);
+                union = EnsureStaBoxCoverage(union, staCadBoxes, temelGeom, out int kutudanEklenen);
                 if (union == null || union.IsEmpty)
                 {
                     ed?.WriteMessage("\nTEMELDONATI: Ilave donati bolgesi cikarilamadi.");
-                    return 0;
-                }
-
-                union = ClipToTemel(union, temelGeom);
-                if (union == null || union.IsEmpty)
-                {
-                    ed?.WriteMessage("\nTEMELDONATI: Temel siniri disinda kalan kisim trimlenince bolge kalmadi.");
                     return 0;
                 }
 
@@ -128,6 +123,10 @@ namespace ST4PlanIdCiz
                 ed?.WriteMessage(
                     "\nTEMELDONATI: {0} polyline (renk gecisi, temel icine kirpildi). Mesh yok sayildi.{1} Katman {2}.",
                     n, drawStaBoxes ? " STA kutusu: " + boxCount + "." : "", ringLayer);
+                if (kutudanEklenen > 0)
+                    ed?.WriteMessage(
+                        "\nTEMELDONATI: {0} STA kutusunda renk gecisi yoktu, ilave kutu sinirindan tamamlandi.",
+                        kutudanEklenen);
                 return n;
             }
             catch (System.Exception ex)
@@ -135,6 +134,77 @@ namespace ST4PlanIdCiz
                 ed?.WriteMessage("\nTEMELDONATI overlay hata: {0}", ex.Message);
                 return 0;
             }
+        }
+
+        /// <summary>
+        /// STA tablosundaki her ilave donatı kutusunda mutlaka ilave bölgesi olmalıdır.
+        /// Isı haritasından çıkan kontur bir kutuyu hiç kesmiyorsa (renk geçişi soluk kalmış,
+        /// grafik okunamamış vb.) o kutu temel içine kırpılıp konturun üzerine eklenir.
+        /// </summary>
+        public static Geometry EnsureStaBoxCoverage(
+            Geometry heat, List<StaCadBox> staCad, Geometry temelGeom, out int eklenen)
+        {
+            eklenen = 0;
+            if (staCad == null || staCad.Count == 0) return heat;
+            GeometryFactory gf = heat != null ? heat.Factory : new GeometryFactory();
+            var parcalar = new List<Geometry>();
+            foreach (var b in staCad)
+            {
+                if (b.MaxX - b.MinX < 8 || b.MaxY - b.MinY < 8) continue;
+                Geometry kutu;
+                try
+                {
+                    kutu = gf.CreatePolygon(gf.CreateLinearRing(new[]
+                    {
+                        new Coordinate(b.MinX, b.MinY),
+                        new Coordinate(b.MaxX, b.MinY),
+                        new Coordinate(b.MaxX, b.MaxY),
+                        new Coordinate(b.MinX, b.MaxY),
+                        new Coordinate(b.MinX, b.MinY)
+                    }));
+                }
+                catch { continue; }
+                kutu = ClipToTemel(kutu, temelGeom);
+                if (kutu == null || kutu.IsEmpty || kutu.Area < 80) continue;
+                if (heat != null && !heat.IsEmpty)
+                {
+                    double ortak;
+                    try { ortak = heat.Intersection(kutu).Area; }
+                    catch { ortak = heat.Intersects(kutu) ? kutu.Area : 0.0; }
+                    if (ortak > 0.02 * kutu.Area) continue;
+                }
+                parcalar.Add(kutu);
+                eklenen++;
+            }
+            if (parcalar.Count == 0) return heat;
+            if (heat != null && !heat.IsEmpty) parcalar.Add(heat);
+            Geometry birlesik;
+            try { birlesik = CascadedPolygonUnion.Union(parcalar); }
+            catch { birlesik = gf.BuildGeometry(parcalar); }
+            try { birlesik = birlesik.Buffer(0); } catch { }
+            return birlesik ?? heat;
+        }
+
+        /// <summary>Isı grafiği hiç okunamadığında: ilave bölgesi STA kutularından çizilir.</summary>
+        public static int DrawStaBoxesAsHeat(
+            List<StaCadBox> staCad,
+            Geometry temelGeom,
+            Database db,
+            Editor ed,
+            Transaction tr,
+            BlockTableRecord btr,
+            string heatLayer = null,
+            AcColor heatColor = null)
+        {
+            Geometry g = EnsureStaBoxCoverage(null, staCad, temelGeom, out int eklenen);
+            if (g == null || g.IsEmpty) return 0;
+            string layer = string.IsNullOrEmpty(heatLayer) ? LayerName : heatLayer;
+            EnsureLayer(tr, db, layer, heatColor ?? AcColor.FromRgb(199, 92, 110), LineWeight.LineWeight025);
+            int n = DrawRings(tr, btr, g, layer);
+            ed?.WriteMessage(
+                "\nTEMELDONATI: isi grafigi okunamadi, {0} STA kutusu ilave bolgesi olarak cizildi ({1}).",
+                eklenen, layer);
+            return n;
         }
 
         private static Geometry ClipToTemel(Geometry extra, Geometry temel)
@@ -207,17 +277,21 @@ namespace ST4PlanIdCiz
                 return 0;
 
             Geometry heat = TraceHeatAffine(bmp, minX, minY, maxX, maxY, a, b, c0, d);
+            heat = ClipToTemel(heat, temelGeom);
+            heat = EnsureStaBoxCoverage(heat, staCad, temelGeom, out int kutudanEklenen);
             if (heat == null || heat.IsEmpty)
             {
                 ed?.WriteMessage("\nTEMELDONATI: kutu kilidi var ama renk konturu cikmadi.");
                 return 0;
             }
-            heat = ClipToTemel(heat, temelGeom);
-            if (heat == null || heat.IsEmpty) return 0;
             if (string.IsNullOrEmpty(heatLayer)) heatLayer = LayerName;
             EnsureLayer(tr, db, heatLayer, heatColor ?? AcColor.FromRgb(199, 92, 110), LineWeight.LineWeight025);
             int n = DrawRings(tr, btr, heat, heatLayer);
-            ed?.WriteMessage("\nTEMELDONATI: {0} isi konturu (piksel iz + STA kutu kilidi). Katman {1}.", n, LayerName);
+            ed?.WriteMessage("\nTEMELDONATI: {0} isi konturu (piksel iz + STA kutu kilidi). Katman {1}.", n, heatLayer);
+            if (kutudanEklenen > 0)
+                ed?.WriteMessage(
+                    "\nTEMELDONATI: {0} STA kutusunda renk gecisi yoktu, ilave kutu sinirindan tamamlandi.",
+                    kutudanEklenen);
             return n;
         }
 
