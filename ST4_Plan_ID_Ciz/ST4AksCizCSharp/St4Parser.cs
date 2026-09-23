@@ -304,15 +304,18 @@ namespace ST4AksCizCSharp
                         slabId > 0)
                     {
                         double thicknessCm = 15.0;
+                        double deadLoadKNm2 = 0.0;
                         double liveLoadKNm2 = 0.0;
                         double offsetFromFloorCm = 0.0;
                         if (p.Count > 1) St4Text.TryParseDouble(p[1], out thicknessCm);
+                        if (p.Count > 2 && St4Text.TryParseDouble(p[2], out double gRaw)) deadLoadKNm2 = gRaw * 10.0;
                         if (p.Count > 3 && St4Text.TryParseDouble(p[3], out double qRaw)) liveLoadKNm2 = qRaw * 10.0;
                         if (p.Count > 15 && St4Text.TryParseDouble(p[15], out double offCm)) offsetFromFloorCm = offCm;
                         model.Slabs.Add(new SlabInfo
                         {
                             SlabId = slabId,
                             ThicknessCm = thicknessCm,
+                            DeadLoadKNm2 = deadLoadKNm2,
                             LiveLoadKNm2 = liveLoadKNm2,
                             OffsetFromFloorCm = offsetFromFloorCm,
                             Axis1 = a1,

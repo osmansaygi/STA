@@ -1,0 +1,13 @@
+---
+description: Yazı konumu = yazı kutusu (GeometricExtents), insertion noktası değil
+alwaysApply: true
+---
+
+# Yazı konumu = yazı kutusu
+
+Kullanıcı “yazı”, “etiket”, “5 cm sola/yukarı” dediğinde referans **DBText insertion/AlignmentPoint değil**, AutoCAD **yazı kutusu** (`GeometricExtents`) kenarıdır.
+
+- **Sola/sağa:** kutunun donatıya/çizgiye bakan kenarı (ör. düşey yazıda `MaxX` = çizgi − boşluk).
+- **Yukarı/aşağı:** kutunun alt veya üst kenarı (`MinY` / `MaxY`), yazının orta noktası değil.
+- Yerleştirdikten sonra extents alıp `TransformBy` ile kutuyu hedefe oturt; hizalama modu (orta/sol-alt) kutu kenarını değiştiriyorsa insertion’ı tahmin etme.
+- Kullanıcı “yazı kutusu” demese bile bundan sonra yazı mesafeleri bu kuraldadır.

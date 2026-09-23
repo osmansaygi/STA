@@ -165,20 +165,16 @@ namespace ST4PlanIdCiz
             var ed = doc.Editor;
             var db = doc.Database;
 
-            var opts = new PromptOpenFileOptions("\nSTA4CAD ST4 Dosyasi Secin")
-            {
-                Filter = "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*"
-            };
-
-            var fileRes = ed.GetFileNameForOpen(opts);
-            if (fileRes.Status != PromptStatus.OK) return;
+            if (!RememberedFilePrompt.TryPrompt(ed, "\nSTA4CAD ST4 Dosyasi Secin",
+                "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
+                return;
 
             try
             {
                 ConfigureNtsNextGenOverlay();
                 var parser = new St4Parser();
-                var model = parser.Parse(fileRes.StringResult);
-                GprYapiAksLabels.TryMergeFromGprBesideSt4(fileRes.StringResult, model);
+                var model = parser.Parse(st4Path);
+                GprYapiAksLabels.TryMergeFromGprBesideSt4(st4Path, model);
                 WriteGprAxisSummary(ed, model);
                 var manager = new PlanIdDrawingManager(model);
                 manager.Draw(db, ed);
@@ -242,15 +238,9 @@ namespace ST4PlanIdCiz
             var ed = doc.Editor;
             var db = doc.Database;
 
-            var opts = new PromptOpenFileOptions("\nKolon donati tablosu icin ST4 Dosyasi Secin")
-            {
-                Filter = "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*"
-            };
-
-            var fileRes = ed.GetFileNameForOpen(opts);
-            if (fileRes.Status != PromptStatus.OK) return;
-
-            string st4Path = fileRes.StringResult;
+            if (!RememberedFilePrompt.TryPrompt(ed, "\nKolon donati tablosu icin ST4 Dosyasi Secin",
+                "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
+                return;
             string dir = Path.GetDirectoryName(st4Path);
             string baseName = Path.GetFileNameWithoutExtension(st4Path);
             string gprPath = Path.Combine(dir, baseName + ".GPR");
@@ -263,13 +253,11 @@ namespace ST4PlanIdCiz
                 dataPath = prnPath;
             else
             {
-                var dataOpts = new PromptOpenFileOptions("\nGPR/PRN bulunamadi. Kolon donati verisi (GPR veya PRN) dosyasini secin")
-                {
-                    Filter = "GPR/PRN (*.gpr;*.prn)|*.gpr;*.prn|Tum Dosyalar (*.*)|*.*"
-                };
-                var dataRes = ed.GetFileNameForOpen(dataOpts);
-                if (dataRes.Status != PromptStatus.OK) return;
-                dataPath = dataRes.StringResult;
+                if (!RememberedFilePrompt.TryPrompt(ed,
+                    "\nGPR/PRN bulunamadi. Kolon donati verisi (GPR veya PRN) dosyasini secin",
+                    "GPR/PRN (*.gpr;*.prn)|*.gpr;*.prn|Tum Dosyalar (*.*)|*.*",
+                    RememberedFilePrompt.KindGpr, out dataPath, fallbackInitialDirectory: dir))
+                    return;
             }
 
             St4Model model;
@@ -351,18 +339,15 @@ namespace ST4PlanIdCiz
             var ed = doc.Editor;
             var db = doc.Database;
 
-            var opts = new PromptOpenFileOptions("\nMETRAJ: KSF keşif dosyasi secin")
-            {
-                Filter = "KSF Dosyalari (*.ksf)|*.ksf|Tum Dosyalar (*.*)|*.*"
-            };
-            var fileRes = ed.GetFileNameForOpen(opts);
-            if (fileRes.Status != PromptStatus.OK) return;
+            if (!RememberedFilePrompt.TryPrompt(ed, "\nMETRAJ: KSF keşif dosyasi secin",
+                "KSF Dosyalari (*.ksf)|*.ksf|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindKsf, out string ksfPath))
+                return;
 
             KsfDocument ksf;
             try
             {
-                byte[] bytes = File.ReadAllBytes(fileRes.StringResult);
-                ksf = KsfParser.Parse(bytes, Path.GetFileName(fileRes.StringResult));
+                byte[] bytes = File.ReadAllBytes(ksfPath);
+                ksf = KsfParser.Parse(bytes, Path.GetFileName(ksfPath));
             }
             catch (System.Exception ex)
             {
@@ -414,19 +399,16 @@ namespace ST4PlanIdCiz
             var ed = doc.Editor;
             var db = doc.Database;
 
-            var opts = new PromptOpenFileOptions("\nST4KESIT icin ST4 Dosyasi Secin")
-            {
-                Filter = "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*"
-            };
-            var fileRes = ed.GetFileNameForOpen(opts);
-            if (fileRes.Status != PromptStatus.OK) return;
+            if (!RememberedFilePrompt.TryPrompt(ed, "\nST4KESIT icin ST4 Dosyasi Secin",
+                "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
+                return;
 
             try
             {
                 ConfigureNtsNextGenOverlay();
                 var parser = new St4Parser();
-                var model = parser.Parse(fileRes.StringResult);
-                GprYapiAksLabels.TryMergeFromGprBesideSt4(fileRes.StringResult, model);
+                var model = parser.Parse(st4Path);
+                GprYapiAksLabels.TryMergeFromGprBesideSt4(st4Path, model);
                 WriteGprAxisSummary(ed, model);
                 var manager = new PlanIdDrawingManager(model);
 
@@ -469,25 +451,21 @@ namespace ST4PlanIdCiz
             var ed = doc.Editor;
             var db = doc.Database;
 
-            var opts = new PromptOpenFileOptions("\nTEMEL50ST4 icin ST4 Dosyasi Secin")
-            {
-                Filter = "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*"
-            };
-
-            var fileRes = ed.GetFileNameForOpen(opts);
-            if (fileRes.Status != PromptStatus.OK) return;
+            if (!RememberedFilePrompt.TryPrompt(ed, "\nTEMEL50ST4 icin ST4 Dosyasi Secin",
+                "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
+                return;
 
             try
             {
                 ConfigureNtsNextGenOverlay();
                 var parser = new St4Parser();
-                var model = parser.Parse(fileRes.StringResult);
-                GprYapiAksLabels.TryMergeFromGprBesideSt4(fileRes.StringResult, model);
+                var model = parser.Parse(st4Path);
+                GprYapiAksLabels.TryMergeFromGprBesideSt4(st4Path, model);
                 WriteGprAxisSummary(ed, model);
                 var manager = new PlanIdDrawingManager(model);
                 var insRes = ed.GetPoint(new PromptPointOptions("\nTEMEL50ST4 yerlestirme noktasi (sol-alt): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
-                manager.DrawFoundationPlanWithSections(db, ed, insRes.Value, fileRes.StringResult);
+                manager.DrawFoundationPlanWithSections(db, ed, insRes.Value, st4Path);
                 FinishStaDrawing(doc);
             }
             catch (System.Exception ex)
@@ -506,25 +484,21 @@ namespace ST4PlanIdCiz
             var ed = doc.Editor;
             var db = doc.Database;
 
-            var opts = new PromptOpenFileOptions("\nTEMEL100ST4 icin ST4 Dosyasi Secin")
-            {
-                Filter = "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*"
-            };
-
-            var fileRes = ed.GetFileNameForOpen(opts);
-            if (fileRes.Status != PromptStatus.OK) return;
+            if (!RememberedFilePrompt.TryPrompt(ed, "\nTEMEL100ST4 icin ST4 Dosyasi Secin",
+                "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
+                return;
 
             try
             {
                 ConfigureNtsNextGenOverlay();
                 var parser = new St4Parser();
-                var model = parser.Parse(fileRes.StringResult);
-                GprYapiAksLabels.TryMergeFromGprBesideSt4(fileRes.StringResult, model);
+                var model = parser.Parse(st4Path);
+                GprYapiAksLabels.TryMergeFromGprBesideSt4(st4Path, model);
                 WriteGprAxisSummary(ed, model);
                 var manager = new PlanIdDrawingManager(model);
                 var insRes = ed.GetPoint(new PromptPointOptions("\nTEMEL100ST4 yerlestirme noktasi (sol-alt): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
-                manager.DrawFoundationPlanWithSections(db, ed, insRes.Value, fileRes.StringResult, TemelFoundationPlanScale.Hundred);
+                manager.DrawFoundationPlanWithSections(db, ed, insRes.Value, st4Path, TemelFoundationPlanScale.Hundred);
                 FinishStaDrawing(doc);
             }
             catch (System.Exception ex)
@@ -543,25 +517,21 @@ namespace ST4PlanIdCiz
             var ed = doc.Editor;
             var db = doc.Database;
 
-            var opts = new PromptOpenFileOptions("\nKOLON50ST4 icin ST4 Dosyasi Secin")
-            {
-                Filter = "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*"
-            };
-
-            var fileRes = ed.GetFileNameForOpen(opts);
-            if (fileRes.Status != PromptStatus.OK) return;
+            if (!RememberedFilePrompt.TryPrompt(ed, "\nKOLON50ST4 icin ST4 Dosyasi Secin",
+                "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
+                return;
 
             try
             {
                 ConfigureNtsNextGenOverlay();
                 var parser = new St4Parser();
-                var model = parser.Parse(fileRes.StringResult);
-                GprYapiAksLabels.TryMergeFromGprBesideSt4(fileRes.StringResult, model);
+                var model = parser.Parse(st4Path);
+                GprYapiAksLabels.TryMergeFromGprBesideSt4(st4Path, model);
                 WriteGprAxisSummary(ed, model);
                 var manager = new PlanIdDrawingManager(model);
                 var insRes = ed.GetPoint(new PromptPointOptions("\nKOLON50ST4 yerlestirme noktasi (sol-alt): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
-                manager.DrawColumnApplicationPlan(db, ed, insRes.Value, fileRes.StringResult, KolonApplicationPlanScale.Fifty, drawPerdeGorunus: true);
+                manager.DrawColumnApplicationPlan(db, ed, insRes.Value, st4Path, KolonApplicationPlanScale.Fifty, drawPerdeGorunus: true);
                 FinishStaDrawing(doc);
             }
             catch (System.Exception ex)
@@ -580,25 +550,21 @@ namespace ST4PlanIdCiz
             var ed = doc.Editor;
             var db = doc.Database;
 
-            var opts = new PromptOpenFileOptions("\nKOLON100ST4 icin ST4 Dosyasi Secin")
-            {
-                Filter = "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*"
-            };
-
-            var fileRes = ed.GetFileNameForOpen(opts);
-            if (fileRes.Status != PromptStatus.OK) return;
+            if (!RememberedFilePrompt.TryPrompt(ed, "\nKOLON100ST4 icin ST4 Dosyasi Secin",
+                "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
+                return;
 
             try
             {
                 ConfigureNtsNextGenOverlay();
                 var parser = new St4Parser();
-                var model = parser.Parse(fileRes.StringResult);
-                GprYapiAksLabels.TryMergeFromGprBesideSt4(fileRes.StringResult, model);
+                var model = parser.Parse(st4Path);
+                GprYapiAksLabels.TryMergeFromGprBesideSt4(st4Path, model);
                 WriteGprAxisSummary(ed, model);
                 var manager = new PlanIdDrawingManager(model);
                 var insRes = ed.GetPoint(new PromptPointOptions("\nKOLON100ST4 yerlestirme noktasi (sol-alt): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
-                manager.DrawColumnApplicationPlan(db, ed, insRes.Value, fileRes.StringResult, KolonApplicationPlanScale.Hundred);
+                manager.DrawColumnApplicationPlan(db, ed, insRes.Value, st4Path, KolonApplicationPlanScale.Hundred);
                 FinishStaDrawing(doc);
             }
             catch (System.Exception ex)
@@ -617,25 +583,21 @@ namespace ST4PlanIdCiz
             var ed = doc.Editor;
             var db = doc.Database;
 
-            var opts = new PromptOpenFileOptions("\nKALIP50ST4 icin ST4 Dosyasi Secin")
-            {
-                Filter = "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*"
-            };
-
-            var fileRes = ed.GetFileNameForOpen(opts);
-            if (fileRes.Status != PromptStatus.OK) return;
+            if (!RememberedFilePrompt.TryPrompt(ed, "\nKALIP50ST4 icin ST4 Dosyasi Secin",
+                "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
+                return;
 
             try
             {
                 ConfigureNtsNextGenOverlay();
                 var parser = new St4Parser();
-                var model = parser.Parse(fileRes.StringResult);
-                GprYapiAksLabels.TryMergeFromGprBesideSt4(fileRes.StringResult, model);
+                var model = parser.Parse(st4Path);
+                GprYapiAksLabels.TryMergeFromGprBesideSt4(st4Path, model);
                 WriteGprAxisSummary(ed, model);
                 var manager = new PlanIdDrawingManager(model);
                 var insRes = ed.GetPoint(new PromptPointOptions("\nKALIP50ST4: En soldaki antet SheetViewOut (dis cerceve) sol-alt kosesi (yerlesim referansi): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
-                manager.DrawFormworkPlan50(db, ed, insRes.Value, fileRes.StringResult, KalipPlanScale.Fifty);
+                manager.DrawFormworkPlan50(db, ed, insRes.Value, st4Path, KalipPlanScale.Fifty);
                 FinishStaDrawing(doc);
             }
             catch (System.Exception ex)
@@ -655,20 +617,16 @@ namespace ST4PlanIdCiz
             var ed = doc.Editor;
             var db = doc.Database;
 
-            var opts = new PromptOpenFileOptions("\nDENEME1 icin ST4 Dosyasi Secin")
-            {
-                Filter = "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*"
-            };
-
-            var fileRes = ed.GetFileNameForOpen(opts);
-            if (fileRes.Status != PromptStatus.OK) return;
+            if (!RememberedFilePrompt.TryPrompt(ed, "\nDENEME1 icin ST4 Dosyasi Secin",
+                "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
+                return;
 
             try
             {
                 ConfigureNtsNextGenOverlay();
                 var parser = new St4Parser();
-                var model = parser.Parse(fileRes.StringResult);
-                GprYapiAksLabels.TryMergeFromGprBesideSt4(fileRes.StringResult, model);
+                var model = parser.Parse(st4Path);
+                GprYapiAksLabels.TryMergeFromGprBesideSt4(st4Path, model);
                 WriteGprAxisSummary(ed, model);
                 SlabAxesDirections.PopulateCornerAxisDirections(model);
                 var manager = new PlanIdDrawingManager(model);
@@ -678,7 +636,7 @@ namespace ST4PlanIdCiz
                     db,
                     ed,
                     insRes.Value,
-                    fileRes.StringResult,
+                    st4Path,
                     KalipPlanScale.Fifty,
                     firstIndividualFloorCount: 2,
                     suppressKirisPerdeKolonDosemeLabels: true,
@@ -712,13 +670,9 @@ namespace ST4PlanIdCiz
             var ed = doc.Editor;
             var db = doc.Database;
 
-            var st4Opts = new PromptOpenFileOptions("\nKOLONDUSEY icin ST4 Dosyasi Secin")
-            {
-                Filter = "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*"
-            };
-            var fileRes = ed.GetFileNameForOpen(st4Opts);
-            if (fileRes.Status != PromptStatus.OK) return;
-            string st4Path = fileRes.StringResult;
+            if (!RememberedFilePrompt.TryPrompt(ed, "\nKOLONDUSEY icin ST4 Dosyasi Secin",
+                "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
+                return;
 
             var insRes = ed.GetPoint(new PromptPointOptions("\nKOLONDUSEY yerlestirme noktasi (sol-alt): ") { AllowNone = false });
             if (insRes.Status != PromptStatus.OK) return;
@@ -756,13 +710,9 @@ namespace ST4PlanIdCiz
             var ed = doc.Editor;
             var db = doc.Database;
 
-            var st4Opts = new PromptOpenFileOptions("\nKOLONDUSEY25 icin ST4 Dosyasi Secin")
-            {
-                Filter = "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*"
-            };
-            var fileRes = ed.GetFileNameForOpen(st4Opts);
-            if (fileRes.Status != PromptStatus.OK) return;
-            string st4Path = fileRes.StringResult;
+            if (!RememberedFilePrompt.TryPrompt(ed, "\nKOLONDUSEY25 icin ST4 Dosyasi Secin",
+                "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
+                return;
 
             var insRes = ed.GetPoint(new PromptPointOptions("\nKOLONDUSEY25 yerlestirme noktasi (sol-alt): ") { AllowNone = false });
             if (insRes.Status != PromptStatus.OK) return;
@@ -800,15 +750,11 @@ namespace ST4PlanIdCiz
             var ed = doc.Editor;
             var db = doc.Database;
 
-            var st4Opts = new PromptOpenFileOptions("\nKOLONDUSEY2 icin ST4 Dosyasi Secin")
-            {
-                Filter = "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*"
-            };
-            var fileRes = ed.GetFileNameForOpen(st4Opts);
-            if (fileRes.Status != PromptStatus.OK) return;
-            string st4Path = fileRes.StringResult;
+            if (!RememberedFilePrompt.TryPrompt(ed, "\nKOLONDUSEY2 icin ST4 Dosyasi Secin",
+                "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
+                return;
 
-            var insRes = ed.GetPoint(new PromptPointOptions("\nKOLONDUSEY2 yerlestirme noktasi (sol-alt): ") { AllowNone = false });
+            var insRes = ed.GetPoint(new PromptPointOptions("\nKOLONDUSEY2 yerlesim noktasi (SheetViewOut sol-altin 50 cm solu): ") { AllowNone = false });
             if (insRes.Status != PromptStatus.OK) return;
 
             try
@@ -844,13 +790,9 @@ namespace ST4PlanIdCiz
             var ed = doc.Editor;
             var db = doc.Database;
 
-            var st4Opts = new PromptOpenFileOptions("\nKAPAMADETAY icin ST4 Dosyasi Secin")
-            {
-                Filter = "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*"
-            };
-            var fileRes = ed.GetFileNameForOpen(st4Opts);
-            if (fileRes.Status != PromptStatus.OK) return;
-            string st4Path = fileRes.StringResult;
+            if (!RememberedFilePrompt.TryPrompt(ed, "\nKAPAMADETAY icin ST4 Dosyasi Secin",
+                "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
+                return;
 
             var insRes = ed.GetPoint(new PromptPointOptions(
                 "\nKAPAMADETAY yerlesim noktasi (SheetViewOut sol-altin 50 cm solu): ") { AllowNone = false });
@@ -889,33 +831,28 @@ namespace ST4PlanIdCiz
             var ed = doc.Editor;
             var db = doc.Database;
 
-            var st4Opts = new PromptOpenFileOptions("\nTEMELDONATI: ST4 dosyasi secin")
-            {
-                Filter = "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*"
-            };
-            var st4Res = ed.GetFileNameForOpen(st4Opts);
-            if (st4Res.Status != PromptStatus.OK) return;
+            if (!RememberedFilePrompt.TryPrompt(ed, "\nTEMELDONATI: ST4 dosyasi secin",
+                "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
+                return;
 
-            var pdfOpts = new PromptOpenFileOptions("\nTEMELDONATI: TEMEL donati PDF (STA rapor) secin")
-            {
-                Filter = "PDF (*.pdf)|*.pdf|Tum Dosyalar (*.*)|*.*"
-            };
-            var pdfRes = ed.GetFileNameForOpen(pdfOpts);
-            if (pdfRes.Status != PromptStatus.OK) return;
+            if (!RememberedFilePrompt.TryPrompt(ed, "\nTEMELDONATI: TEMEL donati PDF (STA rapor) secin",
+                "PDF (*.pdf)|*.pdf|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindPdf, out string pdfPath,
+                fallbackInitialDirectory: Path.GetDirectoryName(st4Path)))
+                return;
 
             try
             {
                 ConfigureNtsNextGenOverlay();
                 var parser = new St4Parser();
-                var model = parser.Parse(st4Res.StringResult);
-                GprYapiAksLabels.TryMergeFromGprBesideSt4(st4Res.StringResult, model);
+                var model = parser.Parse(st4Path);
+                GprYapiAksLabels.TryMergeFromGprBesideSt4(st4Path, model);
                 WriteGprAxisSummary(ed, model);
                 var manager = new PlanIdDrawingManager(model);
                 var insRes = ed.GetPoint(new PromptPointOptions("\nTEMELDONATI yerlestirme noktasi (sol-alt, TEMEL50 ile ayni): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
 
                 var copies = new List<PlanIdDrawingManager.TemelPlanCopyLayout>();
-                manager.DrawFoundationPlanWithSections(db, ed, insRes.Value, st4Res.StringResult, TemelFoundationPlanScale.Fifty, 4, copies);
+                manager.DrawFoundationPlanWithSections(db, ed, insRes.Value, st4Path, TemelFoundationPlanScale.Fifty, 4, copies);
                 if (copies.Count < 4)
                 {
                     ed.WriteMessage("\nTEMELDONATI: 4 temel kopyasi olusmadi.");
@@ -927,8 +864,8 @@ namespace ST4PlanIdCiz
                 {
                     var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
                     var btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
-                    DrawTemelIlaveOnCopy(pdfRes.StringResult, copies[2], new[] { TemelIlaveDonatiFromPdf.Yon.XAlt, TemelIlaveDonatiFromPdf.Yon.YAlt }, db, ed, tr, btr);
-                    DrawTemelIlaveOnCopy(pdfRes.StringResult, copies[3], new[] { TemelIlaveDonatiFromPdf.Yon.XUst, TemelIlaveDonatiFromPdf.Yon.YUst }, db, ed, tr, btr);
+                    DrawTemelIlaveOnCopy(pdfPath, copies[2], new[] { TemelIlaveDonatiFromPdf.Yon.XAlt, TemelIlaveDonatiFromPdf.Yon.YAlt }, db, ed, tr, btr);
+                    DrawTemelIlaveOnCopy(pdfPath, copies[3], new[] { TemelIlaveDonatiFromPdf.Yon.XUst, TemelIlaveDonatiFromPdf.Yon.YUst }, db, ed, tr, btr);
                     tr.Commit();
                 }
                 FinishStaDrawing(doc);
@@ -990,25 +927,21 @@ namespace ST4PlanIdCiz
             var ed = doc.Editor;
             var db = doc.Database;
 
-            var opts = new PromptOpenFileOptions("\nKALIP100ST4 icin ST4 Dosyasi Secin")
-            {
-                Filter = "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*"
-            };
-
-            var fileRes = ed.GetFileNameForOpen(opts);
-            if (fileRes.Status != PromptStatus.OK) return;
+            if (!RememberedFilePrompt.TryPrompt(ed, "\nKALIP100ST4 icin ST4 Dosyasi Secin",
+                "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
+                return;
 
             try
             {
                 ConfigureNtsNextGenOverlay();
                 var parser = new St4Parser();
-                var model = parser.Parse(fileRes.StringResult);
-                GprYapiAksLabels.TryMergeFromGprBesideSt4(fileRes.StringResult, model);
+                var model = parser.Parse(st4Path);
+                GprYapiAksLabels.TryMergeFromGprBesideSt4(st4Path, model);
                 WriteGprAxisSummary(ed, model);
                 var manager = new PlanIdDrawingManager(model);
                 var insRes = ed.GetPoint(new PromptPointOptions("\nKALIP100ST4: En soldaki antet SheetViewOut (dis cerceve) sol-alt kosesi (yerlesim referansi): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
-                manager.DrawFormworkPlan50(db, ed, insRes.Value, fileRes.StringResult, KalipPlanScale.Hundred);
+                manager.DrawFormworkPlan50(db, ed, insRes.Value, st4Path, KalipPlanScale.Hundred);
                 FinishStaDrawing(doc);
             }
             catch (System.Exception ex)

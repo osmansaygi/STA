@@ -152,6 +152,7 @@ namespace ST4PlanIdCiz
                 int nSkip = 0;
                 var sheets = new List<(int wallNo, Envelope env)>();
                 var isimler = new Dictionary<int, string>();
+                var katRowPafta = new List<(List<ObjectId> ids, string katAd, (double x0, double y0, double x1, double y1) box)>();
                 var groupList = groups.OrderBy(g => g.Value.Min(c => c.ColumnNo)).ToList();
                 foreach (var kvPre in groupList)
                     kvPre.Value.Sort((a, b) => a.ColumnNo.CompareTo(b.ColumnNo));
@@ -181,6 +182,7 @@ namespace ST4PlanIdCiz
                     double? firstRowAntetOuterL = null;
                     for (int kg = 0; kg < katGruplari.Count; kg++)
                     {
+                        var beforeKatRow = SnapshotKolon50BtrIds(btr);
                         var katIdxs = katGruplari[kg];
                         int fi = katIdxs[0];
                         var onFloor = ListKolonDuseyColumnsOnFloor(fi);
@@ -298,6 +300,7 @@ namespace ST4PlanIdCiz
                             }
                         }
                         if (rowSheets.Count == 0) continue;
+                        (double x0, double y0, double x1, double y1)? katFrameBox = null;
                         if (yAlts.Count > 0)
                         {
                             double yAlign = yAlts[0];
@@ -319,37 +322,100 @@ namespace ST4PlanIdCiz
                             // 1:25'te ara/yan yarı çizilir → 2× scale sonrası hedef cm (25 / 50).
                             double yanPad = KolonDuseyOlcuCizimCm(KolonDuseyKatAntetYanBoslukCm);
                             double antetAra = KolonDuseyOlcuCizimCm(KolonDuseyKatAntetAraCm);
-                            var spaced = SpacePerdeGorunusSheetsToAntetGap(
-                                tr, btr, rowSheets, yanPad, antetAra);
-                            // Her kat satırının ilk antet sol kenarı aynı X'te (ilk satır referans).
-                            if (spaced.Count > 0)
-                            {
-                                PerdeGorunusAntetX(spaced[0].env, out _, out _, out double outerL, out _, yanPad);
-                                if (!firstRowAntetOuterL.HasValue)
-                                    firstRowAntetOuterL = outerL;
-                                double dxAlign = firstRowAntetOuterL.Value - outerL;
-                                if (Math.Abs(dxAlign) >= 0.05)
-                                {
-                                    for (int si = 0; si < spaced.Count; si++)
-                                    {
-                                        ShiftKolon50Sheet(tr, spaced[si].wallNo, dxAlign, 0);
-                                        var e = spaced[si].env;
-                                        spaced[si] = (spaced[si].wallNo,
-                                            new Envelope(e.MinX + dxAlign, e.MaxX + dxAlign, e.MinY, e.MaxY));
-                                    }
-                                }
-                            }
-                            DrawPerdeGorunusAntetFrames(
-                                tr, btr, spaced, isimler, olcek25 ? "OLCEK: 1/25" : null,
-                                antetAltY, yanPad, katAdSay, filizNotYazi, toplamAdetBySheet);
-                            sheets.AddRange(spaced);
                             double pad = PerdeGorunusAntetPadCm;
                             double g = PerdeGorunusAntetGapCm;
-                            double oy1 = spaced.Max(c => c.env.MaxY) + pad + g;
-                            double oy0 = antetAltY.Count > 0
-                                ? antetAltY.Values.Min() - KolonDuseyOlcuCizimCm(KolonDuseyKatAntetAltBoslukCm)
-                                : spaced.Min(c => c.env.MinY) - pad;
-                            yRow = yRow + (oy1 - oy0) + antetAra;
+                            double altPay = KolonDuseyOlcuCizimCm(KolonDuseyKatAntetAltBoslukCm);
+                            // IC antet çerçeve yüksekliği (tüm kat satırı ortak: görünüşler yAlts ile hizalı).
+                            double frameTop = rowSheets.Max(c => c.env.MaxY) + pad + g;
+                            double frameBot = antetAltY.Count > 0
+                                ? antetAltY.Values.Min() - altPay
+                                : rowSheets.Min(c => c.env.MinY) - pad;
+                            double frameH = frameTop - frameBot;
+
+                            // KAPAMADETAY gibi: ana antet SheetView iç yüksekliğine sığan max sıra, en dar genişlik.
+                            var ordered = rowSheets.OrderBy(c => c.env.MinX).ToList();
+                            var widths = new List<double>(ordered.Count);
+                            foreach (var o in ordered)
+                            {
+                                PerdeGorunusAntetX(o.env, out _, out _, out double oL0, out double oR0, yanPad);
+                                widths.Add(oR0 - oL0);
+                            }
+                            double availH = KolonDuseyOlcuCizimCm(KapamaSheetViewHeightCm - 2.0 * KapamaAntetIcPayCm);
+                            int maxRowsFit = 1;
+                            for (int nr = 1; nr <= ordered.Count; nr++)
+                            {
+                                if (nr * frameH + (nr - 1) * antetAra <= availH + 0.05) maxRowsFit = nr;
+                                else break;
+                            }
+                            int kRows = Math.Max(1, Math.Min(maxRowsFit, ordered.Count));
+                            List<List<int>> subRows;
+                            if (kRows <= 1)
+                                subRows = new List<List<int>> { Enumerable.Range(0, ordered.Count).ToList() };
+                            else
+                            {
+                                subRows = KapamaPackMinWidthRows(widths, kRows, antetAra);
+                                for (int r = 0; r < subRows.Count; r++)
+                                    subRows[r] = subRows[r].OrderBy(i => i).ToList();
+                                subRows = subRows.Where(r => r.Count > 0).OrderBy(r => r.Min()).ToList();
+                            }
+
+                            if (!firstRowAntetOuterL.HasValue && ordered.Count > 0)
+                            {
+                                PerdeGorunusAntetX(ordered[0].env, out _, out _, out double oLFirst, out _, yanPad);
+                                firstRowAntetOuterL = oLFirst;
+                            }
+                            double baseX = firstRowAntetOuterL ?? insertLl.X;
+                            int nSub = subRows.Count;
+                            // KAPAMADETAY gibi: IC antet yüksekliği SheetView iç yüksekliğini doldurur.
+                            double frameHFill = frameH;
+                            double hFit = (availH - (nSub - 1) * antetAra) / nSub;
+                            if (hFit > frameHFill + 0.05) frameHFill = hFit;
+                            // Her sıra en geniş sıraya tamamlanır; fazla genişlik sıradaki antetlere eşit bölünür.
+                            var rowNaturalW = new double[nSub];
+                            for (int r = 0; r < nSub; r++)
+                            {
+                                double wr = 0.0;
+                                for (int k = 0; k < subRows[r].Count; k++)
+                                    wr += widths[subRows[r][k]] + (k > 0 ? antetAra : 0.0);
+                                rowNaturalW[r] = wr;
+                            }
+                            double maxRowW = rowNaturalW.Length > 0 ? rowNaturalW.Max() : 0.0;
+                            double katX0 = baseX, katX1 = baseX + maxRowW;
+                            double katY0 = frameBot;
+                            double katY1 = frameBot + nSub * frameHFill + (nSub - 1) * antetAra;
+                            for (int r = 0; r < nSub; r++)
+                            {
+                                // İlk sıra en üstte; alt sıra mevcut satır tabanında.
+                                double dyRow = (nSub - 1 - r) * (frameHFill + antetAra);
+                                var subSheets = new List<(int wallNo, Envelope env)>();
+                                var subAltY = new Dictionary<int, double>();
+                                var subFrameX = new Dictionary<int, (double ox0, double ox1)>();
+                                double addEach = Math.Max(0.0, maxRowW - rowNaturalW[r]) / subRows[r].Count;
+                                double x = baseX;
+                                foreach (int i in subRows[r])
+                                {
+                                    var o = ordered[i];
+                                    double ox0 = x;
+                                    double ox1 = x + widths[i] + addEach;
+                                    var e = o.env;
+                                    double dx = 0.5 * (ox0 + ox1) - 0.5 * (e.MinX + e.MaxX);
+                                    ShiftKolon50Sheet(tr, o.wallNo, dx, dyRow);
+                                    subSheets.Add((o.wallNo,
+                                        new Envelope(e.MinX + dx, e.MaxX + dx, e.MinY + dyRow, e.MaxY + dyRow)));
+                                    subFrameX[o.wallNo] = (ox0, ox1);
+                                    if (antetAltY.TryGetValue(o.wallNo, out double ya))
+                                        subAltY[o.wallNo] = ya + dyRow;
+                                    x = ox1 + antetAra;
+                                }
+                                DrawPerdeGorunusAntetFrames(
+                                    tr, btr, subSheets, isimler, olcek25 ? "OLCEK: 1/25" : null,
+                                    subAltY, yanPad, katAdSay, r == 0 ? filizNotYazi : null, toplamAdetBySheet,
+                                    ortakDisUstY: frameBot + dyRow + frameHFill,
+                                    disXBySheet: subFrameX);
+                                sheets.AddRange(subSheets);
+                            }
+                            katFrameBox = (katX0, katY0, katX1, katY1);
+                            yRow = yRow + (katY1 - katY0) + antetAra;
                             nGrp += groupListFi.Count;
                         }
                         catch (System.Exception exAntetKat)
@@ -359,6 +425,13 @@ namespace ST4PlanIdCiz
                             yRow += 400.0;
                             nGrp += groupListFi.Count;
                         }
+                        var rowIds = new List<ObjectId>();
+                        foreach (ObjectId idR in btr)
+                        {
+                            if (!idR.IsNull && !beforeKatRow.Contains(idR)) rowIds.Add(idR);
+                        }
+                        if (rowIds.Count > 0 && katFrameBox.HasValue)
+                            katRowPafta.Add((rowIds, katAdSay, katFrameBox.Value));
                     }
                 }
                 else
@@ -412,6 +485,14 @@ namespace ST4PlanIdCiz
                             ed?.WriteMessage("\nKOLONDUSEY25 olcek uygulanamadi ({0}).", ex25.Message);
                         }
                     }
+                    if (katKatCiz && katRowPafta.Count > 0)
+                    {
+                        try { PlaceKolonDusey2KatlarInAnaAntet(tr, btr, katRowPafta, insertLl, olcek25 ? 2.0 : 1.0, st4SourcePath, ed); }
+                        catch (System.Exception exPafta)
+                        {
+                            ed?.WriteMessage("\nKOLONDUSEY2: ana antet paftalama atlandi ({0}).", exPafta.Message);
+                        }
+                    }
                 }
                 if (katKatCiz)
                     ed?.WriteMessage("\nKOLONDUSEY2: {0} benzer kolon grubu, benzer katlar birlestirildi (1/{1}, GPR etriye TS500/TBDY2018).", nGrp, olcek25 ? 25 : 50);
@@ -450,13 +531,81 @@ namespace ST4PlanIdCiz
             return tag;
         }
 
+        /// <summary>
+        /// KOLONDUSEY2: her benzer kat satırı (IC antetleriyle) ayrı ana antet içinde; antetler yan yana, Out'lar arası 50 cm.
+        /// Yerleşim KAPAMADETAY gibi: ilk SheetViewOut sol-alt = insert + (50, 0); içerik SheetView iç çizgisine 25 cm pay.
+        /// Ölçekleme (1:25) sonrası çağrılır; ana antet ölçeklenmez.
+        /// </summary>
+        private void PlaceKolonDusey2KatlarInAnaAntet(
+            Transaction tr,
+            BlockTableRecord btr,
+            List<(List<ObjectId> ids, string katAd, (double x0, double y0, double x1, double y1) box)> katlar,
+            Point3d insertLl,
+            double olcekCarpan,
+            string st4SourcePath,
+            Editor ed)
+        {
+            if (tr == null || btr == null || katlar == null || katlar.Count == 0) return;
+            if (!TryGetEmbeddedAntetSheetViewOutOffsets(out double outDx, out double outDy, ed))
+            {
+                outDx = 0.0;
+                outDy = AntetDxfSheetViewOutYmin - AntetDxfSheetViewYmin;
+            }
+            double pay = KapamaAntetIcPayCm;
+            double outLeft = insertLl.X + KapamaYerlesimSheetViewOutSolPayCm;
+            double outBottom = insertLl.Y;
+            const double anaAntetAraCm = 50.0;
+
+            foreach (var kat in katlar)
+            {
+                // IC antet çerçeve kutusu (ölçek öncesi) → ölçek sonrası; ölçü (Dimension) extents güvenilmez.
+                double minX = insertLl.X + olcekCarpan * (kat.box.x0 - insertLl.X);
+                double maxX = insertLl.X + olcekCarpan * (kat.box.x1 - insertLl.X);
+                double minY = insertLl.Y + olcekCarpan * (kat.box.y0 - insertLl.Y);
+                double maxY = insertLl.Y + olcekCarpan * (kat.box.y1 - insertLl.Y);
+                if (maxX - minX < 10.0 || maxY - minY < 10.0) continue;
+
+                double sheetViewLeft = outLeft - outDx;
+                double sheetViewBottom = outBottom - outDy;
+                double dx = sheetViewLeft + pay - minX;
+                double dy = sheetViewBottom + pay - minY;
+                if (Math.Abs(dx) >= 0.05 || Math.Abs(dy) >= 0.05)
+                {
+                    var disp = Matrix3d.Displacement(new Vector3d(dx, dy, 0));
+                    foreach (ObjectId id in kat.ids)
+                    {
+                        if (id.IsNull || id.IsErased) continue;
+                        Entity ent;
+                        try { ent = tr.GetObject(id, OpenMode.ForWrite, false) as Entity; }
+                        catch { continue; }
+                        try { ent?.TransformBy(disp); } catch { }
+                    }
+                    minX += dx; maxX += dx; minY += dy; maxY += dy;
+                }
+
+                string baslik = string.IsNullOrWhiteSpace(kat.katAd)
+                    ? "KOLON DETAYLARI"
+                    : kat.katAd.Trim() + " KOLON DETAYLARI";
+                bool ok = TryDrawAntetFromEmbeddedTemplate(
+                    tr, btr,
+                    minX, minY, maxY + pay,
+                    sheetViewLeft, sheetViewBottom, maxX + pay,
+                    st4SourcePath, ed,
+                    baslik, null,
+                    out _, out double outRight, out _);
+                if (!ok)
+                    outRight = maxX + pay + outDx;
+                outLeft = outRight + anaAntetAraCm;
+            }
+        }
+
         /// <summary>1:25: çizimi 2× scale, yazı kutusu yüksekliğini yarıya indir; ölçü DIMLFAC 0.5, Arrow size 3, DIMSCALE 1.</summary>
         private void ApplyKolonDuseyOlcek25(
             Transaction tr,
             Database db,
             BlockTableRecord btr,
             Point3d insertLl,
-            HashSet<ObjectId> beforeAll)
+            BtrIdSnapshot beforeAll)
         {
             if (tr == null || db == null || btr == null || beforeAll == null) return;
             var ids = new List<ObjectId>();
@@ -602,7 +751,7 @@ namespace ST4PlanIdCiz
 
         /// <summary>Anlık görüntüden sonra eklenen entity'leri yatayda kaydırır (kol görünüşü hizalama).</summary>
         private static void ShiftKolonDuseyYeniEntities(
-            Transaction tr, BlockTableRecord btr, HashSet<ObjectId> before, double dx)
+            Transaction tr, BlockTableRecord btr, BtrIdSnapshot before, double dx)
         {
             if (tr == null || btr == null || before == null || Math.Abs(dx) < 0.05) return;
             var disp = Matrix3d.Displacement(new Vector3d(dx, 0, 0));
@@ -10207,6 +10356,7 @@ namespace ST4PlanIdCiz
                 int eksikX = needDuseyKol - (heldX.Count + xsPick.Count);
                 if (eksikX > 0)
                     xsPick.AddRange(PickCirozBarCentersToCount(xs, heldX.Concat(xsPick).ToList(), eksikX, tol));
+                xsPick = PickCirozBarCentersBalanced(xs, heldX, xsPick.Count, midX, tol, xsPick);
                 xsPick.Sort();
                 duseyKol += xsPick.Count;
                 for (int i = 0; i < xsPick.Count && tr != null; i++)
@@ -10232,6 +10382,7 @@ namespace ST4PlanIdCiz
                 int eksikY = needYatayKol - (heldY.Count + ysPick.Count);
                 if (eksikY > 0)
                     ysPick.AddRange(PickCirozBarCentersToCount(ys, heldY.Concat(ysPick).ToList(), eksikY, tol));
+                ysPick = PickCirozBarCentersBalanced(ys, heldY, ysPick.Count, midY, tol, ysPick);
                 ysPick.Sort();
                 yatayKol += ysPick.Count;
                 for (int j = 0; j < ysPick.Count && tr != null; j++)
@@ -10287,6 +10438,83 @@ namespace ST4PlanIdCiz
                 result.Add(pick);
             }
             return result;
+        }
+
+        /// <summary>
+        /// Aynı adette çirozu boştaki donatılara yeniden dağıtır: önce en büyük tutulu boşluk en küçük (25φ korunur),
+        /// sonra kesit ortasına göre simetri, sonra eşit aralık. Kombinasyon çok büyükse <paramref name="fallback"/> döner.
+        /// </summary>
+        private static List<double> PickCirozBarCentersBalanced(
+            List<double> allBars, List<double> held, int count, double mid, double tol, List<double> fallback)
+        {
+            if (allBars == null || held == null || count <= 0) return fallback ?? new List<double>();
+            var free = new List<double>();
+            foreach (double b in allBars.OrderBy(v => v))
+            {
+                if (held.Any(h => Math.Abs(h - b) < tol)) continue;
+                if (free.Any(f => Math.Abs(f - b) < tol)) continue;
+                free.Add(b);
+            }
+            if (free.Count <= count) return free;
+
+            double combos = 1.0;
+            for (int i = 0; i < count; i++)
+                combos = combos * (free.Count - i) / (i + 1);
+            if (combos > 50000) return fallback ?? new List<double>();
+
+            var heldSorted = held.OrderBy(v => v).ToList();
+            double bestMax = double.MaxValue, bestAsym = double.MaxValue, bestSq = double.MaxValue;
+            List<double> best = null;
+            var idx = new int[count];
+            var live = new List<double>(heldSorted.Count + count);
+
+            void Score()
+            {
+                live.Clear();
+                live.AddRange(heldSorted);
+                for (int i = 0; i < count; i++) live.Add(free[idx[i]]);
+                live.Sort();
+                double mx = 0, sq = 0;
+                for (int i = 0; i < live.Count - 1; i++)
+                {
+                    double g = live[i + 1] - live[i];
+                    if (g > mx) mx = g;
+                    sq += g * g;
+                }
+                double asym = 0;
+                foreach (double p in live)
+                {
+                    double m = 2.0 * mid - p, dMin = double.MaxValue;
+                    foreach (double q in live)
+                    {
+                        double d = Math.Abs(q - m);
+                        if (d < dMin) dMin = d;
+                    }
+                    asym += dMin;
+                }
+                bool better;
+                if (mx < bestMax - 0.5) better = true;
+                else if (mx > bestMax + 0.5) better = false;
+                else if (asym < bestAsym - 0.5) better = true;
+                else if (asym > bestAsym + 0.5) better = false;
+                else better = sq < bestSq - 1e-6;
+                if (!better) return;
+                bestMax = mx; bestAsym = asym; bestSq = sq;
+                best = new List<double>(count);
+                for (int i = 0; i < count; i++) best.Add(free[idx[i]]);
+            }
+
+            void Rec(int pos, int start)
+            {
+                if (pos == count) { Score(); return; }
+                for (int i = start; i <= free.Count - (count - pos); i++)
+                {
+                    idx[pos] = i;
+                    Rec(pos + 1, i + 1);
+                }
+            }
+            Rec(0, 0);
+            return best ?? fallback ?? new List<double>();
         }
 
         /// <summary>GPR X/Y kol adedine ulaşmak için en büyük tutulu boşluğun ortasındaki boşta donatıya ek çiroz.</summary>

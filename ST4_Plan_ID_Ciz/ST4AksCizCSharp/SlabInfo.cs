@@ -9,6 +9,8 @@ namespace ST4AksCizCSharp
         public int SlabId { get; set; }
         /// <summary>Döşeme kalınlığı (cm). Floors Data p[1].</summary>
         public double ThicknessCm { get; set; }
+        /// <summary>Ölü yük toplamı (kN/m²), beton ağırlığı dahil. Floors Data 3. sütun p[2], *10 ile (örn. .57 → 5.7).</summary>
+        public double DeadLoadKNm2 { get; set; }
         /// <summary>Hareketli yük (kN/m²). Floors Data 4. sütun p[3], *10 ile.</summary>
         public double LiveLoadKNm2 { get; set; }
         /// <summary>Döşeme üst kotunun kattan farkı (cm). Floors Data 16. sütun p[15]; negatif = kat kotundan aşağı.</summary>

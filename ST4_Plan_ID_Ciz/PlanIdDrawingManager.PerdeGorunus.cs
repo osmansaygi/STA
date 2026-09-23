@@ -1035,9 +1035,17 @@ namespace ST4PlanIdCiz
                     // Yatay donatı: hatıl/subasman varsa onun üstünden; adet ilk katta temel üst → perde üst.
                     double zYatayPlace = isLowest && IsFiniteCoord(zCikintiFinisTop) ? zCikintiFinisTop : double.NaN;
                     double zYatayAdet = isLowest ? zTemelTop : double.NaN;
+                    // Kapama perde: hatıl ve subasman birlikte varken çiroz adedi temel üstünden.
+                    double zCirozAdet = double.NaN;
+                    if (isLowest
+                        && string.Equals(_perdeGorunusAntetPrefix, "P-", StringComparison.Ordinal)
+                        && hatilSpans.Count > 0
+                        && subasmanSpans.Count > 0
+                        && temelSpans.Count > 0)
+                        zCirozAdet = zTemelTop;
                     AddGorunusPerdeDonati(tr, btr, st.p.Floor, p.beam, p.x0, p.x1, p.wallBot, p.zu,
                         isLowest, zTemelBot, p.continuesAbove, p.slZb, si, storyColHoles, storySpanXs, pi, Y,
-                        zYatayPlaceBot: zYatayPlace, zYatayAdetBot: zYatayAdet);
+                        zYatayPlaceBot: zYatayPlace, zYatayAdetBot: zYatayAdet, zCirozAdetBot: zCirozAdet);
                 }
             }
 
@@ -1324,7 +1332,9 @@ namespace ST4PlanIdCiz
             string katIdYazi = null,
             string filizNotYazi = null,
             IReadOnlyDictionary<int, int> toplamAdetBySheet = null,
-            double kapamaUniformHeightCm = 0.0)
+            double kapamaUniformHeightCm = 0.0,
+            double? ortakDisUstY = null,
+            IReadOnlyDictionary<int, (double ox0, double ox1)> disXBySheet = null)
         {
             if (tr == null || btr == null || contents == null || contents.Count == 0) return;
             const double txtH = 20.0;
@@ -1336,6 +1346,8 @@ namespace ST4PlanIdCiz
             bool perSheetY = string.Equals(_perdeGorunusAntetPrefix, "P-", StringComparison.Ordinal);
             double iy1 = contents.Max(c => c.env.MaxY) + pad;
             double oy1 = iy1 + g;
+            if (!perSheetY && ortakDisUstY.HasValue && ortakDisUstY.Value > oy1)
+                oy1 = ortakDisUstY.Value;
             double stripTop = contents.Min(c => c.env.MinY) - pad;
             double ly0 = stripTop - labelH;
             double ly1 = stripTop;
@@ -1358,6 +1370,12 @@ namespace ST4PlanIdCiz
                 {
                     ox0 = fx.ox0;
                     ox1 = fx.ox1;
+                }
+                else if (!perSheetY && disXBySheet != null
+                    && disXBySheet.TryGetValue(item.wallNo, out var dxs))
+                {
+                    ox0 = dxs.ox0;
+                    ox1 = dxs.ox1;
                 }
                 else if (yanPadCm.HasValue)
                 {
@@ -1419,14 +1437,10 @@ namespace ST4PlanIdCiz
                 ObjectId stripSolId = ObjectId.Null;
                 if (!string.IsNullOrEmpty(stripSol))
                 {
-                    var beforeStrip = SnapshotKolon50BtrIds(btr);
                     DrawBeamLabel(tr, btr, btr.Database,
                         new Point3d(lx0 + 12.0, yTxt, 0),
                         stripSol, txtH, 0.0, LayerAntetText175, bottomLeftAligned: true);
-                    foreach (ObjectId id in btr)
-                    {
-                        if (!beforeStrip.Contains(id)) { stripSolId = id; break; }
-                    }
+                    stripSolId = _lastBeamLabelId;
                 }
                 // KOLONDUSEY2: her antette bir adet — kat-benzerkat kutusunun 40 cm üstünden 5 cm yukarı.
                 // Toplam = benzer kat × benzer kolon (bu antetteki grup).
@@ -2592,17 +2606,27 @@ namespace ST4PlanIdCiz
                     SnapTextBoxBottomAbove(tr, idTxt, textY, KolonDuseyOlcuCizimCm(5.7));
                 if (_kolonDuseyBenzerKatDzCm != null && _kolonDuseyBenzerKatDzCm.Count > 0 && !idTxt.IsNull)
                 {
-                    double yBoxTop = textY;
+                    double yBoxTop = textY + KesitKotTextHeightCm;
+                    double boxH = KesitKotTextHeightCm;
                     try
                     {
                         var ent0 = tr.GetObject(idTxt, OpenMode.ForRead, false) as Entity;
                         if (ent0 != null && ent0.Bounds.HasValue)
-                            yBoxTop = ent0.GeometricExtents.MaxPoint.Y;
+                        {
+                            var ex0 = ent0.GeometricExtents;
+                            yBoxTop = ex0.MaxPoint.Y;
+                            boxH = ex0.MaxPoint.Y - ex0.MinPoint.Y;
+                        }
                     }
                     catch { }
-                    double gapKopya = KolonDuseyOlcuCizimCm(15.0);
+                    // Son çizimde kutular arası 15 cm. 1:25'te konum ×2, yazı ×0.5 ölçeklenir:
+                    // 2·(alt₍k+1₎ − üst₍k₎) + 1.5·h = 15 → boşluk = 7.5 − 0.75·h.
+                    const double hedefAraCm = 15.0;
                     for (int k = 0; k < _kolonDuseyBenzerKatDzCm.Count; k++)
                     {
+                        double gapKopya = _kolonDuseyOlcek25
+                            ? 0.5 * hedefAraCm - 0.75 * boxH
+                            : hedefAraCm;
                         double zKopya = z + _kolonDuseyBenzerKatDzCm[k];
                         ObjectId idK = AppendKesitKotElevationDbText(
                             tr, btr, db, styleId, FormatKesitKotElevationString(zKopya),
@@ -2613,7 +2637,11 @@ namespace ST4PlanIdCiz
                         {
                             var entK = tr.GetObject(idK, OpenMode.ForRead, false) as Entity;
                             if (entK != null && entK.Bounds.HasValue)
-                                yBoxTop = entK.GeometricExtents.MaxPoint.Y;
+                            {
+                                var exK = entK.GeometricExtents;
+                                yBoxTop = exK.MaxPoint.Y;
+                                boxH = exK.MaxPoint.Y - exK.MinPoint.Y;
+                            }
                         }
                         catch { yBoxTop += gapKopya + KesitKotTextHeightCm; }
                     }
@@ -3125,7 +3153,8 @@ namespace ST4PlanIdCiz
             int spanIndex,
             Func<double, double> Y,
             double zYatayPlaceBot = double.NaN,
-            double zYatayAdetBot = double.NaN)
+            double zYatayAdetBot = double.NaN,
+            double zCirozAdetBot = double.NaN)
         {
             if (beam == null || tr == null || btr == null) return;
             if (_gprPerdePanelDonati == null || _gprPerdePanelDonati.Count == 0) return;
@@ -3454,11 +3483,30 @@ namespace ST4PlanIdCiz
                                 new Point3d((xColInnerR + xR) * 0.5, yGommeLine, 0), "", dimId)
                             { Layer = LayerOlcu, LineWeight = LineWeight.LineWeight020 });
                         }
+                        // Kapama: gönye varsa boy (düşey donatı hookIn yazısı gibi, her uçta bir).
+                        if (string.Equals(_perdeGorunusAntetPrefix, "P-", StringComparison.Ordinal)
+                            && (gonyeL || gonyeR))
+                        {
+                            string gTxt = gLen.ToString("0", System.Globalization.CultureInfo.InvariantCulture);
+                            // Alt çubuğun yukarı gönyesi yanında (daha okunur).
+                            if (gonyeL)
+                            {
+                                DrawBeamLabel(tr, btr, btr.Database,
+                                    new Point3d(xL - txtUzak - txtH * 0.5, yA + gLen * 0.5, 0),
+                                    gTxt, txtH, Math.PI / 2.0, LayerDonatiYazisiPerde, useMiddleCenter: true);
+                            }
+                            if (gonyeR)
+                            {
+                                DrawBeamLabel(tr, btr, btr.Database,
+                                    new Point3d(xR + txtUzak + txtH * 0.5, yA + gLen * 0.5, 0),
+                                    gTxt, txtH, Math.PI / 2.0, LayerDonatiYazisiPerde, useMiddleCenter: true);
+                            }
+                        }
                     }
                 }
             }
 
-            AddGorunusPerdeCiroz(tr, btr, don, x0, x1, zBot, zTop, wallLen, wallTh, Y);
+            AddGorunusPerdeCiroz(tr, btr, don, x0, x1, zBot, zTop, wallLen, wallTh, Y, zCirozAdetBot);
         }
 
         private void AppendYatayDonatiPline(
@@ -3547,7 +3595,8 @@ namespace ST4PlanIdCiz
             double zTop,
             double wallLen,
             double wallTh,
-            Func<double, double> Y)
+            Func<double, double> Y,
+            double zCirozAdetBot = double.NaN)
         {
             if (tr == null || btr == null || Y == null) return;
             int cirozDia = don != null && don.YatayDiaMm > 0 ? don.YatayDiaMm : 8;
@@ -3566,7 +3615,11 @@ namespace ST4PlanIdCiz
             double govde = wallTh - 2.0 * pas;
             double stem = Math.Max(6.0, govde);
             int L = Math.Max(1, (int)Math.Round(govde + hook90 + hook135));
-            double hWall = Math.Max(zTop - zBot, 1.0);
+            // Adet: hatıl+subasman varken temel üst → perde üst. Çizim yeri zBot (hatıl/subasman üstü).
+            double zCountBot = zBot;
+            if (IsFiniteCoord(zCirozAdetBot) && zCirozAdetBot < zBot - 0.5)
+                zCountBot = zCirozAdetBot;
+            double hWall = Math.Max(zTop - zCountBot, 1.0);
             double len = Math.Max(Math.Max(wallLen, 1.0), x1 - x0);
             int nCiroz = Math.Max(1, (int)Math.Round(4.0 * (len / 100.0) * (hWall / 100.0)));
 

@@ -1,0 +1,76 @@
+---
+description: Kolon düşey açılımına (KOLONDUSEY / KOLONDUSEY25 / KOLONDUSEY2) eklenecek detaylar — yönetmelik araştırması sonucu, yapılacaklar listesi
+alwaysApply: false
+---
+
+# Kolon düşey açılımı — eklenecek detaylar (bekleyen iş)
+
+22.09.2026'da yapılan araştırmanın sonucu. Hiçbiri henüz uygulanmadı; kullanıcı
+"burayı hatırla, sonra devam edelim" dedi. Devam ederken önce hangi maddeler ve
+hangi komut kapsamı (KOLONDUSEY / KOLONDUSEY25 / KOLONDUSEY2) isteniyor, sorulacak.
+
+## A. Yönetmelik gereği zorunlu, çizimde yok
+
+1. **Malzeme + çevresel etki sınıfı bandı — TBDY 2018 §7.13.1.1**
+   "Beton dayanım sınıfı ve donatı sınıfı ile TS EN 206'ya uygun çevresel etki
+   sınıfı bütün çizim paftalarında belirtilecektir."
+   Şu an antet şeridinde yalnız kolon isimleri (sol) + `OLCEK: 1/50` (sağ) var
+   (`DrawPerdeGorunusAntetFrames`, `PlanIdDrawingManager.PerdeGorunus.cs`).
+   Veri hazır: `_rebarFckMPa` / `_rebarFykMPa` GPR'den okunuyor,
+   `KolonKesitPaspayiCm = 4`. Örn. `C30/37 – B420C – XC1 – Paspayı: 4 cm`.
+   → En düşük efor, en net açık.
+
+2. **Özel deprem etriyesi / çirozu kanca kıvrım detayı — TBDY 2018 §7.13.1.3**
+   Kanca detayları kolon, perde ve kiriş detay paftalarının **her birinde**
+   gösterilecek (Şekil 7.1). Kanca boyları kodda var
+   (`TbdY2018EtriyeHookExtCm`: 135°, ≥6φ ve ≥80 mm; iç büküm ≥5φ) ama bağımsız
+   tipik detay bloğu yok. Antet köşesine küçük detay olarak eklenecek.
+
+## B. Kontrol değeri yüksek
+
+3. **Hcr (kritik perde yüksekliği) bandı/etiketi.** `_kolonDuseyGprHcr` okunuyor,
+   ℓu ve uç bölge ρ (0.002 / 0.001) buna göre değişiyor ama çizimde hiç
+   gösterilmiyor. Görünüşün soluna `Hcr = ... m` oku veya taralı bant
+   (TBDY §7.6.2.2 + §7.13.2).
+
+4. **ℓo / ℓb / ℓn ölçülendirmesi.** `etriyeBolgeler` listesi bölgeleri biliyor
+   ama sadece adet/aralık toplamında kullanılıyor; görünüşte bölge geçişi yalnız
+   etriye sıklığından anlaşılıyor. Sağa parantezli ölçü zinciri:
+   `ℓo = … ø10/10` / `orta ø10/15` / `ℓb bindirme ø10/10`.
+   ℓo = max(en büyük enkesit boyutu, ℓn/6, 50 cm) — TBDY §7.3.4.1.
+
+5. **Kolon–kiriş birleşim bölgesi etiketi — TBDY §7.3.5.** Kod sabit
+   `TbdY2018KolonBirlesimSjCm = 10` uyguluyor (kuşatılmamış için doğru,
+   kuşatılmış için güvenli taraf). Dört yüzden kiriş gelme ve kiriş genişliği
+   ≥ 3/4 kolon genişliği koşulu ST4'ten çıkarılıp
+   "KUŞATILMIŞ / KUŞATILMAMIŞ BİRLEŞİM – n ø10/10" etiketi yazılabilir.
+
+6. **ρ ve eksenel yük kontrol etiketi.** Kesit ismi altına
+   `ρ = As/Ac = %1,03 (0,01 ≤ ρ ≤ 0,04)` ve `Nd/(Ac·fck) ≤ 0,40`.
+   GPR'de As/Ac ve eksenel yük mevcut. Bindirme bölgesinde ρ ≤ 0,06.
+
+7. **Kısa kolon tespiti ve uyarısı — TBDY §7.3.8.** Bant pencere/dolgu duvar ile
+   ℓn kısalıyorsa sarılma tüm boyda; görünüşe
+   "KISA KOLON – etriye tüm boyda sıklaştırılmıştır" notu.
+   → En çok iş, en yüksek mühendislik değeri.
+
+## C. Şantiye / metraj pratiği (yönetmelik dışı)
+
+8. **Poz numaralandırma + donatı metraj tablosu.** `POZ NO (BEYKENT)` ve
+   `POZ BALON (BEYKENT)` katmanları tanımlı ama kolon düşey açılımında hiç
+   kullanılmıyor. Açılım etiketlerindeki `n ø L=…` verisinden
+   poz no / çap / adet / boy / toplam kg tablosu üretilebilir.
+
+9. **Anahtar plan (key plan).** Bir paftada ~10 benzer kolon toplanıyor; antet
+   yanına kolonların kat planındaki yerlerini gösteren ölçeksiz küçük şema.
+
+10. **Genel notlar bloğu.** §7.3.3.1 (bindirme orta bölgede), §7.3.3.3 (manşonlu/
+    kaynaklı eklerde ≥ 600 mm şaşırtma), §7.3.4 (tüm boyda özel deprem etriyesi
+    ve çirozu) gibi 5–6 satır. Uygulama zaten kodda, notlar bunu belgeler.
+
+## Zaten yapılmış (tekrar önerme)
+
+- Kesit değişiminde 1/6 eğimli bükme, gönye/firkete detayı (§7.3.3.2)
+- Temelden çıkan filiz açılımı ve kenetlenme boyları (§7.13.2.1)
+- Kesit içi düşey donatı konum/çap/sayı, etriye ve çiroz açılımları
+- Kat kotu sembolleri ve kat isimleri

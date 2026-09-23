@@ -1978,16 +1978,30 @@ namespace ST4PlanIdCiz
                 _kolon50CopyExtentByWallNo[wallNo] = new Envelope(env);
         }
 
-        private static HashSet<ObjectId> SnapshotKolon50BtrIds(BlockTableRecord btr)
+        /// <summary>
+        /// "Önceden var olan" entity testi: yeni nesneler her zaman Handseed ve üstünden handle alır;
+        /// tüm ModelSpace'i HashSet'e kopyalamaya gerek kalmaz.
+        /// </summary>
+        private sealed class BtrIdSnapshot
         {
-            var s = new HashSet<ObjectId>();
-            if (btr == null) return s;
-            foreach (ObjectId id in btr)
-                s.Add(id);
-            return s;
+            private readonly long _seed;
+            public BtrIdSnapshot(long seed) { _seed = seed; }
+            public bool Contains(ObjectId id) => !id.IsNull && id.Handle.Value < _seed;
         }
 
-        private void RememberKolon50SheetEntities(BlockTableRecord btr, int wallNo, HashSet<ObjectId> before)
+        private static BtrIdSnapshot SnapshotKolon50BtrIds(BlockTableRecord btr)
+        {
+            long seed = long.MaxValue;
+            try
+            {
+                if (btr?.Database != null)
+                    seed = btr.Database.Handseed.Value;
+            }
+            catch { }
+            return new BtrIdSnapshot(seed);
+        }
+
+        private void RememberKolon50SheetEntities(BlockTableRecord btr, int wallNo, BtrIdSnapshot before)
         {
             if (_kolon50SheetEntityIds == null || btr == null || wallNo <= 0 || before == null) return;
             List<ObjectId> list;
@@ -2307,7 +2321,7 @@ namespace ST4PlanIdCiz
                 double topCutY = blockTopWallY + dy + 40.0;
                 double bottomCutY = blockBottomWallY + dy - 40.0;
                 double placedWallBottomY = blockBottomWallY + dy;
-                HashSet<ObjectId> beforeSheetIds = _kolon50DrawPerdeGorunus ? SnapshotKolon50BtrIds(btr) : null;
+                BtrIdSnapshot beforeSheetIds = _kolon50DrawPerdeGorunus ? SnapshotKolon50BtrIds(btr) : null;
                 var clippedColumnGeoms = new List<Geometry>();
 
                 foreach (var it in rotatedGroup)
@@ -3300,26 +3314,25 @@ namespace ST4PlanIdCiz
         private static void EnsurePlanLayer(Transaction tr, Database db, string layerName, int colorIndex, LineWeight lineWeight, bool useDashed = false, int? layerTransparencyPercent = null)
         {
             var lt = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
-            var rec = lt.Has(layerName)
-                ? (LayerTableRecord)tr.GetObject(lt[layerName], OpenMode.ForWrite)
-                : null;
-            if (rec == null)
+            if (lt.Has(layerName))
             {
-                lt.UpgradeOpen();
-                rec = new LayerTableRecord
+                // BEYKENT katman tablosu: mevcut katmanın renk / çizgi tipi / kalınlığı değiştirilmez.
+                var existing = (LayerTableRecord)tr.GetObject(lt[layerName], OpenMode.ForRead);
+                if (existing.IsOff)
                 {
-                    Name = layerName,
-                    Color = Color.FromColorIndex(ColorMethod.ByAci, (short)colorIndex),
-                    LineWeight = lineWeight
-                };
-                lt.Add(rec);
-                tr.AddNewlyCreatedDBObject(rec, true);
+                    try { existing.UpgradeOpen(); existing.IsOff = false; } catch { }
+                }
+                return;
             }
-            else
+            lt.UpgradeOpen();
+            var rec = new LayerTableRecord
             {
-                rec.Color = Color.FromColorIndex(ColorMethod.ByAci, (short)colorIndex);
-                rec.LineWeight = lineWeight;
-            }
+                Name = layerName,
+                Color = Color.FromColorIndex(ColorMethod.ByAci, (short)colorIndex),
+                LineWeight = lineWeight
+            };
+            lt.Add(rec);
+            tr.AddNewlyCreatedDBObject(rec, true);
             if (layerTransparencyPercent.HasValue)
             {
                 int tp = layerTransparencyPercent.Value;
@@ -13333,7 +13346,7 @@ namespace ST4PlanIdCiz
             if (records.Count == 0) return result;
             double floorElev = floor?.ElevationM ?? 0;
             double baseKotu = _model.BuildingBaseKotu;
-            var keyToIndices = new Dictionary<(int t, int te, int be, int l), List<int>>();
+            var keyToIndices = new Dictionary<(int t, int te, int be, int l, int d), List<int>>();
             for (int i = 0; i < records.Count; i++)
             {
                 var r = records[i];
@@ -13341,8 +13354,10 @@ namespace ST4PlanIdCiz
                 double th = r.slab.ThicknessCm > 0 ? r.slab.ThicknessCm : 15.0;
                 double topElev = baseKotu + floorElev + r.slab.OffsetFromFloorCm / 100.0;
                 double bottomElev = topElev - th / 100.0;
-                double load = r.slab.LiveLoadKNm2;
-                var key = ((int)Math.Round(th), (int)Math.Round(topElev * 100), (int)Math.Round(bottomElev * 100), (int)Math.Round(load * 10));
+                double live = r.slab.LiveLoadKNm2;
+                double dead = r.slab.DeadLoadKNm2;
+                var key = ((int)Math.Round(th), (int)Math.Round(topElev * 100), (int)Math.Round(bottomElev * 100),
+                    (int)Math.Round(live * 10), (int)Math.Round(dead * 10));
                 if (!keyToIndices.TryGetValue(key, out var list)) { list = new List<int>(); keyToIndices[key] = list; }
                 list.Add(i);
             }
@@ -13433,11 +13448,11 @@ namespace ST4PlanIdCiz
             double mainWidth = EstimateTextWidthCm(mainLabel, labelHeightCm);
             double blockWidth = mainWidth;
             double blockHeight = labelHeightCm;
-            string qLine = null;
-            if (slab.LiveLoadKNm2 > 0)
+            const double yukWidthFactor = 0.7;
+            string qLine = FormatSlabLoadLabelLine(slab.DeadLoadKNm2, slab.LiveLoadKNm2, thickness);
+            if (!string.IsNullOrEmpty(qLine))
             {
-                qLine = string.Format(CultureInfo.InvariantCulture, "Q={0}kN/m²", FormatLiveLoadKNm2NumericForLabel(slab.LiveLoadKNm2));
-                blockWidth = Math.Max(blockWidth, EstimateTextWidthCm(qLine, subTextHeightCm));
+                blockWidth = Math.Max(blockWidth, EstimateTextWidthCm(qLine, subTextHeightCm) * yukWidthFactor);
                 blockHeight += mainToQCm + subTextHeightCm + qToUstKotCm;
             }
             else
@@ -13515,7 +13530,8 @@ namespace ST4PlanIdCiz
                     HorizontalMode = TextHorizontalMode.TextLeft,
                     VerticalMode = TextVerticalMode.TextBottom,
                     AlignmentPoint = new Point3d(leftX, nextY, 0),
-                    Rotation = 0
+                    Rotation = 0,
+                    WidthFactor = yukWidthFactor
                 };
                 AppendEntity(tr, btr, txtQ);
                 nextY -= qToUstKotCm;
@@ -13928,37 +13944,60 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>TEMEL50ST4: DLL içine gömülü antet_02.dwg → geçici dosyaya yazilir; ReadDwgFile (DXF DxfIn sembol tablosu hatalarindan kacinir).</summary>
-        private static bool TryPopulateDatabaseFromEmbeddedTemelAntet(Database db, Editor ed)
+        private static string _embeddedAntetTempDwg;
+        private static readonly object EmbeddedAntetTempLock = new object();
+
+        /// <summary>Gömülü antet_02.dwg oturum başına bir kez geçici dosyaya yazılır (DLL MVID ile adlandırılır).</summary>
+        private static string GetEmbeddedAntetTempDwg(Editor ed)
         {
-            string tmpDwg = null;
-            try
+            lock (EmbeddedAntetTempLock)
             {
+                if (!string.IsNullOrEmpty(_embeddedAntetTempDwg) && File.Exists(_embeddedAntetTempDwg))
+                    return _embeddedAntetTempDwg;
                 Assembly asm = typeof(PlanIdDrawingManager).Assembly;
                 using (Stream stream = asm.GetManifestResourceStream(TemelAntetEmbeddedResourceName))
                 {
                     if (stream == null)
                     {
                         ed?.WriteMessage("\nTEMEL50ST4: Gömülü antet kaynagi yok (derlemede antet_02.dwg gomulu olmali).");
-                        return false;
+                        return null;
                     }
-                    tmpDwg = Path.Combine(Path.GetTempPath(), "ST4PlanIdCiz_antet_" + Guid.NewGuid().ToString("N") + ".dwg");
-                    using (var fs = new FileStream(tmpDwg, FileMode.Create, FileAccess.Write, FileShare.Read))
-                        stream.CopyTo(fs);
+                    string path = Path.Combine(Path.GetTempPath(),
+                        "ST4PlanIdCiz_antet_" + asm.ManifestModule.ModuleVersionId.ToString("N") + ".dwg");
+                    if (!File.Exists(path) || new FileInfo(path).Length != stream.Length)
+                    {
+                        string tmp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                        using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.Read))
+                            stream.CopyTo(fs);
+                        try
+                        {
+                            if (File.Exists(path)) File.Delete(path);
+                            File.Move(tmp, path);
+                        }
+                        catch
+                        {
+                            path = tmp;
+                        }
+                    }
+                    _embeddedAntetTempDwg = path;
+                    return path;
                 }
-                db.ReadDwgFile(tmpDwg, FileOpenMode.OpenForReadAndAllShare, true, null);
+            }
+        }
+
+        private static bool TryPopulateDatabaseFromEmbeddedTemelAntet(Database db, Editor ed)
+        {
+            try
+            {
+                string dwg = GetEmbeddedAntetTempDwg(ed);
+                if (string.IsNullOrEmpty(dwg)) return false;
+                db.ReadDwgFile(dwg, FileOpenMode.OpenForReadAndAllShare, true, null);
                 return true;
             }
             catch (Exception ex)
             {
                 ed?.WriteMessage("\nTEMEL50ST4: Gömülü antet acilamadi: {0}", ex.Message);
                 return false;
-            }
-            finally
-            {
-                if (!string.IsNullOrEmpty(tmpDwg))
-                {
-                    try { File.Delete(tmpDwg); } catch { }
-                }
             }
         }
 
@@ -14261,8 +14300,16 @@ namespace ST4PlanIdCiz
             return katAdi + " KAT KOLON APLIKASYON PLANI";
         }
 
+        private static (double dx, double dy)? _cachedSheetViewOutOffsets;
+
         private static bool TryGetEmbeddedAntetSheetViewOutOffsets(out double dxFromSheetViewLeft, out double dyFromSheetViewBottom, Editor ed)
         {
+            if (_cachedSheetViewOutOffsets.HasValue)
+            {
+                dxFromSheetViewLeft = _cachedSheetViewOutOffsets.Value.dx;
+                dyFromSheetViewBottom = _cachedSheetViewOutOffsets.Value.dy;
+                return true;
+            }
             dxFromSheetViewLeft = 0.0;
             dyFromSheetViewBottom = AntetDxfSheetViewOutYmin - AntetDxfSheetViewYmin;
             Database sourceDb = null;
@@ -14305,6 +14352,7 @@ namespace ST4PlanIdCiz
                     if (!has) return false;
                     dxFromSheetViewLeft = minX - AntetDxfSheetViewXmin;
                     dyFromSheetViewBottom = minY - AntetDxfSheetViewYmin;
+                    _cachedSheetViewOutOffsets = (dxFromSheetViewLeft, dyFromSheetViewBottom);
                     return true;
                 }
             }
@@ -15403,16 +15451,27 @@ namespace ST4PlanIdCiz
             var kirisLineIds = new List<ObjectId>();
             foreach (ObjectId id in btr)
             {
+                if (id.IsNull || id.IsErased || !string.Equals(id.ObjectClass?.DxfName, "LINE", StringComparison.OrdinalIgnoreCase)) continue;
                 var ent = tr.GetObject(id, OpenMode.ForRead) as Entity;
                 if (ent == null) continue;
                 if (!string.Equals(ent.Layer ?? string.Empty, LayerKiris, StringComparison.OrdinalIgnoreCase)) continue;
-                if (!(ent is Line)) continue;
                 if (!EntityEnvelopeIntersectsPlan(ent, planEnv)) continue;
                 kirisLineIds.Add(id);
             }
 
             const double collinearDistTolCm = 0.25;
             const double minSegCm = 0.4;
+            // Kolon kenarları uzamsal indekste; her kiriş çizgisi yalnız kutusuna değen kenarlarla budanır.
+            var segIndex = new NetTopologySuite.Index.Strtree.STRtree<int>();
+            for (int si = 0; si < kolonSegs.Count; si++)
+            {
+                var sg = kolonSegs[si];
+                var se = new Envelope(
+                    Math.Min(sg.a.X, sg.b.X) - collinearDistTolCm, Math.Max(sg.a.X, sg.b.X) + collinearDistTolCm,
+                    Math.Min(sg.a.Y, sg.b.Y) - collinearDistTolCm, Math.Max(sg.a.Y, sg.b.Y) + collinearDistTolCm);
+                segIndex.Insert(se, si);
+            }
+            segIndex.Build();
             foreach (ObjectId id in kirisLineIds)
             {
                 var line = tr.GetObject(id, OpenMode.ForWrite) as Line;
@@ -15420,8 +15479,16 @@ namespace ST4PlanIdCiz
                 var a0 = new Point2d(line.StartPoint.X, line.StartPoint.Y);
                 var a1 = new Point2d(line.EndPoint.X, line.EndPoint.Y);
                 var parts = new List<(Point2d a, Point2d b)> { (a0, a1) };
-                foreach (var col in kolonSegs)
+                var lineEnv = new Envelope(
+                    Math.Min(a0.X, a1.X) - collinearDistTolCm, Math.Max(a0.X, a1.X) + collinearDistTolCm,
+                    Math.Min(a0.Y, a1.Y) - collinearDistTolCm, Math.Max(a0.Y, a1.Y) + collinearDistTolCm);
+                var hits = segIndex.Query(lineEnv);
+                if (hits == null || hits.Count == 0) continue;
+                var hitList = new List<int>(hits);
+                hitList.Sort();
+                foreach (int hi in hitList)
                 {
+                    var col = kolonSegs[hi];
                     var next = new List<(Point2d a, Point2d b)>();
                     foreach (var part in parts)
                         next.AddRange(SubtractBeamOverlapWithKolonSegment(part.a, part.b, col.a, col.b, collinearDistTolCm, minSegCm));
@@ -15449,6 +15516,9 @@ namespace ST4PlanIdCiz
             var list = new List<(Point2d, Point2d)>();
             foreach (ObjectId id in btr)
             {
+                if (id.IsNull || id.IsErased) continue;
+                string oc = id.ObjectClass?.DxfName;
+                if (!string.Equals(oc, "LWPOLYLINE", StringComparison.OrdinalIgnoreCase) && !string.Equals(oc, "CIRCLE", StringComparison.OrdinalIgnoreCase)) continue;
                 var ent = tr.GetObject(id, OpenMode.ForRead) as Entity;
                 if (ent == null) continue;
                 if (!string.Equals(ent.Layer ?? string.Empty, LayerKolon, StringComparison.OrdinalIgnoreCase)) continue;
@@ -16805,6 +16875,31 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>
+        /// Döşeme yük satırı: G=beton+ilave Q=… (kN/m²). Beton = d(m)×25 kN/m³; ilave = ST4 ölü − beton.
+        /// Ondalık yoksa göstermez; varsa tümünü yazar.
+        /// </summary>
+        private static string FormatSlabLoadLabelLine(double deadLoadKNm2, double liveLoadKNm2, double thicknessCm)
+        {
+            bool hasG = deadLoadKNm2 > 1e-9;
+            bool hasQ = liveLoadKNm2 > 1e-9;
+            if (!hasG && !hasQ) return null;
+            var parts = new List<string>();
+            if (hasG)
+            {
+                double thM = Math.Max(thicknessCm, 0.0) / 100.0;
+                double concreteKNm2 = thM * 25.0; // 2.5 t/m³
+                double extraKNm2 = deadLoadKNm2 - concreteKNm2;
+                if (extraKNm2 < 0) extraKNm2 = 0;
+                parts.Add(string.Format(CultureInfo.InvariantCulture, "G={0}+{1}",
+                    FormatLiveLoadKNm2NumericForLabel(concreteKNm2),
+                    FormatLiveLoadKNm2NumericForLabel(extraKNm2)));
+            }
+            if (hasQ)
+                parts.Add(string.Format(CultureInfo.InvariantCulture, "Q={0}", FormatLiveLoadKNm2NumericForLabel(liveLoadKNm2)));
+            return string.Join(" ", parts) + " (kN/m²)";
+        }
+
+        /// <summary>
         /// Döşeme/radye Q satırı: tam sayıysa ondalık gösterilmez (5); değilse :F1 yuvarlaması olmadan, sondaki gereksiz 0'lar olmadan (ör. 5.35).
         /// </summary>
         private static string FormatLiveLoadKNm2NumericForLabel(double knPerM2)
@@ -16882,6 +16977,7 @@ namespace ST4PlanIdCiz
         /// <summary>Kiriş/perde etiketi: bottomLeftAligned false ise Right, true ise Left; topAligned true ise üst; useMiddleCenter true ise orta merkez. layer verilmezse KIRIS ISMI.</summary>
         private void DrawBeamLabel(Transaction tr, BlockTableRecord btr, Database db, Point3d insertionPoint, string labelText, double textHeightCm, double rotationRad, string layer = null, bool bottomLeftAligned = true, bool topAligned = false, bool useMiddleCenter = false, short? colorAci = null)
         {
+            _lastBeamLabelId = ObjectId.Null;
             if (tr == null || btr == null || db == null) return;
             if (!IsFinitePoint(insertionPoint) || !IsFiniteCoord(textHeightCm)
                 || textHeightCm < 0.05 || textHeightCm > 1e4)
@@ -16910,7 +17006,11 @@ namespace ST4PlanIdCiz
                 try { txt.AdjustAlignment(db); } catch { }
             }
             AppendEntity(tr, btr, txt);
+            try { if (!txt.IsDisposed) _lastBeamLabelId = txt.ObjectId; } catch { }
         }
+
+        /// <summary>Son <see cref="DrawBeamLabel"/> ile eklenen yazı (eklenemediyse Null).</summary>
+        private ObjectId _lastBeamLabelId = ObjectId.Null;
 
         /// <summary>Sürekli/tekil temel ve bağ kirişi etiketi: TEMEL ISMI (BEYKENT) katmanı, 12 cm yükseklik, YAZI (BEYKENT) stili, 0.2 mm kalınlık. bottomRightAligned: sağ alt (metin sola ve yukarı). bottomLeftAligned: sol alt (metin sağa ve yukarı).</summary>
         private void DrawTemelIsmiLabel(Transaction tr, BlockTableRecord btr, Database db, double centerX, double centerY, string labelText, double rotationRad, bool bottomRightAligned = false, bool bottomLeftAligned = false)

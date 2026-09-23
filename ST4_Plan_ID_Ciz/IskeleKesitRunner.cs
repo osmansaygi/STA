@@ -53,17 +53,15 @@ namespace ST4PlanIdCiz
             var ed = doc.Editor;
             var db = doc.Database;
 
-            var pfo = new PromptOpenFileOptions("\nBinanin ST4 dosyasini secin (kat kotlari): ")
-            {
-                Filter = "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*"
-            };
-            var prf = ed.GetFileNameForOpen(pfo);
-            if (prf.Status != PromptStatus.OK || string.IsNullOrWhiteSpace(prf.StringResult)) return;
+            var pfoMsg = "\nBinanin ST4 dosyasini secin (kat kotlari): ";
+            if (!RememberedFilePrompt.TryPrompt(ed, pfoMsg,
+                "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
+                return;
 
             St4Model model;
             try
             {
-                model = new St4Parser().Parse(prf.StringResult);
+                model = new St4Parser().Parse(st4Path);
             }
             catch (Exception ex)
             {
@@ -121,25 +119,28 @@ namespace ST4PlanIdCiz
             {
                 var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
                 var ms = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForRead);
-                foreach (ObjectId id in ms)
-                {
-                    if (!id.IsValid || id.IsErased) continue;
-                    var e = tr.GetObject(id, OpenMode.ForRead) as Line;
-                    if (e == null) continue;
-                    if (!string.Equals(e.Layer, LayerYatay, StringComparison.Ordinal)) continue;
-                    if (e.StartPoint.DistanceTo(e.EndPoint) < 1.0) continue;
-                    yataySegs.Add(new IskeleKesitSectionGeometry.Seg2(e.StartPoint, e.EndPoint));
-                }
                 const double flansTargetRadiusCm = 6.5;
                 const double flansRadiusTolCm = 0.2;
                 foreach (ObjectId id in ms)
                 {
                     if (!id.IsValid || id.IsErased) continue;
-                    var ent = tr.GetObject(id, OpenMode.ForRead) as Entity;
-                    if (ent == null) continue;
-                    if (!string.Equals(ent.Layer, LayerFlans, StringComparison.Ordinal)) continue;
-                    if (ent is Circle c && Math.Abs(c.Radius - flansTargetRadiusCm) <= flansRadiusTolCm)
-                        flansCenters.Add(c.Center);
+                    string dxf = id.ObjectClass?.DxfName;
+                    if (string.Equals(dxf, "LINE", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var e = tr.GetObject(id, OpenMode.ForRead) as Line;
+                        if (e == null) continue;
+                        if (!string.Equals(e.Layer, LayerYatay, StringComparison.Ordinal)) continue;
+                        if (e.StartPoint.DistanceTo(e.EndPoint) < 1.0) continue;
+                        yataySegs.Add(new IskeleKesitSectionGeometry.Seg2(e.StartPoint, e.EndPoint));
+                    }
+                    else if (string.Equals(dxf, "CIRCLE", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var c = tr.GetObject(id, OpenMode.ForRead) as Circle;
+                        if (c == null) continue;
+                        if (!string.Equals(c.Layer, LayerFlans, StringComparison.Ordinal)) continue;
+                        if (Math.Abs(c.Radius - flansTargetRadiusCm) <= flansRadiusTolCm)
+                            flansCenters.Add(c.Center);
+                    }
                 }
                 tr.Commit();
             }
@@ -1096,6 +1097,7 @@ namespace ST4PlanIdCiz
                 foreach (ObjectId id in ms)
                 {
                     if (!id.IsValid || id.IsErased) continue;
+                    if (!string.Equals(id.ObjectClass?.DxfName, "TEXT", StringComparison.OrdinalIgnoreCase)) continue;
                     var t = tr.GetObject(id, OpenMode.ForRead) as DBText;
                     if (t == null) continue;
                     if (string.IsNullOrWhiteSpace(t.TextString)) continue;
