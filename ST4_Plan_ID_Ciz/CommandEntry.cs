@@ -213,7 +213,9 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>
-        /// Kiriş/kesit DWG düzenlemesi: KIRISDUZ_002.lsp (KIRIS_D) ile aynı mantık — katmanlar, yazı stilleri, kot/çubuk sembolleri.
+        /// Kiriş/kesit: ST4 + düzeltilmemiş DWG seçilir, KIRISDUZ mantığıyla düzeltilir,
+        /// ana antete yerleştirilir (nokta = SheetViewOut sol-altın 50 cm solu).
+        /// Antet başlığı kiriş isminden kat koduna göre (ör. KB-01 → BODRUM KAT KIRIS ACILIMLARI).
         /// </summary>
         [CommandMethod("KIRISDUZELT")]
         public void KirisDuzelt()
@@ -221,7 +223,72 @@ namespace ST4PlanIdCiz
             var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
             ApplyStaDefaultDrawingDisplaySettings(doc);
-            KirisDuzeltRunner.Execute(doc);
+            var ed = doc.Editor;
+
+            if (!RememberedFilePrompt.TryPrompt(ed, "\nKIRISDUZELT icin ST4 Dosyasi Secin",
+                "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
+                return;
+
+            string st4Dir = Path.GetDirectoryName(st4Path);
+            if (!RememberedFilePrompt.TryPrompt(ed,
+                "\nKiris acilimi DWG secin (henuz duzeltilmemis STA ciktisi)",
+                "DWG Dosyalari (*.dwg)|*.dwg|Tum Dosyalar (*.*)|*.*",
+                RememberedFilePrompt.KindDwg, out string dwgPath, fallbackInitialDirectory: st4Dir))
+                return;
+
+            var insRes = ed.GetPoint(new PromptPointOptions(
+                "\nKIRISDUZELT yerlesim noktasi (SheetViewOut sol-altin 50 cm solu): ")
+            { AllowNone = false });
+            if (insRes.Status != PromptStatus.OK) return;
+
+            try
+            {
+                KirisDuzeltRunner.ExecuteFromFiles(doc, st4Path, dwgPath, insRes.Value);
+                FinishStaDrawing(doc);
+            }
+            catch (System.Exception ex)
+            {
+                WriteStaCommandError(ed, "KIRISDUZELT", ex);
+            }
+        }
+
+        /// <summary>
+        /// Temel kiriş/kesit: ST4 + düzeltilmemiş DWG seçilir, TKIRIS mantığıyla düzeltilir,
+        /// ana antete yerleştirilir (nokta = SheetViewOut sol-altın 50 cm solu).
+        /// </summary>
+        [CommandMethod("TEMELKIRISDUZELT")]
+        public void TemelKirisDuzelt()
+        {
+            var doc = Application.DocumentManager.MdiActiveDocument;
+            if (doc == null) return;
+            ApplyStaDefaultDrawingDisplaySettings(doc);
+            var ed = doc.Editor;
+
+            if (!RememberedFilePrompt.TryPrompt(ed, "\nTEMELKIRISDUZELT icin ST4 Dosyasi Secin",
+                "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
+                return;
+
+            string st4Dir = Path.GetDirectoryName(st4Path);
+            if (!RememberedFilePrompt.TryPrompt(ed,
+                "\nTemel kiris acilimi DWG secin (henuz duzeltilmemis STA ciktisi)",
+                "DWG Dosyalari (*.dwg)|*.dwg|Tum Dosyalar (*.*)|*.*",
+                RememberedFilePrompt.KindDwg, out string dwgPath, fallbackInitialDirectory: st4Dir))
+                return;
+
+            var insRes = ed.GetPoint(new PromptPointOptions(
+                "\nTEMELKIRISDUZELT yerlesim noktasi (SheetViewOut sol-altin 50 cm solu): ")
+            { AllowNone = false });
+            if (insRes.Status != PromptStatus.OK) return;
+
+            try
+            {
+                TemelKirisDuzeltRunner.ExecuteFromFiles(doc, st4Path, dwgPath, insRes.Value);
+                FinishStaDrawing(doc);
+            }
+            catch (System.Exception ex)
+            {
+                WriteStaCommandError(ed, "TEMELKIRISDUZELT", ex);
+            }
         }
 
         /// <summary>
@@ -776,6 +843,24 @@ namespace ST4PlanIdCiz
             catch (System.Exception ex)
             {
                 WriteStaCommandError(ed, "KOLONDUSEY2", ex);
+            }
+        }
+
+        /// <summary>Seçilen IC ANTET içindeki kolon düşey donatı çapını çizimden okuyup alan korunarak revize eder.</summary>
+        [CommandMethod("KOLONREVIZE")]
+        public void KolonRevize()
+        {
+            var doc = Application.DocumentManager.MdiActiveDocument;
+            if (doc == null) return;
+            ApplyStaDefaultDrawingDisplaySettings(doc);
+            try
+            {
+                KolonRevizeRunner.Run();
+                FinishStaDrawing(doc);
+            }
+            catch (System.Exception ex)
+            {
+                WriteStaCommandError(doc.Editor, "KOLONREVIZE", ex);
             }
         }
 

@@ -1,5 +1,7 @@
 using System;
 using System.Drawing;
+using System.Globalization;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using Autodesk.AutoCAD.Windows;
@@ -9,13 +11,15 @@ namespace ST4PlanIdCiz
 {
     internal static class CommandPaletteManager
     {
-        private const int PaletteWidth = 150;
+        private const int PaletteWidth = 220;
         private const int PaletteHeight = 640;
         private const int MarginX = 8;
         /// <summary>Komut satırı / durum çubuğu üstünde kalsın.</summary>
         private const int MarginBottom = 56;
 
         private static PaletteSet _palette;
+        private static bool _suppressSave;
+        private static int _lastFullHeight = PaletteHeight;
 
         public static void Show()
         {
@@ -26,7 +30,6 @@ namespace ST4PlanIdCiz
                     try
                     {
                         _palette.Visible = true;
-                        PlacePaletteBottomLeft();
                         EnableAutoHide();
                         return;
                     }
@@ -48,13 +51,24 @@ namespace ST4PlanIdCiz
 
                 _palette.Add("Komutlar", new CommandPaletteControl());
                 _palette.Add("Kiri\u015f d\u00fczelt", new KirisDuzeltPaletteControl());
+                _palette.SizeChanged += (s, e) => SaveLayout();
+                _palette.PaletteSetHostMoved += (s, e) => SaveLayout();
+                _palette.StateChanged += (s, e) => SaveLayout();
 
-                _palette.Size = new Size(PaletteWidth, PaletteHeight);
-                _palette.Visible = true;
-                try { _palette.Dock = DockSides.None; } catch { }
-                _palette.Size = new Size(PaletteWidth, PaletteHeight);
-                PlacePaletteBottomLeft();
-                EnableAutoHide();
+                _suppressSave = true;
+                try
+                {
+                    _palette.Size = new Size(PaletteWidth, PaletteHeight);
+                    _palette.Visible = true;
+                    if (!TryRestoreLayout())
+                        PlacePaletteBottomLeft();
+                }
+                finally
+                {
+                    _suppressSave = false;
+                }
+                // AutoRollUp açılış titreşimini azaltır (kapalı).
+                try { if (_palette != null) _palette.AutoRollUp = false; } catch { }
             }
             catch { }
         }
@@ -62,6 +76,7 @@ namespace ST4PlanIdCiz
         public static void Shutdown()
         {
             if (_palette == null) return;
+            SaveLayout();
             try { _palette.Visible = false; } catch { }
             try { _palette.Dispose(); } catch { }
             _palette = null;
@@ -70,7 +85,116 @@ namespace ST4PlanIdCiz
         private static void EnableAutoHide()
         {
             if (_palette == null) return;
-            try { _palette.AutoRollUp = true; } catch { }
+            try { _palette.AutoRollUp = false; } catch { }
+        }
+
+        private static string LayoutPath
+        {
+            get
+            {
+                string dir = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "ST4_Plan_ID_Ciz");
+                try { Directory.CreateDirectory(dir); } catch { }
+                return Path.Combine(dir, "palette_sta.txt");
+            }
+        }
+
+        private static void SaveLayout()
+        {
+            if (_suppressSave || _palette == null) return;
+            try
+            {
+                int w = _palette.Size.Width;
+                int h = _palette.Size.Height;
+                if (w < 40) return;
+                bool rolled = false;
+                try { rolled = _palette.RolledUp; } catch { }
+                if (!rolled && h >= 80)
+                    _lastFullHeight = h;
+                else
+                    h = _lastFullHeight > 0 ? _lastFullHeight : PaletteHeight;
+
+                var loc = _palette.Location;
+                string dock = DockSides.None.ToString();
+                try { dock = _palette.Dock.ToString(); } catch { }
+
+                string text =
+                    "dock=" + dock + "\r\n" +
+                    "x=" + loc.X.ToString(CultureInfo.InvariantCulture) + "\r\n" +
+                    "y=" + loc.Y.ToString(CultureInfo.InvariantCulture) + "\r\n" +
+                    "w=" + w.ToString(CultureInfo.InvariantCulture) + "\r\n" +
+                    "h=" + h.ToString(CultureInfo.InvariantCulture) + "\r\n";
+                File.WriteAllText(LayoutPath, text);
+            }
+            catch { }
+        }
+
+        private static bool TryRestoreLayout()
+        {
+            if (_palette == null) return false;
+            try
+            {
+                string path = LayoutPath;
+                if (!File.Exists(path)) return false;
+                int x = 0, y = 0, w = 0, h = 0;
+                DockSides dock = DockSides.None;
+                bool gotDock = false;
+                foreach (string raw in File.ReadAllLines(path))
+                {
+                    int eq = raw.IndexOf('=');
+                    if (eq <= 0) continue;
+                    string key = raw.Substring(0, eq).Trim();
+                    string val = raw.Substring(eq + 1).Trim();
+                    if (key == "dock" && Enum.TryParse(val, out DockSides d))
+                    {
+                        dock = d;
+                        gotDock = true;
+                    }
+                    else if (key == "x") int.TryParse(val, NumberStyles.Integer, CultureInfo.InvariantCulture, out x);
+                    else if (key == "y") int.TryParse(val, NumberStyles.Integer, CultureInfo.InvariantCulture, out y);
+                    else if (key == "w") int.TryParse(val, NumberStyles.Integer, CultureInfo.InvariantCulture, out w);
+                    else if (key == "h") int.TryParse(val, NumberStyles.Integer, CultureInfo.InvariantCulture, out h);
+                }
+                if (!gotDock || w < 80 || h < 80) return false;
+
+                var rect = new Rectangle(x, y, w, h);
+                if (dock == DockSides.None && !TitleBarOnAnyScreen(rect))
+                    return false;
+
+                _palette.Size = new Size(w, h);
+                _lastFullHeight = h;
+                if (dock == DockSides.None)
+                {
+                    try { _palette.Dock = DockSides.None; } catch { }
+                    _palette.Location = new Point(x, y);
+                    _palette.Size = new Size(w, h);
+                }
+                else
+                {
+                    try { _palette.Dock = dock; } catch { return false; }
+                }
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool TitleBarOnAnyScreen(Rectangle rect)
+        {
+            var title = new Rectangle(rect.Left, rect.Top, Math.Max(rect.Width, 48), 32);
+            try
+            {
+                foreach (var screen in Screen.AllScreens)
+                {
+                    if (screen.WorkingArea.IntersectsWith(title))
+                        return true;
+                }
+            }
+            catch { }
+            return false;
         }
 
         private static void PlacePaletteBottomLeft()
@@ -118,25 +242,8 @@ namespace ST4PlanIdCiz
         }
     }
 
-    internal sealed class CommandPaletteControl : UserControl
+    internal sealed class CommandPaletteControl : DarkPaletteUserControl
     {
-        private static readonly Color BgColor = Color.FromArgb(248, 249, 252);
-        private static readonly Color SecBg = Color.FromArgb(238, 240, 245);
-        private static readonly Color SecBrd = Color.FromArgb(205, 210, 222);
-        private static readonly Color BtnNorm = Color.White;
-        private static readonly Color BtnHov = Color.FromArgb(220, 232, 250);
-        private static readonly Color BtnPrs = Color.FromArgb(195, 215, 245);
-        private static readonly Color BtnBrd = Color.FromArgb(185, 192, 210);
-        private static readonly Color TxDark = Color.FromArgb(38, 38, 48);
-        private static readonly Color TxSec = Color.FromArgb(65, 75, 98);
-
-        private const int BtnH = 24;
-        private const int BtnGap = 2;
-        private const int InnerPad = 2;
-        private const int TitleH = 18;
-        private const int SecGap = 4;
-        private const int SidePad = 2;
-
         private static readonly (string label, string cmd)[] S50 =
         {
             ("Kal\u0131p Plan\u0131",    "KALIP50ST4"),
@@ -172,159 +279,47 @@ namespace ST4PlanIdCiz
         {
             ("Deneme1 (ilk 2 kat, sade)", "DENEME1"),
             ("Kapama Perde", "KAPAMADETAY"),
+            ("Kolon Revize", "KOLONREVIZE"),
         };
 
         public CommandPaletteControl()
         {
-            BackColor = BgColor;
-            Dock = DockStyle.Fill;
             AutoScroll = true;
-            Padding = new Padding(SidePad, 4, SidePad, 4);
+            Padding = new Padding(4, 6, 4, 6);
 
-            int y = 4;
-            y = AddSection("\u00d6L\u00c7EK 1:50", S50, y);
-            y = AddSection("\u00d6L\u00c7EK 1:25", S25, y);
-            y = AddSection("\u00d6L\u00c7EK 1:100", S100, y);
-            y = AddSection("\u0130SKELE", Isk, y);
-            y = AddSection("GENEL", Gen, y);
-            y = AddSection("DENEME", AltDeneme, y);
+            int y = 6;
+            y = AddGroup(y, "Ölçek 1:50", S50);
+            y = AddGroup(y, "Ölçek 1:25", S25);
+            y = AddGroup(y, "Ölçek 1:100", S100);
+            y = AddGroup(y, "İskele", Isk);
+            y = AddGroup(y, "Genel", Gen);
+            y = AddGroup(y, "Deneme", AltDeneme);
+            EnsureDarkFiller();
         }
 
-        private int SecH(int n) => TitleH + InnerPad + n * (BtnH + BtnGap) - BtnGap + InnerPad;
-
-        private int AddSection(string title, (string label, string cmd)[] items, int top)
+        private int AddGroup(int y, string title, (string label, string cmd)[] items)
         {
-            int h = SecH(items.Length);
-            var sp = new Panel
-            {
-                Location = new Point(SidePad, top),
-                Size = new Size(Width - SidePad * 2 - 1, h),
-                Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right,
-                BackColor = SecBg
-            };
-            sp.Paint += (s, e) =>
-            {
-                using (var pen = new Pen(SecBrd))
-                    e.Graphics.DrawRectangle(pen, 0, 0, sp.Width - 1, sp.Height - 1);
-            };
-
-            sp.Controls.Add(new Label
-            {
-                Text = title,
-                Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
-                ForeColor = TxSec,
-                Location = new Point(InnerPad + 1, 2),
-                AutoSize = true,
-                BackColor = Color.Transparent
-            });
-
-            int by = TitleH + InnerPad;
+            y = ToolPaletteUi.AddGroupHeader(this, title, y);
             foreach (var it in items)
-            {
-                var btn = MakeBtn(it.label, it.cmd);
-                btn.Location = new Point(InnerPad, by);
-                btn.Size = new Size(sp.Width - InnerPad * 2 - 1, BtnH);
-                btn.Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right;
-                sp.Controls.Add(btn);
-                by += BtnH + BtnGap;
-            }
-
-            Controls.Add(sp);
-            return top + h + SecGap;
-        }
-
-        private Button MakeBtn(string text, string cmd)
-        {
-            var b = new Button
-            {
-                Text = text,
-                Tag = cmd,
-                FlatStyle = FlatStyle.Flat,
-                BackColor = BtnNorm,
-                ForeColor = TxDark,
-                Font = new Font("Segoe UI", 8f),
-                Cursor = Cursors.Hand,
-                TextAlign = ContentAlignment.MiddleCenter
-            };
-            b.FlatAppearance.BorderColor = BtnBrd;
-            b.FlatAppearance.BorderSize = 1;
-            b.FlatAppearance.MouseOverBackColor = BtnHov;
-            b.FlatAppearance.MouseDownBackColor = BtnPrs;
-            b.Click += OnCmd;
-            return b;
-        }
-
-        private static void OnCmd(object sender, EventArgs e)
-        {
-            try
-            {
-                if (!(sender is Control c) || !(c.Tag is string cmd) || string.IsNullOrWhiteSpace(cmd))
-                    return;
-                var doc = AcApp.DocumentManager.MdiActiveDocument;
-                if (doc == null) return;
-                doc.SendStringToExecute(cmd + " ", true, false, false);
-            }
-            catch { }
+                y = ToolPaletteUi.AddToolRow(this, y, it.label, StaToolIcons.ForCommand(it.cmd), it.cmd);
+            return y + 6;
         }
     }
 
     /// <summary>STA kesit/kiris çizimini Beykent katman ve stillerine çevirir (KIRISDUZELT).</summary>
-    internal sealed class KirisDuzeltPaletteControl : UserControl
+    internal sealed class KirisDuzeltPaletteControl : DarkPaletteUserControl
     {
         public KirisDuzeltPaletteControl()
         {
-            BackColor = Color.FromArgb(248, 249, 252);
-            Dock = DockStyle.Fill;
             AutoScroll = true;
-            Padding = new Padding(6, 8, 6, 8);
+            Padding = new Padding(4, 6, 4, 6);
 
-            var lbl = new Label
-            {
-                Text = "STA4CAD kiriş/kesit: x5000, INSERT/XREF BlockTransform yedek; blok içi + model + yerleşimde Color/LT/LW BYLAYER; DONATI, KES_DET, KOT.",
-                Font = new Font("Segoe UI", 7.5f),
-                ForeColor = Color.FromArgb(55, 65, 85),
-                AutoSize = false,
-                Size = new Size(130, 120),
-                Location = new Point(2, 4),
-                BackColor = Color.Transparent
-            };
-
-            var btnKiris = MakeTabBtn("KIRISDUZELT", 128);
-            var btnMetraj = MakeTabBtn("METRAJ", 162);
-
-            Controls.Add(lbl);
-            Controls.Add(btnKiris);
-            Controls.Add(btnMetraj);
-        }
-
-        private static Button MakeTabBtn(string cmd, int y)
-        {
-            var btn = new Button
-            {
-                Text = cmd,
-                Location = new Point(2, y),
-                Size = new Size(130, 28),
-                FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 8f, FontStyle.Bold),
-                Cursor = Cursors.Hand,
-                Tag = cmd
-            };
-            btn.FlatAppearance.BorderColor = Color.FromArgb(185, 192, 210);
-            btn.Click += OnTabCmd;
-            return btn;
-        }
-
-        private static void OnTabCmd(object sender, EventArgs e)
-        {
-            try
-            {
-                if (!(sender is Control c) || !(c.Tag is string cmd) || string.IsNullOrWhiteSpace(cmd))
-                    return;
-                var doc = AcApp.DocumentManager.MdiActiveDocument;
-                if (doc == null) return;
-                doc.SendStringToExecute(cmd + " ", true, false, false);
-            }
-            catch { }
+            int y = 6;
+            y = ToolPaletteUi.AddGroupHeader(this, "Kiriş / Metraj", y);
+            y = ToolPaletteUi.AddToolRow(this, y, "Kiriş düzelt", StaToolIcons.ForCommand("KIRISDUZELT"), "KIRISDUZELT");
+            y = ToolPaletteUi.AddToolRow(this, y, "Temel kiriş düzelt", StaToolIcons.ForCommand("TEMELKIRISDUZELT"), "TEMELKIRISDUZELT");
+            y = ToolPaletteUi.AddToolRow(this, y, "Metraj", StaToolIcons.ForCommand("METRAJ"), "METRAJ");
+            EnsureDarkFiller();
         }
     }
 }

@@ -1,0 +1,13 @@
+---
+description: Kolon düşey donatı net aralık kontrolü ve proje .BAR çap listesi
+alwaysApply: true
+---
+
+# Kolon düşey donatı net aralığı + .BAR çapları
+
+- Kullanıcıya cevaplar **Türkçe** yazılır.
+- Proje çap listesi **her zaman ST4 ile aynı isimli, aynı klasördeki `.BAR`** dosyasından okunur (`Path.ChangeExtension(st4, ".BAR")`). Başka projenin BAR dosyasına bakılmaz.
+- `.BAR` ilk 4 satırı: projede kullanılan çaplar; `0` değerleri hariç, birleşimi alınır.
+- Kontrol yalnız **kolon ve perde başlığı** kesitlerinde (perde, daire, poligon hariç): düşey donatı halkaları arası net mesafe ≥ **4 cm** (gerçek cm; 1/50'de 4, 1/25'te 8 çizim birimi).
+- Yetmezse As korunarak BAR'daki bir büyük çapa, o da yetmezse daha büyüğüne geçilir (adet = ⌈As/φ'²⌉, çift, ≥ 4). Hiçbiri kurtarmazsa kesitteki düşeyler **kırmızı** (ColorIndex 1) çizilir.
+- Kod: `PlanIdDrawingManager.KolonDuseyAralik.cs` (`ApplyKolonDuseyNetAralikCapBuyutme`).

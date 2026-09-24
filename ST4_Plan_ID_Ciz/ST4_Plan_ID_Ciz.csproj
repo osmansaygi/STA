@@ -91,8 +91,29 @@
     <Message Importance="high" Text="ST4_Plan_ID_Ciz DLL YUKLEME ADRESI:" />
     <Message Importance="high" Text="  Klasor: $(MSBuildProjectDirectory)\$(OutputPath)" />
     <Message Importance="high" Text="  Dosya: $(AssemblyName).dll (her derlemede farkli tarih/saat)" />
-    <Message Importance="high" Text="  AutoCAD: NETLOAD → yukaridaki klasore gidin → $(AssemblyName).dll dosyasini yukleyin." />
+    <Message Importance="high" Text="  KISAYOL: $(MSBuildProjectDirectory)\..\NETLOAD\" />
+    <Message Importance="high" Text="  AutoCAD: NETLOAD → NETLOAD klasoru → $(AssemblyName).dll" />
     <Message Importance="high" Text="========================================" />
+  </Target>
+
+  <!-- Ortak NETLOAD klasorune kopyala (kolay secim). -->
+  <Target Name="CopyToNetloadFolder" AfterTargets="CleanupOutputFolder">
+    <PropertyGroup>
+      <_NetloadDir>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\NETLOAD'))</_NetloadDir>
+    </PropertyGroup>
+    <MakeDir Directories="$(_NetloadDir)" />
+    <ItemGroup>
+      <_OldNetloadPlan Include="$(_NetloadDir)\ST4_Plan_ID_Ciz_*.dll;$(_NetloadDir)\ST4_Plan_ID_Ciz_*.pdb" />
+    </ItemGroup>
+    <Delete Files="@(_OldNetloadPlan)" ContinueOnError="true" />
+    <ItemGroup>
+      <_NetloadPlugin Include="$(OutputPath)$(AssemblyName).dll" />
+      <_NetloadPlugin Include="$(OutputPath)$(AssemblyName).pdb" Condition="Exists('$(OutputPath)$(AssemblyName).pdb')" />
+      <_NetloadDeps Include="$(OutputPath)NetTopologySuite.dll;$(OutputPath)Microsoft.Bcl.HashCode.dll;$(OutputPath)System.Buffers.dll;$(OutputPath)System.Memory.dll;$(OutputPath)System.Numerics.Vectors.dll;$(OutputPath)System.Runtime.CompilerServices.Unsafe.dll;$(OutputPath)System.Text.Encoding.CodePages.dll;$(OutputPath)UglyToad.PdfPig*.dll;$(OutputPath)ST4_Aks_Ciz_CSharp*.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_NetloadPlugin)" DestinationFolder="$(_NetloadDir)" SkipUnchangedFiles="false" />
+    <Copy SourceFiles="@(_NetloadDeps)" DestinationFolder="$(_NetloadDir)" SkipUnchangedFiles="true" Condition="'@(_NetloadDeps)' != ''" />
+    <Message Importance="high" Text="NETLOAD guncellendi: $(_NetloadDir)\$(AssemblyName).dll" />
   </Target>
   <Target Name="CopyYatayKot" AfterTargets="Build">
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\YATAY_KOT.dxf" DestinationFolder="$(OutputPath)" Condition="Exists('$(MSBuildProjectDirectory)\..\YATAY_KOT.dxf')" />

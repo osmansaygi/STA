@@ -595,6 +595,104 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>
+        /// Yerleşim noktası = SheetViewOut sol-altın 50 cm solu (KAPAMADETAY / KOLONDUSEY2 ile aynı).
+        /// İçerik SheetView iç çizgisine <see cref="KapamaAntetIcPayCm"/> pay ile oturtulur; ana antet çizilir.
+        /// </summary>
+        internal bool PlaceContentInAnaAntet(
+            Transaction tr,
+            BlockTableRecord btr,
+            IList<ObjectId> contentIds,
+            Point3d insertLl,
+            string st4SourcePath,
+            Editor ed,
+            string antetBaslik,
+            double? icerikYukariCm = null)
+        {
+            if (tr == null || btr == null || contentIds == null || contentIds.Count == 0)
+                return false;
+
+            bool any = false;
+            double layMinX = 0, layMaxX = 0, layMinY = 0, layMaxY = 0;
+            foreach (ObjectId id in contentIds)
+            {
+                if (id.IsNull || id.IsErased) continue;
+                Entity ent;
+                try { ent = tr.GetObject(id, OpenMode.ForRead, false) as Entity; }
+                catch { continue; }
+                if (ent == null || ent.IsErased) continue;
+                Extents3d ex;
+                try { ex = ent.GeometricExtents; }
+                catch { continue; }
+                if (!any)
+                {
+                    layMinX = ex.MinPoint.X;
+                    layMaxX = ex.MaxPoint.X;
+                    layMinY = ex.MinPoint.Y;
+                    layMaxY = ex.MaxPoint.Y;
+                    any = true;
+                }
+                else
+                {
+                    if (ex.MinPoint.X < layMinX) layMinX = ex.MinPoint.X;
+                    if (ex.MaxPoint.X > layMaxX) layMaxX = ex.MaxPoint.X;
+                    if (ex.MinPoint.Y < layMinY) layMinY = ex.MinPoint.Y;
+                    if (ex.MaxPoint.Y > layMaxY) layMaxY = ex.MaxPoint.Y;
+                }
+            }
+            if (!any || layMaxX - layMinX < 10.0 || layMaxY - layMinY < 10.0)
+            {
+                ed?.WriteMessage("\nAntet: icerik sinirlari gecersiz.");
+                return false;
+            }
+
+            double pay = KapamaAntetIcPayCm;
+            // Varsayılan (temel kiriş): SheetView iç tabandan +150 cm. KIRISDUZELT: +75 cm (75 aşağı).
+            double yukariCm = icerikYukariCm ?? 150.0;
+            if (!TryGetEmbeddedAntetSheetViewOutOffsets(out double outDx, out double outDy, ed))
+            {
+                outDx = 0.0;
+                outDy = AntetDxfSheetViewOutYmin - AntetDxfSheetViewYmin;
+            }
+            double desiredOutLeft = insertLl.X + KapamaYerlesimSheetViewOutSolPayCm;
+            double desiredOutBottom = insertLl.Y;
+            double antetSheetViewLeft = desiredOutLeft - outDx;
+            double antetSheetViewBottom = desiredOutBottom - outDy;
+            double contentLeft = antetSheetViewLeft + pay;
+            double contentBottom = antetSheetViewBottom + pay + yukariCm;
+            double dx = contentLeft - layMinX;
+            double dy = contentBottom - layMinY;
+            if (Math.Abs(dx) >= 0.05 || Math.Abs(dy) >= 0.05)
+            {
+                var disp = Matrix3d.Displacement(new Vector3d(dx, dy, 0));
+                foreach (ObjectId id in contentIds)
+                {
+                    if (id.IsNull || id.IsErased) continue;
+                    Entity ent;
+                    try { ent = tr.GetObject(id, OpenMode.ForWrite, false) as Entity; }
+                    catch { continue; }
+                    try { ent?.TransformBy(disp); } catch { }
+                }
+                layMinX += dx;
+                layMaxX += dx;
+                layMinY += dy;
+                layMaxY += dy;
+            }
+
+            double antetTargetRight = layMaxX + pay;
+            double layoutMaxY = layMaxY + pay;
+            string baslik = string.IsNullOrWhiteSpace(antetBaslik) ? "TEMEL KIRIS ACILIMLARI" : antetBaslik.Trim();
+            // Min. 4500 cm; içerik yetmezse 500 cm adımlarla büyüt — küçültme yok.
+            return TryDrawAntetFromEmbeddedTemplate(
+                tr, btr,
+                layMinX, layMinY, layoutMaxY,
+                antetSheetViewLeft, antetSheetViewBottom, antetTargetRight,
+                st4SourcePath, ed,
+                baslik, null,
+                out _, out _, out _,
+                fitSheetViewHeightToContent: false);
+        }
+
+        /// <summary>
         /// KAPAMADETAY: SheetView iç çizgisine 25 cm pay.
         /// Sağ: en sağ IC antet + 25 cm. Yerleşim: SheetViewOut sol-alt = insert + (50, 0).
         /// </summary>

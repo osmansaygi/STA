@@ -1,0 +1,25 @@
+STAPANEL ikon secenekleri (ACI 94 yesil)
+Klasor: C:\Users\BEYKENT\Documents\CURSOR\Osman_donusum\lisp\ikon-ornek\sta-panel
+
+KALIP50ST4	Kalip Plani 1:50	kalip50st4-ikon-40.png
+KOLON50ST4	Kolon Aplikasyon 1:50	kolon50st4-ikon-40.png
+KOLONDUSEY	Kolon Dusey 1:50	kolondusey-ikon-40.png
+TEMEL50ST4	Temel Plani 1:50	temel50st4-ikon-40.png
+TEMELDONATI	Rd. Temel Donati	temeldonati-ikon-40.png
+KOLONDUSEY25	Kolon Dusey 1:25	kolondusey25-ikon-40.png
+KOLONDUSEY2	Kolon Dusey - 2	kolondusey2-ikon-40.png
+KALIP100ST4	Kalip Plani 1:100	kalip100st4-ikon-40.png
+KOLON100ST4	Kolon Aplikasyon 1:100	kolon100st4-ikon-40.png
+TEMEL100ST4	Temel Plani 1:100	temel100st4-ikon-40.png
+ISKELECIZ	Iskele Plani	iskeleciz-ikon-40.png
+ISKELEKESIT	Iskele Kesiti	iskelekesit-ikon-40.png
+ST4PLANID	ST4 Plan ID	st4planid-ikon-40.png
+KOLONDATA	Kolon Data	kolondata-ikon-40.png
+ST4KESIT	ST4 Kesit	st4kesit-ikon-40.png
+ST4KATMANTEMIZLE	Katman temizle	st4katmantemizle-ikon-40.png
+DENEME1	Deneme1	deneme1-ikon-40.png
+KAPAMADETAY	Kapama Perde	kapamadetay-ikon-40.png
+KOLONREVIZE	Kolon Revize	kolonrevize-ikon-40.png
+KIRISDUZELT	Kiris duzelt	kirisduzelt-ikon-40.png
+TEMELKIRISDUZELT	Temel kiris duzelt	temelkirisduzelt-ikon-40.png
+METRAJ	Metraj (KSF)	metraj-ikon-40.png

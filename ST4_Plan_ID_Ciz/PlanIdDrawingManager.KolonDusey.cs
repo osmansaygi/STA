@@ -103,6 +103,7 @@ namespace ST4PlanIdCiz
                     ed?.WriteMessage("\nKOLONDUSEY: ST4 kat/kolon yok.");
                     return false;
                 }
+                ApplyKolonDuseyNetAralikCapBuyutme(st4SourcePath, ed);
                 EnsureLayers(tr, db);
                 EnsurePlanLayer(tr, db, LayerKiris, 2, LineWeight.LineWeight030, useDashed: false);
                 EnsurePlanLayer(tr, db, LayerPerde, 6, LineWeight.LineWeight040, useDashed: false);
@@ -9440,6 +9441,7 @@ namespace ST4PlanIdCiz
 
         private int ResolveKolonDuseyEtriyeDiaMm(int floorIndex, int colNo)
         {
+            if (_revizeEtriyeDiaMm >= 6) return _revizeEtriyeDiaMm;
             if (_kolonDuseyGpr != null && _model?.Floors != null &&
                 KolonDonatiTableDrawer.TryGetKolonBetonarmeCell(_kolonDuseyGpr, _model.Floors, floorIndex, colNo, out _, out _, out string etriye) &&
                 TryParseEtriyeDiaMm(etriye, out int d))
@@ -12240,6 +12242,14 @@ namespace ST4PlanIdCiz
             diaMm = 14;
             gprOzet = null;
             drawOzet = null;
+            if (_revizeDuseyAdet > 0)
+            {
+                n = _revizeDuseyAdet;
+                diaMm = _revizeDuseyDiaMm >= 6 ? _revizeDuseyDiaMm : 14;
+                gprOzet = drawOzet = n.ToString(CultureInfo.InvariantCulture) + "\u00F8"
+                    + diaMm.ToString(CultureInfo.InvariantCulture);
+                return true;
+            }
             if (_kolonDuseyGpr == null || _model?.Floors == null) return false;
             if (!KolonDonatiTableDrawer.TryGetKolonBetonarmeCell(
                     _kolonDuseyGpr, _model.Floors, floorIndex, colNo, out _, out string donati, out _) ||
@@ -12405,6 +12415,16 @@ namespace ST4PlanIdCiz
                 if (resolvedN > 0) n = resolvedN;
                 if (resolvedDia >= 6) diaMm = resolvedDia;
             }
+            _kolonKesitSonDuseyDiaMm = diaMm;
+            AllocateKolonKesitFaces(n, diaMm, Math.Abs(cTr.X - cTl.X), Math.Abs(cTl.Y - cBl.Y),
+                out top, out bot, out left, out right);
+        }
+
+        /// <summary>Köşe merkezleri arası Lx/Ly (cm) için 4 köşe dışındaki çubukların yüzlere dağılımı.</summary>
+        private static void AllocateKolonKesitFaces(int n, int diaMm, double Lx, double Ly,
+            out int top, out int bot, out int left, out int right)
+        {
+            top = bot = left = right = 0;
             if (n < 4) n = 4;
             int rest = n - 4;
             if (rest <= 0) return;
@@ -12413,8 +12433,6 @@ namespace ST4PlanIdCiz
             double minCcLong = Math.Max(1.5 * phiCm, 4.0) + phiCm;
             double minCcShort = Math.Max(1.5 * phiCm, 4.0) + phiCm;
             const double maxCc = 20.0;
-            double Lx = Math.Abs(cTr.X - cTl.X);
-            double Ly = Math.Abs(cTl.Y - cBl.Y);
             if (Math.Abs(Lx - Ly) < 3.0)
                 AllocateSquareFaceExtras(rest, Lx, minCcLong, maxCc, out top, out bot, out left, out right);
             else
@@ -12422,6 +12440,25 @@ namespace ST4PlanIdCiz
         }
 
         private void DrawKolonKesitDuseyDonatiCemberleri(
+            Transaction tr, BlockTableRecord btr,
+            Point2d cTl, Point2d cTr, Point2d cBr, Point2d cBl,
+            int top, int bot, int left, int right)
+        {
+            double net = KolonKesitMinNetAralikCm(Math.Abs(cTr.X - cTl.X), Math.Abs(cTl.Y - cBl.Y),
+                _kolonKesitSonDuseyDiaMm, top, bot, left, right);
+            _kolonKesitDonatiKirmizi = string.IsNullOrEmpty(_kolonKesitLayerOverride)
+                && net < KolonDuseyMinNetAralikCm - 1e-6;
+            try
+            {
+                DrawKolonKesitDuseyDonatiCemberleriCore(tr, btr, cTl, cTr, cBr, cBl, top, bot, left, right);
+            }
+            finally
+            {
+                _kolonKesitDonatiKirmizi = false;
+            }
+        }
+
+        private void DrawKolonKesitDuseyDonatiCemberleriCore(
             Transaction tr, BlockTableRecord btr,
             Point2d cTl, Point2d cTr, Point2d cBr, Point2d cBl,
             int top, int bot, int left, int right)
@@ -12597,6 +12634,7 @@ namespace ST4PlanIdCiz
             pl.AddVertexAt(0, new Point2d(cx - r, cy), 1.0, w, w);
             pl.AddVertexAt(1, new Point2d(cx + r, cy), 1.0, w, w);
             pl.ConstantWidth = w;
+            if (_kolonKesitDonatiKirmizi) pl.ColorIndex = 1;
             AppendEntity(tr, btr, pl);
         }
 

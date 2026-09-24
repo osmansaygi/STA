@@ -518,6 +518,27 @@ namespace ST4PlanIdCiz
             return !string.IsNullOrWhiteSpace(donati) || !string.IsNullOrWhiteSpace(etriye) || !string.IsNullOrWhiteSpace(ebat);
         }
 
+        /// <summary>Kat/kolon hücresinin düşey donatı yazısını değiştirir (donatının okunduğu anahtar).</summary>
+        public static bool TrySetKolonBetonarmeDonati(
+            Dictionary<string, (string ebat, string donati, string etriye)> data,
+            IReadOnlyList<FloorInfo> floors,
+            int floorIndex,
+            int colNo,
+            string donati)
+        {
+            if (data == null || floors == null || floorIndex < 0 || floorIndex >= floors.Count) return false;
+            var fmt = BuildGprFloorKeyFormats(floors);
+            if (floorIndex >= fmt.Length) return false;
+            var fk = fmt[floorIndex];
+            foreach (var key in GprDataKeysForFloorColumn(fk.StoryPrefix, fk.HyphenBeforeColNo, colNo))
+            {
+                if (!data.TryGetValue(key, out var t) || string.IsNullOrWhiteSpace(t.donati)) continue;
+                data[key] = (t.ebat, donati, t.etriye);
+                return true;
+            }
+            return false;
+        }
+
         /// <summary>
         /// GPR KOLON BETONARME satırında sol hücre "Hcr" ise o kat/eleman kritik perde yüksekliği içindedir
         /// (TBDY 2018 7.6.2.2 / 7.13.2.4).

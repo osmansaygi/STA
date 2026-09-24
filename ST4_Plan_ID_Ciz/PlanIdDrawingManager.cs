@@ -14700,6 +14700,13 @@ namespace ST4PlanIdCiz
                 (string.Equals(s.Trim(), "1:50", StringComparison.OrdinalIgnoreCase) ||
                  string.Equals(s.Trim(), "1:100", StringComparison.OrdinalIgnoreCase)))
                 return "1:100 - 1:25";
+            // Kiriş / temel kiriş açılımları anteti: ölçek yalnız 1:25
+            if (!string.IsNullOrWhiteSpace(antetPlanTitle) &&
+                antetPlanTitle.IndexOf("KIRIS ACILIM", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                (string.Equals(s.Trim(), "1:50", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(s.Trim(), "1:50 - 1:25", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(s.Trim(), "1:100 - 1:25", StringComparison.OrdinalIgnoreCase)))
+                return "1:25";
             if (!string.IsNullOrWhiteSpace(antetPlanTitle) &&
                 string.Equals(s.Trim(), "1:50", StringComparison.OrdinalIgnoreCase))
             {

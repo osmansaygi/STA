@@ -18,6 +18,7 @@ namespace ST4PlanIdCiz
         public const string KindKsf = "ksf";
         public const string KindPdf = "pdf";
         public const string KindGpr = "gpr";
+        public const string KindDwg = "dwg";
 
         private static readonly object Sync = new object();
         private static Dictionary<string, string> _cache;

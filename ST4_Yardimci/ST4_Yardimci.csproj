@@ -1,0 +1,101 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <OutputType>Library</OutputType>
+    <RootNamespace>ST4Yardimci</RootNamespace>
+    <BaseAssemblyName>ST4_Yardimci</BaseAssemblyName>
+    <!-- Her derlemede tarih/saatli isim (Plan_ID gibi). -->
+    <AssemblyName>$(BaseAssemblyName)_$([System.DateTime]::Now.ToString("yyyyMMdd_HHmmss"))</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <Platforms>AnyCPU</Platforms>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <Deterministic>false</Deterministic>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <AutoCADInstallDir Condition="'$(AutoCADInstallDir)' == '' and Exists('C:\Program Files\Autodesk\AutoCAD 2026\acdbmgd.dll')">C:\Program Files\Autodesk\AutoCAD 2026</AutoCADInstallDir>
+    <AutoCADInstallDir Condition="'$(AutoCADInstallDir)' == '' and Exists('C:\Program Files\Autodesk\AutoCAD 2025\acdbmgd.dll')">C:\Program Files\Autodesk\AutoCAD 2025</AutoCADInstallDir>
+    <AutoCADInstallDir Condition="'$(AutoCADInstallDir)' == '' and Exists('C:\Program Files\Autodesk\AutoCAD 2024\acdbmgd.dll')">C:\Program Files\Autodesk\AutoCAD 2024</AutoCADInstallDir>
+    <AutoCADInstallDir Condition="'$(AutoCADInstallDir)' == '' and Exists('C:\Program Files\Autodesk\AutoCAD 2023\acdbmgd.dll')">C:\Program Files\Autodesk\AutoCAD 2023</AutoCADInstallDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AutoCAD.NET" Version="24.3.0" Condition="'$(AutoCADInstallDir)' == ''">
+      <ExcludeAssets>runtime</ExcludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Drawing" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Icons\oto_olcu_16.png" LogicalName="ST4Yardimci.Icons.oto_olcu_16.png" Condition="Exists('$(MSBuildProjectDirectory)\Icons\oto_olcu_16.png')" />
+    <EmbeddedResource Include="Icons\oto_olcu_32.png" LogicalName="ST4Yardimci.Icons.oto_olcu_32.png" Condition="Exists('$(MSBuildProjectDirectory)\Icons\oto_olcu_32.png')" />
+    <EmbeddedResource Include="Icons\*.png" Exclude="Icons\oto_olcu_*.png" Condition="Exists('$(MSBuildProjectDirectory)\Icons')">
+      <LogicalName>ST4Yardimci.Icons.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup Condition="Exists('$(AutoCADInstallDir)\acdbmgd.dll') and Exists('$(AutoCADInstallDir)\acmgd.dll')">
+    <Reference Include="acdbmgd">
+      <HintPath>$(AutoCADInstallDir)\acdbmgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="acmgd">
+      <HintPath>$(AutoCADInstallDir)\acmgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="accoremgd">
+      <HintPath>$(AutoCADInstallDir)\accoremgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <Target Name="ValidateAutoCADReferences" BeforeTargets="ResolveReferences" Condition="'$(AutoCADInstallDir)' != ''">
+    <Error
+      Condition="!Exists('$(AutoCADInstallDir)\acdbmgd.dll') or !Exists('$(AutoCADInstallDir)\acmgd.dll')"
+      Text="AutoCAD .NET referanslari bulunamadi. MSBuild'e /p:AutoCADInstallDir='C:\Program Files\Autodesk\AutoCAD 20XX' verin." />
+  </Target>
+
+  <Target Name="CleanupOutputFolder" AfterTargets="Build">
+    <ItemGroup>
+      <_AcadHostDlls Include="$(OutputPath)Ac*.dll;$(OutputPath)Ad*.dll;$(OutputPath)ac*.dll" />
+      <_OldPluginOutputs Include="$(OutputPath)$(BaseAssemblyName)_*.dll;$(OutputPath)$(BaseAssemblyName)_*.pdb"
+                         Exclude="$(OutputPath)$(AssemblyName).dll;$(OutputPath)$(AssemblyName).pdb" />
+      <_OldFixedName Include="$(OutputPath)$(BaseAssemblyName).dll;$(OutputPath)$(BaseAssemblyName).pdb" />
+    </ItemGroup>
+    <Delete Files="@(_AcadHostDlls);@(_OldPluginOutputs);@(_OldFixedName)" ContinueOnError="true" />
+  </Target>
+
+  <Target Name="ShowDllPath" AfterTargets="Build">
+    <Message Importance="high" Text="========================================" />
+    <Message Importance="high" Text="ST4_Yardimci DLL (tarih/saatli):" />
+    <Message Importance="high" Text="  $(MSBuildProjectDirectory)\$(OutputPath)$(AssemblyName).dll" />
+    <Message Importance="high" Text="  KISAYOL: $(MSBuildProjectDirectory)\..\NETLOAD\" />
+    <Message Importance="high" Text="  AutoCAD: NETLOAD → NETLOAD klasoru → en son ST4_Yardimci_*.dll" />
+    <Message Importance="high" Text="========================================" />
+  </Target>
+
+  <Target Name="CopyToNetloadFolder" AfterTargets="CleanupOutputFolder">
+    <PropertyGroup>
+      <_NetloadDir>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\NETLOAD'))</_NetloadDir>
+    </PropertyGroup>
+    <MakeDir Directories="$(_NetloadDir)" />
+    <ItemGroup>
+      <_OldNetloadYard Include="$(_NetloadDir)\ST4_Yardimci*.dll;$(_NetloadDir)\ST4_Yardimci*.pdb" />
+    </ItemGroup>
+    <Delete Files="@(_OldNetloadYard)" ContinueOnError="true" />
+    <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="$(_NetloadDir)" SkipUnchangedFiles="false" />
+    <Copy SourceFiles="$(OutputPath)$(AssemblyName).pdb" DestinationFolder="$(_NetloadDir)" SkipUnchangedFiles="false" Condition="Exists('$(OutputPath)$(AssemblyName).pdb')" />
+    <Message Importance="high" Text="NETLOAD guncellendi: $(_NetloadDir)\$(AssemblyName).dll" />
+  </Target>
+</Project>
