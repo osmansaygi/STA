@@ -1,0 +1,786 @@
+{
+  "_aciklama": "Kiriş detaylandırma parametreleri. Birimler: mm, MPa. 'etiket': YONETMELIK | YONETMELIK_TURETILMIS | UYGULAMA | DOGRULANAMADI. Tablo değerleri fctd_tablo ile hesaplanmıştır. Ayrıntı ve açıklamalar: kiris_detay_kurallari.md",
+  "_surum": "2026-09-26",
+  "kaynaklar": {
+    "TS500": "TS 500/Şubat 2000 — https://web.itu.edu.tr/mdaskiran/wp-content/uploads/2014/09/TS500.pdf",
+    "TS500_T3": "TS 500:2000/T3 Kasım 2014 (yalnız Md. 3.4) — https://www.resmigazete.gov.tr/eskiler/2015/01/20150118-9.htm",
+    "TBDY": "TBDY 2018 — https://webdosya.csb.gov.tr/db/yapiisleri/icerikler/tbdy_2018-20210506174126.pdf",
+    "TS708_ikincil": "TS 708:2016 Çizelge 3 (ikincil) — https://help.idecad.com.tr/ideCAD/malzeme-ts-500-3",
+    "TOPCU2019": "A. Topçu, Betonarme I, ESOGÜ 2019 — https://atopcu.osmanmuratkaya.com/index_dosyalar/Dersler/Betonarme1/Sunular/Betonarme_1_5.pdf",
+    "IDECAD": "ideCAD yardım — https://help.idecad.com.tr/ideCAD/donatnn-kenetlenmesi-ts-500",
+    "PROTA": "ProtaStructure kiriş ayarları — https://protasoftware.com/tr/destek/teknik-kilavuzlar/kiris-tasarim-ayarlari-ps2022/"
+  },
+  "malzeme": {
+    "gamma_mc": {
+      "deger": 1.5,
+      "alternatif": {
+        "ondokum": 1.4,
+        "denetimsiz": 1.7
+      },
+      "etiket": "YONETMELIK",
+      "kaynak": "TS500 6.2.5 Denk.6.2"
+    },
+    "gamma_ms": {
+      "deger": 1.15,
+      "etiket": "YONETMELIK",
+      "kaynak": "TS500 6.2.5"
+    },
+    "Es": {
+      "deger": 200000,
+      "etiket": "YONETMELIK",
+      "kaynak": "TS500 3.2, 7.1"
+    },
+    "fctk_formul": {
+      "ifade": "0.35*sqrt(fck)",
+      "etiket": "YONETMELIK",
+      "kaynak": "TS500 Denk.3.1"
+    },
+    "beton_min_sinif_TBDY": {
+      "deger": "C25",
+      "etiket": "YONETMELIK",
+      "kaynak": "TBDY 7.2.5.1, 7.2.5.3(a)"
+    },
+    "beton": {
+      "tablo": {
+        "C20": {
+          "fck": 20,
+          "fcd": 13.333,
+          "fctk_tablo": 1.6,
+          "fctd_tablo": 1.0667,
+          "fctk_formul": 1.5652,
+          "fctd_formul": 1.0435,
+          "Ec": 28000,
+          "k1": 0.85,
+          "tbdy_izinli": false,
+          "celik": {
+            "B420C": {
+              "lb_phi_konumII": 41.09,
+              "lb_phi_konumI": 57.52,
+              "rho_min": 0.00234,
+              "rho_b": 0.0164
+            },
+            "B500C": {
+              "lb_phi_konumII": 48.91,
+              "lb_phi_konumI": 68.48,
+              "rho_min": 0.00196,
+              "rho_b": 0.01285
+            }
+          }
+        },
+        "C25": {
+          "fck": 25,
+          "fcd": 16.667,
+          "fctk_tablo": 1.8,
+          "fctd_tablo": 1.2,
+          "fctk_formul": 1.75,
+          "fctd_formul": 1.1667,
+          "Ec": 30000,
+          "k1": 0.85,
+          "tbdy_izinli": true,
+          "celik": {
+            "B420C": {
+              "lb_phi_konumII": 36.52,
+              "lb_phi_konumI": 51.13,
+              "rho_min": 0.00263,
+              "rho_b": 0.0205
+            },
+            "B500C": {
+              "lb_phi_konumII": 43.48,
+              "lb_phi_konumI": 60.87,
+              "rho_min": 0.00221,
+              "rho_b": 0.01606
+            }
+          }
+        },
+        "C30": {
+          "fck": 30,
+          "fcd": 20.0,
+          "fctk_tablo": 1.9,
+          "fctd_tablo": 1.2667,
+          "fctk_formul": 1.917,
+          "fctd_formul": 1.278,
+          "Ec": 32000,
+          "k1": 0.82,
+          "tbdy_izinli": true,
+          "celik": {
+            "B420C": {
+              "lb_phi_konumII": 34.6,
+              "lb_phi_konumI": 48.44,
+              "rho_min": 0.00277,
+              "rho_b": 0.02373
+            },
+            "B500C": {
+              "lb_phi_konumII": 41.19,
+              "lb_phi_konumI": 57.67,
+              "rho_min": 0.00233,
+              "rho_b": 0.01859
+            }
+          }
+        },
+        "C35": {
+          "fck": 35,
+          "fcd": 23.333,
+          "fctk_tablo": 2.1,
+          "fctd_tablo": 1.4,
+          "fctk_formul": 2.0706,
+          "fctd_formul": 1.3804,
+          "Ec": 33000,
+          "k1": 0.79,
+          "tbdy_izinli": true,
+          "celik": {
+            "B420C": {
+              "lb_phi_konumII": 31.3,
+              "lb_phi_konumI": 43.83,
+              "rho_min": 0.00307,
+              "rho_b": 0.02667
+            },
+            "B500C": {
+              "lb_phi_konumII": 37.27,
+              "lb_phi_konumI": 52.17,
+              "rho_min": 0.00258,
+              "rho_b": 0.0209
+            }
+          }
+        },
+        "C40": {
+          "fck": 40,
+          "fcd": 26.667,
+          "fctk_tablo": 2.2,
+          "fctd_tablo": 1.4667,
+          "fctk_formul": 2.2136,
+          "fctd_formul": 1.4757,
+          "Ec": 34000,
+          "k1": 0.76,
+          "tbdy_izinli": true,
+          "celik": {
+            "B420C": {
+              "lb_phi_konumII": 29.88,
+              "lb_phi_konumI": 41.83,
+              "rho_min": 0.00321,
+              "rho_b": 0.02932
+            },
+            "B500C": {
+              "lb_phi_konumII": 35.57,
+              "lb_phi_konumI": 49.8,
+              "rho_min": 0.0027,
+              "rho_b": 0.02297
+            }
+          }
+        },
+        "C45": {
+          "fck": 45,
+          "fcd": 30.0,
+          "fctk_tablo": 2.3,
+          "fctd_tablo": 1.5333,
+          "fctk_formul": 2.3479,
+          "fctd_formul": 1.5652,
+          "Ec": 36000,
+          "k1": 0.73,
+          "tbdy_izinli": true,
+          "celik": {
+            "B420C": {
+              "lb_phi_konumII": 28.58,
+              "lb_phi_konumI": 40.02,
+              "rho_min": 0.00336,
+              "rho_b": 0.03168
+            },
+            "B500C": {
+              "lb_phi_konumII": 34.03,
+              "lb_phi_konumI": 47.64,
+              "rho_min": 0.00282,
+              "rho_b": 0.02483
+            }
+          }
+        },
+        "C50": {
+          "fck": 50,
+          "fcd": 33.333,
+          "fctk_tablo": 2.5,
+          "fctd_tablo": 1.6667,
+          "fctk_formul": 2.4749,
+          "fctd_formul": 1.6499,
+          "Ec": 37000,
+          "k1": 0.7,
+          "tbdy_izinli": true,
+          "celik": {
+            "B420C": {
+              "lb_phi_konumII": 26.3,
+              "lb_phi_konumI": 36.81,
+              "rho_min": 0.00365,
+              "rho_b": 0.03376
+            },
+            "B500C": {
+              "lb_phi_konumII": 31.3,
+              "lb_phi_konumI": 43.83,
+              "rho_min": 0.00307,
+              "rho_b": 0.02645
+            }
+          }
+        }
+      },
+      "etiket": "YONETMELIK",
+      "kaynak": "TS500 Çizelge 3.2, Çizelge 7.1; rho_b TS500 7.1 varsayımlarından türetilmiştir (YONETMELIK_TURETILMIS)"
+    },
+    "celik": {
+      "B420C": {
+        "fyk": 420,
+        "fyd": 365.217,
+        "Rm_Re": [
+          1.15,
+          1.35
+        ],
+        "Re_act_nom_max": 1.3,
+        "A5_min_yuzde": 12,
+        "Agt_min_yuzde": 7.5
+      },
+      "B500C": {
+        "fyk": 500,
+        "fyd": 434.783,
+        "Rm_Re": [
+          1.15,
+          1.35
+        ],
+        "Re_act_nom_max": 1.3,
+        "A5_min_yuzde": 12,
+        "Agt_min_yuzde": 7.5
+      },
+      "etiket": "YONETMELIK (sınıf zorunluluğu TBDY 7.2.5.3(b)); mekanik değerler TS 708 ikincil kaynaktan",
+      "kaynak": "TBDY 7.2.5.3(b); TS708_ikincil"
+    },
+    "birim_agirlik_kg_m": {
+      "ifade": "phi**2/162",
+      "etiket": "UYGULAMA"
+    }
+  },
+  "paspayi": {
+    "kiris_dis_min": 25,
+    "kiris_ic_min": 20,
+    "zemin_temasli_min": 50,
+    "olcum": "en dış donatının (etriyenin) dış yüzünden",
+    "etiket": "YONETMELIK",
+    "kaynak": "TS500 7.3, 9.5.1 Çizelge 9.3",
+    "not": "Çevresel etki sınıfı (TS EN 206) paftada belirtilmeli: TBDY 7.13.1.1. Topçu 2019 önerisi 30 mm (UYGULAMA).",
+    "uygulama_onerisi": {
+      "cc": 30,
+      "yangin_2_4saat": 40,
+      "deniz_kiyisi": 50,
+      "etiket": "UYGULAMA",
+      "kaynak": "TOPCU2019"
+    },
+    "agirlik_merkezi": {
+      "sira1": "cc + phi_w + phi1/2",
+      "sira2": "cc + phi_w + phi1 + s_v + phi2/2",
+      "etiket": "YONETMELIK_TURETILMIS"
+    },
+    "kose_kivrim_duzeltmesi": {
+      "ifade": "R - (R - phi/2)/sqrt(2), R = D_b/2 (R > phi/2 ise)",
+      "etiket": "UYGULAMA"
+    }
+  },
+  "yerlesim": {
+    "net_aralik_min": {
+      "ifade": "max(phi_max, 25, 4/3*Dmax)",
+      "etiket": "YONETMELIK",
+      "kaynak": "TS500 9.5.2 (25 mm); TS500 7.3 (20 mm) — çelişki, 25 mm önerildi"
+    },
+    "sira_arasi_net_min": {
+      "ifade": "max(25, phi_max, 4/3*Dmax)",
+      "etiket": "YONETMELIK",
+      "kaynak": "TS500 9.5.2, 7.3"
+    },
+    "siralar_ayni_dusey_eksen": {
+      "deger": true,
+      "etiket": "YONETMELIK",
+      "kaynak": "TS500 7.3, 9.5.2"
+    },
+    "siralar_arasi_ara_cubuk": {
+      "deger": true,
+      "etiket": "YONETMELIK",
+      "kaynak": "TS500 9.5.4"
+    },
+    "sira_basina_max_cubuk": {
+      "ifade": "floor((bw - 2*cc - 2*phi_w + s_min)/(phi + s_min))",
+      "etiket": "YONETMELIK_TURETILMIS"
+    },
+    "kose_cubuklari": {
+      "ust": "montaj (sürekli)",
+      "alt": "alt düz (sürekli)",
+      "etiket": "YONETMELIK_TURETILMIS",
+      "kaynak": "TBDY 7.2.8.2, 7.4.2.2"
+    },
+    "ilave_yerlesim_sirasi": {
+      "ifade": "önce 1. sırada boş yuvalara simetrik, sonra 2. sıraya aynı eksenlere",
+      "etiket": "UYGULAMA"
+    },
+    "demet": {
+      "max_cubuk": 3,
+      "phi_e": "1.2*phi*sqrt(n)",
+      "bindirme_artis": 1.2,
+      "yalniz_nervurlu": true,
+      "etiket": "YONETMELIK",
+      "kaynak": "TS500 9.5.3, 9.2.2"
+    }
+  },
+  "donati_orani": {
+    "rho_min": {
+      "ifade": "0.8*fctd/fyd",
+      "etiket": "YONETMELIK",
+      "kaynak": "TS500 Denk.7.3; TBDY 7.4.2.1 Denk.7.8"
+    },
+    "rho_max": {
+      "ifade": "rho - rho_basinc <= 0.85*rho_b ve rho <= 0.02",
+      "etiket": "YONETMELIK",
+      "kaynak": "TS500 Denk.7.4, 7.5; TBDY 7.4.2.4"
+    },
+    "rho_b": {
+      "ifade": "0.85*k1*(fcd/fyd)*600/(600+fyd)",
+      "etiket": "YONETMELIK_TURETILMIS",
+      "kaynak": "TS500 7.1"
+    },
+    "boyuna_phi_min": {
+      "deger": 12,
+      "etiket": "YONETMELIK",
+      "kaynak": "TS500 7.3; TBDY 7.4.2.2"
+    },
+    "surekli_ust_min_adet": {
+      "deger": 2,
+      "etiket": "YONETMELIK",
+      "kaynak": "TBDY 7.4.2.2"
+    },
+    "surekli_alt_min_adet": {
+      "deger": 2,
+      "etiket": "YONETMELIK",
+      "kaynak": "TBDY 7.4.2.2"
+    },
+    "surekli_ust_min_oran": {
+      "ifade": "As_montaj >= 0.25*max(As_ust_sol, As_ust_sag)",
+      "etiket": "YONETMELIK",
+      "kaynak": "TBDY 7.4.3.1(a)"
+    },
+    "aciklik_alt_mesnede_uzanan_min": {
+      "ifade": "As_alt_duz >= As_alt_aciklik/3",
+      "etiket": "YONETMELIK",
+      "kaynak": "TS500 7.3"
+    },
+    "mesnet_alt_ust_orani": {
+      "DTS_1_1a_2_2a": 0.5,
+      "diger": 0.3,
+      "etiket": "YONETMELIK",
+      "kaynak": "TBDY 7.4.2.3 (7.8.2)"
+    }
+  },
+  "kenetlenme": {
+    "lb0": {
+      "ifade": "max(0.12*(fyd/fctd)*phi, 20*phi)",
+      "duz_yuzeyli_carpan": 2.0,
+      "etiket": "YONETMELIK",
+      "kaynak": "TS500 9.1.2.1 Denk.9.1; TBDY 7.2.6"
+    },
+    "k_konum": {
+      "konum_II": 1.0,
+      "konum_I": 1.4,
+      "konum_II_tanim": "45–90° eğimli; veya yatay olup kesitin alt yarısında ya da serbest üst yüzden >300 mm uzakta",
+      "varsayilan": {
+        "ust_cubuk": "I",
+        "alt_cubuk": "II"
+      },
+      "etiket": "YONETMELIK",
+      "kaynak": "TS500 9.1.1, 9.1.2.1"
+    },
+    "k_buyuk_cap": {
+      "kosul": "32 < phi <= 40",
+      "ifade": "100/(132-phi)",
+      "etiket": "YONETMELIK",
+      "kaynak": "TS500 9.1.2.1"
+    },
+    "k_ortu_aralik": {
+      "kosul": "cc < phi veya net aralik < 1.5*phi",
+      "deger": 1.2,
+      "etiket": "YONETMELIK",
+      "kaynak": "TS500 9.1.2.1"
+    },
+    "k_As_azaltma": {
+      "ifade": "As_gerekli/As_mevcut",
+      "alt_sinir": "max(0.5*lb0, 20*phi)",
+      "DY_yuksek_izin": false,
+      "etiket": "YONETMELIK",
+      "kaynak": "TS500 9.1.2.1",
+      "not": "DY sınırlı için belirsiz; önerilen: uygulama"
+    },
+    "k_kanca": {
+      "deger": 0.75,
+      "etiket": "YONETMELIK",
+      "kaynak": "TS500 9.1.2.2"
+    },
+    "k_basinc": {
+      "deger": 0.75,
+      "kanca_yasak": true,
+      "etiket": "YONETMELIK",
+      "kaynak": "TS500 9.1.3"
+    },
+    "kanca_boyuna": {
+      "90": {
+        "uc_duz": "12*phi",
+        "dm_min": "6*phi"
+      },
+      "180": {
+        "uc_duz_metin": "max(4*phi, 60)",
+        "uc_duz_sekil": "max(6*phi, 60)",
+        "dm_min": "6*phi",
+        "not": "metin/şekil çelişkisi"
+      },
+      "fiyong": {
+        "dm_min": "12*phi"
+      },
+      "merdane_min": "6*phi",
+      "etiket": "YONETMELIK",
+      "kaynak": "TS500 9.3.1, Şekil 9.1, 9.4"
+    },
+    "kenar_mesnet": {
+      "kosullar": {
+        "a_arti_b_min": "lb",
+        "a_min": "0.4*lb",
+        "b_min": "12*phi"
+      },
+      "bukum": "sargılı çekirdeğin karşı yüzüne kadar uzat, etriyelerin içinden 90° bük",
+      "duz_kenetlenme_izni": "perdelerde veya a >= max(lb, 50*phi)",
+      "a_mevcut_uygulama": "hc - cc_kolon - phi_w_kolon - phi/2",
+      "etiket": "YONETMELIK (a_mevcut: UYGULAMA)",
+      "kaynak": "TBDY 7.4.3.1(b), Şekil 7.7 (7.8.3)"
+    },
+    "ara_mesnet_alt": {
+      "ifade": "max(lb, 50*phi) — açıklığa komşu kolon yüzünden, komşu açıklık alt donatısı",
+      "etiket": "YONETMELIK",
+      "kaynak": "TBDY 7.4.3.1(c), Şekil 7.7"
+    }
+  },
+  "bindirme": {
+    "l0": {
+      "ifade": "(1 + 0.5*r)*lb",
+      "tam_cekme_alpha1": 1.8,
+      "konum_I_carpan": 1.4,
+      "kancali_carpan": 0.75,
+      "etiket": "YONETMELIK",
+      "kaynak": "TS500 9.2.5.1 Denk.9.2",
+      "not": "1.4 bir kez uygulanmalı (yorum)"
+    },
+    "sasirtma_min_merkez": {
+      "ifade": "1.5*l0",
+      "etiket": "YONETMELIK",
+      "kaynak": "TS500 9.2.5.1"
+    },
+    "ek_arasi_bosluk_max": {
+      "ifade": "min(l0/6, 100)",
+      "etiket": "YONETMELIK",
+      "kaynak": "TS500 9.2.2"
+    },
+    "sargi_TS500": {
+      "min_adet": 6,
+      "phi_min": "max(phi/3, 8)",
+      "s_max": "min(h/4, 200)",
+      "etiket": "YONETMELIK",
+      "kaynak": "TS500 9.2.5.1"
+    },
+    "basinc": {
+      "l0_min": "max(lb, 300)",
+      "kanca": false,
+      "sargi_s": "< d/4",
+      "phi_max_bindirme": 30,
+      "etiket": "YONETMELIK",
+      "kaynak": "TS500 9.2.6.1"
+    },
+    "yasak_bolgeler": {
+      "liste": [
+        "sarılma bölgesi (2h)",
+        "kolon-kiriş birleşimi",
+        "açıklık ortası alt donatı bölgesi"
+      ],
+      "etiket": "YONETMELIK",
+      "kaynak": "TBDY 7.4.3.2(a)",
+      "aciklik_ortasi_uzunluk": "DOGRULANAMADI — kullanıcı parametresi"
+    },
+    "ek_boyunca_ozel_etriye": {
+      "s_max": "min(h/4, 100)",
+      "montaj_ekinde_gerekmez": true,
+      "etiket": "YONETMELIK",
+      "kaynak": "TBDY 7.4.3.2(a)"
+    },
+    "manson_kaynak": {
+      "birer_atlayarak": true,
+      "komsu_ek_merkez_min": 600,
+      "etiket": "YONETMELIK",
+      "kaynak": "TBDY 7.4.3.2(b)"
+    },
+    "stok_boy": {
+      "deger": 12000,
+      "etiket": "UYGULAMA"
+    }
+  },
+  "ilave_kesim": {
+    "kuramsal_kesimden_asim": {
+      "nervurlu": "max(d, 20*phi)",
+      "duz": "max(d, 40*phi)",
+      "etiket": "YONETMELIK",
+      "kaynak": "TS500 7.3"
+    },
+    "pilye_bukum": {
+      "ifade": "max(d/3, 8*phi) kuramsal kesimden ileride",
+      "etiket": "YONETMELIK",
+      "kaynak": "TS500 7.3"
+    },
+    "kenetlenme_ilkesi": {
+      "ifade": "gereksinme duyulmayan noktadan lb uzatma",
+      "etiket": "YONETMELIK",
+      "kaynak": "TS500 9.1.2.1",
+      "not": "7.3 ile birlikte yorum: güvenli taraf max(d, 20*phi, lb)"
+    },
+    "karsilanmamis_moment_yok": {
+      "etiket": "YONETMELIK",
+      "kaynak": "TBDY 7.4.3.1(a)"
+    },
+    "ust_ilave_varsayilan": {
+      "ifade": "max(k_ln*ln_ref, lb_konumI)",
+      "k_ln": 0.25,
+      "ln_ref": "ara mesnette komşu açıklıkların büyüğü",
+      "etiket": "UYGULAMA",
+      "kaynak": "TOPCU2019 (Ln/4 ek öneri); PROTA (simetrik uzatma)"
+    },
+    "ust_ilave_2sira_alternatif": {
+      "sira1": "ln/3",
+      "sira2": "ln/4",
+      "etiket": "UYGULAMA",
+      "not": "Türk yönetmeliğinde yok"
+    },
+    "alt_ilave_varsayilan": {
+      "ifade": "max(lb_konumII, 50*phi)",
+      "etiket": "UYGULAMA",
+      "not": "açıklığa uzama için yönetmelikte sayısal kural yok (DOGRULANAMADI)"
+    },
+    "kisa_aciklik_birlestirme": {
+      "kosul": "L_sol + L_sag >= ln - bosluk_min",
+      "etiket": "UYGULAMA",
+      "kaynak": "PROTA"
+    },
+    "yuvarlama_mm": {
+      "deger": 50,
+      "etiket": "UYGULAMA"
+    }
+  },
+  "govde_donatisi": {
+    "TS500": {
+      "tetik": "govde_yuksekligi > 600",
+      "As_min": "0.001*bw*d (toplam, iki yüze eşit)",
+      "phi_min": 10,
+      "s_max": 300,
+      "etiket": "YONETMELIK",
+      "kaynak": "TS500 7.3 Denk.7.6"
+    },
+    "TBDY": {
+      "tetik": "h > ln/4",
+      "As_min": "0.30*max_i(As_ust_i + As_alt_i)",
+      "phi_min": 12,
+      "s_max": 300,
+      "govde_ciroz": {
+        "dusey_max": 600,
+        "eksen_boyunca_max": 400
+      },
+      "kenetlenme": "7.4.3.1(b),(c)",
+      "istisna": "mafsallı kiriş, bağ kirişi, düğüm dışı ikincil kiriş",
+      "etiket": "YONETMELIK",
+      "kaynak": "TBDY 7.4.1.1(c),(d)"
+    },
+    "govde_yuksekligi_tanimi": "DOGRULANAMADI (h veya h-t); önerilen h"
+  },
+  "etriye": {
+    "sarilma_bolgesi_uzunluk": {
+      "ifade": "2*h",
+      "olcum": "kolon yüzünden",
+      "etiket": "YONETMELIK",
+      "kaynak": "TBDY 7.4.4, 7.8.4, Şekil 7.8; TS500 8.1.6"
+    },
+    "ilk_etriye_max": {
+      "deger": 50,
+      "etiket": "YONETMELIK",
+      "kaynak": "TBDY 7.4.4, 7.8.4"
+    },
+    "phi_w_min_sarilma": {
+      "deger": 8,
+      "etiket": "YONETMELIK",
+      "kaynak": "TBDY 7.4.4, 7.8.4"
+    },
+    "phi_w_min_orta": {
+      "deger": 8,
+      "etiket": "UYGULAMA",
+      "not": "TS500'de kiriş için açık değer bulunamadı (DOGRULANAMADI)"
+    },
+    "s_sarilma_max": {
+      "yuksek": {
+        "ifade": "min(d/4, 8*phi_boyuna_min, 150)",
+        "not": "metin d/4, Şekil 7.8 hk/4 — d/4 önerildi",
+        "kaynak": "TBDY 7.4.4"
+      },
+      "sinirli": {
+        "ifade": "min(h/4, 8*phi_boyuna_min, 200)",
+        "kaynak": "TBDY 7.8.4"
+      },
+      "etiket": "YONETMELIK"
+    },
+    "s_orta_max": {
+      "ifade": "d/2; Vd > 3*Vcr ise d/4",
+      "Vcr": "0.65*fctd*bw*d*(1+gamma*Nd/Ac)",
+      "etiket": "YONETMELIK",
+      "kaynak": "TS500 8.1.6, 8.1.3"
+    },
+    "min_etriye": {
+      "ifade": "Asw/s >= 0.3*(fctd/fywd)*bw",
+      "etiket": "YONETMELIK",
+      "kaynak": "TS500 8.1.5.1 Denk.8.6"
+    },
+    "burulma": {
+      "s_max": "min(d/2, ue/8, 300)",
+      "kose_phi_min": 12,
+      "boyuna_aralik_max": 300,
+      "kanca": "135 kapalı",
+      "etiket": "YONETMELIK",
+      "kaynak": "TS500 8.2.6"
+    },
+    "kol_araligi_max": {
+      "deger": 350,
+      "n_kol": "max(2, ceil((bw - 2*cc - phi_w)/350) + 1)",
+      "etiket": "YONETMELIK",
+      "kaynak": "TBDY 7.4.4, 7.8.4 (n_kol formülü türetilmiş)"
+    },
+    "ozel_deprem_kanca": {
+      "aci": 135,
+      "ic_bukum_min": "5*phi_w",
+      "uc_duz_min": "max(6*phi_w, 80)",
+      "kapanis": "aynı boyuna çubuk etrafında",
+      "etiket": "YONETMELIK",
+      "kaynak": "TBDY 7.2.8.1, 7.2.8.2, Şekil 7.1"
+    },
+    "TS500_kanca": {
+      "135": {
+        "uc": "max(6*phi_w, 50)"
+      },
+      "90": {
+        "uc": "max(10*phi_w, 70)",
+        "yalniz": "dişli döşeme kirişi"
+      },
+      "ic_cap_metin": "4*phi_w",
+      "ic_cap_sekil_notu": "6*phi_w",
+      "bindirmeli_etriye": "deprem/burulmada yasak",
+      "etiket": "YONETMELIK",
+      "kaynak": "TS500 9.1.4, 9.3.2, Şekil 9.2"
+    },
+    "ciroz": {
+      "cap_aralik": "etriye ile aynı",
+      "bir_uc_90_izinli": true,
+      "sarma": "boyuna donatı + dış etriye",
+      "etiket": "YONETMELIK",
+      "kaynak": "TBDY 7.2.8.1, 7.2.8.2"
+    },
+    "pafta_zorunlulugu": {
+      "kanca_detayi": "TBDY 7.13.1.3",
+      "sarilma_ve_etriye_bilgisi": "TBDY 7.13.3",
+      "etiket": "YONETMELIK"
+    },
+    "uygulama_onerileri": {
+      "s_orta_max": 200,
+      "s_orta_min": 100,
+      "s_sarilma_min": 50,
+      "kanca_uc": "max(10*phi_w, 100)",
+      "aralik_yuvarlama": [
+        10,
+        25
+      ],
+      "etiket": "UYGULAMA",
+      "kaynak": "TOPCU2019"
+    },
+    "kesme_TBDY": {
+      "Ve": "Vdy ± (Mpi + Mpj)/ln, Mp ≈ 1.4*Mr",
+      "ust_sinir": "Ve <= 0.85*bw*d*sqrt(fck)",
+      "Vc_sifir": "deprem kesmesi > toplamın yarısı ise sarılmada Vc = 0",
+      "etiket": "YONETMELIK",
+      "kaynak": "TBDY 7.4.5, Denk.7.9, 7.10; 7.8.5"
+    }
+  },
+  "geometri": {
+    "bw_min": {
+      "TBDY": 250,
+      "TS500": 200,
+      "etiket": "YONETMELIK",
+      "kaynak": "TBDY 7.4.1.1(a); TS500 7.3"
+    },
+    "bw_max": {
+      "ifade": "h + b_kolon_dik",
+      "etiket": "YONETMELIK",
+      "kaynak": "TBDY 7.4.1.1(a); TS500 7.3"
+    },
+    "h_min": {
+      "ifade": "max(300, 3*t)",
+      "etiket": "YONETMELIK",
+      "kaynak": "TBDY 7.4.1.1(b); TS500 7.3"
+    },
+    "h_max": {
+      "ifade": "3.5*bw",
+      "etiket": "YONETMELIK",
+      "kaynak": "TBDY 7.4.1.1(b)"
+    },
+    "yuksek_kiris": {
+      "surekli": "ln < 2.5*h",
+      "basit": "ln < 1.5*h",
+      "etiket": "YONETMELIK",
+      "kaynak": "TS500 7.3"
+    },
+    "Nd_max": {
+      "ifade": "0.10*Ac*fck",
+      "etiket": "YONETMELIK",
+      "kaynak": "TBDY 7.4.1.2; TS500 Denk.7.2"
+    },
+    "DY_sinirli_kullanim": {
+      "izinli_DTS": [
+        "3",
+        "4"
+      ],
+      "yasak_DTS": [
+        "1a",
+        "2a",
+        "3a",
+        "4a"
+      ],
+      "etiket": "YONETMELIK",
+      "kaynak": "TBDY 4.3.4.1, 4.3.4.3"
+    }
+  },
+  "ornek_C30_B420C_phi16": {
+    "girdi": {
+      "bw": 300,
+      "h": 500,
+      "cc": 25,
+      "phi_w": 10,
+      "phi": 16,
+      "Dmax": [
+        16,
+        22
+      ]
+    },
+    "fctd": 1.267,
+    "fyd": 365.22,
+    "lb_alt": 553.6,
+    "lb_ust": 775.0,
+    "lbk_alt": 415.2,
+    "ara_mesnet_alt_uzatma": 800,
+    "l0_alt_r05": 692.0,
+    "l0_alt_r1": 830.4,
+    "l0_ust_r1": 1162.5,
+    "n_max_Dmax16": 6,
+    "n_max_Dmax22": 5,
+    "y1": 43,
+    "d": 457,
+    "s_sarilma_yuksek": 114.25,
+    "s_sarilma_sinirli": 125,
+    "s_orta": 228.5,
+    "L_sar": 1000,
+    "kanca_uc": 80
+  }
+}
