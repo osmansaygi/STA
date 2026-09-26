@@ -272,6 +272,16 @@ namespace ST4PlanIdCiz.KirisDetay
             return (double)Math.Round((decimal)degerMm, 0, MidpointRounding.AwayFromZero);
         }
 
+        /// <summary>
+        /// 90° kancanın yay boyu. Eksen yarıçapı 3φ + φ/2 (iç yarıçap 3φ, TS500 9.3.1).
+        /// </summary>
+        public static double Yay90(double phiMm)
+        {
+            if (phiMm <= 0) return 0;
+            double r = 3.0 * phiMm + phiMm / 2.0;
+            return Math.PI * r / 2.0;
+        }
+
         /// <summary>Kenar mesnette kullanılabilir yatay gömme: hc − cc − φw − φ/2.</summary>
         public static double AMevcut(double hcMm, double ccKolonMm, double phiWKolonMm, double phiMm, double phiKolonMm, bool kolonBoyunaDus)
         {

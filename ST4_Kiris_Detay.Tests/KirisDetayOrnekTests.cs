@@ -160,8 +160,24 @@ namespace ST4KirisDetay.Tests
             Assert.True(s.Govde.Gerekli);
             Assert.Equal(12, s.Govde.PhiMinMm, 0);
             Assert.True(s.Govde.OnerilenAdetYuz >= 1);
+            Assert.Equal(0, s.Govde.KullanilanAdetSol);
+            Assert.Equal(0, s.Govde.KullanilanAdetSag);
             KesitSonuc acik = s.Kesit(KesitYeri.Aciklik);
-            Assert.Equal(s.Govde.OnerilenAdetYuz * 2, acik.Govde.Count);
+            Assert.Empty(acik.Govde);
+            Assert.Contains(s.Kontroller, k => k.Kod == KirisKuralKodu.Web && k.Seviye == KontrolSeviyesi.Uyari && k.Mesaj.Contains("eklenmedi"));
+        }
+
+        [Fact]
+        public void Govde_yuz_basina_verilen_adet_yerlestirilir()
+        {
+            KirisDetayGirdi g = Temel(16, 2000, true);
+            g.HMm = 700;
+            g.Donati.Govde = new DonatiGrubu(1, 12);
+            KirisDetaySonuc s = KirisDetayMotoru.Hesapla(g);
+            Assert.Equal(1, s.Govde.KullanilanAdetSol);
+            Assert.Equal(1, s.Govde.KullanilanAdetSag);
+            Assert.Equal(2, s.Kesit(KesitYeri.Aciklik).Govde.Count);
+            Assert.Contains(s.Kontroller, k => k.Kod == KirisKuralKodu.Web && k.Seviye == KontrolSeviyesi.Uyari && k.Mesaj.Contains("alan"));
         }
 
         [Fact]

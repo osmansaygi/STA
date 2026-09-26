@@ -115,6 +115,7 @@ namespace ST4PlanIdCiz.KirisDetay
         public const string G06 = "R-G-06";
         public const string G12 = "R-G-12";
         public const string StCap = "R-ST-01";
+        public const string StAralik = "R-ST-04";
         public const string Web = "R-WEB";
         public const string Lap = "R-LAP-03";
         public const string Lap30 = "R-LAP-02";
@@ -250,7 +251,15 @@ namespace ST4PlanIdCiz.KirisDetay
         /// <summary>TS500 Denk. 8.1 içindeki γ. Vcr bilgisi için; aralığı doğrudan VdUcVcrdenBuyuk belirler.</summary>
         public double VcrGamma { get; set; }
 
+        /// <summary>
+        /// Kullanıcının verdiği sarılma aralığı, mm. Doluysa aynen kullanılır; yönetmelik üst sınırını aşarsa uyarı yazılır, aralık kısılmaz.
+        /// Boşsa konstrüktif üst sınır aşağı yuvarlanır.
+        /// </summary>
         public double? KullaniciSarilmaAraligiMm { get; set; }
+
+        /// <summary>
+        /// Kullanıcının verdiği orta bölge aralığı, mm. Doluysa aynen kullanılır; üst sınırı aşarsa uyarı yazılır.
+        /// </summary>
         public double? KullaniciOrtaAralikMm { get; set; }
 
         public double EtriyeKancaUcCarpan { get; set; }
@@ -415,8 +424,17 @@ namespace ST4PlanIdCiz.KirisDetay
         public DonatiGrubu AltSolIlave { get; set; }
         public DonatiGrubu AltSagIlave { get; set; }
 
-        /// <summary>Kullanıcının verdiği gövde: yüz başına adet ve çap. Adet 0 ise motor gerekirse önerir.</summary>
+        /// <summary>
+        /// Gövde donatısı. <see cref="GovdeToplamAdet"/> 0 ise <see cref="DonatiGrubu.Adet"/> yüz başına adettir (eski çağrılar).
+        /// Tablo metnindeki "2ø12(göv.)" toplam çubuktur; bu durumda Adet 0 bırakılır, toplam <see cref="GovdeToplamAdet"/> ile verilir.
+        /// </summary>
         public DonatiGrubu Govde { get; set; }
+
+        /// <summary>
+        /// Gövde çubuğunun toplam adedi (iki yüzün toplamı). 0 ise <see cref="Govde"/>.Adet yüz başına yorumlanır.
+        /// Tek sayı iki yüze bölünür (fark en çok 1); motor çubuk ekleyip çıkarmaz, yüzler eşit değilse uyarır.
+        /// </summary>
+        public int GovdeToplamAdet { get; set; }
 
         public double EtriyeCapMm { get; set; }
 
@@ -436,6 +454,9 @@ namespace ST4PlanIdCiz.KirisDetay
     /// <summary>Tek kiriş açıklığının detay girdisi. Çizim kodu bu nesneyi doldurup <see cref="KirisDetayMotoru.Hesapla"/> çağırır.</summary>
     public sealed class KirisDetayGirdi
     {
+        /// <summary>Kiriş adı, örn. KB-02. Özet metninde kullanılır.</summary>
+        public string Ad { get; set; }
+
         public double BwMm { get; set; }
         public double HMm { get; set; }
         /// <summary>Tabla / döşeme kalınlığı, mm. 0 ise tabla yok.</summary>
@@ -458,6 +479,12 @@ namespace ST4PlanIdCiz.KirisDetay
 
         /// <summary>Tasarım eksenel kuvveti, N. Boşsa R-G-06 atlanır.</summary>
         public double? EksenelKuvvetN { get; set; }
+
+        /// <summary>Tablo metni okunurken oluşan hatalar. Motor bunları kontrole yazar, çubuğu kendisi tamamlamaz.</summary>
+        public List<string> OkumaHatalari { get; set; }
+
+        /// <summary>Tablo metninin nasıl okunduğuna dair notlar (etriye sırası, gövde toplamı).</summary>
+        public List<string> OkumaNotlari { get; set; }
 
         public KirisDetayGirdi()
         {
@@ -683,7 +710,10 @@ namespace ST4PlanIdCiz.KirisDetay
         public int OnerilenAdetYuz { get; set; }
         public double OnerilenCapMm { get; set; }
         public double HSerbestMm { get; set; }
+        /// <summary>Yüzler eşitse yüz başına adet. Eşit değilse 0; bakılacak alanlar sol ve sağ adettir.</summary>
         public int KullanilanAdetYuz { get; set; }
+        public int KullanilanAdetSol { get; set; }
+        public int KullanilanAdetSag { get; set; }
         public double KullanilanCapMm { get; set; }
         public double CirozDuseyMaxMm { get; set; }
         public double CirozEksenMaxMm { get; set; }
@@ -709,6 +739,34 @@ namespace ST4PlanIdCiz.KirisDetay
         public bool SolKancaAsagi { get; set; }
         public bool SagKancaAsagi { get; set; }
         public bool Surekli { get; set; }
+
+        /// <summary>Tek çubuksa kesitteki eksen. Grup kaydında boş kalır; döküm kesitten okunur.</summary>
+        public double? XMm { get; set; }
+        public double? YAlttanMm { get; set; }
+        public int Sira { get; set; }
+    }
+
+    /// <summary>Çizim ve metraj için tek çubuk. Koordinatlar mm. X kiriş boyunca, sol kolon yüzü 0.</summary>
+    public sealed class CubukDokumu
+    {
+        public int No { get; set; }
+        public string Ad { get; set; }
+        public DonatiRolu Rol { get; set; }
+        public int Sira { get; set; }
+        public double CapMm { get; set; }
+        /// <summary>Kesitte çubuk ekseninin sol yüzden uzaklığı.</summary>
+        public double XMm { get; set; }
+        /// <summary>Kesitte çubuk ekseninin kiriş altından yüksekliği.</summary>
+        public double YAlttanMm { get; set; }
+        public double BaslangicMm { get; set; }
+        public double BitisMm { get; set; }
+        public double DuzBoyMm { get; set; }
+        public double SolKancaBMm { get; set; }
+        public double SagKancaBMm { get; set; }
+        public double SolYayMm { get; set; }
+        public double SagYayMm { get; set; }
+        public double ToplamKesimMm { get; set; }
+        public string EkNotu { get; set; }
     }
 
     public sealed class EkYeri
@@ -738,6 +796,9 @@ namespace ST4PlanIdCiz.KirisDetay
         public EtriyeSonuc Etriye { get; set; }
         public GovdeSonuc Govde { get; set; }
         public List<BoyunaCubukCizim> BoyunaCubuklar { get; set; }
+        public List<CubukDokumu> Cubuklar { get; set; }
+        /// <summary>Çizim olmadan kontrol için Türkçe özet.</summary>
+        public string OzetMetni { get; set; }
         public List<EkYeri> Ekler { get; set; }
         public List<KuralKontrol> Kontroller { get; set; }
 
@@ -745,6 +806,8 @@ namespace ST4PlanIdCiz.KirisDetay
         {
             Kesitler = new List<KesitSonuc>();
             BoyunaCubuklar = new List<BoyunaCubukCizim>();
+            Cubuklar = new List<CubukDokumu>();
+            OzetMetni = "";
             Ekler = new List<EkYeri>();
             Kontroller = new List<KuralKontrol>();
             Kenetlenme = new KenetlenmeSonuc();

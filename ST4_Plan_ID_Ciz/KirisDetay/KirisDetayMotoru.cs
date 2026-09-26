@@ -31,7 +31,7 @@ namespace ST4PlanIdCiz.KirisDetay
             if (girdi == null)
             {
                 Ekle(sonuc, KirisKuralKodu.Girdi, "", KontrolSeviyesi.Hata, "Girdi boş.");
-                return Bitir(sonuc);
+                return Bitir(sonuc, null);
             }
 
             KirisDetayAyarlari ayar = girdi.Ayarlar ?? new KirisDetayAyarlari();
@@ -47,7 +47,11 @@ namespace ST4PlanIdCiz.KirisDetay
                     "Deprem tasarım sınıfı (DTS) proje girdisidir; ayarlanmadan hesap yapılmaz.");
             }
             if (sonuc.Kontroller.Exists(k => k.Seviye == KontrolSeviyesi.Hata))
-                return Bitir(sonuc);
+            {
+                OkumaNotlariniAl(sonuc, girdi);
+                return Bitir(sonuc, girdi);
+            }
+            OkumaNotlariniAl(sonuc, girdi);
 
             SuneklikDuzeyi dy = ayar.Suneklik.Value;
             DepremTasarimSinifi dts = ayar.Dts.Value;
@@ -112,7 +116,7 @@ namespace ST4PlanIdCiz.KirisDetay
             if (don.EtriyeCapMm < 8 - 1e-9)
             {
                 Ekle(sonuc, KirisKuralKodu.StCap, "TBDY 7.4.4, 7.8.4", KontrolSeviyesi.Hata,
-                    "Etriye çapı en az 8 mm olmalıdır.");
+                    "Etriye çapı en az 8 mm olmalıdır. Girilen çap değiştirilmedi.");
             }
             if (don.Montaj == null || don.Montaj.Adet < 2)
             {
@@ -126,7 +130,7 @@ namespace ST4PlanIdCiz.KirisDetay
             }
 
             if (girdi.BwMm <= 0 || girdi.HMm <= 0 || girdi.LnMm <= 0)
-                return Bitir(sonuc);
+                return Bitir(sonuc, girdi);
 
             bool kOrtuUst = CcPhiKucuk(cc, don.Montaj) || CcPhiKucuk(cc, don.UstSolIlave) || CcPhiKucuk(cc, don.UstSagIlave);
             bool kOrtuAlt = CcPhiKucuk(cc, don.AltDuz) || CcPhiKucuk(cc, don.AltSolIlave) || CcPhiKucuk(cc, don.AltSagIlave);
@@ -167,13 +171,10 @@ namespace ST4PlanIdCiz.KirisDetay
                 if ((k.Ust != null && k.Ust.Sigmadi) || (k.Alt != null && k.Alt.Sigmadi))
                 {
                     Ekle(sonuc, KirisKuralKodu.Sp, "TS500 9.5.2", KontrolSeviyesi.Hata,
-                        KesitAdi(k.Yer) + " kesitinde çubuklar net aralığa sığmıyor.");
+                        KesitAdi(k.Yer) + " kesitinde çubuklar net aralığa sığmıyor. Adet değiştirilmedi.");
                 }
-                if ((k.Ust != null && k.Ust.SiraSayisi > 2) || (k.Alt != null && k.Alt.SiraSayisi > 2))
-                {
-                    Ekle(sonuc, KirisKuralKodu.Sp, "TS500 7.3", KontrolSeviyesi.Uyari,
-                        KesitAdi(k.Yer) + " kesitinde ikiden fazla sıra var; faydalı yükseklik azalır.");
-                }
+                YuzUyari(sonuc, k, true);
+                YuzUyari(sonuc, k, false);
             }
 
             OranKontrol(sonuc, girdi, ayar, don, dts, rhoMin, rhoB, ustBirlesti, altBirlesti, ilave);
@@ -185,6 +186,7 @@ namespace ST4PlanIdCiz.KirisDetay
 
             sonuc.Etriye = EtriyeHesapla(sonuc, girdi, ayar, don, dy, cc, dGov, fctd, fywd);
             sonuc.BoyunaCubuklar = BoyunaCubuklar(girdi, don, sonuc.Kenetlenme, ilave, kayitlar);
+            GovdeBoyunaEkle(sonuc, girdi, ayar, cc, fyd, fctd, kayitlar);
             EkleriEkle(sonuc, girdi, ayar, kayitlar);
             if (ayar.DolayliMesnet)
             {
@@ -192,10 +194,10 @@ namespace ST4PlanIdCiz.KirisDetay
                     "Dolaylı mesnet var. Askı donatısı düzenlenmeli; TS500 miktar formülü vermez.");
             }
 
-            return Bitir(sonuc);
+            return Bitir(sonuc, girdi);
         }
 
-        static KirisDetaySonuc Bitir(KirisDetaySonuc sonuc)
+        static KirisDetaySonuc Bitir(KirisDetaySonuc sonuc, KirisDetayGirdi girdi)
         {
             sonuc.Gecerli = true;
             for (int i = 0; i < sonuc.Kontroller.Count; i++)
@@ -206,11 +208,39 @@ namespace ST4PlanIdCiz.KirisDetay
                     break;
                 }
             }
+            sonuc.Cubuklar = KirisOzet.Dokum(girdi, sonuc);
+            sonuc.OzetMetni = KirisOzet.Metin(girdi, sonuc);
             return sonuc;
+        }
+
+        static void OkumaNotlariniAl(KirisDetaySonuc sonuc, KirisDetayGirdi girdi)
+        {
+            if (girdi.OkumaHatalari != null)
+            {
+                for (int i = 0; i < girdi.OkumaHatalari.Count; i++)
+                {
+                    if (!string.IsNullOrWhiteSpace(girdi.OkumaHatalari[i]))
+                        Ekle(sonuc, KirisKuralKodu.Girdi, "", KontrolSeviyesi.Hata, girdi.OkumaHatalari[i]);
+                }
+            }
+            if (girdi.OkumaNotlari != null)
+            {
+                for (int i = 0; i < girdi.OkumaNotlari.Count; i++)
+                {
+                    if (!string.IsNullOrWhiteSpace(girdi.OkumaNotlari[i]))
+                        Ekle(sonuc, KirisKuralKodu.Girdi, "", KontrolSeviyesi.Bilgi, girdi.OkumaNotlari[i]);
+                }
+            }
         }
 
         static void Ekle(KirisDetaySonuc sonuc, string kod, string madde, KontrolSeviyesi seviye, string mesaj)
         {
+            for (int i = 0; i < sonuc.Kontroller.Count; i++)
+            {
+                KuralKontrol varOlan = sonuc.Kontroller[i];
+                if (varOlan.Kod == kod && varOlan.Seviye == seviye && varOlan.Mesaj == mesaj)
+                    return;
+            }
             sonuc.Kontroller.Add(new KuralKontrol
             {
                 Kod = kod,
@@ -218,6 +248,55 @@ namespace ST4PlanIdCiz.KirisDetay
                 Seviye = seviye,
                 Mesaj = mesaj
             });
+        }
+
+        static void YuzUyari(KirisDetaySonuc sonuc, KesitSonuc k, bool ust)
+        {
+            YuzYerlesim y = ust ? k.Ust : k.Alt;
+            if (y == null) return;
+            string ad = KesitAdi(k.Yer) + (ust ? " üst" : " alt");
+            if (y.SiraSayisi > 1)
+            {
+                Ekle(sonuc, KirisKuralKodu.Sp, "TS500 9.5.2", KontrolSeviyesi.Uyari,
+                    ad + " yüzünde çubuklar tek sıraya sığmadı (" + y.SiraSayisi + " sıra). Adet değiştirilmedi.");
+            }
+            if (y.SiraSayisi > 2)
+            {
+                Ekle(sonuc, KirisKuralKodu.Sp, "TS500 7.3", KontrolSeviyesi.Uyari,
+                    ad + " yüzünde ikiden fazla sıra var; faydalı yükseklik azalır.");
+            }
+            if (!KoseSurekli(y))
+            {
+                Ekle(sonuc, KirisKuralKodu.SurekliAdet, "TBDY 7.4.2.2", KontrolSeviyesi.Uyari,
+                    ad + " yüzünde köşe çubuğu sürekli donatı değil. Adet değiştirilmedi.");
+            }
+        }
+
+        static bool KoseSurekli(YuzYerlesim y)
+        {
+            if (y == null || y.Cubuklar == null || y.Cubuklar.Count == 0) return true;
+            double minX = double.MaxValue;
+            double maxX = double.MinValue;
+            int n = 0;
+            for (int i = 0; i < y.Cubuklar.Count; i++)
+            {
+                if (y.Cubuklar[i].Sira != 1) continue;
+                n++;
+                if (y.Cubuklar[i].XMm < minX) minX = y.Cubuklar[i].XMm;
+                if (y.Cubuklar[i].XMm > maxX) maxX = y.Cubuklar[i].XMm;
+            }
+            if (n == 0) return true;
+            bool sol = false;
+            bool sag = false;
+            for (int i = 0; i < y.Cubuklar.Count; i++)
+            {
+                YerlesenCubuk c = y.Cubuklar[i];
+                if (c.Sira != 1 || !c.Surekli || !c.Kose) continue;
+                if (Math.Abs(c.XMm - minX) < 0.2) sol = true;
+                if (Math.Abs(c.XMm - maxX) < 0.2) sag = true;
+            }
+            if (n == 1) return sol;
+            return sol && sag;
         }
 
         static string CevreAdi(KirisCevre c)
@@ -826,64 +905,115 @@ namespace ST4PlanIdCiz.KirisDetay
             KesitSonuc aciklik = sonuc.Kesit(KesitYeri.Aciklik);
             gov.HSerbestMm = HSerbest(aciklik, g.HMm, cc, don.EtriyeCapMm);
 
-            if (!gov.Gerekli)
-                return gov;
+            int solAdet;
+            int sagAdet;
+            double capKullanici;
+            bool kullanici = GovdeKullaniciAdet(don, out solAdet, out sagAdet, out capKullanici);
 
-            double asTs = gov.Ts500Tetik ? 0.001 * g.BwMm * d : 0;
-            double asTbdy = 0;
-            if (gov.TbdyTetik)
-            {
-                double sol = AsUst(don, KesitYeri.SolMesnet, sonuc.Ilave.UstBirlesti) + AsAlt(don, KesitYeri.SolMesnet, sonuc.Ilave.AltBirlesti);
-                double sag = AsUst(don, KesitYeri.SagMesnet, sonuc.Ilave.UstBirlesti) + AsAlt(don, KesitYeri.SagMesnet, sonuc.Ilave.AltBirlesti);
-                asTbdy = 0.30 * Math.Max(sol, sag);
-            }
-            gov.AsGerekliMm2 = Math.Max(asTs, asTbdy);
             gov.PhiMinMm = gov.TbdyTetik ? 12 : 10;
-
-            double phi = gov.PhiMinMm;
-            if (don.Govde != null && don.Govde.Var) phi = don.Govde.CapMm;
-            if (phi < gov.PhiMinMm) phi = gov.PhiMinMm;
-            double aPhi = KirisFormuller.TekCubukAlani(phi);
-            int nAlan = aPhi > 0 ? (int)Math.Ceiling(gov.AsGerekliMm2 / 2.0 / aPhi - 1e-9) : 0;
             int nAralik = gov.HSerbestMm > 0
                 ? (int)Math.Ceiling(gov.HSerbestMm / ayar.GovdeAralikMaxMm - 1e-9) - 1
                 : 0;
             if (nAralik < 0) nAralik = 0;
-            gov.OnerilenCapMm = phi;
-            gov.OnerilenAdetYuz = Math.Max(nAlan, Math.Max(nAralik, 1));
 
-            if (don.Govde != null && don.Govde.Var)
+            if (gov.Gerekli)
             {
-                gov.KullanilanAdetYuz = don.Govde.Adet;
-                gov.KullanilanCapMm = don.Govde.CapMm;
-                if (don.Govde.CapMm + 1e-9 < gov.PhiMinMm)
+                double asTs = gov.Ts500Tetik ? 0.001 * g.BwMm * d : 0;
+                double asTbdy = 0;
+                if (gov.TbdyTetik)
                 {
-                    Ekle(sonuc, KirisKuralKodu.Web, gov.TbdyTetik ? "TBDY 7.4.1.1(c)" : "TS500 7.3", KontrolSeviyesi.Hata,
-                        "Gövde donatısı çapı en az " + gov.PhiMinMm.ToString("0") + " mm olmalıdır.");
+                    double solAs = AsUst(don, KesitYeri.SolMesnet, sonuc.Ilave.UstBirlesti) + AsAlt(don, KesitYeri.SolMesnet, sonuc.Ilave.AltBirlesti);
+                    double sagAs = AsUst(don, KesitYeri.SagMesnet, sonuc.Ilave.UstBirlesti) + AsAlt(don, KesitYeri.SagMesnet, sonuc.Ilave.AltBirlesti);
+                    asTbdy = 0.30 * Math.Max(solAs, sagAs);
                 }
-                double asVar = 2 * don.Govde.Adet * KirisFormuller.TekCubukAlani(don.Govde.CapMm);
-                if (asVar + 1e-6 < gov.AsGerekliMm2)
-                {
-                    Ekle(sonuc, KirisKuralKodu.Web, "TS500 7.3 Denk. 7.6, TBDY 7.4.1.1(c)", KontrolSeviyesi.Hata,
-                        "Gövde donatısı alanı yetersiz. Gerekli " + gov.AsGerekliMm2.ToString("0") + " mm².");
-                }
-                if (don.Govde.Adet < nAralik)
-                {
-                    Ekle(sonuc, KirisKuralKodu.Web, "TS500 7.3, TBDY 7.4.1.1(c)", KontrolSeviyesi.Hata,
-                        "Gövde çubuk aralığı 300 mm'yi aşıyor.");
-                }
-            }
-            else
-            {
-                gov.KullanilanAdetYuz = gov.OnerilenAdetYuz;
-                gov.KullanilanCapMm = gov.OnerilenCapMm;
-                Ekle(sonuc, KirisKuralKodu.Web, "TS500 7.3, TBDY 7.4.1.1(c)", KontrolSeviyesi.Bilgi,
-                    "Gövde donatısı önerildi: yüz başına " + gov.OnerilenAdetYuz + "φ" + gov.OnerilenCapMm.ToString("0") + ".");
+                gov.AsGerekliMm2 = Math.Max(asTs, asTbdy);
+                double phiOneri = gov.PhiMinMm;
+                if (kullanici && capKullanici + 1e-9 >= gov.PhiMinMm) phiOneri = capKullanici;
+                double aPhi = KirisFormuller.TekCubukAlani(phiOneri);
+                int nAlan = aPhi > 0 ? (int)Math.Ceiling(gov.AsGerekliMm2 / 2.0 / aPhi - 1e-9) : 0;
+                gov.OnerilenCapMm = phiOneri;
+                gov.OnerilenAdetYuz = Math.Max(nAlan, Math.Max(nAralik, 1));
             }
 
-            if (gov.TbdyTetik && gov.HSerbestMm > 0)
+            if (kullanici)
+            {
+                gov.KullanilanAdetSol = solAdet;
+                gov.KullanilanAdetSag = sagAdet;
+                gov.KullanilanAdetYuz = solAdet == sagAdet ? solAdet : 0;
+                gov.KullanilanCapMm = capKullanici;
+                if (solAdet != sagAdet)
+                {
+                    Ekle(sonuc, KirisKuralKodu.Web, "TS500 7.3, TBDY 7.4.1.1(c)", KontrolSeviyesi.Uyari,
+                        "Gövde çubukları iki yüze eşit dağılmıyor (sol " + solAdet + ", sağ " + sagAdet + "). Adet değiştirilmedi.");
+                }
+                if (!gov.Gerekli)
+                {
+                    Ekle(sonuc, KirisKuralKodu.Web, "TS500 7.3, TBDY 7.4.1.1(c)", KontrolSeviyesi.Bilgi,
+                        "Gövde donatısı bu kirişte zorunlu değil. Verilen çubuklar yerleştirildi.");
+                }
+                else
+                {
+                    string madde = gov.TbdyTetik ? "TBDY 7.4.1.1(c)" : "TS500 7.3";
+                    if (capKullanici + 1e-9 < gov.PhiMinMm)
+                    {
+                        Ekle(sonuc, KirisKuralKodu.Web, madde, KontrolSeviyesi.Uyari,
+                            "Gövde çapı " + capKullanici.ToString("0.#") + " mm, en az " + gov.PhiMinMm.ToString("0") + " mm olmalı. Çap değiştirilmedi.");
+                    }
+                    double asVar = (solAdet + sagAdet) * KirisFormuller.TekCubukAlani(capKullanici);
+                    if (asVar + 1e-6 < gov.AsGerekliMm2)
+                    {
+                        Ekle(sonuc, KirisKuralKodu.Web, "TS500 7.3 Denk. 7.6, TBDY 7.4.1.1(c)", KontrolSeviyesi.Uyari,
+                            "Gövde alanı " + asVar.ToString("0") + " mm², gerekli " + gov.AsGerekliMm2.ToString("0") + " mm². Çubuk eklenmedi.");
+                    }
+                    if (solAdet < nAralik || sagAdet < nAralik)
+                    {
+                        Ekle(sonuc, KirisKuralKodu.Web, "TS500 7.3, TBDY 7.4.1.1(c)", KontrolSeviyesi.Uyari,
+                            "Gövde çubuk aralığı " + ayar.GovdeAralikMaxMm.ToString("0") + " mm'yi aşıyor (sol " + solAdet + ", sağ " + sagAdet
+                            + " adet; yüz başına en az " + nAralik + "). Adet değiştirilmedi.");
+                    }
+                }
+            }
+            else if (gov.Gerekli)
+            {
+                Ekle(sonuc, KirisKuralKodu.Web, "TS500 7.3, TBDY 7.4.1.1(c)", KontrolSeviyesi.Uyari,
+                    "Gövde donatısı gerekli (" + GovdeNeden(gov) + "). Öneri: yüz başına "
+                    + gov.OnerilenAdetYuz + "φ" + gov.OnerilenCapMm.ToString("0.#") + ". Çubuk eklenmedi.");
+            }
+
+            if (gov.TbdyTetik && gov.HSerbestMm > 0 && (gov.KullanilanAdetSol + gov.KullanilanAdetSag) > 0)
                 gov.CirozAdetYukseklik = Math.Max(0, (int)Math.Ceiling(gov.HSerbestMm / ayar.GovdeCirozDuseyMaxMm - 1e-9) - 1);
             return gov;
+        }
+
+        static bool GovdeKullaniciAdet(KirisDonatiGirdisi don, out int sol, out int sag, out double cap)
+        {
+            sol = 0;
+            sag = 0;
+            cap = 0;
+            if (don == null || don.Govde == null || don.Govde.CapMm <= 0) return false;
+            if (don.GovdeToplamAdet > 0)
+            {
+                cap = don.Govde.CapMm;
+                int n = don.GovdeToplamAdet;
+                sol = (n + 1) / 2;
+                sag = n - sol;
+                return true;
+            }
+            if (don.Govde.Adet > 0)
+            {
+                cap = don.Govde.CapMm;
+                sol = don.Govde.Adet;
+                sag = don.Govde.Adet;
+                return true;
+            }
+            return false;
+        }
+
+        static string GovdeNeden(GovdeSonuc gov)
+        {
+            if (gov.Ts500Tetik && gov.TbdyTetik) return "h > 600 mm ve h > ℓn/4";
+            if (gov.Ts500Tetik) return "h > 600 mm";
+            return "h > ℓn/4";
         }
 
         static double HSerbest(KesitSonuc kesit, double h, double cc, double phiW)
@@ -914,9 +1044,17 @@ namespace ST4PlanIdCiz.KirisDetay
         static void GovdeYerlestir(KirisDetaySonuc sonuc, KirisDetayGirdi g, double cc, double phiW)
         {
             GovdeSonuc gov = sonuc.Govde;
-            if (gov == null || !gov.Gerekli || gov.KullanilanAdetYuz <= 0) return;
+            if (gov == null) return;
+            int nSol = gov.KullanilanAdetSol;
+            int nSag = gov.KullanilanAdetSag;
+            if (nSol <= 0 && nSag <= 0 && gov.KullanilanAdetYuz > 0)
+            {
+                nSol = gov.KullanilanAdetYuz;
+                nSag = gov.KullanilanAdetYuz;
+            }
+            if (nSol <= 0 && nSag <= 0) return;
             KesitSonuc aciklik = sonuc.Kesit(KesitYeri.Aciklik);
-            if (aciklik == null) return;
+            if (aciklik == null || aciklik.Alt == null || aciklik.Ust == null) return;
             double altIc = 0;
             double ustIc = g.HMm;
             bool altVar = false;
@@ -935,26 +1073,30 @@ namespace ST4PlanIdCiz.KirisDetay
             }
             if (!altVar || !ustVar) return;
             double hSer = ustIc - altIc;
-            int n = gov.KullanilanAdetYuz;
             double xSol = cc + phiW + gov.KullanilanCapMm / 2.0;
             double xSag = g.BwMm - xSol;
             for (int s = 0; s < sonuc.Kesitler.Count; s++)
             {
-                for (int i = 1; i <= n; i++)
-                {
-                    double y = altIc + hSer * i / (n + 1.0);
-                    sonuc.Kesitler[s].Govde.Add(GovdeCubuk(xSol, y, gov.KullanilanCapMm));
-                    sonuc.Kesitler[s].Govde.Add(GovdeCubuk(xSag, y, gov.KullanilanCapMm));
-                }
+                GovdeYuzDiz(sonuc.Kesitler[s], nSol, xSol, altIc, hSer, gov.KullanilanCapMm);
+                GovdeYuzDiz(sonuc.Kesitler[s], nSag, xSag, altIc, hSer, gov.KullanilanCapMm);
             }
         }
 
-        static YerlesenCubuk GovdeCubuk(double x, double y, double cap)
+        static void GovdeYuzDiz(KesitSonuc kesit, int n, double x, double altIc, double hSer, double cap)
+        {
+            for (int i = 1; i <= n; i++)
+            {
+                double y = altIc + hSer * i / (n + 1.0);
+                kesit.Govde.Add(GovdeCubuk(x, y, cap, i));
+            }
+        }
+
+        static YerlesenCubuk GovdeCubuk(double x, double y, double cap, int sira)
         {
             return new YerlesenCubuk
             {
                 Rol = DonatiRolu.Govde,
-                Sira = 1,
+                Sira = sira,
                 CapMm = cap,
                 XMm = x,
                 YAlttanMm = y,
@@ -1003,17 +1145,10 @@ namespace ST4PlanIdCiz.KirisDetay
                 sOrtaMax = Math.Min(sOrtaMax, e.AswMm2 / e.AswBolumSGerekli);
             e.SOrtaMaxHamMm = sOrtaMax;
 
-            double sSar = e.SSarMaxHamMm;
-            if (ayar.KullaniciSarilmaAraligiMm.HasValue)
-                sSar = Math.Min(sSar, ayar.KullaniciSarilmaAraligiMm.Value);
-            sSar = KirisFormuller.AsagiYuvarla(sSar, ayar.EtriyeAralikYuvarlamaMm);
-            if (sSar > e.SSarMaxHamMm) sSar = e.SSarMaxHamMm;
-
-            double sOrta = sOrtaMax;
-            if (ayar.KullaniciOrtaAralikMm.HasValue)
-                sOrta = Math.Min(sOrta, ayar.KullaniciOrtaAralikMm.Value);
-            sOrta = KirisFormuller.AsagiYuvarla(sOrta, ayar.EtriyeAralikYuvarlamaMm);
-            if (sOrta > sOrtaMax) sOrta = sOrtaMax;
+            double sSar = KullaniciAralik(
+                sonuc, ayar.KullaniciSarilmaAraligiMm, e.SSarMaxHamMm, ayar.EtriyeAralikYuvarlamaMm, true, dy, e.LSarMm);
+            double sOrta = KullaniciAralik(
+                sonuc, ayar.KullaniciOrtaAralikMm, sOrtaMax, ayar.EtriyeAralikYuvarlamaMm, false, dy, e.LSarMm);
 
             if (sSar + 1e-6 < ayar.SarilmaPratikAltSinirMm)
             {
@@ -1280,26 +1415,208 @@ namespace ST4PlanIdCiz.KirisDetay
         {
             double duz = c.BitisMm - c.BaslangicMm;
             double ek = 0;
-            if (c.SolKanca) ek += c.SolKancaBMm + Yay90(phi);
-            if (c.SagKanca) ek += c.SagKancaBMm + Yay90(phi);
+            if (c.SolKanca) ek += c.SolKancaBMm + KirisFormuller.Yay90(phi);
+            if (c.SagKanca) ek += c.SagKancaBMm + KirisFormuller.Yay90(phi);
             return duz + ek;
         }
 
-        static double Yay90(double phi)
+        static double KullaniciAralik(
+            KirisDetaySonuc sonuc,
+            double? kullaniciMm,
+            double ustSinirMm,
+            double yuvarlamaMm,
+            bool sarilma,
+            SuneklikDuzeyi dy,
+            double lSarMm)
         {
-            double r = 3.0 * phi + phi / 2.0;
-            return Math.PI * r / 2.0;
+            if (!kullaniciMm.HasValue)
+            {
+                double s = KirisFormuller.AsagiYuvarla(ustSinirMm, yuvarlamaMm);
+                if (s > ustSinirMm) s = ustSinirMm;
+                return s;
+            }
+            double verilen = kullaniciMm.Value;
+            string ad = sarilma ? "Sarılma bölgesi" : "Orta bölge";
+            if (verilen <= 1e-9)
+            {
+                Ekle(sonuc, KirisKuralKodu.StAralik, sarilma ? "TBDY 7.4.4" : "TS500 8.1.6", KontrolSeviyesi.Hata,
+                    ad + " etriye aralığı pozitif olmalıdır. Aralık uygulanamadı.");
+                return 0;
+            }
+            if (verilen > ustSinirMm + 1e-6)
+            {
+                string kural = sarilma
+                    ? (dy == SuneklikDuzeyi.Yuksek
+                        ? "TBDY 7.4.4 min(d/4, 8φmin, 150 mm)"
+                        : "TBDY 7.8.4 min(h/4, 8φmin, 200 mm)")
+                    : "TS500 8.1.6 d/2 ve orta bölge üst sınırı";
+                Ekle(sonuc, KirisKuralKodu.StAralik, kural, KontrolSeviyesi.Uyari,
+                    ad + " etriye aralığı " + verilen.ToString("0.#") + " mm, üst sınır "
+                    + ustSinirMm.ToString("0.#") + " mm (" + kural
+                    + ", sarılma boyu " + lSarMm.ToString("0") + " mm). Aralık değiştirilmedi.");
+            }
+            return verilen;
+        }
+
+        static void GovdeBoyunaEkle(
+            KirisDetaySonuc sonuc,
+            KirisDetayGirdi g,
+            KirisDetayAyarlari ayar,
+            double cc,
+            double fyd,
+            double fctd,
+            List<LbKaydi> kayitlar)
+        {
+            KesitSonuc ac = sonuc.Kesit(KesitYeri.Aciklik);
+            if (ac == null || ac.Govde == null || kayitlar == null) return;
+            bool kAs = ayar.KAsAzaltmaUygula && ayar.Suneklik == SuneklikDuzeyi.Sinirli;
+            for (int i = 0; i < ac.Govde.Count; i++)
+            {
+                YerlesenCubuk bar = ac.Govde[i];
+                bool ustYari = bar.YAlttanMm + 1e-6 >= g.HMm / 2.0;
+                double ustten = g.HMm - bar.YAlttanMm;
+                // TS500 9.1.1: Konum I yalnız üst yarıda ve serbest üst yüzden en çok 300 mm uzaktaysa.
+                bool konumI = ustYari && ustten <= 300.0 + 1e-6;
+                bool kOrtu = GovdeKOrtu(cc, bar, ac);
+                double phi = bar.CapMm;
+                double lb0 = KirisFormuller.Lb0(fyd, fctd, phi, ayar.Nervurlu);
+                double ham = KirisFormuller.LbHam(lb0, phi, konumI, kOrtu, ayar.KonumKatsayisiUygula, kAs, ayar.KAs);
+                double lb = KirisFormuller.EnYakinMm(ham);
+                var grup = new DonatiGrubu(1, phi);
+                kayitlar.Add(new LbKaydi
+                {
+                    Rol = DonatiRolu.Govde,
+                    Grup = grup,
+                    KonumI = konumI,
+                    KOrtu = kOrtu,
+                    Lb0Ham = lb0,
+                    LbHam = ham,
+                    Lb = lb
+                });
+                if (sonuc.Kenetlenme != null && sonuc.Kenetlenme.Gruplar != null)
+                {
+                    sonuc.Kenetlenme.Gruplar.Add(new GrupKenetlenme
+                    {
+                        Rol = DonatiRolu.Govde,
+                        CapMm = phi,
+                        Lb0HamMm = lb0,
+                        LbHamMm = ham,
+                        LbMm = lb,
+                        KonumI = konumI,
+                        KOrtu = kOrtu
+                    });
+                }
+                MesnetKenetlenme sol = UcKenetlenme(g.Sol, phi, lb, ayar, ustYari);
+                MesnetKenetlenme sag = UcKenetlenme(g.Sag, phi, lb, ayar, ustYari);
+                KontrolUc(sonuc, "Gövde sol, y=" + bar.YAlttanMm.ToString("0") + " mm", sol, g.Sol);
+                KontrolUc(sonuc, "Gövde sağ, y=" + bar.YAlttanMm.ToString("0") + " mm", sag, g.Sag);
+                double basPay = GovdeUcPay(g.Sol, sol, lb, phi, ayar);
+                double bitPay = GovdeUcPay(g.Sag, sag, lb, phi, ayar);
+                var c = new BoyunaCubukCizim
+                {
+                    Rol = DonatiRolu.Govde,
+                    CapMm = phi,
+                    Adet = 1,
+                    BaslangicMm = -basPay,
+                    BitisMm = g.LnMm + bitPay,
+                    Surekli = true,
+                    SolKanca = sol != null && sol.KancaVar,
+                    SagKanca = sag != null && sag.KancaVar,
+                    SolKancaBMm = sol != null ? sol.BMm : 0,
+                    SagKancaBMm = sag != null ? sag.BMm : 0,
+                    SolKancaAsagi = ustYari,
+                    SagKancaAsagi = ustYari,
+                    XMm = bar.XMm,
+                    YAlttanMm = bar.YAlttanMm,
+                    Sira = bar.Sira
+                };
+                c.BoyMm = CubukBoyu(c, phi);
+                sonuc.BoyunaCubuklar.Add(c);
+            }
+        }
+
+        static double GovdeUcPay(KirisMesnet m, MesnetKenetlenme u, double lb, double phi, KirisDetayAyarlari ayar)
+        {
+            if (m == null || u == null) return 0;
+            if (m.Tur == MesnetTuru.Ara)
+            {
+                double uz = KirisFormuller.YukariYuvarla(Math.Max(lb, ayar.AltIlavePhiCarpan * phi), ayar.KesimBoyuYuvarlamaMm);
+                return m.HcMm + uz;
+            }
+            return Math.Max(0, u.AMm);
+        }
+
+        static bool GovdeKOrtu(double cc, YerlesenCubuk bar, KesitSonuc ac)
+        {
+            if (bar == null) return false;
+            if (cc + 1e-9 < bar.CapMm) return true;
+            double limit = 1.5 * bar.CapMm;
+            double ustIc = 0;
+            double altIc = 0;
+            bool ustVar = false;
+            bool altVar = false;
+            if (ac.Ust != null)
+            {
+                for (int i = 0; i < ac.Ust.Cubuklar.Count; i++)
+                {
+                    double ic = ac.Ust.Cubuklar[i].YAlttanMm - ac.Ust.Cubuklar[i].CapMm / 2.0;
+                    if (!ustVar || ic < ustIc) ustIc = ic;
+                    ustVar = true;
+                }
+            }
+            if (ac.Alt != null)
+            {
+                for (int i = 0; i < ac.Alt.Cubuklar.Count; i++)
+                {
+                    double ic = ac.Alt.Cubuklar[i].YAlttanMm + ac.Alt.Cubuklar[i].CapMm / 2.0;
+                    if (!altVar || ic > altIc) altIc = ic;
+                    altVar = true;
+                }
+            }
+            if (ustVar && ustIc - (bar.YAlttanMm + bar.CapMm / 2.0) < limit - 1e-6) return true;
+            if (altVar && (bar.YAlttanMm - bar.CapMm / 2.0) - altIc < limit - 1e-6) return true;
+            if (ac.Govde != null)
+            {
+                for (int i = 0; i < ac.Govde.Count; i++)
+                {
+                    YerlesenCubuk d = ac.Govde[i];
+                    if (Math.Abs(d.XMm - bar.XMm) > 1.0) continue;
+                    if (Math.Abs(d.YAlttanMm - bar.YAlttanMm) < 0.1) continue;
+                    double clear = Math.Abs(d.YAlttanMm - bar.YAlttanMm) - d.CapMm / 2.0 - bar.CapMm / 2.0;
+                    if (clear < limit - 1e-6) return true;
+                }
+            }
+            return false;
         }
 
         static void EkleriEkle(KirisDetaySonuc sonuc, KirisDetayGirdi g, KirisDetayAyarlari ayar, List<LbKaydi> kayitlar)
         {
+            var govdeSirasi = new List<LbKaydi>();
+            if (kayitlar != null)
+            {
+                for (int i = 0; i < kayitlar.Count; i++)
+                {
+                    if (kayitlar[i].Rol == DonatiRolu.Govde) govdeSirasi.Add(kayitlar[i]);
+                }
+            }
+            int govdeIndex = 0;
+            double lSar = sonuc.Etriye != null ? sonuc.Etriye.LSarMm : 0;
             for (int i = 0; i < sonuc.BoyunaCubuklar.Count; i++)
             {
                 BoyunaCubukCizim c = sonuc.BoyunaCubuklar[i];
                 if (c.BoyMm <= ayar.StokBoyMm + 1e-6) continue;
-                LbKaydi lb = LbRol(kayitlar, c.Rol);
+                LbKaydi lb;
+                if (c.Rol == DonatiRolu.Govde)
+                {
+                    if (govdeIndex >= govdeSirasi.Count) continue;
+                    lb = govdeSirasi[govdeIndex++];
+                }
+                else
+                {
+                    lb = LbRol(kayitlar, c.Rol);
+                }
                 if (lb == null) continue;
-                bool alt = AltRol(c.Rol);
+                bool alt = c.Rol == DonatiRolu.Govde ? !lb.KonumI : AltRol(c.Rol);
                 bool manson = ayar.Phi30UstuBindirmeYasak && (c.CapMm > 30 || lb.Grup.GeometrikCapMm > 30);
                 double r = c.Adet >= 2 ? 0.5 : 1;
                 double l0 = L0Degeri(lb, r, ayar);
@@ -1321,7 +1638,7 @@ namespace ST4PlanIdCiz.KirisDetay
                 }
                 double bas;
                 double bit;
-                if (EkAraligi(g.LnMm, sonuc.Etriye.LSarMm, alt, ayar.AciklikOrtasiAltEkOrani, l0, out bas, out bit))
+                if (EkAraligi(g.LnMm, lSar, alt, ayar.AciklikOrtasiAltEkOrani, l0, out bas, out bit))
                 {
                     ek.BaslangicMm = bas;
                     ek.BitisMm = bit;
