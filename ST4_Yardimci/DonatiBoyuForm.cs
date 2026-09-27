@@ -278,6 +278,7 @@ namespace ST4Yardimci
                 BorderStyle = BorderStyle.FixedSingle
             };
             n.Value = Clamp(n, val);
+            YardimciUi.StripUpDownButtons(n);
             return n;
         }
 

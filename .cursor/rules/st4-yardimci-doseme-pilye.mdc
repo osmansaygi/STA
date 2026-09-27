@@ -1,0 +1,52 @@
+---
+description: ST4_Yardimci döşeme donatı — pilye geometrisi (L/4 + 45°)
+globs: ST4_Yardimci/DosemeDonati*
+alwaysApply: false
+---
+
+# Döşeme Donatı — pilye çizimi (Yardimci)
+
+Kaynak kural: `.cursor/rules/doseme-donati-cizim-kurallari.mdc` (Pilye Donatı / Pilye Kalkış Noktaları).
+
+## Kullanıcı özeti (unutma)
+
+- Form: **Serbest / X yönü / Y yönü**. X/Y çizgiyi kilitlemez (açılı atış serbest). X = KALIP50/100 2. kopyadaki **kırmızı** GPR yazısından adet/çap; Y = **mavi** GPR yazısı (`DONATI YAZISI KALIP GPR KIRMIZI/MAVI`).
+- Katmanlar **sabit**: `KIRIS`, `KOLON`, `PERDE`, `KAPAMA PERDESI`, `DOSEME SINIRI`, `KALIP BOSLUK`, `MERDIVEN` (BEYKENT).
+- **PERDE poligonu:** her segment ayrı kenar; aynı poligonun iki kesişimi (kalınlık) = bir mesnet (kiriş gibi). PERDE ile KIRIS **birleşmez** — arası açıklık / donatı.
+- Kapalı PERDE halkasında `IntersectWith` boş dönebilir; taşkın ve kesişim **kenar kenar** (Line) test edilir. Perde gövdesi taşkında **katı**.
+- Sanal hat hangi açıklıklara **≥20 cm** giriyorsa oraya donatı atılır (uzun hat = tüm bay'ler). Kenara 1 cm değme komşu bay sayılmaz.
+- Hat iki mesnete kadar gitmiyorsa (2. nokta döşeme ortasında) o açıklığa **hiç donatı yok** (alt düz / pilye / ilave). Yalnız tam katedilen açıklıklar çizilir.
+- Sanal hat → KIRIS/KOLON/PERDE kesişimleri **çift-çift** mesnet; ara = döşeme/boş.
+- **Kapalı alan**: Döşeme = bu katmanlarla sınırlanan kapalı bölge; içinde **en az bir DOSEME ISMI**.
+  - KALIP BOSLUK ve **MERDIVEN** → boş (donatı yok, L/4 uzamaz); DOSEME SINIRI içinde etiket yok → boş / donatı yok.
+  - Kirişler ayrı kapalı poligon olmayabilir; `DOSEME SINIRI` tüm katı saran tek poligon olabilir. Bu yüzden test: açıklık ortasından etikete **sınır katmanlarını kesmeden** (düz veya tek kırıklı yol) ulaşılıyor mu (`SameRegion`).
+  - Her şekil (L, U, yamuk, eğri): `FloodClosedRegion` — 20 cm ızgarada sınır kesmeden yayılır, alan içinde ilk ulaşılan etiket.
+  - **Alan kapalı olmalı:** yayılma bina dış kutusuna / 30 m yarıçapa / ~1000 m²'ye taşarsa alan açık → döşeme değil (bina dışı). Komşu açıklık döşeme değilse pilye ve ilave oraya **uzatılmaz**, gönye.
+  - **Etiket = containment**, uzaklık değil. Komşu döşeme etiketi donatıya daha yakın olsa bile, donatı hangi kapalı alandaysa o alanın etiketi yazılır (ör. DB-15 alanı, DB-23 etiketi daha yakın → yine DB-15).
+  - **Küçük/dar döşeme:** etiket `DOSEME SINIRI` dışında olabilir. Etikete giden yol yalnız sınırı kesiyorsa (kiriş/perde/boşluk değil) o etiket kabul.
+- Mesnet ortasında KIRIS/PERDE/KOLON ISMI.
+- **Paspayı 3 cm** — mesnet dış yüzünden 3 cm içeri.
+- **Alt düz** pilye orta (alçak) seviyesinden **−20 cm** (dik). Altına döşeme ismi **yazılmaz**.
+- **Şaşırtma** ardışık açıklık **0/5 cm**. Konsol/sınır **alt düz** komşu döşeme altından her zaman **+5 cm yukarı** (`n`).
+- **Tam düşey (90°) donatı:** "yukarı" = **−X** → soldan sağa: ilave, pilye, alt düz; etiketler solda (yazı alttan yukarı okunur).
+- **Açılı donatı:** yazı donatı açısıyla döner; 3 cm boşluk yazının **kendi döndürülmüş kutusuna** göre (eksen hizalı extents değil).
+- Etiket: `DONATI YAZISI (BEYKENT)`, stil `YAZI (BEYKENT)` — küçük **ø**; alt `l=`, pilye `L=`; yazı kutusu donatıdan **3 cm** üstte.
+- Pilye: mesnetlerde **yüksek**, açıklık ortasında **alçak**; kırım **10×10 (tam 45°)**, mesnet iç yüzünden **L·2/9**'da.
+- **Açıklık < 2 m:** pilye yok; iki mesnetin ilavesi açıklık üzerinde **tek çubukta birleşir**. Alt düz yine atılır.
+- **Tüm kıvrımlar** (pilye kırımı, gönye) **R = 3 cm** yay (polyline bulge). Etiketteki boy düz parça toplamı.
+- Pilye / üst ilave: komşuda **yalnız üst kot** aynıysa **L/4**; üst kot farklı → kes / gönye. **Alt kot ve kalınlık (d=) bakılmaz.** Kot okunamadıysa L/4 kesilmez.
+- **Konsol / balkon** … Solo (yalnız SINIRI+kiriş/kolon/perde): arkada **aynı üst kot** döşeme varsa kirişte gönyeleme, **L/4 arka döşemeye**; yok/kot farklı → kiriş uzak ucu + **40 cm gönye**.
+- Kirişten sonra **≤1.5 m** `DOSEME SINIRI` → küçük konsol (etiket içeri sığmaz). **>1.5 m** konsolda etiket içeridedir, normal algı. Merdiven/kalıp boşluk değil.
+- **MERDIVEN çizgileri yoksayılır** (taşkın/kenar sayılmaz). Kapalı merdiven poligon içi yine boş.
+- Etiket aramada `DOSEME SINIRI` **kesilir**: boş alan (sınırın altı) üstteki DZ yazısını çalamaz. Yalnız nokta sınır poligonunun **içindeyse** etiket dışarıda kabul (küçük konsol).
+- `DOSEME SINIRI` kiriş/kolon/perde ile **≤0.2 cm** üst üste → tek çizgi; **kiriş/kolon/perde öncelikli**, sınır yok sayılır.
+- Sanal hat `DOSEME SINIRI` veya `KALIP BOSLUK` kenarını kesiyorsa o şeritte **alt düz** de atılır: nokta `DOSEME SINIRI` poligonunun **içinde** veya ≤1.5 m küçük konsol. Açık köşe / bina dışı komşu etiketi çalmaz. Kolon gövdesi (25/150) iki yüz = bir mesnet; içine donatı yok. **KALIP BOSLUK / MERDIVEN içi her zaman boş.**
+- Hat **yalnız iki** `DOSEME SINIRI` kesiyorsa (kiriş/perde/kolon yok) → **yalnız alt düz** (pilye ve ilave yok).
+- Boş / etiket yok → gönye (−n).
+- **Üst ilave:** `DONATI` + `L=`; en üst donatıdan **+25 cm**.
+
+## Plan_ID etiket → kot okuma
+
+`AppendSlabLabel`: DOSEME ISMI `(leftX,mainY)` → Q `−15·ann` → üst kot `(leftX+14.33·ann, mainY−26·ann)` → alt `−10·ann`. Üst kot baz alınır.
+
+Kod: `DosemeDonatiRunner`.

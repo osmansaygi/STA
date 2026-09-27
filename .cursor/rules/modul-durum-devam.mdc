@@ -1,0 +1,11 @@
+---
+description: Devam / hafıza — önce docs/modul-durum, transcript son çare
+alwaysApply: true
+---
+
+# Modül durum = hafıza
+
+- “Devam”, “önceden yaptık”, ST4_Yardimci / Plan ID işlerinde **önce** `docs/modul-durum/INDEX.md` ve ilgili `docs/modul-durum/<Modül>.md` oku.
+- Eski sohbet / transcript araması **yalnız** DURUM yetersizse; uzun özet çıkarma.
+- Anlamlı düzeltme veya kullanıcı “DURUM güncelle” derse: ilgili DURUM dosyasını 3–8 satır güncelle (tarih, son DLL, ne düzeldi, açık madde).
+- Always-apply kuralları şişirme; kalıcı çizim kuralları zaten `.cursor/rules/*` ve `docs/modul-durum/OKU.md` içinde.

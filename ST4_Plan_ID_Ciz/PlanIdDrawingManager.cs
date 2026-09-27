@@ -63,6 +63,13 @@ namespace ST4PlanIdCiz
         public bool DrawInteriorVoidsOnBosLayerNotKalipBosluk { get; }
         /// <summary>DENEME1: döşeme hattı 1–4 katmanlarına ayrılır (KAT SINIRI / yalnız / komşu döşeme / BOS teması); DrawSlabBoundaryPolylinesOnDosemeHattiLayer ile birlikte kullanılır.</summary>
         public bool ClassifyDosemeHattiIntoTopologyLayers { get; }
+        /// <summary>MANTARDOSEME: /Slabs Data/ mantar fiktif kirişleri BANT (BEYKENT) katmanında çizilir.</summary>
+        public bool IncludeMushroomBeams { get; }
+        /// <summary>
+        /// Kat başına plan kopya sayısı. 0 = varsayılan (SingleCopyPerFloor ise 1, değilse 2).
+        /// MANTARDOSEME: 3 (1–2 boş, son kopya donatılı).
+        /// </summary>
+        public int CopiesPerFloor { get; }
 
         public Kalip50LayoutFlags(
             bool plainInsertPoint = false,
@@ -73,7 +80,9 @@ namespace ST4PlanIdCiz
             bool drawSlabBoundaryPolylinesOnDosemeHattiLayer = false,
             bool excludeStairAdjacentSlabsAndSlabsBelowFloorKot = false,
             bool drawInteriorVoidsOnBosLayerNotKalipBosluk = false,
-            bool classifyDosemeHattiIntoTopologyLayers = false)
+            bool classifyDosemeHattiIntoTopologyLayers = false,
+            bool includeMushroomBeams = false,
+            int copiesPerFloor = 0)
         {
             PlainInsertPoint = plainInsertPoint;
             SingleCopyPerFloor = singleCopyPerFloor;
@@ -84,6 +93,8 @@ namespace ST4PlanIdCiz
             ExcludeStairAdjacentSlabsAndSlabsBelowFloorKot = excludeStairAdjacentSlabsAndSlabsBelowFloorKot;
             DrawInteriorVoidsOnBosLayerNotKalipBosluk = drawInteriorVoidsOnBosLayerNotKalipBosluk;
             ClassifyDosemeHattiIntoTopologyLayers = classifyDosemeHattiIntoTopologyLayers;
+            IncludeMushroomBeams = includeMushroomBeams;
+            CopiesPerFloor = copiesPerFloor;
         }
     }
 
@@ -101,6 +112,8 @@ namespace ST4PlanIdCiz
         private List<Geometry> _drawnWallGeometriesForSlabCut;
         /// <summary>Son çizilen kattaki döşeme geometrileri (kesim + en büyük parça); birleşik katman için.</summary>
         private List<Geometry> _drawnSlabGeometriesForUnion;
+        /// <summary>MANTARDOSEME: kattaki tüm mantar şeritleri (çizilmese bile döşeme/kat sınırı birleşimi için).</summary>
+        private List<Geometry> _mushroomBeamGeometriesForBoundary;
         /// <summary>ST4PLANID Draw süresince tek fabrika (binlerce new önlenir).</summary>
         private GeometryFactory _ntsDrawFactory;
         private TemelFoundationPlanScale? _temelFoundationScale;
@@ -145,6 +158,8 @@ namespace ST4PlanIdCiz
         private bool _kalip50DrawInteriorVoidsOnBosLayer;
         /// <summary>DENEME1: döşeme sınırı DOSEME HATTI 1–4 katmanlarına bölünür.</summary>
         private bool _kalip50ClassifyDosemeHattiTopologyLayers;
+        /// <summary>MANTARDOSEME: mantar fiktif kirişler BANT katmanında çizilir.</summary>
+        private bool _kalip50IncludeMushroomBeams;
         /// <summary><see cref="DrawFormworkPlan50"/> <c>completionMessageCmdTag</c> (örn. DENEME1); yalnız bu etiketle sınırlı çizimler.</summary>
         private string _kalip50FormworkCompletionTag;
         /// <summary>DENEME1: döşeme hattı finalize için poligon + ST4 döşeme ID — DENEME1’de ham eksen dörtgeni (kolon/perde/kiriş kesimi yok).</summary>
@@ -217,6 +232,18 @@ namespace ST4PlanIdCiz
         private const double TemelAntetEkStretchAdimCm = 500.0;
         // Ileride: antet sablon degiskenleri — klon sonrasi DBText/ATTRIBUTE (sablon: antet_02.dwg + projede antet_02.dxf referans)
         private const string TemelAntetEmbeddedResourceName = "ST4PlanIdCiz.TemelAntet.antet_02.dwg";
+        /// <summary>Eski 1:50 kalıp kot işareti (Desktop\kot.dwg → YATAY_KOT.dwg).</summary>
+        private const string KotSymbolEmbeddedResourceName = "ST4PlanIdCiz.KotSymbol.YATAY_KOT.dwg";
+        // kot.dwg ölçüleri (1:50 çizim birimi = cm): daire merkezi → üst/alt yazı sol kenarı X farkı
+        private const double KotRefTextOffsetFromCircleCx = 7.80433020385;
+        private const double KotRefTopTextAboveLineCm = 1.0;
+        private const double KotRefBottomTextBelowLineCm = 9.0;
+        /// <summary>Kot sembolü (daire+çizgi+hatch) yazılara göre ek yukarı kaydırma (cm). Yalnız sembol; yazı Y değişmez.</summary>
+        private const double KotSymbolYukariKaydirCm = 2.3;
+        private const double KotRefCircleR = 6.521739187123982;   // 150/23
+        private const double KotRefHorzLeftFromCx = 8.695652173913; // 200/23
+        private const double KotRefHorzLenCm = 40.0;
+        private const double KotRefVertHalfCm = 8.695652173913;   // 200/23
         private const string LayerAntetBaslik1 = "ANTET BASLIK 1 (BEYKENT)";
         private const string LayerAntetBaslik2 = "ANTET BASLIK 2 (BEYKENT)";
         private const string LayerAntetCizgi = "ANTET CIZGI (BEYKENT)";
@@ -824,6 +851,7 @@ namespace ST4PlanIdCiz
             _kalip50ExcludeStairAdjacentAndBelowFloorSlabs = layoutFlags.ExcludeStairAdjacentSlabsAndSlabsBelowFloorKot;
             _kalip50DrawInteriorVoidsOnBosLayer = layoutFlags.DrawInteriorVoidsOnBosLayerNotKalipBosluk;
             _kalip50ClassifyDosemeHattiTopologyLayers = layoutFlags.ClassifyDosemeHattiIntoTopologyLayers;
+            _kalip50IncludeMushroomBeams = layoutFlags.IncludeMushroomBeams;
             _kalip50FormworkCompletionTag = string.IsNullOrWhiteSpace(completionMessageCmdTag) ? null : completionMessageCmdTag.Trim();
             _kalipPlanScale = scaleMode;
             _kalip50BinaSemaBlockId = ObjectId.Null;
@@ -933,17 +961,24 @@ namespace ST4PlanIdCiz
                         double rightCopyRightVerticalAxisX = 0.0;
                         double measurePlanRightBoundaryX = 0.0;
                         double donatiLeftSectionFromAxisX = 0.0;
-                        int copyCount = layoutFlags.SingleCopyPerFloor ? 1 : 2;
+                        int copyCount = layoutFlags.SingleCopyPerFloor
+                            ? 1
+                            : (layoutFlags.CopiesPerFloor > 0 ? layoutFlags.CopiesPerFloor : 2);
+                        if (copyCount < 1) copyCount = 1;
+                        int donatiCopyIndex = copyCount - 1; // çoklu kopyada yalnızca son kopya donatılı
                         for (int copyIndex = 0; copyIndex < copyCount; copyIndex++)
                         {
                             double offsetX = cursorX - floorAxisExt.Xmin;
                             double offsetY = baseDy;
+                            bool isDonatiCopy = copyCount > 1 && copyIndex == donatiCopyIndex;
 
                             if (!layoutFlags.NoAxes)
                                 DrawAxes(tr, btr, offsetX, offsetY, floorAxisExt);
                             DrawColumns(tr, btr, floor, offsetX, offsetY);
                             DrawBeamsAndWalls(tr, btr, floor, offsetX, offsetY);
-                            DrawSlabs(tr, btr, floor, offsetX, offsetY, drawSlabAltCizgi: copyIndex == 1 && !layoutFlags.SingleCopyPerFloor);
+                            if (_kalip50IncludeMushroomBeams)
+                                DrawMushroomBeams(tr, btr, floor, offsetX, offsetY);
+                            DrawSlabs(tr, btr, floor, offsetX, offsetY, drawSlabAltCizgi: isDonatiCopy);
                             DrawSlabVoids(tr, btr, elemUnion, offsetX, offsetY);
                             DrawUnifiedLayer(tr, btr, floor, offsetX, offsetY, elemUnion);
                             DrawBosVoidsFromDrawnStructuralUnion(tr, btr, floor, offsetX, offsetY);
@@ -966,8 +1001,8 @@ namespace ST4PlanIdCiz
                                 layMaxY = offsetY + floorAxisExt.Ymax;
                                 leftSectionMinX = layMinX;
                             }
-                            // Yalnızca sağ kopya (donatı planı); sol kopya (ölçü planı) GPR yazısı yok.
-                            if (copyIndex == 1 && gprKalipDosemeDonati != null && gprKalipDosemeDonati.Count > 0)
+                            // Yalnızca son kopya (donatı planı); önceki kopyalar boş (ölçü).
+                            if (isDonatiCopy && gprKalipDosemeDonati != null && gprKalipDosemeDonati.Count > 0)
                                 gprDonatiSlabMatchCountTotal += DrawKalipDonatiPlanGprSlabNotes(
                                     tr, btr, db, floor, offsetX, offsetY, gprKalipDosemeDonati, countMatchedSlabs: true);
                             if (copyIndex == 0 && !layoutFlags.NoAntetAndBinaSema)
@@ -979,35 +1014,30 @@ namespace ST4PlanIdCiz
                                 antetLayMaxY = layMaxY;
                                 antetLeftSectionMinX = leftSectionMinX;
                                 antetBottom = GetLowestHorizontalColumnAxisY(offsetY, floorAxisExt) - 600.0 * kalipAntetSpacingMul;
-                                // Ölçü planı sağ sınırı: sağ aks balonunun sağ yüzeyi.
-                                GetSectionCutBalloonExtents(offsetX, offsetY, floorAxisExt,
-                                    out _, out double xRightBalloon, out _, out _,
-                                    out _, out _, out _, out _);
-                                measurePlanRightBoundaryX = xRightBalloon;
-                                // Donatı planı sol sınırı için (aynı kat, aynı geometri):
-                                // sol kesit en sol çizginin 1. aksa göre relatif mesafesi.
-                                donatiLeftSectionFromAxisX = leftSectionMinX - cursorX;
                             }
-                            else if (copyIndex == 1)
+                            if (copyIndex == donatiCopyIndex)
                             {
-                                // Sağ hedef: aynı katın sağdaki kopyasının en sağ dikey aksı baz alınır.
+                                // Sağ hedef: aynı katın en sağdaki (donatılı) kopyasının en sağ dikey aksı.
                                 rightCopyRightVerticalAxisX = floorAxisExt.Xmax + offsetX;
                             }
 
                             double axisDelta;
-                            if (layoutFlags.SingleCopyPerFloor)
+                            if (layoutFlags.SingleCopyPerFloor || copyCount <= 1)
                             {
                                 double layMinFromAxis = layMinX - cursorX;
                                 double requiredNextCursorX = (layMaxX + minPlanGapBetweenFloorsCm) - layMinFromAxis;
                                 double requiredDelta = Math.Max(0.0, requiredNextCursorX - cursorX);
                                 axisDelta = Math.Ceiling(requiredDelta / 100.0) * 100.0;
                             }
-                            else if (copyIndex == 0)
+                            else if (copyIndex < donatiCopyIndex)
                             {
-                                // Aynı kata ait ölçü/donatı:
-                                // Donatı sol sınırı, ölçü sağ sınırından min 200 cm sağda olmalı.
-                                // donatiLeft(next) = nextCursorX + donatiLeftSectionFromAxisX
-                                // donatiLeft(next) >= measureRight + 200
+                                // Aynı kata ait ardışık kopyalar: sonraki sol sınırı, bu kopya sağından min 200 cm sağda.
+                                GetSectionCutBalloonExtents(offsetX, offsetY, floorAxisExt,
+                                    out _, out double xRightBalloon, out _, out _,
+                                    out _, out _, out _, out _);
+                                measurePlanRightBoundaryX = xRightBalloon;
+                                if (copyIndex == 0)
+                                    donatiLeftSectionFromAxisX = leftSectionMinX - cursorX;
                                 double requiredNextCursorX = (measurePlanRightBoundaryX + minPlanGapSameFloorCopiesCm) - donatiLeftSectionFromAxisX;
                                 double requiredDelta = Math.Max(0.0, requiredNextCursorX - cursorX);
                                 axisDelta = Math.Ceiling(requiredDelta / 100.0) * 100.0;
@@ -1129,6 +1159,7 @@ namespace ST4PlanIdCiz
                 _ntsDrawFactory = null;
                 _drawnBeamGeometriesForSlabCut = null;
                 _drawnWallGeometriesForSlabCut = null;
+                _mushroomBeamGeometriesForBoundary = null;
                 ClearKalip50FormworkSessionCaches();
             }
         }
@@ -1462,7 +1493,8 @@ namespace ST4PlanIdCiz
             return Math.Max(GetGeometryLinealLengthCm(ustDraw), GetGeometryLinealLengthCm(altDraw));
         }
 
-        /// <summary>DrawSlabs ile aynı kaynak: çizimde kolon + perde + kiriş birleşimi (döşeme kesimi ve GPR mavi yazı sınırı).</summary>
+        /// <summary>DrawSlabs ile aynı kaynak: çizimde kolon + perde + kiriş birleşimi (döşeme kesimi ve GPR mavi yazı sınırı).
+        /// MANTARDOSEME: çizilmeyen mantar şeritleri de dahil (kat sınırı ile aynı).</summary>
         private Geometry BuildDrawnKolonPerdeKirisUnionForSlabCut(FloorInfo floor, double offsetX, double offsetY)
         {
             Geometry drawnKolonPerdeKirisUnion = BuildKolonUnionSameFloorOnly(floor, offsetX, offsetY);
@@ -1485,6 +1517,21 @@ namespace ST4PlanIdCiz
                     drawnKolonPerdeKirisUnion = drawnKolonPerdeKirisUnion != null && !drawnKolonPerdeKirisUnion.IsEmpty
                         ? drawnKolonPerdeKirisUnion.Union(beamsUnion)
                         : beamsUnion;
+            }
+            // Çizilmeyen mantar şeritleri de merdiven/döşeme Difference'te engel (kat sınırı gibi).
+            if (_kalip50IncludeMushroomBeams && _mushroomBeamGeometriesForBoundary != null && _mushroomBeamGeometriesForBoundary.Count > 0)
+            {
+                foreach (var g in _mushroomBeamGeometriesForBoundary)
+                {
+                    if (g == null || g.IsEmpty) continue;
+                    try
+                    {
+                        drawnKolonPerdeKirisUnion = drawnKolonPerdeKirisUnion != null && !drawnKolonPerdeKirisUnion.IsEmpty
+                            ? drawnKolonPerdeKirisUnion.Union(g)
+                            : g;
+                    }
+                    catch { }
+                }
             }
             return drawnKolonPerdeKirisUnion;
         }
@@ -3028,7 +3075,13 @@ namespace ST4PlanIdCiz
         private const string LayerAksBalonu = "AKS BALONU (BEYKENT)";
         private const string LayerAksYazisi = "AKS YAZISI (BEYKENT)";
         private const string LayerKiris = "KIRIS (BEYKENT)";
+        /// <summary>BANT (BEYKENT) — tablo referansı; mantar diş kirişleri artık KIRIS katmanında.</summary>
+        private const string LayerBant = "BANT (BEYKENT)";
+        /// <summary>Mantar diş / döşemesiz kiriş etiketleri (MANTARDOSEME); ACI 30, 0.20.</summary>
+        private const string LayerMantarKirisIsmi = "MANTAR KIRIS ISMI (BEYKENT)";
         private const string LayerKolon = "KOLON (BEYKENT)";
+        /// <summary>Mantar–döşeme aynı yükseklik / diş eşiği (cm).</summary>
+        private const double MantarDosemeHeightTolCm = 0.5;
         private const string LayerPerde = "PERDE (BEYKENT)";
         private const string LayerTarama = "TARAMA (BEYKENT)";
         /// <summary>ANSI33 sınır polyline'ı; TARAMA'da çizilmez (yalnızca associative hatch için; katman kapalı + plot dışı).</summary>
@@ -3234,6 +3287,8 @@ namespace ST4PlanIdCiz
             EnsurePlanLayer(tr, db, LayerAksBalonu, 7, LineWeight.LineWeight030, useDashed: false);
             EnsurePlanLayer(tr, db, LayerAksYazisi, 3, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, LayerKiris, 2, LineWeight.LineWeight030, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerBant, 23, LineWeight.LineWeight025, useDashed: true);
+            EnsurePlanLayer(tr, db, LayerMantarKirisIsmi, 30, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, LayerKolon, 3, LineWeight.LineWeight040, useDashed: false);
             EnsurePlanLayer(tr, db, LayerPerde, 6, LineWeight.LineWeight040, useDashed: false);
             EnsurePlanLayer(tr, db, LayerTarama, 8, LineWeight.LineWeight015, useDashed: false);
@@ -3571,6 +3626,18 @@ namespace ST4PlanIdCiz
                 geoms.Add(factory.CreatePolygon(factory.CreateLinearRing(coords)));
             }
 
+            // MANTARDOSEME: çizilmese bile mantar şeritleri kat/döşeme sınır birleşimine dahil.
+            if (_kalip50IncludeMushroomBeams && _model.MushroomBeams != null)
+            {
+                foreach (var mb in _model.MushroomBeams)
+                {
+                    if (GetBeamFloorNo(mb.BeamId) != floorNo) continue;
+                    if (!TryBuildBeamStripPolygon(mb, 0, 0, factory, out Geometry mbPoly) || mbPoly == null || mbPoly.IsEmpty)
+                        continue;
+                    geoms.Add(mbPoly);
+                }
+            }
+
             foreach (var slab in _model.Slabs)
             {
                 if (GetSlabFloorNo(slab.SlabId) != floorNo) continue;
@@ -3692,14 +3759,53 @@ namespace ST4PlanIdCiz
             try { return a.Intersects(b); } catch { return false; }
         }
 
-        /// <summary>Kalıp planında: kat sınırı içinde kalan ve hiçbir eleman (kolon, kiriş, perde, döşeme) tanımlanmayan boşlukları çizer (element union iç halkaları / delikler). DENEME1 BOS: DrawBosVoidsFromDrawnStructuralUnion.</summary>
+        /// <summary>Kalıp planında: kat sınırı içinde kalan ve hiçbir eleman (kolon, kiriş, perde, döşeme) tanımlanmayan boşlukları çizer (element union iç halkaları / delikler).
+        /// MANTARDOSEME: çizilmeyen mantar şeritleri de birleşime dahil (kat sınırı gibi). DENEME1 BOS: DrawBosVoidsFromDrawnStructuralUnion.</summary>
         private void DrawSlabVoids(Transaction tr, BlockTableRecord btr, Geometry elementUnion, double offsetX, double offsetY)
         {
             if (_kalip50DrawInteriorVoidsOnBosLayer)
                 return;
             if (elementUnion == null || elementUnion.IsEmpty) return;
+
+            Geometry voidHost = elementUnion;
+            bool alreadyWorldOffset = false;
+            if (_kalip50IncludeMushroomBeams && _mushroomBeamGeometriesForBoundary != null && _mushroomBeamGeometriesForBoundary.Count > 0)
+            {
+                try
+                {
+                    Geometry translated = elementUnion;
+                    if (Math.Abs(offsetX) > 1e-12 || Math.Abs(offsetY) > 1e-12)
+                    {
+                        var trf = NetTopologySuite.Geometries.Utilities.AffineTransformation.TranslationInstance(offsetX, offsetY);
+                        translated = trf.Transform(elementUnion);
+                    }
+                    var parts = new List<Geometry>();
+                    if (translated != null && !translated.IsEmpty)
+                        parts.Add(translated);
+                    foreach (var g in _mushroomBeamGeometriesForBoundary)
+                    {
+                        if (g != null && !g.IsEmpty)
+                            parts.Add(g);
+                    }
+                    Geometry merged = parts.Count == 0 ? null
+                        : (parts.Count == 1 ? parts[0] : TryCascadedPolygonUnionSafe(parts));
+                    if (merged != null && !merged.IsEmpty)
+                    {
+                        voidHost = merged;
+                        alreadyWorldOffset = true;
+                    }
+                }
+                catch
+                {
+                    voidHost = elementUnion;
+                    alreadyWorldOffset = false;
+                }
+            }
+
             var interiorRings = new List<Coordinate[]>();
-            AppendInteriorRingCoordinatesToList(elementUnion, interiorRings);
+            AppendInteriorRingCoordinatesToList(voidHost, interiorRings);
+            double dx = alreadyWorldOffset ? 0.0 : offsetX;
+            double dy = alreadyWorldOffset ? 0.0 : offsetY;
             foreach (var coords in interiorRings)
             {
                 var cleaned = ApplyRingCleanup(coords, applySmallTriangleTrim: false);
@@ -3707,7 +3813,7 @@ namespace ST4PlanIdCiz
                 {
                     var pts = new List<Point2d>(cleaned.Count);
                     for (int i = 0; i < cleaned.Count; i++)
-                        pts.Add(new Point2d(cleaned[i].X + offsetX, cleaned[i].Y + offsetY));
+                        pts.Add(new Point2d(cleaned[i].X + dx, cleaned[i].Y + dy));
                     pts = RemoveDuplicateVertices(pts);
                     pts = RemoveCollinearVertices(pts, 0.1);
                     pts = RemoveShortSegmentVertices(pts, 1.0);
@@ -3788,6 +3894,11 @@ namespace ST4PlanIdCiz
 
             if (_drawnSlabGeometriesForUnion != null)
                 foreach (var g in _drawnSlabGeometriesForUnion)
+                    if (g != null && !g.IsEmpty) AddPolygonsToList(g, allPolygons);
+
+            // Mantar: çizilmeyenler de döşeme sınırı (kat sınırı) birleşiminde varmış gibi.
+            if (_kalip50IncludeMushroomBeams && _mushroomBeamGeometriesForBoundary != null)
+                foreach (var g in _mushroomBeamGeometriesForBoundary)
                     if (g != null && !g.IsEmpty) AddPolygonsToList(g, allPolygons);
 
             if (addElementUnionInteriorAsPolygons && elementUnion != null && !elementUnion.IsEmpty)
@@ -12904,6 +13015,292 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>
+        /// Mantar fiktif kirişler (filtre sonrası): KIRIS katmanı, kolon/perde Difference + CleanKalipKirisLines;
+        /// etiket MANTAR KIRIS ISMI ACI 30; numara yatay (üst→alt) sonra dikey (sol→sağ) yeniden MB-01…
+        /// Çizilmeyenler de döşeme/kat sınırı birleşimine eklenir.
+        /// </summary>
+        private void DrawMushroomBeams(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY)
+        {
+            if (tr == null || btr == null || floor == null || _model?.MushroomBeams == null || _model.MushroomBeams.Count == 0)
+                return;
+            var factory = _ntsDrawFactory ?? NtsGeometryServices.Instance.CreateGeometryFactory();
+            var db = btr.Database;
+            EnsurePlanLayer(tr, db, LayerKiris, 2, LineWeight.LineWeight030, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerMantarKirisIsmi, 30, LineWeight.LineWeight020, useDashed: false);
+
+            _mushroomBeamGeometriesForBoundary = new List<Geometry>();
+
+            var onFloor = new List<BeamInfo>();
+            foreach (var b in _model.MushroomBeams)
+            {
+                if (GetBeamFloorNo(b.BeamId) == floor.FloorNo)
+                    onFloor.Add(b);
+            }
+            if (onFloor.Count == 0) return;
+
+            Geometry kolonPerdeUnion = BuildKolonPerdeUnion(floor, offsetX, offsetY);
+            string katEtiketi = !string.IsNullOrEmpty(floor.ShortName)
+                ? floor.ShortName
+                : floor.FloorNo.ToString(CultureInfo.InvariantCulture);
+            bool drawLabels = !_kalip50SuppressKirisPerdeKolonDosemeLabels;
+
+            // (toDraw, beam, a, b, u, perp) — önce çiz, sonra numaralandır/etiketle
+            var drawn = new List<(Geometry toDraw, BeamInfo beam, Point2d a, Point2d b, Vector2d u, Vector2d perp)>();
+
+            foreach (var beam in onFloor)
+            {
+                if (!TryBuildBeamStripPolygon(beam, offsetX, offsetY, factory, out Geometry beamPoly)
+                    || beamPoly == null || beamPoly.IsEmpty)
+                    continue;
+
+                // Sınır birleşimi: her mantar şeridi (çizim filtresinden bağımsız).
+                _mushroomBeamGeometriesForBoundary.Add(beamPoly);
+
+                if (!_axisService.TryIntersect(beam.FixedAxisId, beam.StartAxisId, out Point2d p1)) continue;
+                if (!_axisService.TryIntersect(beam.FixedAxisId, beam.EndAxisId, out Point2d p2)) continue;
+                var a = new Point2d(p1.X + offsetX, p1.Y + offsetY);
+                var b = new Point2d(p2.X + offsetX, p2.Y + offsetY);
+                NormalizeBeamDirection(beam.FixedAxisId, ref a, ref b);
+                Vector2d dir = b - a;
+                if (dir.Length <= 1e-9) continue;
+                Vector2d u = dir.GetNormal();
+                Vector2d perp = new Vector2d(-u.Y, u.X);
+                double hw = beam.WidthCm / 2.0;
+                ComputeBeamEdgeOffsets(beam.OffsetRaw, hw, out double upperEdge, out double lowerEdge);
+
+                Geometry toDraw = BuildMushroomBeamDrawGeometry(
+                    beam, beamPoly, floor.FloorNo, a, b, u, perp, upperEdge, lowerEdge, null, factory);
+                if (toDraw == null || toDraw.IsEmpty) continue;
+
+                // Normal kiriş gibi: kolon/perde Difference + küçük artık filtresi
+                if (kolonPerdeUnion != null && !kolonPerdeUnion.IsEmpty)
+                {
+                    try
+                    {
+                        var diff = toDraw.Difference(kolonPerdeUnion);
+                        if (diff != null && !diff.IsEmpty)
+                        {
+                            toDraw = ReducePrecisionSafe(diff, 100);
+                            if (toDraw == null || toDraw.IsEmpty) toDraw = diff;
+                        }
+                        else
+                            continue; // tamamen kolon/perde içinde
+                    }
+                    catch { }
+                }
+                if (toDraw != null && !toDraw.IsEmpty)
+                {
+                    const double minBeamRemnantAreaCm2 = 1200.0;
+                    toDraw = FilterSmallPolygons(toDraw, minBeamRemnantAreaCm2);
+                }
+                if (toDraw == null || toDraw.IsEmpty) continue;
+
+                DrawGeometryRingsAsPolylines(
+                    tr, btr, toDraw, LayerKiris,
+                    addHatch: false,
+                    exteriorRingsOnly: false,
+                    applySmallTriangleTrim: false,
+                    drawRingEdgesAsLines: _isKalip50Mode);
+
+                if (_drawnBeamGeometriesForSlabCut == null)
+                    _drawnBeamGeometriesForSlabCut = new List<Geometry>();
+                _drawnBeamGeometriesForSlabCut.Add(toDraw);
+
+                drawn.Add((toDraw, beam, a, b, u, perp));
+            }
+
+            // KIRIS Line budama (kolon kenarı çakışması) — normal kirişlerle aynı
+            if (_isKalip50Mode && drawn.Count > 0)
+            {
+                try
+                {
+                    Geometry elemUnion = BuildFloorElementUnion(floor);
+                    var ext = GetAksSiniriEnvelope(elemUnion);
+                    const double marginCm = 200.0;
+                    var env = new Envelope(
+                        ext.Xmin + offsetX - marginCm, ext.Xmax + offsetX + marginCm,
+                        ext.Ymin + offsetY - marginCm, ext.Ymax + offsetY + marginCm);
+                    CleanKalipKirisLinesOverlappingKolonPolylines(tr, btr, env);
+                }
+                catch { }
+            }
+
+            if (!drawLabels || drawn.Count == 0) return;
+
+            // Yeniden numaralandır: önce yatay (üst→alt), sonra dikey (sol→sağ)
+            // Yatay = sabit Y aksı (2001–2999); dikey = sabit X aksı (1001–1999)
+            static Point2d CentroidOf(Geometry g, Point2d a, Point2d b)
+            {
+                if (g?.Centroid != null && !g.Centroid.IsEmpty)
+                    return new Point2d(g.Centroid.X, g.Centroid.Y);
+                return new Point2d((a.X + b.X) * 0.5, (a.Y + b.Y) * 0.5);
+            }
+
+            var horizontal = drawn
+                .Where(x => x.beam.FixedAxisId >= 2001 && x.beam.FixedAxisId <= 2999)
+                .OrderByDescending(x => CentroidOf(x.toDraw, x.a, x.b).Y)
+                .ThenBy(x => CentroidOf(x.toDraw, x.a, x.b).X)
+                .ToList();
+            var vertical = drawn
+                .Where(x => x.beam.FixedAxisId >= 1001 && x.beam.FixedAxisId <= 1999)
+                .OrderBy(x => CentroidOf(x.toDraw, x.a, x.b).X)
+                .ThenByDescending(x => CentroidOf(x.toDraw, x.a, x.b).Y)
+                .ToList();
+            var ordered = new List<(Geometry toDraw, BeamInfo beam, Point2d a, Point2d b, Vector2d u, Vector2d perp)>();
+            ordered.AddRange(horizontal);
+            ordered.AddRange(vertical);
+            // Diğer (nadir) sabit aks aralığı dışı
+            foreach (var x in drawn)
+            {
+                if (ordered.Contains(x)) continue;
+                ordered.Add(x);
+            }
+
+            int pad = GetLabelPadWidth(ordered.Count);
+            int seq = 0;
+            foreach (var (toDraw, beam, a, b, u, perp) in ordered)
+            {
+                seq++;
+                string numeroStr = seq.ToString("D" + pad, CultureInfo.InvariantCulture);
+                string labelText = string.Format(CultureInfo.InvariantCulture, "M{0}{1} ({2}/{3})",
+                    katEtiketi, numeroStr, (int)Math.Round(beam.WidthCm), (int)Math.Round(beam.HeightCm));
+
+                double labelHeightCm = BeamLabelRefHeightCm;
+                int charCount = Math.Max(1, labelText.Length);
+                double labelWidthCm = BeamLabelRefWidthCm * charCount / BeamLabelRefCharCount;
+                double beamAngleRad = Math.Atan2(u.Y, u.X);
+                bool isFixedX = beam.FixedAxisId >= 1001 && beam.FixedAxisId <= 1999;
+
+                if (!GetBeamDrawnCorners(toDraw, a, u, perp, out Point2d rectBottomLeft, out _, out Point2d rectBottomRight))
+                {
+                    Point2d mid = CentroidOf(toDraw, a, b);
+                    Point2d ins = mid + perp.MultiplyBy(2.0);
+                    DrawBeamLabel(tr, btr, db, new Point3d(ins.X, ins.Y, 0), labelText, labelHeightCm, beamAngleRad,
+                        LayerMantarKirisIsmi, colorAci: 30);
+                    continue;
+                }
+
+                double tMin = (rectBottomLeft - a).DotProduct(u);
+                double tMax = (rectBottomRight - a).DotProduct(u);
+                double pMin = (rectBottomLeft - a).DotProduct(perp);
+                const double labelOffsetFromAxisCm = 2.0;
+                // Kiriş etiket yerleşimi ile aynı: X sabit → sağ alt; Y sabit → sol alt
+                double tIns = isFixedX ? Math.Max(tMin, tMax - labelWidthCm) : tMin;
+                Point2d insertion = a + u.MultiplyBy(tIns) + perp.MultiplyBy(pMin + labelOffsetFromAxisCm);
+                GetLabelBoxCorners(insertion, labelWidthCm, labelHeightCm, beamAngleRad, out _, out Point2d br, out _, out _);
+                bool useBottomRight = isFixedX;
+                Point3d labelInsert = useBottomRight ? new Point3d(br.X, br.Y, 0) : new Point3d(insertion.X, insertion.Y, 0);
+                DrawBeamLabel(tr, btr, db, labelInsert, labelText, labelHeightCm, beamAngleRad,
+                    LayerMantarKirisIsmi, bottomLeftAligned: !useBottomRight, colorAci: 30);
+            }
+        }
+
+        /// <summary>Kiriş/mantar şerit poligonu (aks + genişlik/kaçıklık).</summary>
+        private bool TryBuildBeamStripPolygon(BeamInfo beam, double offsetX, double offsetY, GeometryFactory factory, out Geometry poly)
+        {
+            poly = null;
+            if (beam == null || factory == null || _axisService == null) return false;
+            if (!_axisService.TryIntersect(beam.FixedAxisId, beam.StartAxisId, out Point2d p1)) return false;
+            if (!_axisService.TryIntersect(beam.FixedAxisId, beam.EndAxisId, out Point2d p2)) return false;
+            var a = new Point2d(p1.X + offsetX, p1.Y + offsetY);
+            var b = new Point2d(p2.X + offsetX, p2.Y + offsetY);
+            NormalizeBeamDirection(beam.FixedAxisId, ref a, ref b);
+            Vector2d dir = b - a;
+            if (dir.Length <= 1e-9) return false;
+            Vector2d u = dir.GetNormal();
+            Vector2d perp = new Vector2d(-u.Y, u.X);
+            double hw = beam.WidthCm / 2.0;
+            if (hw <= 1e-9) return false;
+            ComputeBeamEdgeOffsets(beam.OffsetRaw, hw, out double upperEdge, out double lowerEdge);
+            Point2d q1 = a + perp.MultiplyBy(upperEdge);
+            Point2d q2 = b + perp.MultiplyBy(upperEdge);
+            Point2d q3 = b + perp.MultiplyBy(lowerEdge);
+            Point2d q4 = a + perp.MultiplyBy(lowerEdge);
+            var coords = new[]
+            {
+                new Coordinate(q1.X, q1.Y),
+                new Coordinate(q2.X, q2.Y),
+                new Coordinate(q3.X, q3.Y),
+                new Coordinate(q4.X, q4.Y),
+                new Coordinate(q1.X, q1.Y)
+            };
+            try
+            {
+                poly = factory.CreatePolygon(factory.CreateLinearRing(coords));
+                return poly != null && !poly.IsEmpty;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>
+        /// ST4 kuralı: Floors Data'da mantar ana aksı (FixedAxisId) geçen, aynı kat kotunda
+        /// (OffsetFromFloorCm ≈ mantar p[8]/p[9] kotu) ve aynı kalınlıkta (Thickness ≈ Height) döşeme varsa çizme.
+        /// Diş (Height &gt; Thickness, aynı aks+kot) veya aynı kotta o aksı kullanan döşeme yoksa çiz.
+        /// </summary>
+        private Geometry BuildMushroomBeamDrawGeometry(
+            BeamInfo beam,
+            Geometry beamPoly,
+            int floorNo,
+            Point2d a,
+            Point2d b,
+            Vector2d u,
+            Vector2d perp,
+            double upperEdge,
+            double lowerEdge,
+            List<(SlabInfo slab, Geometry poly)> floorSlabs,
+            GeometryFactory factory)
+        {
+            if (beam == null || beamPoly == null || beamPoly.IsEmpty || _model?.Slabs == null)
+                return null;
+
+            double beamKotCm = GetMushroomBeamKotCm(beam);
+            bool hasSameAxisKotSameHeight = false;
+            bool hasSameAxisKotDis = false;
+            bool hasSameAxisKotAny = false;
+
+            foreach (var slab in _model.Slabs)
+            {
+                if (GetSlabFloorNo(slab.SlabId) != floorNo) continue;
+                if (!SlabUsesAxis(slab, beam.FixedAxisId)) continue;
+                if (Math.Abs(slab.OffsetFromFloorCm - beamKotCm) > MantarDosemeHeightTolCm) continue;
+
+                hasSameAxisKotAny = true;
+                if (Math.Abs(slab.ThicknessCm - beam.HeightCm) <= MantarDosemeHeightTolCm)
+                    hasSameAxisKotSameHeight = true;
+                else if (beam.HeightCm > slab.ThicknessCm + MantarDosemeHeightTolCm)
+                    hasSameAxisKotDis = true;
+            }
+
+            // Ana aks + aynı kot + aynı yükseklik → çizme (ör. 2003 aks, kot 0, d=25 / H=25).
+            if (hasSameAxisKotSameHeight)
+                return null;
+
+            // Aynı aks+kot'ta diş (H > d) → çiz.
+            if (hasSameAxisKotDis)
+                return beamPoly;
+
+            // Aynı kotta bu ana aksı kullanan döşeme yok → çiz (orphan / iki yön boş).
+            if (!hasSameAxisKotAny)
+                return beamPoly;
+
+            // Aynı aks+kot'ta döşeme var ama kalınlık eşleşmedi/diş değil → çizme.
+            return null;
+        }
+
+        /// <summary>Mantar kotu (kat kotuna göre cm): Slabs Data p[8]/p[9] ortalaması.</summary>
+        private static double GetMushroomBeamKotCm(BeamInfo beam)
+        {
+            if (beam == null) return 0.0;
+            return 0.5 * (beam.Point1KotCm + beam.Point2KotCm);
+        }
+
+        private static bool SlabUsesAxis(SlabInfo slab, int axisId)
+        {
+            if (slab == null || axisId == 0) return false;
+            return slab.Axis1 == axisId || slab.Axis2 == axisId || slab.Axis3 == axisId || slab.Axis4 == axisId;
+        }
+
+        /// <summary>
         /// Bu kata ait döşemeler: kolon, perde ve kirişlerin çizimde görüldüğü geometrilerden kesilir; kesim sonucu 2+ poligon olursa sadece en büyük parça çizilir. Merdiven ayrıca MERDIVEN katmanında da çizilir.
         /// Köşeler sırayla: (axis1,axis3), (axis1,axis4), (axis2,axis4), (axis2,axis3).
         /// </summary>
@@ -12940,10 +13337,11 @@ namespace ST4PlanIdCiz
             Geometry stairFootprintUnionKalip50 = null;
             if (_kalip50ExcludeStairAdjacentAndBelowFloorSlabs)
                 stairFootprintUnionKalip50 = TryBuildStairSlabAxisPolygonUnion(floor, offsetX, offsetY, factory);
+            // Etiket: merdiven komşusu ara sahanlık (düşük kot) — çizim bayrağından bağımsız
+            Geometry stairFootprintForSlabLabels = stairFootprintUnionKalip50
+                ?? TryBuildStairSlabAxisPolygonUnion(floor, offsetX, offsetY, factory);
 
             var slabsOnFloor = _model.Slabs.Where(s => GetSlabFloorNo(s.SlabId) == floorNo).ToList();
-            int maxSlabNumero = slabsOnFloor.Count > 0 ? slabsOnFloor.Max(s => GetSlabNumero(s.SlabId)) : 0;
-            int slabPad = GetLabelPadWidth(maxSlabNumero);
             string storyId = floor != null && !string.IsNullOrEmpty(floor.ShortName) ? floor.ShortName : (floor?.FloorNo.ToString(CultureInfo.InvariantCulture) ?? "B");
             Database db = btr.Database;
             ObjectId slabLabelStyleId = GetOrCreateYaziBeykentTextStyle(tr, db);
@@ -12951,7 +13349,7 @@ namespace ST4PlanIdCiz
                 && !(_kalip50ClassifyDosemeHattiTopologyLayers && _kalip50Deneme1DosemeHattiGeoms != null))
                 EnsurePlanLayer(tr, db, LayerDosemeHatti, 71, LineWeight.LineWeight030, useDashed: false);
 
-            var slabRecords = new List<(SlabInfo slab, Geometry toDraw, Point2d center)>();
+            var slabRecords = new List<(SlabInfo slab, Geometry toDraw, Geometry adjGeom, Point2d center)>();
             var labelSlabsNoGeometry = new HashSet<int>();
             foreach (var slab in slabsOnFloor)
             {
@@ -12971,24 +13369,12 @@ namespace ST4PlanIdCiz
                         labelSlabsNoGeometry.Add(slab.SlabId);
                     continue;
                 }
-                slabRecords.Add((slab, toDraw, center));
+                // Komşuluk: ham eksen dörtgeni (kesilmiş toDraw mantar/kiriş boşluğu yüzünden ayrılır)
+                Geometry adjGeom = toDraw;
+                if (TryGetSlabAxisQuadPolygon(slab, offsetX, offsetY, factory, out var axisQuad) && axisQuad != null && !axisQuad.IsEmpty)
+                    adjGeom = axisQuad;
+                slabRecords.Add((slab, toDraw, adjGeom, center));
             }
-            // Kat sınırı: kolon+perde+kiriş birleşimi ile tüm döşeme geometrilerinin birleşiminin dış sınırı (bitişik döşeme etiket kuralı için)
-            Geometry floorBoundary = null;
-            try
-            {
-                Geometry floorUnion = drawnKolonPerdeKirisUnion;
-                foreach (var (_, toDraw, _) in slabRecords)
-                {
-                    if (toDraw == null || toDraw.IsEmpty) continue;
-                    floorUnion = (floorUnion != null && !floorUnion.IsEmpty) ? floorUnion.Union(toDraw) : toDraw;
-                }
-                floorBoundary = floorUnion?.Boundary;
-            }
-            catch { }
-            HashSet<int> slabIdsToLabel = ComputeSlabIdsToLabel(slabRecords, floor, floorBoundary);
-            foreach (int id in labelSlabsNoGeometry)
-                slabIdsToLabel.Add(id);
 
             foreach (var slab in _model.Slabs)
             {
@@ -13015,12 +13401,7 @@ namespace ST4PlanIdCiz
                 {
                     if (labelSlabsNoGeometry.Contains(slab.SlabId))
                     {
-                        if (!_kalip50SuppressKirisPerdeKolonDosemeLabels)
-                        {
-                            double cx = 0, cy = 0;
-                            for (int i = 0; i < pts.Length; i++) { cx += pts[i].X; cy += pts[i].Y; }
-                            AppendSlabLabel(tr, btr, slab, floor, storyId, slabPad, new Point2d(cx / pts.Length, cy / pts.Length), slabLabelStyleId);
-                        }
+                        // Etiket: DrawSlabLabelsGrouped içinde (geometrisiz singleton)
                     }
                     continue;
                 }
@@ -13087,13 +13468,274 @@ namespace ST4PlanIdCiz
                         // NTS topology (side location conflict vb.): bu döşeme için üst/alt çizgi atlanır; plan çizimi sürsün.
                     }
                 }
-
-                double cx2 = 0, cy2 = 0;
-                for (int i = 0; i < pts.Length; i++) { cx2 += pts[i].X; cy2 += pts[i].Y; }
-                var center = new Point2d(cx2 / pts.Length, cy2 / pts.Length);
-                if (!_kalip50SuppressKirisPerdeKolonDosemeLabels && !isStair && slabIdsToLabel.Contains(slab.SlabId))
-                    AppendSlabLabel(tr, btr, slab, floor, storyId, slabPad, center, slabLabelStyleId);
             }
+
+            if (!_kalip50SuppressKirisPerdeKolonDosemeLabels)
+            {
+                // Gruplama yalnız MANTARDOSEME; KALIP50/100 ve ST4PLANID eski kural.
+                if (_kalip50IncludeMushroomBeams)
+                    DrawSlabLabelsGrouped(tr, btr, floor, storyId, slabRecords, labelSlabsNoGeometry, slabLabelStyleId, stairFootprintForSlabLabels);
+                else
+                    DrawSlabLabelsClassic(tr, btr, floor, storyId, slabRecords, labelSlabsNoGeometry, slabLabelStyleId, drawnKolonPerdeKirisUnion);
+            }
+        }
+
+        /// <summary>KALIP50/100 / ST4PLANID: eski etiket (kalınlık+kot+yük komşuluk; ST4 numa).</summary>
+        private void DrawSlabLabelsClassic(
+            Transaction tr,
+            BlockTableRecord btr,
+            FloorInfo floor,
+            string storyId,
+            List<(SlabInfo slab, Geometry toDraw, Geometry adjGeom, Point2d center)> slabRecords,
+            HashSet<int> labelSlabsNoGeometry,
+            ObjectId textStyleId,
+            Geometry drawnKolonPerdeKirisUnion)
+        {
+            var classicRecords = new List<(SlabInfo slab, Geometry toDraw, Point2d center)>(slabRecords.Count);
+            foreach (var r in slabRecords)
+            {
+                if (r.slab == null || _model.StairSlabIds.Contains(r.slab.SlabId)) continue;
+                classicRecords.Add((r.slab, r.toDraw, r.center));
+            }
+
+            Geometry floorBoundary = null;
+            try
+            {
+                Geometry floorUnion = drawnKolonPerdeKirisUnion;
+                foreach (var (_, toDraw, _) in classicRecords)
+                {
+                    if (toDraw == null || toDraw.IsEmpty) continue;
+                    floorUnion = (floorUnion != null && !floorUnion.IsEmpty) ? floorUnion.Union(toDraw) : toDraw;
+                }
+                floorBoundary = floorUnion?.Boundary;
+            }
+            catch { }
+
+            HashSet<int> slabIdsToLabel = ComputeSlabIdsToLabel(classicRecords, floor, floorBoundary);
+            if (labelSlabsNoGeometry != null)
+            {
+                foreach (int id in labelSlabsNoGeometry)
+                    slabIdsToLabel.Add(id);
+            }
+
+            int maxSlabNumero = 0;
+            foreach (var r in classicRecords)
+            {
+                int n = GetSlabNumero(r.slab.SlabId);
+                if (n > maxSlabNumero) maxSlabNumero = n;
+            }
+            foreach (int id in slabIdsToLabel)
+            {
+                int n = GetSlabNumero(id);
+                if (n > maxSlabNumero) maxSlabNumero = n;
+            }
+            int slabPad = GetLabelPadWidth(maxSlabNumero);
+
+            foreach (var r in classicRecords)
+            {
+                if (!slabIdsToLabel.Contains(r.slab.SlabId)) continue;
+                AppendSlabLabel(tr, btr, r.slab, floor, storyId, GetSlabNumero(r.slab.SlabId), slabPad, r.center, textStyleId);
+            }
+            if (labelSlabsNoGeometry != null)
+            {
+                foreach (int id in labelSlabsNoGeometry)
+                {
+                    if (!slabIdsToLabel.Contains(id)) continue;
+                    if (classicRecords.Any(x => x.slab.SlabId == id)) continue;
+                    var slab = _model.Slabs.FirstOrDefault(s => s.SlabId == id);
+                    if (slab == null) continue;
+                    AppendSlabLabel(tr, btr, slab, floor, storyId, GetSlabNumero(id), slabPad, new Point2d(0, 0), textStyleId);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Bitişik ve aynı kalınlık/kot/hareketli+ölü yük olan döşemelerden sadece en büyük alanlı
+        /// (eşitse en sol üst) etiketlenir. İstisna: grup kat sınırına bitişikse gruptaki tümüne etiket.
+        /// </summary>
+        private HashSet<int> ComputeSlabIdsToLabel(
+            List<(SlabInfo slab, Geometry toDraw, Point2d center)> records,
+            FloorInfo floor,
+            Geometry floorBoundary = null)
+        {
+            var result = new HashSet<int>();
+            if (records == null || records.Count == 0) return result;
+            double floorElev = floor?.ElevationM ?? 0;
+            double baseKotu = _model.BuildingBaseKotu;
+            var keyToIndices = new Dictionary<(int t, int te, int be, int l, int d), List<int>>();
+            for (int i = 0; i < records.Count; i++)
+            {
+                var r = records[i];
+                if (_model.StairSlabIds.Contains(r.slab.SlabId)) continue;
+                double th = r.slab.ThicknessCm > 0 ? r.slab.ThicknessCm : 15.0;
+                double topElev = baseKotu + floorElev + r.slab.OffsetFromFloorCm / 100.0;
+                double bottomElev = topElev - th / 100.0;
+                double live = r.slab.LiveLoadKNm2;
+                double dead = r.slab.DeadLoadKNm2;
+                var key = ((int)Math.Round(th), (int)Math.Round(topElev * 100), (int)Math.Round(bottomElev * 100),
+                    (int)Math.Round(live * 10), (int)Math.Round(dead * 10));
+                if (!keyToIndices.TryGetValue(key, out var list)) { list = new List<int>(); keyToIndices[key] = list; }
+                list.Add(i);
+            }
+            bool hasFloorBoundary = floorBoundary != null && !floorBoundary.IsEmpty;
+            foreach (var kv in keyToIndices)
+            {
+                var indices = kv.Value;
+                if (indices.Count == 0) continue;
+                if (indices.Count == 1) { result.Add(records[indices[0]].slab.SlabId); continue; }
+                int n = indices.Count;
+                var parent = new int[n];
+                for (int i = 0; i < n; i++) parent[i] = i;
+                int Root(int j) { while (parent[j] != j) j = parent[j]; return j; }
+                void Union(int a, int b) { parent[Root(a)] = Root(b); }
+                for (int i = 0; i < n; i++)
+                    for (int j = i + 1; j < n; j++)
+                    {
+                        try
+                        {
+                            if (records[indices[i]].toDraw != null && records[indices[j]].toDraw != null
+                                && records[indices[i]].toDraw.Touches(records[indices[j]].toDraw))
+                                Union(i, j);
+                        }
+                        catch { }
+                    }
+                var byRoot = new Dictionary<int, List<int>>();
+                for (int i = 0; i < n; i++)
+                {
+                    int r = Root(i);
+                    if (!byRoot.TryGetValue(r, out var list)) { list = new List<int>(); byRoot[r] = list; }
+                    list.Add(i);
+                }
+                foreach (var comp in byRoot.Values)
+                {
+                    bool groupTouchesFloorBoundary = false;
+                    if (hasFloorBoundary)
+                    {
+                        try
+                        {
+                            foreach (int i in comp)
+                            {
+                                var geom = records[indices[i]].toDraw;
+                                if (geom != null && !geom.IsEmpty && geom.Touches(floorBoundary))
+                                { groupTouchesFloorBoundary = true; break; }
+                            }
+                        }
+                        catch { }
+                    }
+                    if (groupTouchesFloorBoundary)
+                    {
+                        foreach (int i in comp)
+                            result.Add(records[indices[i]].slab.SlabId);
+                    }
+                    else
+                    {
+                        int chosen = comp[0];
+                        double areaChosen = SafeGeomArea(records[indices[chosen]].toDraw);
+                        double xChosen = records[indices[chosen]].center.X;
+                        double yChosen = records[indices[chosen]].center.Y;
+                        for (int k = 1; k < comp.Count; k++)
+                        {
+                            int idx = comp[k];
+                            double area = SafeGeomArea(records[indices[idx]].toDraw);
+                            double x = records[indices[idx]].center.X;
+                            double y = records[indices[idx]].center.Y;
+                            if (area > areaChosen || (Math.Abs(area - areaChosen) < 1e-6 && (x < xChosen || (Math.Abs(x - xChosen) < 1e-6 && y > yChosen))))
+                            { chosen = idx; areaChosen = area; xChosen = x; yChosen = y; }
+                        }
+                        result.Add(records[indices[chosen]].slab.SlabId);
+                    }
+                }
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// MANTARDOSEME: aynı kot + aynı kalınlıkta komşu döşemelerden tek etiket; farklı yükler alt alta;
+        /// kot/sembol en alttaki yükün altında; numaralar üst→alt DB-01…
+        /// Merdiven komşusu ara sahanlık (OffsetFromFloorCm &lt; 0) etiketlenmez.
+        /// </summary>
+        private void DrawSlabLabelsGrouped(
+            Transaction tr,
+            BlockTableRecord btr,
+            FloorInfo floor,
+            string storyId,
+            List<(SlabInfo slab, Geometry toDraw, Geometry adjGeom, Point2d center)> slabRecords,
+            HashSet<int> labelSlabsNoGeometry,
+            ObjectId textStyleId,
+            Geometry stairFootprintForLabels = null)
+        {
+            var filtered = FilterOutAraSahanlikLabelRecords(slabRecords, stairFootprintForLabels);
+            var groups = ComputeSlabLabelGroups(filtered, floor);
+            if (labelSlabsNoGeometry != null && labelSlabsNoGeometry.Count > 0)
+            {
+                foreach (int id in labelSlabsNoGeometry)
+                {
+                    var slab = _model.Slabs.FirstOrDefault(s => s.SlabId == id);
+                    if (slab == null) continue;
+                    if (_model.StairSlabIds.Contains(id)) continue;
+                    // Geometrisiz: düşük kot + merdiven varsa atla (komşuluk doğrulanamaz)
+                    if (slab.OffsetFromFloorCm < 0 && stairFootprintForLabels != null && !stairFootprintForLabels.IsEmpty)
+                        continue;
+                    if (groups.Any(g => g.MemberSlabIds.Contains(id))) continue;
+                    double th = slab.ThicknessCm > 0 ? slab.ThicknessCm : 15.0;
+                    string load = FormatSlabLoadLabelLine(slab.DeadLoadKNm2, slab.LiveLoadKNm2, th);
+                    var loads = new List<string>();
+                    if (!string.IsNullOrEmpty(load)) loads.Add(load);
+                    groups.Add(new SlabLabelGroup
+                    {
+                        Representative = slab,
+                        Center = new Point2d(0, 0),
+                        LoadLines = loads,
+                        MemberSlabIds = new HashSet<int> { id }
+                    });
+                }
+            }
+
+            groups = groups
+                .OrderByDescending(g => g.Center.Y)
+                .ThenBy(g => g.Center.X)
+                .ToList();
+            int pad = GetLabelPadWidth(groups.Count);
+            for (int i = 0; i < groups.Count; i++)
+            {
+                var g = groups[i];
+                if (g.Representative == null) continue;
+                AppendSlabLabel(tr, btr, g.Representative, floor, storyId, i + 1, pad, g.Center, textStyleId, g.LoadLines);
+            }
+        }
+
+        /// <summary>Merdiven döşemesine komşu ve kotu düşük (ara sahanlık) → etiket yok.</summary>
+        private List<(SlabInfo slab, Geometry toDraw, Geometry adjGeom, Point2d center)> FilterOutAraSahanlikLabelRecords(
+            List<(SlabInfo slab, Geometry toDraw, Geometry adjGeom, Point2d center)> records,
+            Geometry stairFootprint)
+        {
+            if (records == null || records.Count == 0) return records ?? new List<(SlabInfo, Geometry, Geometry, Point2d)>();
+            if (stairFootprint == null || stairFootprint.IsEmpty)
+                return records;
+
+            var result = new List<(SlabInfo slab, Geometry toDraw, Geometry adjGeom, Point2d center)>(records.Count);
+            const double adjTolCm = 1.0;
+            foreach (var r in records)
+            {
+                if (r.slab == null) continue;
+                if (_model.StairSlabIds.Contains(r.slab.SlabId)) continue;
+                Geometry adj = r.adjGeom ?? r.toDraw;
+                if (r.slab.OffsetFromFloorCm < 0
+                    && adj != null && !adj.IsEmpty
+                    && (AreSlabGeometriesAdjacent(adj, stairFootprint, adjTolCm)
+                        || SafeGeometryIntersects(adj, stairFootprint)))
+                    continue;
+                result.Add(r);
+            }
+            return result;
+        }
+
+        private sealed class SlabLabelGroup
+        {
+            public SlabInfo Representative;
+            public Point2d Center;
+            public List<string> LoadLines;
+            public HashSet<int> MemberSlabIds;
         }
 
         /// <summary>
@@ -13339,43 +13981,53 @@ namespace ST4PlanIdCiz
             return true;
         }
 
-        /// <summary>Bitişik ve aynı kalınlık/kot/hareketli yük olan döşemelerden sadece en büyük alanlı (eşitse en sol üst) etiketlenir. İstisna: grup aynı zamanda kat sınırına bitişikse gruptaki tüm döşemelere etiket yazılır.</summary>
-        private HashSet<int> ComputeSlabIdsToLabel(List<(SlabInfo slab, Geometry toDraw, Point2d center)> records, FloorInfo floor, Geometry floorBoundary = null)
+        /// <summary>
+        /// Aynı kot + aynı kalınlıkta komşu döşemeler → tek etiket grubu.
+        /// Komşuluk ham eksen dörtgeni ile (kesilmiş geometri mantar/kiriş boşluğu yüzünden ayrılmaz).
+        /// Yükler gruba dahil edilmez (farklı yükler etikette alt alta yazılır).
+        /// </summary>
+        private List<SlabLabelGroup> ComputeSlabLabelGroups(
+            List<(SlabInfo slab, Geometry toDraw, Geometry adjGeom, Point2d center)> records,
+            FloorInfo floor)
         {
-            var result = new HashSet<int>();
-            if (records.Count == 0) return result;
-            double floorElev = floor?.ElevationM ?? 0;
-            double baseKotu = _model.BuildingBaseKotu;
-            var keyToIndices = new Dictionary<(int t, int te, int be, int l, int d), List<int>>();
+            var groups = new List<SlabLabelGroup>();
+            if (records == null || records.Count == 0) return groups;
+
+            // Anahtar: kalınlık + OffsetFromFloorCm (kot). Yük dahil değil.
+            var keyToIndices = new Dictionary<(int t, int off), List<int>>();
             for (int i = 0; i < records.Count; i++)
             {
                 var r = records[i];
                 if (_model.StairSlabIds.Contains(r.slab.SlabId)) continue;
                 double th = r.slab.ThicknessCm > 0 ? r.slab.ThicknessCm : 15.0;
-                double topElev = baseKotu + floorElev + r.slab.OffsetFromFloorCm / 100.0;
-                double bottomElev = topElev - th / 100.0;
-                double live = r.slab.LiveLoadKNm2;
-                double dead = r.slab.DeadLoadKNm2;
-                var key = ((int)Math.Round(th), (int)Math.Round(topElev * 100), (int)Math.Round(bottomElev * 100),
-                    (int)Math.Round(live * 10), (int)Math.Round(dead * 10));
+                var key = ((int)Math.Round(th), (int)Math.Round(r.slab.OffsetFromFloorCm));
                 if (!keyToIndices.TryGetValue(key, out var list)) { list = new List<int>(); keyToIndices[key] = list; }
                 list.Add(i);
             }
-            bool hasFloorBoundary = floorBoundary != null && !floorBoundary.IsEmpty;
+
+            // Ham dörtgenler genelde Touches; küçük boşluklar için tol.
+            const double adjacentTolCm = 2.0;
             foreach (var kv in keyToIndices)
             {
                 var indices = kv.Value;
                 if (indices.Count == 0) continue;
-                if (indices.Count == 1) { result.Add(records[indices[0]].slab.SlabId); continue; }
                 int n = indices.Count;
                 var parent = new int[n];
                 for (int i = 0; i < n; i++) parent[i] = i;
                 int Root(int j) { while (parent[j] != j) j = parent[j]; return j; }
                 void Union(int a, int b) { parent[Root(a)] = Root(b); }
+
                 for (int i = 0; i < n; i++)
+                {
+                    Geometry gi = records[indices[i]].adjGeom ?? records[indices[i]].toDraw;
                     for (int j = i + 1; j < n; j++)
-                        if (records[indices[i]].toDraw.Touches(records[indices[j]].toDraw))
+                    {
+                        Geometry gj = records[indices[j]].adjGeom ?? records[indices[j]].toDraw;
+                        if (AreSlabGeometriesAdjacent(gi, gj, adjacentTolCm))
                             Union(i, j);
+                    }
+                }
+
                 var byRoot = new Dictionary<int, List<int>>();
                 for (int i = 0; i < n; i++)
                 {
@@ -13383,51 +14035,83 @@ namespace ST4PlanIdCiz
                     if (!byRoot.TryGetValue(r, out var list)) { list = new List<int>(); byRoot[r] = list; }
                     list.Add(i);
                 }
+
                 foreach (var comp in byRoot.Values)
                 {
-                    bool groupTouchesFloorBoundary = false;
-                    if (hasFloorBoundary)
+                    int chosen = comp[0];
+                    double areaChosen = SafeGeomArea(records[indices[chosen]].toDraw);
+                    double xChosen = records[indices[chosen]].center.X;
+                    double yChosen = records[indices[chosen]].center.Y;
+                    for (int k = 1; k < comp.Count; k++)
                     {
-                        try
-                        {
-                            foreach (int i in comp)
-                            {
-                                var geom = records[indices[i]].toDraw;
-                                if (geom != null && !geom.IsEmpty && geom.Touches(floorBoundary))
-                                { groupTouchesFloorBoundary = true; break; }
-                            }
-                        }
-                        catch { }
+                        int idx = comp[k];
+                        double area = SafeGeomArea(records[indices[idx]].toDraw);
+                        double x = records[indices[idx]].center.X;
+                        double y = records[indices[idx]].center.Y;
+                        if (area > areaChosen || (Math.Abs(area - areaChosen) < 1e-6 && (x < xChosen || (Math.Abs(x - xChosen) < 1e-6 && y > yChosen))))
+                        { chosen = idx; areaChosen = area; xChosen = x; yChosen = y; }
                     }
-                    if (groupTouchesFloorBoundary)
+
+                    var memberIds = new HashSet<int>();
+                    var loadSet = new HashSet<string>(StringComparer.Ordinal);
+                    var loadLines = new List<string>();
+                    foreach (int i in comp)
                     {
-                        foreach (int i in comp)
-                            result.Add(records[indices[i]].slab.SlabId);
+                        var s = records[indices[i]].slab;
+                        memberIds.Add(s.SlabId);
+                        double th = s.ThicknessCm > 0 ? s.ThicknessCm : 15.0;
+                        string load = FormatSlabLoadLabelLine(s.DeadLoadKNm2, s.LiveLoadKNm2, th);
+                        if (!string.IsNullOrEmpty(load) && loadSet.Add(load))
+                            loadLines.Add(load);
                     }
-                    else
+
+                    var rep = records[indices[chosen]].slab;
+                    groups.Add(new SlabLabelGroup
                     {
-                        int chosen = comp[0];
-                        double areaChosen = records[indices[chosen]].toDraw.Area;
-                        double xChosen = records[indices[chosen]].center.X;
-                        double yChosen = records[indices[chosen]].center.Y;
-                        for (int k = 1; k < comp.Count; k++)
-                        {
-                            int idx = comp[k];
-                            double area = records[indices[idx]].toDraw.Area;
-                            double x = records[indices[idx]].center.X;
-                            double y = records[indices[idx]].center.Y;
-                            if (area > areaChosen || (Math.Abs(area - areaChosen) < 1e-6 && (x < xChosen || (Math.Abs(x - xChosen) < 1e-6 && y > yChosen))))
-                            { chosen = idx; areaChosen = area; xChosen = x; yChosen = y; }
-                        }
-                        result.Add(records[indices[chosen]].slab.SlabId);
-                    }
+                        Representative = rep,
+                        Center = records[indices[chosen]].center,
+                        LoadLines = loadLines,
+                        MemberSlabIds = memberIds
+                    });
                 }
             }
-            return result;
+            return groups;
         }
 
-        /// <summary>Döşeme etiketi: D+KatId+-+no d=Xcm (12 cm), çerçeve sol/sağ yarım daire (2 yay + 2 düz), Q, üst/alt kot, aralarında doğrudan çizilen kot işareti. Üst kot = bina tabanı + kat kotu + 16. sütun (cm)/100; alt kot = üst kot - kalınlık.</summary>
-        private void AppendSlabLabel(Transaction tr, BlockTableRecord btr, SlabInfo slab, FloorInfo floor, string storyId, int slabPad, Point2d center, ObjectId textStyleId)
+        private static double SafeGeomArea(Geometry g)
+        {
+            try { return g != null && !g.IsEmpty ? g.Area : 0; }
+            catch { return 0; }
+        }
+
+        private static bool AreSlabGeometriesAdjacent(Geometry a, Geometry b, double tolCm)
+        {
+            if (a == null || b == null || a.IsEmpty || b.IsEmpty) return false;
+            try
+            {
+                if (a.Touches(b)) return true;
+                if (a.Intersects(b)) return true;
+                return a.Distance(b) <= tolCm;
+            }
+            catch
+            {
+                try { return a.Distance(b) <= tolCm; }
+                catch { return false; }
+            }
+        }
+
+        /// <summary>Döşeme etiketi: D+KatId+-+no d=Xcm; farklı yükler alt alta; kot/sembol en alttaki yükün altında.</summary>
+        private void AppendSlabLabel(
+            Transaction tr,
+            BlockTableRecord btr,
+            SlabInfo slab,
+            FloorInfo floor,
+            string storyId,
+            int displayNumero,
+            int slabPad,
+            Point2d center,
+            ObjectId textStyleId,
+            IList<string> loadLines = null)
         {
             bool isPlan100Annot =
                 _temelFoundationScale == TemelFoundationPlanScale.Hundred ||
@@ -13436,27 +14120,48 @@ namespace ST4PlanIdCiz
             double labelHeightCm = 12.0 * ann;
             double framePaddingCm = 2.0 * ann;
             double mainToQCm = 15.0 * ann;
+            double qLineGapCm = 12.0 * ann;
             double qToUstKotCm = 11.0 * ann;
             double kotArasiMesafeCm = 10.0 * ann;
             double subTextHeightCm = 10.0 * ann;
             double kotTextHeightCm = 8.0 * ann;
 
-            int slabNumero = GetSlabNumero(slab.SlabId);
-            string slabNoStr = slabNumero.ToString("D" + slabPad, CultureInfo.InvariantCulture);
+            string slabNoStr = displayNumero.ToString("D" + slabPad, CultureInfo.InvariantCulture);
             double thickness = slab.ThicknessCm > 0 ? slab.ThicknessCm : 15.0;
-            string mainLabel = string.Format(CultureInfo.InvariantCulture, "D{0}{1} d={2:F0}cm", storyId, slabNoStr, thickness);
+            // ShortName zaten "B-" gibi tireli → D + B- + 01 = DB-01 (ek tire yok)
+            string storyForLabel = (storyId ?? string.Empty).Trim();
+            string mainLabel = string.Format(CultureInfo.InvariantCulture, "D{0}{1} d={2:F0}cm", storyForLabel, slabNoStr, thickness);
             double mainWidth = EstimateTextWidthCm(mainLabel, labelHeightCm);
             double blockWidth = mainWidth;
             double blockHeight = labelHeightCm;
             const double yukWidthFactor = 0.7;
-            string qLine = FormatSlabLoadLabelLine(slab.DeadLoadKNm2, slab.LiveLoadKNm2, thickness);
-            if (!string.IsNullOrEmpty(qLine))
+
+            var qLines = new List<string>();
+            if (loadLines != null && loadLines.Count > 0)
             {
-                blockWidth = Math.Max(blockWidth, EstimateTextWidthCm(qLine, subTextHeightCm) * yukWidthFactor);
-                blockHeight += mainToQCm + subTextHeightCm + qToUstKotCm;
+                foreach (string ln in loadLines)
+                {
+                    if (!string.IsNullOrEmpty(ln))
+                        qLines.Add(ln);
+                }
+            }
+            else
+            {
+                string single = FormatSlabLoadLabelLine(slab.DeadLoadKNm2, slab.LiveLoadKNm2, thickness);
+                if (!string.IsNullOrEmpty(single))
+                    qLines.Add(single);
+            }
+
+            if (qLines.Count > 0)
+            {
+                foreach (string qLine in qLines)
+                    blockWidth = Math.Max(blockWidth, EstimateTextWidthCm(qLine, subTextHeightCm) * yukWidthFactor);
+                // Ana → ilk yük + (N-1) yük aralığı + son yük→kot
+                blockHeight += mainToQCm + subTextHeightCm + Math.Max(0, qLines.Count - 1) * qLineGapCm + qToUstKotCm;
             }
             else
                 blockHeight += mainToQCm + qToUstKotCm;
+
             double topElevM = _model.BuildingBaseKotu + (floor?.ElevationM ?? 0) + slab.OffsetFromFloorCm / 100.0;
             double bottomElevM = topElevM - thickness / 100.0;
             string topElevStr = FormatKotElevationMeters(topElevM);
@@ -13518,47 +14223,53 @@ namespace ST4PlanIdCiz
             AppendEntity(tr, btr, pline);
 
             double nextY = mainY - mainToQCm;
-            if (!string.IsNullOrEmpty(qLine))
+            if (qLines.Count > 0)
             {
-                var txtQ = new DBText
+                for (int qi = 0; qi < qLines.Count; qi++)
                 {
-                    Layer = LayerYukYazisi,
-                    Height = subTextHeightCm,
-                    TextStyleId = textStyleId,
-                    TextString = KolonDonatiTableDrawer.NormalizeDiameterSymbol(qLine),
-                    Position = new Point3d(leftX, nextY, 0),
-                    HorizontalMode = TextHorizontalMode.TextLeft,
-                    VerticalMode = TextVerticalMode.TextBottom,
-                    AlignmentPoint = new Point3d(leftX, nextY, 0),
-                    Rotation = 0,
-                    WidthFactor = yukWidthFactor
-                };
-                AppendEntity(tr, btr, txtQ);
+                    if (qi > 0)
+                        nextY -= qLineGapCm;
+                    var txtQ = new DBText
+                    {
+                        Layer = LayerYukYazisi,
+                        Height = subTextHeightCm,
+                        TextStyleId = textStyleId,
+                        TextString = KolonDonatiTableDrawer.NormalizeDiameterSymbol(qLines[qi]),
+                        Position = new Point3d(leftX, nextY, 0),
+                        HorizontalMode = TextHorizontalMode.TextLeft,
+                        VerticalMode = TextVerticalMode.TextBottom,
+                        AlignmentPoint = new Point3d(leftX, nextY, 0),
+                        Rotation = 0,
+                        WidthFactor = yukWidthFactor
+                    };
+                    AppendEntity(tr, btr, txtQ);
+                }
                 nextY -= qToUstKotCm;
             }
             else
                 nextY -= qToUstKotCm;
+
             double kotBlokOffsetXcm = 19.5 * ann;
             double kotSolaKaydirCm = 5.1739 * ann;
             double leftXKot = leftX + kotBlokOffsetXcm - kotSolaKaydirCm;
+            double topKotY = nextY;
             var txtTop = new DBText
             {
                 Layer = LayerKotYazi,
                 Height = kotTextHeightCm,
                 TextStyleId = textStyleId,
                 TextString = KolonDonatiTableDrawer.NormalizeDiameterSymbol(topElevStr),
-                Position = new Point3d(leftXKot, nextY, 0),
+                Position = new Point3d(leftXKot, topKotY, 0),
                 HorizontalMode = TextHorizontalMode.TextLeft,
                 VerticalMode = TextVerticalMode.TextBottom,
-                AlignmentPoint = new Point3d(leftXKot, nextY, 0),
+                AlignmentPoint = new Point3d(leftXKot, topKotY, 0),
                 Rotation = 0
             };
             AppendEntity(tr, btr, txtTop);
-            nextY -= kotArasiMesafeCm;
-            double kotSymbolOffsetXcm = 3.5 * ann;
-            double kotSymbolOffsetYcm = 6.322 * ann;
-            double kotSymbolY = nextY + kotArasiMesafeCm * 0.5;
-            DrawKotSymbol(tr, btr, leftXKot + kotSymbolOffsetXcm, kotSymbolY + kotSymbolOffsetYcm, symbolScale: ann);
+            // kot.dwg: çizgi üst yazının 1 cm altında + KotSymbolYukariKaydirCm (yalnız sembol)
+            double lineY = topKotY - KotRefTopTextAboveLineCm * ann + KotSymbolYukariKaydirCm * ann;
+            DrawKotSymbol(tr, btr, leftXKot, lineY, symbolScale: ann);
+            nextY = topKotY - kotArasiMesafeCm;
             var txtBottom = new DBText
             {
                 Layer = LayerKotYazi,
@@ -13733,24 +14444,23 @@ namespace ST4PlanIdCiz
             double kotBlokOffsetXcm = 19.5 * ann;
             double kotSolaKaydirCm = 5.1739 * ann;
             double leftXKot = leftX + kotBlokOffsetXcm - kotSolaKaydirCm;
+            double topKotY = nextY;
             var txtTop = new DBText
             {
                 Layer = LayerKotYazi,
                 Height = kotTextHeightCm,
                 TextStyleId = textStyleId,
                 TextString = KolonDonatiTableDrawer.NormalizeDiameterSymbol(topElevStr),
-                Position = new Point3d(leftXKot, nextY, 0),
+                Position = new Point3d(leftXKot, topKotY, 0),
                 HorizontalMode = TextHorizontalMode.TextLeft,
                 VerticalMode = TextVerticalMode.TextBottom,
-                AlignmentPoint = new Point3d(leftXKot, nextY, 0),
+                AlignmentPoint = new Point3d(leftXKot, topKotY, 0),
                 Rotation = 0
             };
             AppendEntity(tr, btr, txtTop);
-            nextY -= kotArasiMesafeCm;
-            double kotSymbolOffsetXcm = 3.5 * ann;
-            double kotSymbolOffsetYcm = 6.322 * ann;
-            double kotSymbolY = nextY + kotArasiMesafeCm * 0.5;
-            DrawKotSymbol(tr, btr, leftXKot + kotSymbolOffsetXcm, kotSymbolY + kotSymbolOffsetYcm, symbolScale: ann);
+            double lineY = topKotY - KotRefTopTextAboveLineCm * ann + KotSymbolYukariKaydirCm * ann;
+            DrawKotSymbol(tr, btr, leftXKot, lineY, symbolScale: ann);
+            nextY = topKotY - kotArasiMesafeCm;
             var txtBottom = new DBText
             {
                 Layer = LayerKotYazi,
@@ -13766,20 +14476,60 @@ namespace ST4PlanIdCiz
             AppendEntity(tr, btr, txtBottom);
         }
 
-        /// <summary>Kot işareti dosya yolu: önce YATAY_KOT.dxf, yoksa YATAY_KOT.dwg (DLL ile aynı klasör).</summary>
+        /// <summary>Kot işareti dosya yolu: DLL yanı → gömülü YATAY_KOT.dwg (eski 1:50 kalıp).</summary>
         private static string GetKotSymbolFilePath()
         {
             try
             {
                 string dir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-                if (string.IsNullOrEmpty(dir)) return null;
-                string dxf = Path.Combine(dir, "YATAY_KOT.dxf");
-                if (System.IO.File.Exists(dxf)) return dxf;
-                string dwg = Path.Combine(dir, "YATAY_KOT.dwg");
-                if (System.IO.File.Exists(dwg)) return dwg;
-                return null;
+                if (!string.IsNullOrEmpty(dir))
+                {
+                    string dwg = Path.Combine(dir, "YATAY_KOT.dwg");
+                    if (System.IO.File.Exists(dwg)) return dwg;
+                    string dxf = Path.Combine(dir, "YATAY_KOT.dxf");
+                    if (System.IO.File.Exists(dxf)) return dxf;
+                }
+                return GetEmbeddedKotSymbolTempDwg();
             }
-            catch { return null; }
+            catch { return GetEmbeddedKotSymbolTempDwg(); }
+        }
+
+        private static string _embeddedKotSymbolTempDwg;
+        private static readonly object EmbeddedKotSymbolTempLock = new object();
+
+        /// <summary>Gömülü YATAY_KOT.dwg oturum başına bir kez geçici dosyaya yazılır.</summary>
+        private static string GetEmbeddedKotSymbolTempDwg()
+        {
+            lock (EmbeddedKotSymbolTempLock)
+            {
+                if (!string.IsNullOrEmpty(_embeddedKotSymbolTempDwg) && File.Exists(_embeddedKotSymbolTempDwg))
+                    return _embeddedKotSymbolTempDwg;
+                Assembly asm = typeof(PlanIdDrawingManager).Assembly;
+                using (Stream stream = asm.GetManifestResourceStream(KotSymbolEmbeddedResourceName))
+                {
+                    if (stream == null) return null;
+                    string path = Path.Combine(Path.GetTempPath(),
+                        "ST4PlanIdCiz_kot_" + asm.ManifestModule.ModuleVersionId.ToString("N") + ".dwg");
+                    if (!File.Exists(path) || new FileInfo(path).Length != stream.Length)
+                    {
+                        string tmp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                        using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.Read))
+                            stream.CopyTo(fs);
+                        try
+                        {
+                            if (File.Exists(path)) File.Delete(path);
+                            File.Move(tmp, path);
+                        }
+                        catch
+                        {
+                            try { File.Delete(tmp); } catch { }
+                            if (!File.Exists(path)) return null;
+                        }
+                    }
+                    _embeddedKotSymbolTempDwg = path;
+                    return path;
+                }
+            }
         }
 
         /// <summary>Noktayı (cx, cy) etrafında angleRad radyan döndürür.</summary>
@@ -13791,34 +14541,71 @@ namespace ST4PlanIdCiz
             outY = cy + dx * s + dy * c;
         }
 
-        /// <summary>Üst ve alt kot yazıları arasına çizilen kot işareti. YATAY_KOT.dxf/dwg varsa dosyadan entity kopyalanır (KOT CIZGISI katmanında), yoksa T şekli çizilir. rotationRad != 0 ise aksa göre döndürülür (rotCenterX, rotCenterY) etrafında.</summary>
-        private static void DrawKotSymbol(Transaction tr, BlockTableRecord btr, double leftX, double centerY, double rotCenterX = double.NaN, double rotCenterY = double.NaN, double rotationRad = 0, double symbolScale = 1.0)
+        /// <summary>
+        /// Döşeme kot işareti (kalıp 1:50/1:100). Eski 1:50 kalıp <c>kot.dwg</c> birebir:
+        /// <paramref name="textLeftX"/> = üst/alt kot yazı sol kenarı; <paramref name="lineY"/> = yatay çizgi / daire merkezi Y.
+        /// Yazılar klonlanmaz (çağıran yazar); daire + çizgiler + NE/SW solid hatch korunur.
+        /// </summary>
+        private static void DrawKotSymbol(Transaction tr, BlockTableRecord btr, double textLeftX, double lineY, double rotCenterX = double.NaN, double rotCenterY = double.NaN, double rotationRad = 0, double symbolScale = 1.0)
         {
             if (symbolScale < 1e-6) symbolScale = 1.0;
-            bool rotate = rotationRad != 0 && !double.IsNaN(rotCenterX) && !double.IsNaN(rotCenterY);
+            // lineY zaten çağıranda KotSymbolYukariKaydirCm dahil (veya aşağıda blok merkezine eklenir)
+
             string path = GetKotSymbolFilePath();
-            if (!string.IsNullOrEmpty(path) && TryLoadKotSymbolFromFile(tr, btr, path, leftX, centerY, rotCenterX, rotCenterY, rotationRad, symbolScale))
+            if (!string.IsNullOrEmpty(path) && TryLoadKotSymbolFromFile(tr, btr, path, textLeftX, lineY, rotCenterX, rotCenterY, rotationRad, symbolScale))
                 return;
-            double kotSymbolWidthCm = 40.0 * symbolScale; // Yatay çizgi sağ taraftan 40 cm
-            double kotSymbolTickHeightCm = 0.5 * symbolScale;
-            double xMid = leftX + kotSymbolWidthCm * 0.5;
-            double x1 = leftX, y1 = centerY, x2 = leftX + kotSymbolWidthCm, y2 = centerY;
-            double x3 = xMid, y3 = centerY, x4 = xMid, y4 = centerY + kotSymbolTickHeightCm;
+
+            // Fallback: kot.dwg ölçüleriyle aynı geometri (NE/SW solid)
+            bool rotate = rotationRad != 0 && !double.IsNaN(rotCenterX) && !double.IsNaN(rotCenterY);
+            const double bulge90 = 0.41421356237;
+            double R = KotRefCircleR * symbolScale;
+            double cx = textLeftX - KotRefTextOffsetFromCircleCx * symbolScale;
+            double cy = lineY;
+            double xLeft = cx - KotRefHorzLeftFromCx * symbolScale;
+            double xRight = xLeft + KotRefHorzLenCm * symbolScale;
+            double vertHalf = KotRefVertHalfCm * symbolScale;
+
+            Matrix3d rotMat = Matrix3d.Identity;
+            bool applyRot = false;
             if (rotate)
             {
-                RotatePointAround(x1, y1, rotCenterX, rotCenterY, rotationRad, out x1, out y1);
-                RotatePointAround(x2, y2, rotCenterX, rotCenterY, rotationRad, out x2, out y2);
-                RotatePointAround(x3, y3, rotCenterX, rotCenterY, rotationRad, out x3, out y3);
-                RotatePointAround(x4, y4, rotCenterX, rotCenterY, rotationRad, out x4, out y4);
+                rotMat = Matrix3d.Rotation(rotationRad, Vector3d.ZAxis, new Point3d(rotCenterX, rotCenterY, 0));
+                applyRot = true;
             }
-            var lineHorz = new Line(new Point3d(x1, y1, 0), new Point3d(x2, y2, 0));
-            lineHorz.SetDatabaseDefaults();
-            lineHorz.Layer = LayerKotCizgisi;
-            AppendEntity(tr, btr, lineHorz);
-            var lineTick = new Line(new Point3d(x3, y3, 0), new Point3d(x4, y4, 0));
-            lineTick.SetDatabaseDefaults();
-            lineTick.Layer = LayerKotCizgisi;
-            AppendEntity(tr, btr, lineTick);
+
+            void Finish(Entity ent)
+            {
+                ent.SetDatabaseDefaults();
+                ent.Layer = LayerKotCizgisi;
+                if (applyRot) ent.TransformBy(rotMat);
+                AppendEntity(tr, btr, ent);
+            }
+
+            var cir = new Circle(new Point3d(cx, cy, 0), Vector3d.ZAxis, R);
+            Finish(cir);
+
+            var horz = new Line(new Point3d(xLeft, cy, 0), new Point3d(xRight, cy, 0));
+            Finish(horz);
+            var vert = new Line(new Point3d(cx, cy - vertHalf, 0), new Point3d(cx, cy + vertHalf, 0));
+            Finish(vert);
+
+            // NE: N → merkez → E →(arc)→ N  (kot.dwg hatch sırası)
+            var plNe = new Polyline();
+            plNe.AddVertexAt(0, new Point2d(cx, cy + R), 0, 0, 0);
+            plNe.AddVertexAt(1, new Point2d(cx, cy), 0, 0, 0);
+            plNe.AddVertexAt(2, new Point2d(cx + R, cy), bulge90, 0, 0);
+            plNe.Closed = true;
+            Finish(plNe);
+            try { AppendHatchSolidOnLayer(tr, btr, plNe.ObjectId, 7, LayerKotCizgisi); } catch { }
+
+            // SW: merkez → W →(arc)→ S
+            var plSw = new Polyline();
+            plSw.AddVertexAt(0, new Point2d(cx, cy), 0, 0, 0);
+            plSw.AddVertexAt(1, new Point2d(cx - R, cy), bulge90, 0, 0);
+            plSw.AddVertexAt(2, new Point2d(cx, cy - R), 0, 0, 0);
+            plSw.Closed = true;
+            Finish(plSw);
+            try { AppendHatchSolidOnLayer(tr, btr, plSw.ObjectId, 7, LayerKotCizgisi); } catch { }
         }
 
         /// <summary>Üst kot, yatay kot işareti ve alt kot takımını verilen merkeze ortalı çizer. Kiriş/perde kot etiketi için kullanılır. rotationRad: kiriş/perdenin fixlendiği aksa göre dönüş (radyan); 0 ise yatay.</summary>
@@ -13826,20 +14613,16 @@ namespace ST4PlanIdCiz
         {
             if (IsTemelPlanDraw) return;
             double ann = scaleWithPlan ? TemelFoundationAnnotMul : 1.0;
-            double kotArasiMesafeCm = 10.0 * ann;
             double kotTextHeightCm = 8.0 * ann;
             double blockHalfWidthCm = 21.75 * ann;
             double kotBlockSagaKaydirCm = 21.75 * ann;
-            double ustKotAsagiKaydirCm = 10.322 * ann;
-            double altKotAsagiKaydirCm = 2.322 * ann;
+            // kot.dwg: üst yazı çizginin 1 cm üstünde, alt yazı 9 cm altında (aralık 10 cm)
             double leftX = centerX - blockHalfWidthCm + kotBlockSagaKaydirCm;
             string topElevStr = FormatKotElevationMeters(topElevM);
             string bottomElevStr = FormatKotElevationMeters(bottomElevM);
             ObjectId textStyleId = GetOrCreateYaziBeykentTextStyle(tr, db);
-            double topY = centerY + kotArasiMesafeCm * 0.5 + kotTextHeightCm * 0.5 - ustKotAsagiKaydirCm;
-            double bottomY = centerY - kotArasiMesafeCm * 0.5 - kotTextHeightCm * 0.5 - altKotAsagiKaydirCm;
-            double kotSymbolOffsetFromLeftCm = 3.5 * ann;
-            double leftXSym = leftX + kotSymbolOffsetFromLeftCm;
+            double topY = centerY + KotRefTopTextAboveLineCm * ann;
+            double bottomY = centerY - KotRefBottomTextBelowLineCm * ann;
             bool rotate = rotationRad != 0;
             double topX = leftX, topYout = topY, bottomX = leftX, bottomYout = bottomY;
             if (rotate)
@@ -13860,7 +14643,7 @@ namespace ST4PlanIdCiz
                 Rotation = rotationRad
             };
             AppendEntity(tr, btr, txtTop);
-            DrawKotSymbol(tr, btr, leftXSym, centerY, centerX, centerY, rotationRad, ann);
+            DrawKotSymbol(tr, btr, leftX, centerY + KotSymbolYukariKaydirCm * ann, centerX, centerY, rotationRad, ann);
             var txtBottom = new DBText
             {
                 Layer = LayerKotYazi,
@@ -13876,15 +14659,23 @@ namespace ST4PlanIdCiz
             AppendEntity(tr, btr, txtBottom);
         }
 
-        /// <summary>YATAY_KOT.dxf veya .dwg dosyasındaki Model Space entity'lerini btr'ye kopyalar; merkezi (leftX, centerY) olacak şekilde öteler, isteğe bağlı döndürür ve KOT CIZGISI katmanına alır.</summary>
-        private static bool TryLoadKotSymbolFromFile(Transaction tr, BlockTableRecord btr, string filePath, double leftX, double centerY, double rotCenterX = double.NaN, double rotCenterY = double.NaN, double rotationRad = 0, double symbolScale = 1.0)
+        /// <summary>
+        /// YATAY_KOT.dwg Model Space: yazı hariç (CIRCLE/LINE/HATCH) kopyala.
+        /// Daire merkezi → (textLeftX − KotRefTextOffsetFromCircleCx·scale, lineY); yalnızca düzgün ölçek (40 cm'e zorlama yok).
+        /// </summary>
+        private static bool TryLoadKotSymbolFromFile(Transaction tr, BlockTableRecord btr, string filePath, double textLeftX, double lineY, double rotCenterX = double.NaN, double rotCenterY = double.NaN, double rotationRad = 0, double symbolScale = 1.0)
         {
             if (symbolScale < 1e-6) symbolScale = 1.0;
             Database sourceDb = null;
             try
             {
                 sourceDb = new Database(false, true);
-                sourceDb.ReadDwgFile(filePath, FileOpenMode.OpenForReadAndAllShare, true, null);
+                string ext = Path.GetExtension(filePath);
+                if (string.Equals(ext, ".dxf", StringComparison.OrdinalIgnoreCase))
+                    sourceDb.DxfIn(filePath, null);
+                else
+                    sourceDb.ReadDwgFile(filePath, FileOpenMode.OpenForReadAndAllShare, true, null);
+
                 ObjectIdCollection ids = new ObjectIdCollection();
                 using (Transaction trSrc = sourceDb.TransactionManager.StartTransaction())
                 {
@@ -13892,45 +14683,74 @@ namespace ST4PlanIdCiz
                     if (ms == null) return false;
                     foreach (ObjectId id in ms)
                     {
-                        if (id.IsValid && !id.IsErased) ids.Add(id);
+                        if (!id.IsValid || id.IsErased) continue;
+                        Entity ent = trSrc.GetObject(id, OpenMode.ForRead) as Entity;
+                        if (ent == null) continue;
+                        // Kot yazıları çağıranda çizilir; şablondaki -0.40/-0.60 TEXT kopyalanmaz
+                        if (ent is DBText || ent is MText) continue;
+                        ids.Add(id);
                     }
                     trSrc.Commit();
                 }
                 if (ids.Count == 0) return false;
+
                 IdMapping mapping = new IdMapping();
                 btr.Database.WblockCloneObjects(ids, btr.ObjectId, mapping, DuplicateRecordCloning.Ignore, false);
-                double minX = double.MaxValue, minY = double.MaxValue, maxX = double.MinValue, maxY = double.MinValue;
+
+                double srcCx = double.NaN, srcCy = double.NaN;
                 foreach (IdPair pair in mapping)
                 {
                     if (!pair.Value.IsValid) continue;
-                    Entity ent = tr.GetObject(pair.Value, OpenMode.ForRead) as Entity;
-                    if (ent == null) continue;
-                    try
+                    if (tr.GetObject(pair.Value, OpenMode.ForRead) is Circle cir)
                     {
-                        Extents3d ext = ent.GeometricExtents;
-                        minX = Math.Min(minX, ext.MinPoint.X);
-                        minY = Math.Min(minY, ext.MinPoint.Y);
-                        maxX = Math.Max(maxX, ext.MaxPoint.X);
-                        maxY = Math.Max(maxY, ext.MaxPoint.Y);
+                        srcCx = cir.Center.X;
+                        srcCy = cir.Center.Y;
+                        break;
                     }
-                    catch { }
                 }
-                if (minX > maxX || minY > maxY) return true;
-                double srcCx = (minX + maxX) * 0.5;
-                double srcCy = (minY + maxY) * 0.5;
-                Matrix3d disp = Matrix3d.Displacement(new Vector3d(leftX - srcCx, centerY - srcCy, 0));
-                double kotSymbolHorzLengthCm = 40.0 * symbolScale; // Yatay çizgi sağ taraftan 40 cm
-                double scaleX = kotSymbolHorzLengthCm / (maxX - minX);
-                Matrix3d scaleAt = Matrix3d.Scaling(scaleX, new Point3d(leftX, centerY, 0));
+                if (double.IsNaN(srcCx))
+                {
+                    // Daire yoksa zarf merkezi
+                    double minX = double.MaxValue, minY = double.MaxValue, maxX = double.MinValue, maxY = double.MinValue;
+                    bool any = false;
+                    foreach (IdPair pair in mapping)
+                    {
+                        if (!pair.Value.IsValid) continue;
+                        Entity ent = tr.GetObject(pair.Value, OpenMode.ForRead) as Entity;
+                        if (ent == null) continue;
+                        try
+                        {
+                            Extents3d e = ent.GeometricExtents;
+                            minX = Math.Min(minX, e.MinPoint.X);
+                            minY = Math.Min(minY, e.MinPoint.Y);
+                            maxX = Math.Max(maxX, e.MaxPoint.X);
+                            maxY = Math.Max(maxY, e.MaxPoint.Y);
+                            any = true;
+                        }
+                        catch { }
+                    }
+                    if (!any) return false;
+                    srcCx = (minX + maxX) * 0.5;
+                    srcCy = (minY + maxY) * 0.5;
+                }
+
+                double targetCx = textLeftX - KotRefTextOffsetFromCircleCx * symbolScale;
+                double targetCy = lineY;
+                Matrix3d toOrigin = Matrix3d.Displacement(new Vector3d(-srcCx, -srcCy, 0));
+                Matrix3d scaleMat = Matrix3d.Scaling(symbolScale, Point3d.Origin);
+                Matrix3d toTarget = Matrix3d.Displacement(new Vector3d(targetCx, targetCy, 0));
+                Matrix3d xform = toTarget * scaleMat * toOrigin;
                 bool applyRotation = rotationRad != 0 && !double.IsNaN(rotCenterX) && !double.IsNaN(rotCenterY);
-                Matrix3d rot = applyRotation ? Matrix3d.Rotation(rotationRad, Vector3d.ZAxis, new Point3d(rotCenterX, rotCenterY, 0)) : Matrix3d.Identity;
+                Matrix3d rot = applyRotation
+                    ? Matrix3d.Rotation(rotationRad, Vector3d.ZAxis, new Point3d(rotCenterX, rotCenterY, 0))
+                    : Matrix3d.Identity;
+
                 foreach (IdPair pair in mapping)
                 {
                     if (!pair.Value.IsValid) continue;
                     Entity ent = tr.GetObject(pair.Value, OpenMode.ForWrite) as Entity;
                     if (ent == null) continue;
-                    ent.TransformBy(disp);
-                    ent.TransformBy(scaleAt);
+                    ent.TransformBy(xform);
                     if (applyRotation) ent.TransformBy(rot);
                     ent.Layer = LayerKotCizgisi;
                 }
@@ -16786,6 +17606,19 @@ namespace ST4PlanIdCiz
             }
             beamLines.Sort(StringComparer.Ordinal);
             parts.Add(string.Join("|", beamLines));
+
+            // Mantar fiktif kirişler (/Slabs Data/)
+            var mushroomLines = new List<string>();
+            if (_model.MushroomBeams != null)
+            {
+                foreach (var b in _model.MushroomBeams)
+                {
+                    if (GetBeamFloorNo(b.BeamId) != floorNo) continue;
+                    mushroomLines.Add(string.Format(ci, "M,{0},{1},{2},{3},{4},{5}", b.FixedAxisId, b.StartAxisId, b.EndAxisId, b.WidthCm, b.HeightCm, b.OffsetRaw));
+                }
+            }
+            mushroomLines.Sort(StringComparer.Ordinal);
+            parts.Add(string.Join("|", mushroomLines));
 
             // Kolonlar: konum (eksen, kaçıklık, açı), boyut (en x boy; yükseklik yok); poligon için kesit kimliği
             var colLines = new List<string>();

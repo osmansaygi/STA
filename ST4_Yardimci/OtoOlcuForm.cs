@@ -332,8 +332,7 @@ namespace ST4Yardimci
                 int idx = IndexOfIgnoreCase(_cmbDimStyle, want);
                 if (idx < 0 && _cmbDimStyle.Items.Count > 0)
                 {
-                    idx = IndexOfIgnoreCase(_cmbDimStyle, "OLCU (BEYKENT)");
-                    if (idx < 0) idx = IndexOfIgnoreCase(_cmbDimStyle, "PLAN_OLCU");
+                    idx = IndexOfIgnoreCase(_cmbDimStyle, OtoOlcuSettings.DefaultDimStyleName);
                     if (idx < 0) idx = 0;
                 }
                 if (idx >= 0) _cmbDimStyle.SelectedIndex = idx;

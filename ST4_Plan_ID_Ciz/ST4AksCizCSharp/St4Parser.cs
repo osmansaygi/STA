@@ -19,6 +19,7 @@ namespace ST4AksCizCSharp
             bool inStory = false;
             bool inColAxis = false;
             bool inBeams = false;
+            bool inMushroomBeams = false;
             bool inColData = false;
             bool inFloorsData = false;
             bool inFloorsContinuous = false;
@@ -57,6 +58,7 @@ namespace ST4AksCizCSharp
                     inFloorsData = true;
                     inColAxis = false;
                     inBeams = false;
+                    inMushroomBeams = false;
                     inColData = false;
                     continue;
                 }
@@ -180,6 +182,21 @@ namespace ST4AksCizCSharp
                 if (u.Contains("beams data"))
                 {
                     inBeams = true;
+                    inMushroomBeams = false;
+                    continue;
+                }
+                // Bölüm başlıkları, inXxx+/ çıkışından ÖNCE: yoksa /Slabs Data/ beams çıkışında yutulur.
+                if (u.Contains("slabs data"))
+                {
+                    inMushroomBeams = true;
+                    inBeams = false;
+                    continue;
+                }
+                if (u.Contains("columns data"))
+                {
+                    inColData = true;
+                    inMushroomBeams = false;
+                    inBeams = false;
                     continue;
                 }
                 if (inBeams && u.StartsWith("/"))
@@ -229,11 +246,53 @@ namespace ST4AksCizCSharp
                     continue;
                 }
 
-                if (u.Contains("columns data"))
+                // /Slabs Data/: mantar fiktif kirişler (Beams Data ile aynı satır formatı; Floors Data döşeme değildir).
+                if (inMushroomBeams && u.StartsWith("/"))
                 {
-                    inColData = true;
+                    inMushroomBeams = false;
                     continue;
                 }
+                if (inMushroomBeams && line.Length > 2)
+                {
+                    var p = St4Text.SplitCsv(line);
+                    if (p.Count >= 8 &&
+                        St4Text.TryParseInt(p[0], out int mBeamId) &&
+                        St4Text.TryParseInt(p[4], out int mFixedAxis) &&
+                        St4Text.TryParseInt(p[5], out int mStartAxis) &&
+                        St4Text.TryParseInt(p[6], out int mEndAxis) &&
+                        ((mFixedAxis >= 1001 && mFixedAxis <= 1999) || (mFixedAxis >= 2001 && mFixedAxis <= 2999)))
+                    {
+                        double width = 40.0;
+                        double height = 0.0;
+                        int off = 0;
+                        if (St4Text.TryParseDouble(p[1], out double w)) width = w;
+                        if (St4Text.TryParseDouble(p[2], out double h)) height = h;
+                        if (p.Count >= 8 && St4Text.TryParseInt(p[7], out int o)) off = o;
+                        // Slabs Data: uç kotları p[8]/p[9] (Beams Data'daki p[11]/p[12] değil).
+                        double point1KotCm = 0.0, point2KotCm = 0.0;
+                        if (p.Count >= 9) St4Text.TryParseDouble(p[8], out point1KotCm);
+                        if (p.Count >= 10) St4Text.TryParseDouble(p[9], out point2KotCm);
+                        if (width <= 0) width = 40.0;
+                        if (mBeamId >= 100)
+                        {
+                            model.MushroomBeams.Add(new BeamInfo
+                            {
+                                BeamId = mBeamId,
+                                FixedAxisId = mFixedAxis,
+                                StartAxisId = mStartAxis,
+                                EndAxisId = mEndAxis,
+                                WidthCm = width,
+                                HeightCm = height,
+                                OffsetRaw = off,
+                                Point1KotCm = point1KotCm,
+                                Point2KotCm = point2KotCm,
+                                IsWallFlag = 0
+                            });
+                        }
+                    }
+                    continue;
+                }
+
                 if (inColData && u.StartsWith("/"))
                 {
                     inColData = false;

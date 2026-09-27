@@ -5551,6 +5551,7 @@ namespace ST4PlanIdCiz
             double sMin = PoligonDonatiMerkezMinCm(ucDia);
             FillPoligonEtriyeKenarMaxAralik(etBoxes, pts, overlapAnchors, 20.0, sMin);
             EnsurePoligonKoseBaslikAdet(pts, etBoxes, rects, floorIndex, colNo, sMin);
+            BalancePoligonBenzerBaslikAraliklariAfterEnsure(etBoxes, pts, sMin);
             PlacePoligonKolonFormatDuseyDonati(rects, pts, floorIndex, colNo, sMin, etBoxes);
             govdeSmax = EnsurePoligonKesitAsEnAzGpr(pts, etBoxes, koller, rects, floorIndex, colNo, sMin);
             EnforcePoligonDonatiNetMinAralik(etBoxes, pts, sMin);
@@ -6116,7 +6117,8 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>
-        /// Kesit As ≥ GPR As. Başlıkta nMin (KR ρ) doluysa ekleme; açığı gövde aralığını sıkıştırarak kapat.
+        /// Kesit As ≥ GPR As. Önce başlıklarda nMin (KR ρ); sonra As açığı için başlıklara
+        /// en açık aralıklıdan (dengeli) takım ekle; yetmezse gövde aralığını sıkıştır.
         /// </summary>
         private double EnsurePoligonKesitAsEnAzGpr(
             List<(double x, double y)> pts,
@@ -6195,11 +6197,10 @@ namespace ST4PlanIdCiz
                 }
             }
 
-            int guard = 0;
-            while (KesitAs() + 1e-6 < gprAs && guard++ < 80)
+            bool TryAddToMostOpenBaslik(bool onlyBelowNmin)
             {
                 int bestN = 0;
-                double bestGap = 0;
+                double bestGap = -1.0;
                 bool longIsX = false;
                 double ba0 = 0, ba1 = 0, bc0 = 0, bc1 = 0;
                 bool found = false;
@@ -6207,30 +6208,53 @@ namespace ST4PlanIdCiz
                 {
                     var b = etBoxes[i];
                     if (!b.hasInnerCut) continue;
-                    int nMin = PoligonBaslikNmin(b.x0, b.y0, b.x1, b.y1, rects, rho, aUc);
-                    if (CountIn(b.x0, b.y0, b.x1, b.y1) >= nMin) continue;
+                    if (onlyBelowNmin)
+                    {
+                        int nMin = PoligonBaslikNmin(b.x0, b.y0, b.x1, b.y1, rects, rho, aUc);
+                        if (CountIn(b.x0, b.y0, b.x1, b.y1) >= nMin) continue;
+                    }
                     double a0, a1, c0, c1;
                     if (!TryPoligonBaslikCiftSiraRange(b, overlaps, rad, out a0, out a1, out c0, out c1))
                         continue;
                     var st = CollectPoligonCiftSiraStations(pts, b.longIsX, a0, a1, c0, c1);
                     if (st.Count < 2) continue;
+                    double span = a1 - a0;
+                    if (sMinCc > 0.5 && span / st.Count < sMinCc - 1e-6) continue;
+                    if (sMinCc > 0.5 && span / (st.Count + 1) < sMinCc - 1e-6) continue;
                     double gap = 0;
                     for (int s = 0; s < st.Count - 1; s++)
                         gap = Math.Max(gap, st[s + 1] - st[s]);
-                    if (sMinCc > 0.5 && (a1 - a0) / st.Count < sMinCc - 1e-6) continue;
                     if (gap < Math.Max(4.0, sMinCc)) continue;
                     if (gap < bestGap - 1e-6) continue;
+                    if (Math.Abs(gap - bestGap) < 1e-6 && st.Count >= bestN) continue;
                     bestGap = gap;
                     bestN = st.Count;
                     longIsX = b.longIsX;
                     ba0 = a0; ba1 = a1; bc0 = c0; bc1 = c1;
                     found = true;
                 }
-                if (!found) break;
+                if (!found) return false;
                 int nBefore = pts.Count;
                 EqualizePoligonCiftSira(pts, longIsX, ba0, ba1, bc0, bc1, bestN + 1);
-                if (pts.Count <= nBefore) break;
+                return pts.Count > nBefore;
             }
+
+            int guard = 0;
+            while (KesitAs() + 1e-6 < gprAs && guard++ < 80)
+            {
+                if (!TryAddToMostOpenBaslik(onlyBelowNmin: true))
+                    break;
+            }
+
+            // nMin dolu olsa bile As açığı: en açık aralıklı başlığa dengeli ekle
+            guard = 0;
+            while (KesitAs() + 1e-6 < gprAs && guard++ < 80)
+            {
+                if (!TryAddToMostOpenBaslik(onlyBelowNmin: false))
+                    break;
+            }
+
+            BalancePoligonBenzerBaslikAraliklari(etBoxes, pts, overlaps, rad, sMinCc);
 
             while (KesitAs() + 1e-6 < gprAs && govdeSmax > minCcGv + 0.5)
             {
@@ -6238,6 +6262,76 @@ namespace ST4PlanIdCiz
                 if (govdeSmax < minCcGv) govdeSmax = minCcGv;
             }
             return govdeSmax;
+        }
+
+        /// <summary>
+        /// Aynı uzunluk/kalınlıktaki başlık artıkları: istasyon sayısını gruptaki max'a çek
+        /// (simetrik kollarda görünüş/kesit aynı aralık).
+        /// </summary>
+        private static void BalancePoligonBenzerBaslikAraliklari(
+            List<(double x0, double y0, double x1, double y1, bool longIsX, bool hasInnerCut, bool innerIsMax)> etBoxes,
+            List<(double x, double y)> pts,
+            List<(double x0, double y0, double x1, double y1)> overlaps,
+            double rad,
+            double sMinCc)
+        {
+            if (etBoxes == null || pts == null || etBoxes.Count < 2) return;
+            var items = new List<(bool longIsX, int spanKey, int thickKey, double a0, double a1, double c0, double c1, int n)>();
+            for (int i = 0; i < etBoxes.Count; i++)
+            {
+                var b = etBoxes[i];
+                if (!b.hasInnerCut) continue;
+                double a0, a1, c0, c1;
+                if (!TryPoligonBaslikCiftSiraRange(b, overlaps, rad, out a0, out a1, out c0, out c1))
+                    continue;
+                double span = a1 - a0;
+                double thick = Math.Abs(c1 - c0);
+                if (span < 4.0 || thick < 2.0) continue;
+                var st = CollectPoligonCiftSiraStations(pts, b.longIsX, a0, a1, c0, c1);
+                if (st.Count < 2) continue;
+                int spanKey = (int)Math.Round(span / 5.0);
+                int thickKey = (int)Math.Round(thick / 5.0);
+                items.Add((b.longIsX, spanKey, thickKey, a0, a1, c0, c1, st.Count));
+            }
+            if (items.Count < 2) return;
+
+            var groups = items
+                .GroupBy(x => (x.longIsX, x.spanKey, x.thickKey))
+                .Where(g => g.Count() >= 2);
+            foreach (var g in groups)
+            {
+                int nTarget = g.Max(x => x.n);
+                foreach (var it in g)
+                {
+                    if (it.n >= nTarget) continue;
+                    double span = it.a1 - it.a0;
+                    if (sMinCc > 0.5 && span / nTarget < sMinCc - 1e-6) continue;
+                    EqualizePoligonCiftSira(pts, it.longIsX, it.a0, it.a1, it.c0, it.c1, nTarget);
+                }
+            }
+        }
+
+        private static void BalancePoligonBenzerBaslikAraliklariAfterEnsure(
+            List<(double x0, double y0, double x1, double y1, bool longIsX, bool hasInnerCut, bool innerIsMax)> etBoxes,
+            List<(double x, double y)> pts,
+            double sMinCc)
+        {
+            if (etBoxes == null || pts == null) return;
+            double rad = KolonKesitEtriyeRadiusCm;
+            var overlaps = new List<(double x0, double y0, double x1, double y1)>();
+            for (int i = 0; i < etBoxes.Count; i++)
+            {
+                var a = etBoxes[i];
+                for (int j = i + 1; j < etBoxes.Count; j++)
+                {
+                    var b = etBoxes[j];
+                    double ix0 = Math.Max(a.x0, b.x0), ix1 = Math.Min(a.x1, b.x1);
+                    double iy0 = Math.Max(a.y0, b.y0), iy1 = Math.Min(a.y1, b.y1);
+                    if (ix1 - ix0 >= 2.0 && iy1 - iy0 >= 2.0)
+                        overlaps.Add((ix0, iy0, ix1, iy1));
+                }
+            }
+            BalancePoligonBenzerBaslikAraliklari(etBoxes, pts, overlaps, rad, sMinCc);
         }
 
         private static int PoligonBaslikNmin(
@@ -7271,6 +7365,7 @@ namespace ST4PlanIdCiz
                     {
                         int bestK = -1;
                         int bestN = 0;
+                        double bestGap = -1.0;
                         double bestSpan = 0;
                         double ba0 = 0, ba1 = 0, bc0 = 0, bc1 = 0;
                         for (int k = 0; k < 2; k++)
@@ -7279,9 +7374,29 @@ namespace ST4PlanIdCiz
                             if (!TryPoligonLeftoverRange(boxes[k], overlaps, rad, out a0, out a1, out c0, out c1))
                                 continue;
                             double span = a1 - a0;
-                            int nNow = CountPoligonCiftSiraStations(pts, boxes[k].longIsX, a0, a1, c0, c1);
-                            if (sMinCc > 0.5 && nNow >= 2 && span / nNow < sMinCc - 1e-6) continue;
-                            if (span <= bestSpan) continue;
+                            if (span < 4.0) continue;
+                            var stList = CollectPoligonCiftSiraStations(pts, boxes[k].longIsX, a0, a1, c0, c1);
+                            int nNow = stList.Count;
+                            if (nNow < 2) nNow = 2;
+                            if (sMinCc > 0.5 && span / nNow < sMinCc - 1e-6) continue;
+                            // Bir istasyon daha (takım = çift sıra) sMin'i bozmasın
+                            if (sMinCc > 0.5 && span / (nNow + 1) < sMinCc - 1e-6) continue;
+                            double gap = 0;
+                            if (stList.Count >= 2)
+                            {
+                                for (int s = 0; s < stList.Count - 1; s++)
+                                    gap = Math.Max(gap, stList[s + 1] - stList[s]);
+                            }
+                            else
+                                gap = span;
+                            // En açık aralıklı artığa ekle; eşitse daha uzun / daha az istasyonlu tercih
+                            if (gap < bestGap - 1e-6) continue;
+                            if (Math.Abs(gap - bestGap) < 1e-6)
+                            {
+                                if (nNow > bestN) continue;
+                                if (nNow == bestN && span <= bestSpan) continue;
+                            }
+                            bestGap = gap;
                             bestSpan = span;
                             bestK = k;
                             bestN = nNow;
@@ -13890,37 +14005,52 @@ namespace ST4PlanIdCiz
             Action<BeamInfo, Polygon, double, double> visit)
         {
             if (floor == null || colPoly == null || colPoly.IsEmpty || visit == null) return;
-            if (_model?.Beams == null || _axisService == null) return;
+            if (_axisService == null) return;
             var gf = _ntsDrawFactory;
             if (gf == null) return;
             double floorLevelCm = (_model.BuildingBaseKotu + floor.ElevationM) * 100.0;
             var colEnv = colPoly.EnvelopeInternal;
-            foreach (var beam in GetRawBeamsOnFloor(floor.FloorNo))
+
+            void VisitBeam(BeamInfo beam)
             {
-                if (beam == null) continue;
+                if (beam == null) return;
                 bool isWall = beam.IsWallFlag == 1;
-                if (includeWalls != isWall) continue;
+                if (includeWalls != isWall) return;
                 if (!_axisService.TryIntersect(beam.FixedAxisId, beam.StartAxisId, out Point2d p1) ||
                     !_axisService.TryIntersect(beam.FixedAxisId, beam.EndAxisId, out Point2d p2))
-                    continue;
+                    return;
                 double minX = Math.Min(p1.X, p2.X), maxX = Math.Max(p1.X, p2.X);
                 double minY = Math.Min(p1.Y, p2.Y), maxY = Math.Max(p1.Y, p2.Y);
                 // Genişlik payı (~yarım kiriş + 2 cm mesafe toleransı)
                 double pad = Math.Max(beam.WidthCm * 0.5 + 2.0, 25.0);
                 if (maxX < colEnv.MinX - pad || minX > colEnv.MaxX + pad
                     || maxY < colEnv.MinY - pad || minY > colEnv.MaxY + pad)
-                    continue;
+                    return;
                 Polygon poly;
                 try { poly = BuildBeamSegmentPolygon(p1, p2, beam, gf); }
-                catch { continue; }
-                if (poly == null || poly.IsEmpty) continue;
+                catch { return; }
+                if (poly == null || poly.IsEmpty) return;
                 bool hitCol = false;
                 try { hitCol = poly.Intersects(colPoly) || poly.Distance(colPoly) < 2.0; }
                 catch { hitCol = false; }
-                if (!hitCol) continue;
+                if (!hitCol) return;
                 double zu = floorLevelCm + Math.Max(beam.Point1KotCm, beam.Point2KotCm);
                 double h = beam.HeightCm > 0 ? beam.HeightCm : (isWall ? 280.0 : 30.0);
                 visit(beam, poly, zu - h, zu);
+            }
+
+            foreach (var beam in GetRawBeamsOnFloor(floor.FloorNo))
+                VisitBeam(beam);
+
+            // Mantar fiktif kirişler: kolon düşeyde normal kiriş formatında (çizim filtresi yok).
+            if (_model?.MushroomBeams != null && !includeWalls)
+            {
+                foreach (var mb in _model.MushroomBeams)
+                {
+                    if (mb == null) continue;
+                    if (GetBeamFloorNo(mb.BeamId) != floor.FloorNo) continue;
+                    VisitBeam(mb);
+                }
             }
         }
 

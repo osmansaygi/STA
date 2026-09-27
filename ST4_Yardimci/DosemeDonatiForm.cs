@@ -1,93 +1,24 @@
 using System;
-using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
-using Autodesk.AutoCAD.DatabaseServices;
-using Autodesk.AutoCAD.EditorInput;
 using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
 using SdFont = System.Drawing.Font;
 
 namespace ST4Yardimci
 {
-    internal enum DosemeTipi
-    {
-        Pilesiz = 0,
-        Pileli = 1
-    }
-
-    internal static class DosemeDonatiSettings
-    {
-        private static readonly object Sync = new object();
-        private static readonly List<string> Layers = new List<string>();
-
-        public static DosemeTipi Tip { get; set; } = DosemeTipi.Pilesiz;
-
-        public static IReadOnlyList<string> GetLayers()
-        {
-            lock (Sync) return Layers.ToArray();
-        }
-
-        public static void SetLayers(IEnumerable<string> names)
-        {
-            lock (Sync)
-            {
-                Layers.Clear();
-                if (names == null) return;
-                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                foreach (string n in names)
-                {
-                    if (string.IsNullOrWhiteSpace(n)) continue;
-                    string t = n.Trim();
-                    if (seen.Add(t)) Layers.Add(t);
-                }
-            }
-        }
-
-        public static bool AddLayer(string name)
-        {
-            if (string.IsNullOrWhiteSpace(name)) return false;
-            string t = name.Trim();
-            lock (Sync)
-            {
-                foreach (string e in Layers)
-                    if (string.Equals(e, t, StringComparison.OrdinalIgnoreCase))
-                        return false;
-                Layers.Add(t);
-                return true;
-            }
-        }
-
-        public static bool RemoveLayer(string name)
-        {
-            if (string.IsNullOrWhiteSpace(name)) return false;
-            lock (Sync)
-            {
-                for (int i = Layers.Count - 1; i >= 0; i--)
-                {
-                    if (string.Equals(Layers[i], name.Trim(), StringComparison.OrdinalIgnoreCase))
-                    {
-                        Layers.RemoveAt(i);
-                        return true;
-                    }
-                }
-            }
-            return false;
-        }
-    }
-
-    /// <summary>Döşeme donatı ayar formu: pileli/pilesiz + katman listesi.</summary>
+    /// <summary>
+    /// Döşeme Donatı formu — katmanlar sabit (KIRIS/KOLON/PERDE/DOSEME SINIRI/KALIP BOSLUK/MERDIVEN).
+    /// </summary>
     internal sealed class DosemeDonatiForm : Form
     {
         private static DosemeDonatiForm _instance;
 
-        private readonly RadioButton _rbPilesiz;
-        private readonly RadioButton _rbPileli;
-        private readonly ListBox _lstLayers;
-        private readonly Button _btnAdd;
-        private readonly Button _btnRemove;
+        private readonly RadioButton _rbSerbest;
+        private readonly RadioButton _rbX;
+        private readonly RadioButton _rbY;
         private readonly Button _btnRun;
         private readonly Button _btnClose;
-        private bool _syncing;
+        private bool _starting;
 
         public static void ShowOrActivate()
         {
@@ -99,7 +30,7 @@ namespace ST4Yardimci
             }
             else
             {
-                _instance.RefreshUi();
+                _instance._starting = false;
                 _instance.Visible = true;
                 _instance.BringToFront();
             }
@@ -112,24 +43,24 @@ namespace ST4Yardimci
             _instance = null;
         }
 
-        public static void NotifyLayerAdded(string layerName)
+        public static void HideTemporarily()
         {
-            if (_instance == null || _instance.IsDisposed || string.IsNullOrWhiteSpace(layerName))
-                return;
+            if (_instance == null || _instance.IsDisposed) return;
             try
             {
                 if (_instance.InvokeRequired)
                 {
-                    _instance.BeginInvoke(new Action(() => NotifyLayerAdded(layerName)));
+                    _instance.BeginInvoke(new Action(HideTemporarily));
                     return;
                 }
-                foreach (object o in _instance._lstLayers.Items)
-                    if (o is string s && string.Equals(s, layerName, StringComparison.OrdinalIgnoreCase))
-                        return;
-                _instance._lstLayers.Items.Add(layerName);
-                _instance.PushSettings();
+                _instance.Visible = false;
             }
             catch { }
+        }
+
+        public static void ShowAfterPick()
+        {
+            try { ShowOrActivate(); } catch { }
         }
 
         private DosemeDonatiForm()
@@ -140,62 +71,54 @@ namespace ST4Yardimci
             ShowInTaskbar = false;
             MinimizeBox = false;
             MaximizeBox = false;
-            Size = new Size(340, 400);
+            ClientSize = new Size(360, 240);
             BackColor = AcadPaletteTheme.Bg;
             ForeColor = Color.White;
             Font = new SdFont("Segoe UI", 9f);
+            KeyPreview = true;
+
+            DosemeKonsolSettings.EnsureLoaded();
 
             int y = 12;
-            Controls.Add(MakeLabel("Tip", 14, y)); y += 22;
-            _rbPilesiz = new RadioButton
+            Controls.Add(MakeLabel("Katmanlar: KIRIS / KOLON / PERDE", 14, y)); y += 18;
+            Controls.Add(MakeLabel("DOSEME SINIRI · KALIP BOSLUK · MERDIVEN (sabit)", 14, y)); y += 22;
+
+            Controls.Add(MakeLabel("Donatı yönü (GPR yazı: X kırmızı / Y mavi)", 14, y)); y += 20;
+            _rbSerbest = MakeRadio("Serbest", 14, y);
+            _rbX = MakeRadio("X yönü", 110, y);
+            _rbY = MakeRadio("Y yönü", 200, y);
+            ApplyYonToRadios(DosemeDonatiRunner.Yon);
+            EventHandler yonChanged = (s, e) =>
             {
-                Text = "Pilesiz",
-                Location = new Point(14, y),
-                AutoSize = true,
-                ForeColor = Color.White,
-                BackColor = Color.Transparent,
-                Checked = DosemeDonatiSettings.Tip == DosemeTipi.Pilesiz
+                if (_rbX.Checked) DosemeDonatiRunner.Yon = DosemeDonatiRunner.DonatiYonu.X;
+                else if (_rbY.Checked) DosemeDonatiRunner.Yon = DosemeDonatiRunner.DonatiYonu.Y;
+                else DosemeDonatiRunner.Yon = DosemeDonatiRunner.DonatiYonu.Serbest;
             };
-            _rbPileli = new RadioButton
-            {
-                Text = "Pileli",
-                Location = new Point(120, y),
-                AutoSize = true,
-                ForeColor = Color.White,
-                BackColor = Color.Transparent,
-                Checked = DosemeDonatiSettings.Tip == DosemeTipi.Pileli
-            };
-            _rbPilesiz.CheckedChanged += (s, e) => PushSettings();
-            _rbPileli.CheckedChanged += (s, e) => PushSettings();
-            Controls.Add(_rbPilesiz);
-            Controls.Add(_rbPileli);
+            _rbSerbest.CheckedChanged += yonChanged;
+            _rbX.CheckedChanged += yonChanged;
+            _rbY.CheckedChanged += yonChanged;
+            Controls.Add(_rbSerbest);
+            Controls.Add(_rbX);
+            Controls.Add(_rbY);
             y += 32;
 
-            Controls.Add(MakeLabel("Katmanlar (arasında çalışılacak)", 14, y)); y += 22;
-            _lstLayers = new ListBox
+            var btnAyar = MakeButton("Konsol donatı ayarları…", 14, y, 312);
+            btnAyar.Click += (s, e) =>
             {
-                Location = new Point(14, y),
-                Size = new Size(296, 140),
-                BackColor = AcadPaletteTheme.InputBg,
-                ForeColor = Color.White,
-                BorderStyle = BorderStyle.FixedSingle,
-                IntegralHeight = false
+                using (var f = new DosemeKonsolAyarForm())
+                {
+                    try { f.ShowDialog(this); }
+                    catch { f.ShowDialog(); }
+                }
             };
-            Controls.Add(_lstLayers);
-            y += 148;
+            Controls.Add(btnAyar);
+            y += 36;
 
-            _btnAdd = MakeButton("Katman ekle", 14, y, 140);
-            _btnRemove = MakeButton("Kaldır", 170, y, 140);
-            _btnAdd.Click += OnAddLayer;
-            _btnRemove.Click += OnRemoveLayer;
-            Controls.Add(_btnAdd);
-            Controls.Add(_btnRemove);
-            y += 40;
-
-            _btnRun = MakeButton("Devam (çizim sonra)", 14, y, 200);
+            _btnRun = MakeButton("Donatı çiz", 14, y, 210);
+            _btnRun.Font = new SdFont("Segoe UI", 9f, FontStyle.Bold);
             _btnRun.ForeColor = AcadPaletteTheme.Accent;
             _btnRun.Click += OnRun;
-            _btnClose = MakeButton("Kapat", 230, y, 80);
+            _btnClose = MakeButton("Kapat", 232, y, 94);
             _btnClose.Click += (s, e) => Close();
             Controls.Add(_btnRun);
             Controls.Add(_btnClose);
@@ -211,93 +134,71 @@ namespace ST4Yardimci
                 Location = new Point(Screen.PrimaryScreen.WorkingArea.Left + 110,
                     Screen.PrimaryScreen.WorkingArea.Top + 110);
             }
-            catch
-            {
-                StartPosition = FormStartPosition.CenterScreen;
-            }
-
-            RefreshUi();
+            catch { StartPosition = FormStartPosition.CenterScreen; }
         }
 
-        private void RefreshUi()
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
-            _syncing = true;
-            try
+            if (keyData == Keys.Escape)
             {
-                _rbPilesiz.Checked = DosemeDonatiSettings.Tip == DosemeTipi.Pilesiz;
-                _rbPileli.Checked = DosemeDonatiSettings.Tip == DosemeTipi.Pileli;
-                _lstLayers.Items.Clear();
-                foreach (string lyr in DosemeDonatiSettings.GetLayers())
-                    _lstLayers.Items.Add(lyr);
+                Close();
+                return true;
             }
-            finally
+            if (keyData == Keys.Enter || keyData == Keys.Return || keyData == Keys.Space)
             {
-                _syncing = false;
-                PushSettings();
+                OnRun(this, EventArgs.Empty);
+                return true;
             }
+            return base.ProcessCmdKey(ref msg, keyData);
         }
 
-        private void PushSettings()
+        private void ApplyYonToRadios(DosemeDonatiRunner.DonatiYonu yon)
         {
-            if (_syncing) return;
-            DosemeDonatiSettings.Tip = _rbPileli.Checked ? DosemeTipi.Pileli : DosemeTipi.Pilesiz;
-            var layers = new List<string>();
-            foreach (object o in _lstLayers.Items)
-                if (o is string s) layers.Add(s);
-            DosemeDonatiSettings.SetLayers(layers);
-        }
-
-        private void OnAddLayer(object sender, EventArgs e)
-        {
-            try
-            {
-                var doc = AcApp.DocumentManager.MdiActiveDocument;
-                if (doc == null) return;
-                doc.SendStringToExecute("DOSEMEKATMANEKLE ", true, false, false);
-            }
-            catch { }
-        }
-
-        private void OnRemoveLayer(object sender, EventArgs e)
-        {
-            if (_lstLayers.SelectedItem is string name)
-            {
-                DosemeDonatiSettings.RemoveLayer(name);
-                _lstLayers.Items.Remove(name);
-                PushSettings();
-            }
+            _rbSerbest.Checked = yon == DosemeDonatiRunner.DonatiYonu.Serbest;
+            _rbX.Checked = yon == DosemeDonatiRunner.DonatiYonu.X;
+            _rbY.Checked = yon == DosemeDonatiRunner.DonatiYonu.Y;
+            if (!_rbSerbest.Checked && !_rbX.Checked && !_rbY.Checked)
+                _rbSerbest.Checked = true;
         }
 
         private void OnRun(object sender, EventArgs e)
         {
-            PushSettings();
-            if (DosemeDonatiSettings.GetLayers().Count == 0)
-            {
-                MessageBox.Show(this, "En az bir katman ekleyin.", "Döşeme Donatı",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
+            if (_starting) return;
             try
             {
-                AcApp.DocumentManager.MdiActiveDocument?.Editor.WriteMessage(
-                    "\nDöşeme Donatı: {0}, {1} katman. Çizim adımı sonra eklenecek.",
-                    DosemeDonatiSettings.Tip == DosemeTipi.Pileli ? "Pileli" : "Pilesiz",
-                    DosemeDonatiSettings.GetLayers().Count);
+                var doc = AcApp.DocumentManager.MdiActiveDocument;
+                if (doc == null) return;
+                if (_rbX.Checked) DosemeDonatiRunner.Yon = DosemeDonatiRunner.DonatiYonu.X;
+                else if (_rbY.Checked) DosemeDonatiRunner.Yon = DosemeDonatiRunner.DonatiYonu.Y;
+                else DosemeDonatiRunner.Yon = DosemeDonatiRunner.DonatiYonu.Serbest;
+                _starting = true;
+                HideTemporarily();
+                doc.SendStringToExecute("DOSEMEDONATICIZ ", true, false, false);
             }
-            catch { }
+            catch
+            {
+                _starting = false;
+            }
         }
 
-        private static Label MakeLabel(string text, int x, int y)
+        private static RadioButton MakeRadio(string text, int x, int y) => new RadioButton
         {
-            return new Label
-            {
-                Text = text,
-                Location = new Point(x, y),
-                AutoSize = true,
-                ForeColor = Color.White,
-                BackColor = Color.Transparent
-            };
-        }
+            Text = text,
+            Location = new Point(x, y),
+            AutoSize = true,
+            ForeColor = Color.White,
+            BackColor = Color.Transparent,
+            Cursor = Cursors.Hand
+        };
+
+        private static Label MakeLabel(string text, int x, int y) => new Label
+        {
+            Text = text,
+            Location = new Point(x, y),
+            AutoSize = true,
+            ForeColor = Color.White,
+            BackColor = Color.Transparent
+        };
 
         private Button MakeButton(string text, int x, int y, int w)
         {

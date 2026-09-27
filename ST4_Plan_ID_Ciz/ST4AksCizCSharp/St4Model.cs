@@ -10,6 +10,11 @@ namespace ST4AksCizCSharp
         public List<FloorInfo> Floors { get; } = new List<FloorInfo>();
         public List<ColumnAxisInfo> Columns { get; } = new List<ColumnAxisInfo>();
         public List<BeamInfo> Beams { get; } = new List<BeamInfo>();
+        /// <summary>
+        /// Mantar fiktif kirişler (/Slabs Data/, Columns Data öncesi).
+        /// Satır formatı Beams Data ile aynı; etiket MB-15 (M + ShortName + numara).
+        /// </summary>
+        public List<BeamInfo> MushroomBeams { get; } = new List<BeamInfo>();
         /// <summary>Döşemeler (Floors Data): 4 (veya 3) aks ile sınırlı alanlar.</summary>
         public List<SlabInfo> Slabs { get; } = new List<SlabInfo>();
         /// <summary>

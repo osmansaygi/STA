@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Drawing;
 using System.Globalization;
 using System.IO;
@@ -14,7 +14,7 @@ namespace ST4Yardimci
     internal static class St4LispPaletteManager
     {
         private const int PaletteWidth = 220;
-        private const int PaletteHeight = 420;
+        private const int PaletteHeight = 470;
         private const int MarginX = 12;
         private const int MarginY = 80;
 
@@ -30,8 +30,17 @@ namespace ST4Yardimci
                 {
                     try
                     {
-                        // Zaten açıksa sadece görünür yap; EnsureOnScreen her seferinde titreşim yapar.
-                        _palette.Visible = true;
+                        _suppressSave = true;
+                        try
+                        {
+                            _palette.Visible = true;
+                            TryRestoreLayout();
+                            EnsureOnScreen();
+                        }
+                        finally
+                        {
+                            _suppressSave = false;
+                        }
                         return;
                     }
                     catch
@@ -68,6 +77,9 @@ namespace ST4Yardimci
                 {
                     _suppressSave = false;
                 }
+
+                // İlk yerleşimi de kaydet (sonraki NETLOAD için)
+                SaveLayout();
 
                 try
                 {
@@ -282,12 +294,15 @@ namespace ST4Yardimci
         private const string MerdivenIconResource = "ST4Yardimci.Icons.merdiven_v10_01.png";
         /// <summary>Seçilen simge: D3 çift yön, çerçevesiz.</summary>
         private const string DosemeIconResource = "ST4Yardimci.Icons.doseme_03.png";
-        /// <summary>Seçilen simge: R1 kesit üst+alt.</summary>
-        private const string RadyeIconResource = "ST4Yardimci.Icons.radye_01.png";
+        /// <summary>Seçilen simge: R1 kesit üst+alt (Oto Donatı).</summary>
+        private const string OtoDonatiIconResource = "ST4Yardimci.Icons.radye_01.png";
+        /// <summary>Seçilen simge: R5 düz + L gönye (Radye İlave Donatı).</summary>
+        private const string RadyeIlaveIconResource = "ST4Yardimci.Icons.radye_05.png";
         /// <summary>Seçilen simge: B23 nokta örnek.</summary>
         private const string DonatiBoyuIconResource = "ST4Yardimci.Icons.donatiboyu_23.png";
         /// <summary>Seçilen simge: M3 başlıklı tablo.</summary>
         private const string DonatiMetrajIconResource = "ST4Yardimci.Icons.donatimetraj_03.png";
+        private const string TemelHatiliIconResource = "ST4Yardimci.Icons.temel_hatili.png";
 
         public St4LispPaletteControl()
         {
@@ -296,9 +311,12 @@ namespace ST4Yardimci
 
             int y = 8;
             y = AddToolRow(y, "Oto Ölçü", LoadIcon(OtoOlcuIconResource), "OTOOLCU");
+            y = AddToolRow(y, "Plan Ölçü", LoadIcon(OtoOlcuIconResource), "PLANOLCU");
             y = AddToolRow(y, "Merdiven", LoadIcon(MerdivenIconResource), "MERDIVEN");
             y = AddToolRow(y, "Döşeme Donatı", LoadIcon(DosemeIconResource), "DOSEMEDONATI");
-            y = AddToolRow(y, "Radye Temel Donatı", LoadIcon(RadyeIconResource), "RADYETEMEL");
+            y = AddToolRow(y, "Oto Donatı", LoadIcon(OtoDonatiIconResource), "OTODONATI");
+            y = AddToolRow(y, "Radye İlave Donatı", LoadIcon(RadyeIlaveIconResource), "RADYEILAVE");
+            y = AddToolRow(y, "Temel Hatılı", LoadIcon(TemelHatiliIconResource), "TEMELHATILI");
             y = AddToolRow(y, "Donatı Boyu", LoadIcon(DonatiBoyuIconResource), "DONATIBOYU");
             y = AddToolRow(y, "Donatı Metraj", LoadIcon(DonatiMetrajIconResource), "DONATIMETRAJ");
             EnsureDarkFiller();

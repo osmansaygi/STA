@@ -27,15 +27,14 @@ namespace ST4Yardimci
             List<string> dimStyles;
             OtoOlcuSettings.CollectAllReferencedNames(out layers, out dimStyles);
 
-            // Ölçü çizim katmanı her zaman
-            if (!layers.Exists(n => string.Equals(n, "OLCU (BEYKENT)", StringComparison.OrdinalIgnoreCase)))
-                layers.Add("OLCU (BEYKENT)");
-            if (!dimStyles.Exists(n => string.Equals(n, "OLCU (BEYKENT)", StringComparison.OrdinalIgnoreCase)))
-                dimStyles.Add("OLCU (BEYKENT)");
+            // Ölçü çizim katmanı her zaman (stil değil — PLAN_OLCU çizimde hazır olmalı)
+            if (!layers.Exists(n => string.Equals(n, OtoOlcuSettings.DefaultDimLayerName, StringComparison.OrdinalIgnoreCase)))
+                layers.Add(OtoOlcuSettings.DefaultDimLayerName);
             if (!layers.Exists(n => string.Equals(n, OtoOlcuSettings.AksOlcuDimLayerName, StringComparison.OrdinalIgnoreCase)))
                 layers.Add(OtoOlcuSettings.AksOlcuDimLayerName);
-            if (!dimStyles.Exists(n => string.Equals(n, OtoOlcuSettings.AksOlcuDimStyleName, StringComparison.OrdinalIgnoreCase)))
-                dimStyles.Add(OtoOlcuSettings.AksOlcuDimStyleName);
+            // Yalnız AKS_OLCU stilini oluştur; OLCU (BEYKENT) / PLAN_OLCU vb. otomatik üretilmez
+            dimStyles.Clear();
+            dimStyles.Add(OtoOlcuSettings.AksOlcuDimStyleName);
 
             int addedL = 0, addedD = 0;
             using (doc.LockDocument())

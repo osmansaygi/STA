@@ -39,6 +39,9 @@
     <!-- DWG: DxfIn DXF bazi sembol tablolarinda eInvalidSymbolTableName verebilir; ReadDwgFile ile acilir. -->
     <EmbeddedResource Include="..\antet_02.dwg" LogicalName="ST4PlanIdCiz.TemelAntet.antet_02.dwg" Condition="Exists('$(MSBuildProjectDirectory)\..\antet_02.dwg')" />
     <EmbeddedResource Include="..\dosyalar\antet_02.dwg" LogicalName="ST4PlanIdCiz.TemelAntet.antet_02.dwg" Condition="!Exists('$(MSBuildProjectDirectory)\..\antet_02.dwg') and Exists('$(MSBuildProjectDirectory)\..\dosyalar\antet_02.dwg')" />
+    <!-- Eski 1:50 kalip kot isareti (Desktop\kot.dwg); ReadDwgFile ile acilir. -->
+    <EmbeddedResource Include="..\YATAY_KOT.dwg" LogicalName="ST4PlanIdCiz.KotSymbol.YATAY_KOT.dwg" Condition="Exists('$(MSBuildProjectDirectory)\..\YATAY_KOT.dwg')" />
+    <EmbeddedResource Include="..\dosyalar\YATAY_KOT.dwg" LogicalName="ST4PlanIdCiz.KotSymbol.YATAY_KOT.dwg" Condition="!Exists('$(MSBuildProjectDirectory)\..\YATAY_KOT.dwg') and Exists('$(MSBuildProjectDirectory)\..\dosyalar\YATAY_KOT.dwg')" />
   </ItemGroup>
 
   <!-- ISKELEKESIT: şablonlar DLL içinde; diskte silinse bile çizim devam eder. Üstünlük: DLL yanındaki dosya. -->
@@ -116,8 +119,12 @@
     <Message Importance="high" Text="NETLOAD guncellendi: $(_NetloadDir)\$(AssemblyName).dll" />
   </Target>
   <Target Name="CopyYatayKot" AfterTargets="Build">
+    <PropertyGroup>
+      <_NetloadDirKot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\NETLOAD'))</_NetloadDirKot>
+    </PropertyGroup>
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\YATAY_KOT.dxf" DestinationFolder="$(OutputPath)" Condition="Exists('$(MSBuildProjectDirectory)\..\YATAY_KOT.dxf')" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\YATAY_KOT.dwg" DestinationFolder="$(OutputPath)" Condition="Exists('$(MSBuildProjectDirectory)\..\YATAY_KOT.dwg')" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\YATAY_KOT.dwg" DestinationFolder="$(_NetloadDirKot)" Condition="Exists('$(MSBuildProjectDirectory)\..\YATAY_KOT.dwg')" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\iskele_plan.lsp" DestinationFolder="$(OutputPath)" Condition="Exists('$(MSBuildProjectDirectory)\..\iskele_plan.lsp')" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ISKELE_KESIT.dxf" DestinationFolder="$(OutputPath)" Condition="Exists('$(MSBuildProjectDirectory)\..\ISKELE_KESIT.dxf')" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ISKELE_KESIT.dwg" DestinationFolder="$(OutputPath)" Condition="Exists('$(MSBuildProjectDirectory)\..\ISKELE_KESIT.dwg')" />

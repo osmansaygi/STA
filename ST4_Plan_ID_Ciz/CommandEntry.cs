@@ -726,6 +726,104 @@ namespace ST4PlanIdCiz
             }
         }
 
+        /// <summary>1/50 kalıp planı + /Slabs Data/ mantar fiktif kirişleri (BANT). Kat başına 3 kopya (1–2 boş, 3. donatılı).</summary>
+        [CommandMethod("MANTARDOSEME")]
+        public void MantarDosemeKalip()
+        {
+            var doc = Application.DocumentManager.MdiActiveDocument;
+            if (doc == null) return;
+            ApplyStaDefaultDrawingDisplaySettings(doc);
+
+            var ed = doc.Editor;
+            var db = doc.Database;
+
+            if (!RememberedFilePrompt.TryPrompt(ed, "\nMANTARDOSEME icin ST4 Dosyasi Secin",
+                "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
+                return;
+
+            try
+            {
+                ConfigureNtsNextGenOverlay();
+                var parser = new St4Parser();
+                var model = parser.Parse(st4Path);
+                GprYapiAksLabels.TryMergeFromGprBesideSt4(st4Path, model);
+                WriteGprAxisSummary(ed, model);
+                ed.WriteMessage("\nMANTARDOSEME: Mantar fiktif kiris sayisi = {0}.", model.MushroomBeams?.Count ?? 0);
+                var manager = new PlanIdDrawingManager(model);
+                var insRes = ed.GetPoint(new PromptPointOptions("\nMANTARDOSEME: En soldaki antet SheetViewOut (dis cerceve) sol-alt kosesi (yerlesim referansi): ") { AllowNone = false });
+                if (insRes.Status != PromptStatus.OK) return;
+                manager.DrawFormworkPlan50(
+                    db,
+                    ed,
+                    insRes.Value,
+                    st4Path,
+                    KalipPlanScale.Fifty,
+                    completionMessageCmdTag: "MANTARDOSEME",
+                    layoutFlags: new Kalip50LayoutFlags(includeMushroomBeams: true, copiesPerFloor: 3));
+                FinishStaDrawing(doc);
+            }
+            catch (System.Exception ex)
+            {
+                WriteStaCommandError(ed, "MANTARDOSEME", ex);
+            }
+        }
+
+        /// <summary>ST4 modelinden 1/200 bina görünüşü. Bakış planın alt/üst/sol/sağ kenarına göredir.</summary>
+        [CommandMethod("BINAGORUNUS")]
+        public void BinaGorunus()
+        {
+            var doc = Application.DocumentManager.MdiActiveDocument;
+            if (doc == null) return;
+            ApplyStaDefaultDrawingDisplaySettings(doc);
+
+            var ed = doc.Editor;
+            var db = doc.Database;
+
+            if (!RememberedFilePrompt.TryPrompt(ed, "\nBINAGORUNUS icin ST4 Dosyasi Secin",
+                "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
+                return;
+
+            ed.WriteMessage("\nBINAGORUNUS bakis (plan): Asagidan = alttan yukari, Yukaridan = ustten asagi, Soldan = soldan saga, Sagdan = sagdan sola.");
+            var kwo = new PromptKeywordOptions("\nBakis yonu")
+            {
+                AllowNone = false,
+                AppendKeywordsToMessage = true
+            };
+            kwo.Keywords.Add("Asagidan");
+            kwo.Keywords.Add("Yukaridan");
+            kwo.Keywords.Add("Soldan");
+            kwo.Keywords.Add("Sagdan");
+            kwo.Keywords.Default = "Asagidan";
+            var kres = ed.GetKeywords(kwo);
+            if (kres.Status != PromptStatus.OK) return;
+
+            BinaGorunusBakis bakis;
+            switch ((kres.StringResult ?? string.Empty).ToUpperInvariant())
+            {
+                case "YUKARIDAN": bakis = BinaGorunusBakis.YukaridanAsagiya; break;
+                case "SOLDAN": bakis = BinaGorunusBakis.SoldanSaga; break;
+                case "SAGDAN": bakis = BinaGorunusBakis.SagdanSola; break;
+                default: bakis = BinaGorunusBakis.AsagidanYukariya; break;
+            }
+
+            var insRes = ed.GetPoint(new PromptPointOptions("\nBINAGORUNUS yerlestirme noktasi (gorunus sol-alt): ") { AllowNone = false });
+            if (insRes.Status != PromptStatus.OK) return;
+
+            try
+            {
+                ConfigureNtsNextGenOverlay();
+                var parser = new St4Parser();
+                var model = parser.Parse(st4Path);
+                var manager = new PlanIdDrawingManager(model);
+                manager.DrawBinaGorunus(db, ed, insRes.Value, bakis);
+                FinishStaDrawing(doc);
+            }
+            catch (System.Exception ex)
+            {
+                WriteStaCommandError(ed, "BINAGORUNUS", ex);
+            }
+        }
+
         /// <summary>Kolon düşey açılımı (DENEME): yalnız ST4, donatısız, benzer kolonlar tek görünüş.</summary>
         [CommandMethod("KOLONDUSEY")]
         public void KolonDusey()

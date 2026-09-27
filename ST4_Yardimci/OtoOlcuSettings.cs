@@ -21,8 +21,8 @@ namespace ST4Yardimci
     internal sealed class OtoOlcuPreset
     {
         public string Name { get; set; } = "";
-        public string DimStyleName { get; set; } = "OLCU (BEYKENT)";
-        public string DimLayerName { get; set; } = "OLCU (BEYKENT)";
+        public string DimStyleName { get; set; } = OtoOlcuSettings.DefaultDimStyleName;
+        public string DimLayerName { get; set; } = OtoOlcuSettings.DefaultDimLayerName;
         public OtoOlcuSablon Sablon { get; set; } = OtoOlcuSablon.TekOlcu;
         public bool IkinciOlcuToplam { get; set; }
         public List<string> Layers1 { get; } = new List<string>();
@@ -48,6 +48,10 @@ namespace ST4Yardimci
         public const string AksOlcuPresetName = "AKS OLCU";
         public const string AksOlcuDimStyleName = "AKS_OLCU";
         public const string AksOlcuDimLayerName = "AKS OLCU (BEYKENT)";
+        /// <summary>Genel ölçü stili — çizimde hazır olmalı; komut oluşturmaz.</summary>
+        public const string DefaultDimStyleName = "PLAN_OLCU";
+        /// <summary>Genel ölçü katmanı (BEYKENT tablosu).</summary>
+        public const string DefaultDimLayerName = "OLCU (BEYKENT)";
         /// <summary>Balondan içeri toplam ölçü mesafesi (cm).</summary>
         public const double AksOlcuTotalOffsetCm = 35.0;
         /// <summary>Toplam ölçüden içeri ara ölçü mesafesi (cm).</summary>
@@ -157,7 +161,7 @@ namespace ST4Yardimci
                         EnforceAksOlcuUnlocked(p);
                         return;
                     }
-                    p.DimLayerName = string.IsNullOrWhiteSpace(value) ? "OLCU (BEYKENT)" : value;
+                    p.DimLayerName = string.IsNullOrWhiteSpace(value) ? DefaultDimLayerName : value;
                 }
             }
         }
@@ -309,6 +313,14 @@ namespace ST4Yardimci
                 EnforceAksOlcuUnlocked(aks);
             if (Presets.Count == 0)
                 Presets.Add(new OtoOlcuPreset { Name = "Kalıp ölçüsü" });
+            // Eski varsayılan ölçü stili adı → PLAN_OLCU (stil çizimde oluşturulmaz)
+            foreach (OtoOlcuPreset p in Presets)
+            {
+                if (IsLockedPreset(p.Name)) continue;
+                if (string.IsNullOrWhiteSpace(p.DimStyleName) ||
+                    string.Equals(p.DimStyleName, DefaultDimLayerName, StringComparison.OrdinalIgnoreCase))
+                    p.DimStyleName = DefaultDimStyleName;
+            }
         }
 
         private static void EnforceAksOlcuUnlocked(OtoOlcuPreset p)
@@ -396,7 +408,7 @@ namespace ST4Yardimci
                     else if (string.Equals(key, "DimStyle", StringComparison.OrdinalIgnoreCase))
                         cur.DimStyleName = val;
                     else if (string.Equals(key, "DimLayer", StringComparison.OrdinalIgnoreCase))
-                        cur.DimLayerName = string.IsNullOrWhiteSpace(val) ? "OLCU (BEYKENT)" : val;
+                        cur.DimLayerName = string.IsNullOrWhiteSpace(val) ? DefaultDimLayerName : val;
                     else if (string.Equals(key, "Sablon", StringComparison.OrdinalIgnoreCase))
                     {
                         int s;
@@ -435,7 +447,7 @@ namespace ST4Yardimci
                 if (string.Equals(key, "DimStyle", StringComparison.OrdinalIgnoreCase))
                     p.DimStyleName = val;
                 else if (string.Equals(key, "DimLayer", StringComparison.OrdinalIgnoreCase))
-                    p.DimLayerName = string.IsNullOrWhiteSpace(val) ? "OLCU (BEYKENT)" : val;
+                    p.DimLayerName = string.IsNullOrWhiteSpace(val) ? DefaultDimLayerName : val;
                 else if (string.Equals(key, "Sablon", StringComparison.OrdinalIgnoreCase))
                 {
                     int s;

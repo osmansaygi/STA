@@ -119,11 +119,13 @@ namespace ST4PlanIdCiz
             if (c.Contains("TEMELDONATI") || c.StartsWith("RD")) return GlyphFoundation();
             if (c.Contains("ISKELE") && c.Contains("KESIT")) return GlyphScaffoldSection();
             if (c.Contains("ISKELE")) return GlyphScaffold();
+            if (c.Contains("GORUNUS")) return GlyphSection();
             if (c.Contains("KESIT")) return GlyphSection();
             if (c.Contains("KATMAN")) return GlyphLayers();
             if (c.Contains("METRAJ")) return GlyphTable();
             if (c.Contains("KIRIS")) return GlyphBeam();
             if (c.Contains("KAPAMA") || c.Contains("PERDE")) return GlyphWall();
+            if (c.Contains("MANTAR") || c.Contains("DOSEME")) return GlyphPlan();
             if (c.Contains("REVIZE") || c.Contains("DATA") || c.Contains("PLANID") || c.Contains("DENEME"))
                 return GlyphGear();
             return GlyphPlan();

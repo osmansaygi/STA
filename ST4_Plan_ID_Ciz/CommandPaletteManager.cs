@@ -278,8 +278,10 @@ namespace ST4PlanIdCiz
         private static readonly (string label, string cmd)[] AltDeneme =
         {
             ("Deneme1 (ilk 2 kat, sade)", "DENEME1"),
+            ("Mantar D\u00f6\u015feme", "MANTARDOSEME"),
             ("Kapama Perde", "KAPAMADETAY"),
             ("Kolon Revize", "KOLONREVIZE"),
+            ("Bina G\u00f6r\u00fcn\u00fc\u015f\u00fc", "BINAGORUNUS"),
         };
 
         public CommandPaletteControl()

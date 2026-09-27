@@ -285,7 +285,7 @@ namespace ST4Yardimci
                 Point3d bT = ptsTotal[ptsTotal.Count - 1];
                 if (aT.DistanceTo(bT) >= MinDimLength)
                 {
-                    PlaceAligned(tr, btr, aT, bT, Mid(aT, bT), dimStyleId, layer);
+                    PlaceRotatedAks(tr, btr, aT, bT, Mid(aT, bT), dimStyleId, layer);
                     placed++;
                 }
 
@@ -296,7 +296,7 @@ namespace ST4Yardimci
                     Point3d b = ptsInd[i + 1];
                     if (a.DistanceTo(b) < MinDimLength)
                         continue;
-                    PlaceAligned(tr, btr, a, b, Mid(a, b), dimStyleId, layer);
+                    PlaceRotatedAks(tr, btr, a, b, Mid(a, b), dimStyleId, layer);
                     placed++;
                 }
 
@@ -336,7 +336,7 @@ namespace ST4Yardimci
         private static Point3d Mid(Point3d a, Point3d b) =>
             new Point3d((a.X + b.X) * 0.5, (a.Y + b.Y) * 0.5, 0);
 
-        private static void PlaceAligned(
+        private static void PlaceRotatedAks(
             Transaction tr,
             BlockTableRecord btr,
             Point3d x1,
@@ -345,17 +345,15 @@ namespace ST4Yardimci
             ObjectId dimStyleId,
             string layer)
         {
-            var dim = new AlignedDimension(x1, x2, dimLinePoint, "", dimStyleId);
-            dim.SetDatabaseDefaults();
-            if (!dimStyleId.IsNull)
-                dim.DimensionStyle = dimStyleId;
-            dim.Layer = layer;
-            try { dim.Dimrnd = 0.5; } catch { }
-            try { dim.Dimdec = 1; } catch { }
-            try { dim.Dimtdec = 1; } catch { }
-            try { dim.Dimzin = 12; } catch { }
-            btr.AppendEntity(dim);
-            tr.AddNewlyCreatedDBObject(dim, true);
+            OtoOlcuDimFactory.PlaceRotated(
+                tr, btr, x1, x2, dimLinePoint, dimStyleId, layer,
+                dim =>
+                {
+                    try { dim.Dimrnd = 0.5; } catch { }
+                    try { dim.Dimdec = 1; } catch { }
+                    try { dim.Dimtdec = 1; } catch { }
+                    try { dim.Dimzin = 12; } catch { }
+                });
         }
 
         private static ObjectId ResolveDimStyleId(Transaction tr, Database db, string name)

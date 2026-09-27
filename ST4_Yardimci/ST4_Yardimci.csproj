@@ -4,17 +4,20 @@
     <OutputType>Library</OutputType>
     <RootNamespace>ST4Yardimci</RootNamespace>
     <BaseAssemblyName>ST4_Yardimci</BaseAssemblyName>
-    <!-- Her derlemede tarih/saatli isim (Plan_ID gibi). -->
-    <AssemblyName>$(BaseAssemblyName)_$([System.DateTime]::Now.ToString("yyyyMMdd_HHmmss"))</AssemblyName>
+    <!-- Saat damgası StampAssemblyName hedefinde bir kez konur (Now her okumada değişmesin). -->
+    <AssemblyName>$(BaseAssemblyName)</AssemblyName>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <Platforms>AnyCPU</Platforms>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <Deterministic>false</Deterministic>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <!-- Geliştirme (Debug): şifreleme yok. Ofis/dağıtım: Release veya /p:SkipObfuscar=false -->
+    <SkipObfuscar Condition="'$(SkipObfuscar)' == '' and '$(Configuration)' == 'Debug'">true</SkipObfuscar>
   </PropertyGroup>
 
   <PropertyGroup>
+    <!-- 2027 mgd DLL'leri .NET 10; net48 derlemesi NuGet 24.3 kullanır. 2027 yalnız Obfuscar arama yolunda. -->
     <AutoCADInstallDir Condition="'$(AutoCADInstallDir)' == '' and Exists('C:\Program Files\Autodesk\AutoCAD 2026\acdbmgd.dll')">C:\Program Files\Autodesk\AutoCAD 2026</AutoCADInstallDir>
     <AutoCADInstallDir Condition="'$(AutoCADInstallDir)' == '' and Exists('C:\Program Files\Autodesk\AutoCAD 2025\acdbmgd.dll')">C:\Program Files\Autodesk\AutoCAD 2025</AutoCADInstallDir>
     <AutoCADInstallDir Condition="'$(AutoCADInstallDir)' == '' and Exists('C:\Program Files\Autodesk\AutoCAD 2024\acdbmgd.dll')">C:\Program Files\Autodesk\AutoCAD 2024</AutoCADInstallDir>
@@ -22,7 +25,23 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Obfuscar" Version="2.2.49" GeneratePathProperty="true">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="AutoCAD.NET" Version="24.3.0" Condition="'$(AutoCADInstallDir)' == ''">
+      <ExcludeAssets>runtime</ExcludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <!-- Obfuscar bağımlılık yolu (derleme NuGet ile olduğunda). -->
+    <PackageReference Include="AutoCAD.NET.Model" Version="24.3.0" GeneratePathProperty="true" Condition="'$(AutoCADInstallDir)' == ''">
+      <ExcludeAssets>runtime</ExcludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="AutoCAD.NET.Core" Version="24.3.0" GeneratePathProperty="true" Condition="'$(AutoCADInstallDir)' == ''">
       <ExcludeAssets>runtime</ExcludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
@@ -31,6 +50,7 @@
   <ItemGroup>
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Drawing" />
+    <Reference Include="System.Management" />
   </ItemGroup>
 
   <PropertyGroup>
@@ -60,6 +80,37 @@
     </Reference>
   </ItemGroup>
 
+  <!-- Derleme her zaman ST4_Yardimci.dll üretir; damga adı Build sonrası kopyada verilir.
+       AssemblyName'i hedef içinde değiştirmek SDK TargetName'e geç kalır (Obfuscar boş arardı). -->
+  <Target Name="StampAssemblyName" BeforeTargets="PrepareForBuild">
+    <MakeDir Directories="$(IntermediateOutputPath)" />
+    <PropertyGroup>
+      <_StampName>$(BaseAssemblyName)_$([System.DateTime]::Now.ToString("yyyyMMdd_HHmmss"))</_StampName>
+      <_StampFile>$(IntermediateOutputPath)assemblyname.stamp</_StampFile>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(_StampFile)" Lines="$(_StampName)" Overwrite="true" />
+    <Message Importance="high" Text="ST4_Yardimci stamp=$(_StampName)" />
+  </Target>
+
+  <Target Name="RenameToStamp" AfterTargets="Build" BeforeTargets="CleanupOutputFolder">
+    <ReadLinesFromFile File="$(IntermediateOutputPath)assemblyname.stamp">
+      <Output TaskParameter="Lines" ItemName="_StampAsm" />
+    </ReadLinesFromFile>
+    <PropertyGroup>
+      <_StampName>@(_StampAsm)</_StampName>
+      <AssemblyName>$(_StampName)</AssemblyName>
+    </PropertyGroup>
+    <Copy SourceFiles="$(OutputPath)$(BaseAssemblyName).dll"
+          DestinationFiles="$(OutputPath)$(_StampName).dll"
+          SkipUnchangedFiles="false"
+          Condition="Exists('$(OutputPath)$(BaseAssemblyName).dll')" />
+    <Copy SourceFiles="$(OutputPath)$(BaseAssemblyName).pdb"
+          DestinationFiles="$(OutputPath)$(_StampName).pdb"
+          SkipUnchangedFiles="false"
+          Condition="Exists('$(OutputPath)$(BaseAssemblyName).pdb')" />
+    <Message Importance="high" Text="DLL damgalandi: $(OutputPath)$(_StampName).dll" />
+  </Target>
+
   <Target Name="ValidateAutoCADReferences" BeforeTargets="ResolveReferences" Condition="'$(AutoCADInstallDir)' != ''">
     <Error
       Condition="!Exists('$(AutoCADInstallDir)\acdbmgd.dll') or !Exists('$(AutoCADInstallDir)\acmgd.dll')"
@@ -67,35 +118,104 @@
   </Target>
 
   <Target Name="CleanupOutputFolder" AfterTargets="Build">
+    <ReadLinesFromFile File="$(IntermediateOutputPath)assemblyname.stamp" Condition="Exists('$(IntermediateOutputPath)assemblyname.stamp')">
+      <Output TaskParameter="Lines" ItemName="_KeepAsm" />
+    </ReadLinesFromFile>
+    <PropertyGroup>
+      <_KeepName Condition="'@(_KeepAsm)' != ''">@(_KeepAsm)</_KeepName>
+      <_KeepName Condition="'$(_KeepName)' == ''">$(AssemblyName)</_KeepName>
+    </PropertyGroup>
     <ItemGroup>
       <_AcadHostDlls Include="$(OutputPath)Ac*.dll;$(OutputPath)Ad*.dll;$(OutputPath)ac*.dll" />
       <_OldPluginOutputs Include="$(OutputPath)$(BaseAssemblyName)_*.dll;$(OutputPath)$(BaseAssemblyName)_*.pdb"
-                         Exclude="$(OutputPath)$(AssemblyName).dll;$(OutputPath)$(AssemblyName).pdb" />
-      <_OldFixedName Include="$(OutputPath)$(BaseAssemblyName).dll;$(OutputPath)$(BaseAssemblyName).pdb" />
+                         Exclude="$(OutputPath)$(_KeepName).dll;$(OutputPath)$(_KeepName).pdb" />
     </ItemGroup>
-    <Delete Files="@(_AcadHostDlls);@(_OldPluginOutputs);@(_OldFixedName)" ContinueOnError="true" />
+    <Delete Files="@(_AcadHostDlls);@(_OldPluginOutputs)" ContinueOnError="true" />
   </Target>
 
-  <Target Name="ShowDllPath" AfterTargets="Build">
+  <!-- Derleme sonrası Obfuscar: isimler + stringler (UUID) karışır; public AutoCAD API korunur. -->
+  <Target Name="ObfuscateOutput" AfterTargets="CleanupOutputFolder" BeforeTargets="CopyToNetloadFolder"
+          Condition="'$(SkipObfuscar)' != 'true'">
+    <ReadLinesFromFile File="$(IntermediateOutputPath)assemblyname.stamp" Condition="Exists('$(IntermediateOutputPath)assemblyname.stamp')">
+      <Output TaskParameter="Lines" ItemName="_ObfAsm" />
+    </ReadLinesFromFile>
+    <PropertyGroup>
+      <AssemblyName Condition="'@(_ObfAsm)' != ''">@(_ObfAsm)</AssemblyName>
+      <_OutAbs>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\$(OutputPath)').TrimEnd('\'))</_OutAbs>
+      <_ObfDir>$(_OutAbs)\obf</_ObfDir>
+      <_DllName>$(AssemblyName).dll</_DllName>
+      <_DllPath>$(_OutAbs)\$(_DllName)</_DllPath>
+      <_CfgPath>$(_OutAbs)\obfuscar.generated.xml</_CfgPath>
+      <_TemplatePath>$(MSBuildProjectDirectory)\obfuscar.xml.template</_TemplatePath>
+      <_ObfuscarExe>$(PkgObfuscar)\tools\Obfuscar.Console.exe</_ObfuscarExe>
+      <_AcadSearch>$(AutoCADInstallDir)</_AcadSearch>
+      <_AcadSearch Condition="'$(_AcadSearch)' == '' and '$(PkgAutoCAD_NET_Model)' != ''">$(PkgAutoCAD_NET_Model)\lib\net47</_AcadSearch>
+      <_AcadCore>$(AutoCADInstallDir)</_AcadCore>
+      <_AcadCore Condition="'$(_AcadCore)' == '' and '$(PkgAutoCAD_NET_Core)' != ''">$(PkgAutoCAD_NET_Core)\lib\net47</_AcadCore>
+      <_AcadCore Condition="'$(_AcadCore)' == ''">$(_AcadSearch)</_AcadCore>
+    </PropertyGroup>
+
+    <Error Condition="!Exists('$(_DllPath)')" Text="Obfuscar: DLL bulunamadi: $(_DllPath)" />
+    <Error Condition="!Exists('$(_TemplatePath)')" Text="Obfuscar: sablon yok: $(_TemplatePath)" />
+    <Error Condition="'$(PkgObfuscar)' == '' or !Exists('$(_ObfuscarExe)')"
+           Text="Obfuscar.Console.exe bulunamadi. 'dotnet restore' calistirin. PkgObfuscar=$(PkgObfuscar)" />
+    <Error Condition="!Exists('$(_AcadSearch)\acdbmgd.dll')"
+           Text="Obfuscar: AutoCAD yolu bulunamadi (acdbmgd.dll): $(_AcadSearch)" />
+
+    <MakeDir Directories="$(_ObfDir)" />
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -Command &quot;$t = Get-Content -LiteralPath '$(_TemplatePath)' -Raw -Encoding UTF8; $t = $t.Replace('INPATH_PLACEHOLDER', '$(_OutAbs)').Replace('OUTPATH_PLACEHOLDER', '$(_ObfDir)').Replace('MODULE_PLACEHOLDER', '$(_DllName)').Replace('ACADPATH_PLACEHOLDER', '$(_AcadSearch)').Replace('ACADCOREPATH_PLACEHOLDER', '$(_AcadCore)'); Set-Content -LiteralPath '$(_CfgPath)' -Value $t -Encoding UTF8&quot;" />
+
+    <Exec Command="&quot;$(_ObfuscarExe)&quot; &quot;$(_CfgPath)&quot;" WorkingDirectory="$(_OutAbs)" />
+
+    <Error Condition="!Exists('$(_ObfDir)\$(_DllName)')" Text="Obfuscar cikti DLL uretmedi: $(_ObfDir)\$(_DllName)" />
+
+    <Copy SourceFiles="$(_ObfDir)\$(_DllName)" DestinationFiles="$(_DllPath)" OverwriteReadOnlyFiles="true" />
+    <Delete Files="$(OutputPath)$(AssemblyName).pdb" ContinueOnError="true" />
+    <RemoveDir Directories="$(_ObfDir)" ContinueOnError="true" />
+    <Delete Files="$(_CfgPath)" ContinueOnError="true" />
+
+    <Message Importance="high" Text="Obfuscar tamam: $(_DllPath)" />
+  </Target>
+
+  <Target Name="ShowDllPath" AfterTargets="CopyToNetloadFolder">
+    <PropertyGroup>
+      <_DllNote Condition="'$(SkipObfuscar)' == 'true'">Debug, Obfuscar yok</_DllNote>
+      <_DllNote Condition="'$(SkipObfuscar)' != 'true'">obfuscated (Release)</_DllNote>
+    </PropertyGroup>
     <Message Importance="high" Text="========================================" />
-    <Message Importance="high" Text="ST4_Yardimci DLL (tarih/saatli):" />
+    <Message Importance="high" Text="ST4_Yardimci DLL ($(_DllNote), tarih/saatli):" />
     <Message Importance="high" Text="  $(MSBuildProjectDirectory)\$(OutputPath)$(AssemblyName).dll" />
     <Message Importance="high" Text="  KISAYOL: $(MSBuildProjectDirectory)\..\NETLOAD\" />
-    <Message Importance="high" Text="  AutoCAD: NETLOAD → NETLOAD klasoru → en son ST4_Yardimci_*.dll" />
+    <Message Importance="high" Text="  Autoload (2027): $(MSBuildProjectDirectory)\Autoload\ST4_Yardimci.bundle\" />
+    <Message Importance="high" Text="  → kopyala: %AppData%\Autodesk\ApplicationPlugins\" />
     <Message Importance="high" Text="========================================" />
   </Target>
 
   <Target Name="CopyToNetloadFolder" AfterTargets="CleanupOutputFolder">
+    <ReadLinesFromFile File="$(IntermediateOutputPath)assemblyname.stamp" Condition="Exists('$(IntermediateOutputPath)assemblyname.stamp')">
+      <Output TaskParameter="Lines" ItemName="_CopyAsm" />
+    </ReadLinesFromFile>
     <PropertyGroup>
+      <AssemblyName Condition="'@(_CopyAsm)' != ''">@(_CopyAsm)</AssemblyName>
       <_NetloadDir>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\NETLOAD'))</_NetloadDir>
+      <_BundleWin>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\Autoload\ST4_Yardimci.bundle\Contents\Windows'))</_BundleWin>
+      <_CopyNote Condition="'$(SkipObfuscar)' == 'true'">sifresiz Debug</_CopyNote>
+      <_CopyNote Condition="'$(SkipObfuscar)' != 'true'">obfuscated</_CopyNote>
     </PropertyGroup>
     <MakeDir Directories="$(_NetloadDir)" />
+    <MakeDir Directories="$(_BundleWin)" />
     <ItemGroup>
       <_OldNetloadYard Include="$(_NetloadDir)\ST4_Yardimci*.dll;$(_NetloadDir)\ST4_Yardimci*.pdb" />
     </ItemGroup>
     <Delete Files="@(_OldNetloadYard)" ContinueOnError="true" />
     <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="$(_NetloadDir)" SkipUnchangedFiles="false" />
-    <Copy SourceFiles="$(OutputPath)$(AssemblyName).pdb" DestinationFolder="$(_NetloadDir)" SkipUnchangedFiles="false" Condition="Exists('$(OutputPath)$(AssemblyName).pdb')" />
-    <Message Importance="high" Text="NETLOAD guncellendi: $(_NetloadDir)\$(AssemblyName).dll" />
+    <Copy SourceFiles="$(OutputPath)$(AssemblyName).pdb" DestinationFolder="$(_NetloadDir)" SkipUnchangedFiles="false"
+          Condition="'$(SkipObfuscar)' == 'true' and Exists('$(OutputPath)$(AssemblyName).pdb')" />
+    <!-- Autoloader: sabit isim (APPLOAD Startup Suite yerine AutoCAD 2025+/2027). -->
+    <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll"
+          DestinationFiles="$(_BundleWin)\ST4_Yardimci.dll"
+          SkipUnchangedFiles="false" />
+    <Message Importance="high" Text="NETLOAD guncellendi ($(_CopyNote)): $(_NetloadDir)\$(AssemblyName).dll" />
+    <Message Importance="high" Text="Autoload bundle: $(_BundleWin)\ST4_Yardimci.dll" />
   </Target>
 </Project>

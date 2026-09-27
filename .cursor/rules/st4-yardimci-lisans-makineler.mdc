@@ -1,0 +1,32 @@
+---
+description: ST4_Yardimci makine lisansı (UUID) — ofis PC ve geliştirme PC
+globs: ST4_Yardimci/**
+alwaysApply: false
+---
+
+# ST4_Yardimci — izinli makineler (UUID kilidi)
+
+Kullanıcı “diğer bilgisayarda çalışır hale getir / güncelle” dediğinde `MachineLicense.cs` içindeki `AllowedUuids` listesini koru; yeni ofis PC eklerken UUID’yi PowerShell ile alıp listeye ekle.
+
+## İzinli makineler (2026-09-24)
+
+| Rol | Makine adı | Kullanıcı | UUID |
+|-----|------------|-----------|------|
+| Ofis (diğer PC) | DESKTOP-I49ATPJ | BEYKENT-2 | `4C4C4544-0037-5110-8052-C4C04F354A34` |
+| Geliştirme | DESKTOP-MHC1B2K | BEYKENT | `4C4C4544-0052-4E10-8057-C2C04F583634` |
+
+## Güncelleme akışı
+
+1. Geliştirme: `dotnet build` Debug — **Obfuscar kapalı** (okunabilir, hızlı).
+2. Ofis/dağıtım: `dotnet build -c Release` — Obfuscar açık (isim + UUID string).
+3. `NETLOAD\ST4_Yardimci_*.dll` (en son tarihli) ofis PC’ye kopyala (**Release**).
+4. Ofis PC’de sabit klasör kullanılıyorsa (ör. `C:\ST4\Yardimci\`) dosyayı oraya yaz; Startup Suite aynı yolu gösteriyorsa AutoCAD yeniden açınca yeni DLL yüklenir (AutoCAD açıkken DLL kilitli olabilir — önce kapat).
+5. Yeni PC: PowerShell ile UUID al → `AllowedUuids` + bu kural tablosuna ekle → derle.
+
+## UUID alma (hedef PC)
+
+```powershell
+Write-Host "Makine:" $env:COMPUTERNAME
+Write-Host "Kullanici:" $env:USERNAME
+Write-Host "UUID:" (Get-CimInstance Win32_ComputerSystemProduct).UUID
+```
