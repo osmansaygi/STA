@@ -7,44 +7,111 @@ using SdFont = System.Drawing.Font;
 
 namespace ST4Yardimci
 {
-    /// <summary>Merdiven detay ayarları (form açıkken runner buradan okur).</summary>
+    /// <summary>Merdiven beton kesiti ayarları (form açıkken runner buradan okur).</summary>
     internal static class MerdivenSettings
     {
         public static double KatYuksekligiCm { get; set; } = 300;
         public static double AltKotCm { get; set; } = 0;
+        /// <summary>Merdiven plak / döşeme kalınlığı (cm) — kesitte eğik alt yüz.</summary>
+        public static double DosemeKalinligiCm { get; set; } = 15;
+        /// <summary>Plandan okunamayan kiriş yüksekliği varsayılanı (cm).</summary>
+        public static double KirisYuksekligiCm { get; set; } = 50;
+        /// <summary>Kesit donatı paspayı (cm).</summary>
+        public static double PaspayiCm { get; set; } = 3;
+        /// <summary>Ana donatı aralığı (cm).</summary>
+        public static double AnaDonatiAralikCm { get; set; } = 20;
+        /// <summary>Dağılım (tevzi) işaret aralığı (cm).</summary>
+        public static double TevziAralikCm { get; set; } = 20;
+        /// <summary>Mesnet yüzünden yatay gömülme (cm).</summary>
+        public static double GommeCm { get; set; } = 22;
         public static bool TemelVar { get; set; } = true;
         public static double TemelKalinligiCm { get; set; } = 50;
         public static int AnaDonatiCapMm { get; set; } = 12;
         public static int TevziDonatiCapMm { get; set; } = 8;
+
+        /// <summary>Plandan mod basamak genişliği (cm) — hesaplarda kullanılır.</summary>
+        public static double BasamakGenisligiCm { get; set; } = 28;
+        /// <summary>Rıht yüksekliği = kat / rıht adedi (gerçek değer; yazıda 2 ondalık).</summary>
+        public static double RihtYuksekligiCm { get; set; } = 13.636363636363637;
+        /// <summary>Son plandan sayılan rıht adedi (uçlar dahil).</summary>
+        public static int RihtAdet { get; set; } = 22;
+
+        static bool _loaded;
+
+        public static void EnsureLoaded()
+        {
+            if (_loaded) return;
+            _loaded = true;
+            var m = BaIni.Read("merdiven.ini");
+            KatYuksekligiCm = BaIni.GetD(m, "KatYuksekligiCm", KatYuksekligiCm);
+            AltKotCm = BaIni.GetD(m, "AltKotCm", AltKotCm);
+            DosemeKalinligiCm = BaIni.GetD(m, "DosemeKalinligiCm", DosemeKalinligiCm);
+            KirisYuksekligiCm = BaIni.GetD(m, "KirisYuksekligiCm", KirisYuksekligiCm);
+            PaspayiCm = BaIni.GetD(m, "PaspayiCm", PaspayiCm);
+            AnaDonatiAralikCm = BaIni.GetD(m, "AnaDonatiAralikCm", AnaDonatiAralikCm);
+            TevziAralikCm = BaIni.GetD(m, "TevziAralikCm", TevziAralikCm);
+            GommeCm = BaIni.GetD(m, "GommeCm", GommeCm);
+            TemelVar = BaIni.GetB(m, "TemelVar", TemelVar);
+            TemelKalinligiCm = BaIni.GetD(m, "TemelKalinligiCm", TemelKalinligiCm);
+            AnaDonatiCapMm = BaIni.GetI(m, "AnaDonatiCapMm", AnaDonatiCapMm);
+            TevziDonatiCapMm = BaIni.GetI(m, "TevziDonatiCapMm", TevziDonatiCapMm);
+            BasamakGenisligiCm = BaIni.GetD(m, "BasamakGenisligiCm", BasamakGenisligiCm);
+            RihtYuksekligiCm = BaIni.GetD(m, "RihtYuksekligiCm", RihtYuksekligiCm);
+            RihtAdet = BaIni.GetI(m, "RihtAdet", RihtAdet);
+        }
+
+        public static void Save()
+        {
+            EnsureLoaded();
+            BaIni.Write("merdiven.ini",
+                "KatYuksekligiCm=" + BaIni.N(KatYuksekligiCm),
+                "AltKotCm=" + BaIni.N(AltKotCm),
+                "DosemeKalinligiCm=" + BaIni.N(DosemeKalinligiCm),
+                "KirisYuksekligiCm=" + BaIni.N(KirisYuksekligiCm),
+                "PaspayiCm=" + BaIni.N(PaspayiCm),
+                "AnaDonatiAralikCm=" + BaIni.N(AnaDonatiAralikCm),
+                "TevziAralikCm=" + BaIni.N(TevziAralikCm),
+                "GommeCm=" + BaIni.N(GommeCm),
+                "TemelVar=" + BaIni.B(TemelVar),
+                "TemelKalinligiCm=" + BaIni.N(TemelKalinligiCm),
+                "AnaDonatiCapMm=" + AnaDonatiCapMm.ToString(CultureInfo.InvariantCulture),
+                "TevziDonatiCapMm=" + TevziDonatiCapMm.ToString(CultureInfo.InvariantCulture),
+                "BasamakGenisligiCm=" + BaIni.N(BasamakGenisligiCm),
+                "RihtYuksekligiCm=" + BaIni.N(RihtYuksekligiCm),
+                "RihtAdet=" + RihtAdet.ToString(CultureInfo.InvariantCulture));
+        }
     }
 
-    /// <summary>Modeless Merdiven formu — şimdilik ayar girişi; çizim sonra.</summary>
+    /// <summary>
+    /// Merdiven formu — MERDIVEN modal açar; Plandan çiz → form kapanır, komut çizime devam eder.
+    /// Çizim bitince form açılmaz; Enter/Space MERDIVEN tekrarlar → form yeniden açılır.
+    /// </summary>
     internal sealed class MerdivenForm : Form
     {
         private static MerdivenForm _instance;
 
         private readonly NumericUpDown _numKat;
         private readonly NumericUpDown _numAltKot;
+        private readonly NumericUpDown _numDoseme;
+        private readonly NumericUpDown _numKirisH;
+        private readonly NumericUpDown _numPaspayi;
+        private readonly NumericUpDown _numAnaAralik;
+        private readonly NumericUpDown _numTevziAralik;
         private readonly CheckBox _chkTemel;
         private readonly NumericUpDown _numTemelKal;
         private readonly ComboBox _cmbAna;
         private readonly ComboBox _cmbTevzi;
-        private readonly Button _btnRun;
-        private readonly Button _btnClose;
 
-        public static void ShowOrActivate()
+        /// <summary>Modal form. true = «Plandan çiz» (ayarlar kaydedildi).</summary>
+        public static bool ShowModalAndAcceptDraw()
         {
-            if (_instance == null || _instance.IsDisposed)
+            Shutdown();
+            using (var f = new MerdivenForm())
             {
-                _instance = new MerdivenForm();
-                try { AcApp.ShowModelessDialog(_instance); }
-                catch { _instance.Show(); }
-            }
-            else
-            {
-                _instance.LoadFromSettings();
-                _instance.Visible = true;
-                _instance.BringToFront();
+                DialogResult dr;
+                try { dr = AcApp.ShowModalDialog(f); }
+                catch { dr = f.ShowDialog(); }
+                return dr == DialogResult.OK;
             }
         }
 
@@ -57,32 +124,36 @@ namespace ST4Yardimci
 
         private MerdivenForm()
         {
-            Text = "Merdiven Detayı";
+            MerdivenSettings.EnsureLoaded();
+            Text = "Merdiven";
             FormBorderStyle = FormBorderStyle.FixedToolWindow;
             StartPosition = FormStartPosition.Manual;
             ShowInTaskbar = false;
             MinimizeBox = false;
             MaximizeBox = false;
-            Size = new Size(340, 380);
+            ClientSize = new Size(280, 280);
             BackColor = AcadPaletteTheme.Bg;
-            ForeColor = Color.White;
-            Font = new SdFont("Segoe UI", 9f);
+            ForeColor = AcadPaletteTheme.Text;
+            Font = new SdFont("Segoe UI", 8.5f);
+            KeyPreview = true;
+            DialogResult = DialogResult.Cancel;
 
-            int y = 14;
-            Controls.Add(MakeLabel("Kat yüksekliği (cm)", 14, y)); y += 20;
-            _numKat = MakeNum(14, y, 140, 50, 600, 1, (decimal)MerdivenSettings.KatYuksekligiCm);
-            Controls.Add(_numKat); y += 36;
-
-            Controls.Add(MakeLabel("Alt kot (cm)", 14, y)); y += 20;
-            _numAltKot = MakeNum(14, y, 140, -5000, 5000, 1, (decimal)MerdivenSettings.AltKotCm);
-            Controls.Add(_numAltKot); y += 36;
+            int y = 8;
+            _numKat = AddRow("Kat yükseklik", "cm", ref y, 50, 600, 1, 0,
+                (decimal)MerdivenSettings.KatYuksekligiCm);
+            _numAltKot = AddRow("Alt kot", "cm", ref y, -5000, 5000, 1, 0,
+                (decimal)MerdivenSettings.AltKotCm);
+            _numDoseme = AddRow("Döşeme kalınlık", "cm", ref y, 8, 40, 1, 0,
+                (decimal)MerdivenSettings.DosemeKalinligiCm);
+            _numKirisH = AddRow("Kiriş yükseklik*", "cm", ref y, 20, 150, 1, 0,
+                (decimal)MerdivenSettings.KirisYuksekligiCm);
 
             _chkTemel = new CheckBox
             {
                 Text = "Temel var",
-                Location = new Point(14, y),
+                Location = new Point(10, y + 2),
                 AutoSize = true,
-                ForeColor = Color.White,
+                ForeColor = AcadPaletteTheme.Text,
                 BackColor = Color.Transparent,
                 Checked = MerdivenSettings.TemelVar
             };
@@ -90,29 +161,66 @@ namespace ST4Yardimci
             {
                 _numTemelKal.Enabled = _chkTemel.Checked;
             };
-            Controls.Add(_chkTemel); y += 28;
+            Controls.Add(_chkTemel);
 
-            Controls.Add(MakeLabel("Temel kalınlığı (cm)", 14, y)); y += 20;
-            _numTemelKal = MakeNum(14, y, 140, 10, 200, 1, (decimal)MerdivenSettings.TemelKalinligiCm);
+            var lblTemel = new Label
+            {
+                Text = "kalınlık",
+                Location = new Point(108, y + 3),
+                AutoSize = false,
+                Size = new Size(52, 18),
+                ForeColor = AcadPaletteTheme.TextMuted,
+                BackColor = Color.Transparent
+            };
+            Controls.Add(lblTemel);
+            _numTemelKal = MakeNum(162, y, 58, 10, 200, 1, 0,
+                (decimal)MerdivenSettings.TemelKalinligiCm);
             _numTemelKal.Enabled = MerdivenSettings.TemelVar;
-            Controls.Add(_numTemelKal); y += 36;
+            Controls.Add(_numTemelKal);
+            Controls.Add(new Label
+            {
+                Text = "cm",
+                Location = new Point(222, y + 3),
+                AutoSize = true,
+                ForeColor = AcadPaletteTheme.TextMuted,
+                BackColor = Color.Transparent
+            });
+            y += 26;
 
-            Controls.Add(MakeLabel("Ana donatı çapı (mm)", 14, y)); y += 20;
-            _cmbAna = MakeCapCombo(14, y, 140, MerdivenSettings.AnaDonatiCapMm);
-            Controls.Add(_cmbAna); y += 36;
+            _cmbAna = AddCapSlashRow("Ana donatı", ref y, MerdivenSettings.AnaDonatiCapMm,
+                (decimal)MerdivenSettings.AnaDonatiAralikCm, out _numAnaAralik);
+            _cmbTevzi = AddCapSlashRow("Tevzi donatı", ref y, MerdivenSettings.TevziDonatiCapMm,
+                (decimal)MerdivenSettings.TevziAralikCm, out _numTevziAralik);
+            _numPaspayi = AddRow("Paspayı", "cm", ref y, 1, 5, 0.5m, 1,
+                (decimal)MerdivenSettings.PaspayiCm);
 
-            Controls.Add(MakeLabel("Tevzi donatı çapı (mm)", 14, y)); y += 20;
-            _cmbTevzi = MakeCapCombo(14, y, 140, MerdivenSettings.TevziDonatiCapMm);
-            Controls.Add(_cmbTevzi); y += 40;
+            var hint = new Label
+            {
+                Text = "Seç → numara + S kesit (+donatı). *kiriş h.",
+                Location = new Point(10, y + 2),
+                AutoSize = false,
+                Size = new Size(260, 18),
+                ForeColor = AcadPaletteTheme.TextMuted,
+                BackColor = Color.Transparent
+            };
+            Controls.Add(hint);
+            y += 24;
 
-            _btnRun = MakeButton("Devam (çizim sonra)", 14, y, 200);
-            _btnRun.ForeColor = AcadPaletteTheme.Accent;
-            _btnRun.Click += OnRun;
-            _btnClose = MakeButton("Kapat", 226, y, 80);
-            _btnClose.Click += (s, e) => Close();
-            Controls.Add(_btnRun);
-            Controls.Add(_btnClose);
+            var btnPlan = MakeButton("Plandan çiz", 10, y, 110, true);
+            btnPlan.Click += (s, e) => OnPlan();
+            var btnClose = MakeButton("Kapat", 126, y, 70, false);
+            btnClose.Click += (s, e) =>
+            {
+                DialogResult = DialogResult.Cancel;
+                Close();
+            };
+            Controls.Add(btnPlan);
+            Controls.Add(btnClose);
+            ClientSize = new Size(280, y + 36);
+            AcceptButton = btnPlan;
+            CancelButton = btnClose;
 
+            FormClosing += (s, e) => { try { PushSettings(); } catch { } };
             FormClosed += (s, e) =>
             {
                 if (ReferenceEquals(_instance, this))
@@ -121,8 +229,8 @@ namespace ST4Yardimci
 
             try
             {
-                Location = new Point(Screen.PrimaryScreen.WorkingArea.Left + 100,
-                    Screen.PrimaryScreen.WorkingArea.Top + 100);
+                Location = new Point(Screen.PrimaryScreen.WorkingArea.Left + 80,
+                    Screen.PrimaryScreen.WorkingArea.Top + 60);
             }
             catch
             {
@@ -130,38 +238,98 @@ namespace ST4Yardimci
             }
         }
 
-        private void LoadFromSettings()
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
-            _numKat.Value = Clamp(_numKat, (decimal)MerdivenSettings.KatYuksekligiCm);
-            _numAltKot.Value = Clamp(_numAltKot, (decimal)MerdivenSettings.AltKotCm);
-            _chkTemel.Checked = MerdivenSettings.TemelVar;
-            _numTemelKal.Value = Clamp(_numTemelKal, (decimal)MerdivenSettings.TemelKalinligiCm);
-            SelectCap(_cmbAna, MerdivenSettings.AnaDonatiCapMm);
-            SelectCap(_cmbTevzi, MerdivenSettings.TevziDonatiCapMm);
+            if (keyData == Keys.Escape)
+            {
+                DialogResult = DialogResult.Cancel;
+                Close();
+                return true;
+            }
+            if (keyData == Keys.Enter || keyData == Keys.Return)
+            {
+                OnPlan();
+                return true;
+            }
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
+
+        private void OnPlan()
+        {
+            PushSettings();
+            DialogResult = DialogResult.OK;
+            Close();
         }
 
         private void PushSettings()
         {
             MerdivenSettings.KatYuksekligiCm = (double)_numKat.Value;
             MerdivenSettings.AltKotCm = (double)_numAltKot.Value;
+            MerdivenSettings.DosemeKalinligiCm = (double)_numDoseme.Value;
+            MerdivenSettings.KirisYuksekligiCm = (double)_numKirisH.Value;
             MerdivenSettings.TemelVar = _chkTemel.Checked;
             MerdivenSettings.TemelKalinligiCm = (double)_numTemelKal.Value;
             MerdivenSettings.AnaDonatiCapMm = ParseCap(_cmbAna);
             MerdivenSettings.TevziDonatiCapMm = ParseCap(_cmbTevzi);
+            MerdivenSettings.AnaDonatiAralikCm = (double)_numAnaAralik.Value;
+            MerdivenSettings.TevziAralikCm = (double)_numTevziAralik.Value;
+            MerdivenSettings.PaspayiCm = (double)_numPaspayi.Value;
+            MerdivenSettings.Save();
         }
 
-        private void OnRun(object sender, EventArgs e)
+        private NumericUpDown AddRow(string label, string unit, ref int y,
+            decimal min, decimal max, decimal inc, int decimals, decimal val)
         {
-            PushSettings();
-            try
+            Controls.Add(new Label
             {
-                AcApp.DocumentManager.MdiActiveDocument?.Editor.WriteMessage(
-                    "\nMerdiven: ayarlar kaydedildi (kat {0} cm, alt kot {1}, temel {2}). Çizim adımı sonra eklenecek.",
-                    MerdivenSettings.KatYuksekligiCm.ToString("0.##", CultureInfo.InvariantCulture),
-                    MerdivenSettings.AltKotCm.ToString("0.##", CultureInfo.InvariantCulture),
-                    MerdivenSettings.TemelVar ? MerdivenSettings.TemelKalinligiCm.ToString("0.##", CultureInfo.InvariantCulture) + " cm" : "yok");
-            }
-            catch { }
+                Text = label,
+                Location = new Point(10, y + 3),
+                AutoSize = false,
+                Size = new Size(110, 18),
+                ForeColor = AcadPaletteTheme.TextMuted,
+                BackColor = Color.Transparent
+            });
+            var n = MakeNum(122, y, 58, min, max, inc, decimals, val);
+            Controls.Add(n);
+            Controls.Add(new Label
+            {
+                Text = unit,
+                Location = new Point(182, y + 3),
+                AutoSize = true,
+                ForeColor = AcadPaletteTheme.TextMuted,
+                BackColor = Color.Transparent
+            });
+            y += 26;
+            return n;
+        }
+
+        /// <summary>Çap kutusu, sağında yalnız «/» ve aralık. Birim yazısı yok.</summary>
+        private ComboBox AddCapSlashRow(string label, ref int y, int selectedMm, decimal aralikCm,
+            out NumericUpDown aralik)
+        {
+            Controls.Add(new Label
+            {
+                Text = label,
+                Location = new Point(10, y + 3),
+                AutoSize = false,
+                Size = new Size(110, 18),
+                ForeColor = AcadPaletteTheme.TextMuted,
+                BackColor = Color.Transparent
+            });
+            var c = MakeCapCombo(122, y, 52, selectedMm);
+            Controls.Add(c);
+            Controls.Add(new Label
+            {
+                Text = "/",
+                Location = new Point(176, y + 3),
+                AutoSize = true,
+                ForeColor = AcadPaletteTheme.Text,
+                BackColor = Color.Transparent
+            });
+            aralik = MakeNum(190, y, 52, 8, 40, 1, 0, aralikCm);
+            Controls.Add(aralik);
+            y += 26;
+            return c;
         }
 
         private static decimal Clamp(NumericUpDown n, decimal v)
@@ -195,28 +363,16 @@ namespace ST4Yardimci
             if (cmb.Items.Count > 0) cmb.SelectedIndex = 0;
         }
 
-        private Label MakeLabel(string text, int x, int y)
-        {
-            return new Label
-            {
-                Text = text,
-                Location = new Point(x, y),
-                AutoSize = true,
-                ForeColor = Color.White,
-                BackColor = Color.Transparent
-            };
-        }
-
-        private Button MakeButton(string text, int x, int y, int w)
+        private static Button MakeButton(string text, int x, int y, int w, bool accent)
         {
             var b = new Button
             {
                 Text = text,
                 Location = new Point(x, y),
-                Size = new Size(w, 28),
+                Size = new Size(w, 26),
                 FlatStyle = FlatStyle.Flat,
                 BackColor = AcadPaletteTheme.BgAlt,
-                ForeColor = Color.White,
+                ForeColor = accent ? AcadPaletteTheme.Accent : AcadPaletteTheme.Text,
                 Cursor = Cursors.Hand
             };
             b.FlatAppearance.BorderColor = AcadPaletteTheme.InputBorder;
@@ -224,18 +380,19 @@ namespace ST4Yardimci
             return b;
         }
 
-        private NumericUpDown MakeNum(int x, int y, int w, decimal min, decimal max, decimal inc, decimal val)
+        private static NumericUpDown MakeNum(int x, int y, int w, decimal min, decimal max,
+            decimal inc, int decimals, decimal val)
         {
             var n = new NumericUpDown
             {
                 Location = new Point(x, y),
-                Size = new Size(w, 26),
+                Size = new Size(w, 22),
                 Minimum = min,
                 Maximum = max,
                 Increment = inc,
-                DecimalPlaces = 1,
+                DecimalPlaces = decimals,
                 BackColor = AcadPaletteTheme.InputBg,
-                ForeColor = Color.White,
+                ForeColor = AcadPaletteTheme.Text,
                 BorderStyle = BorderStyle.FixedSingle
             };
             n.Value = Clamp(n, val);
@@ -243,15 +400,15 @@ namespace ST4Yardimci
             return n;
         }
 
-        private ComboBox MakeCapCombo(int x, int y, int w, int selectedMm)
+        private static ComboBox MakeCapCombo(int x, int y, int w, int selectedMm)
         {
             var c = new ComboBox
             {
                 Location = new Point(x, y),
-                Size = new Size(w, 26),
+                Size = new Size(w, 22),
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 BackColor = AcadPaletteTheme.InputBg,
-                ForeColor = Color.White,
+                ForeColor = AcadPaletteTheme.Text,
                 FlatStyle = FlatStyle.Flat
             };
             foreach (int d in new[] { 8, 10, 12, 14, 16, 18, 20, 22, 25 })

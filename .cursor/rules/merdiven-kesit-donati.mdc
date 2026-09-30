@@ -1,0 +1,22 @@
+# MERDIVEN kesit donatı (mer.dwg S2)
+
+Katman: `DONATI (BEYKENT)`. Beton: `KESIT CIZGISI (BEYKENT)`.
+
+## Basamaklı kesit — 3 bölge
+
+1. Alt sahanlık (üst/alt yatay; kırım=`landLo`)
+2. Basamak (soffit + sanal üst=nose)
+3. Üst sahanlık
+
+## Donatı
+
+- **1–4, 11–12:** yalnız ilk basamaklı kol (11: bölge1 alt → basamak üst 40φ×2; 12: bölge1 üst → basamak alt 40φ×2).
+- **5:** tüm basamaklı kesitler.
+- **8–10:** ilk kol hariç diğer basamaklı — 8: bölge1 alt → basamak alt → bölge3 üst; 9: bölge1 alt → basamak üst → bölge3 üst; 10: bölge1 üst → basamak alt + 75φ, sol aşağı gönye (12φ / doseme−2pas).
+- **6–7:** basamaksız (alt/üst + gönye).
+- **Tevzi izdüşüm:** 27=8→bölge1 üst; 28=1→basamak üst; 29=6→basamak alt; 30=2→bölge3 alt; **31**=12→bölge3 alt; **32**=10→basamak üst; **33**=9→bölge1 üst. Hepsi hedef çizgiden (pas+1.5) içeri.
+- **Ara tevzi (isimsiz):** çiftler arası `TevziAralikCm` ile eşit bölünür (21-27, 20-8, 28-6, 1-29, 2-22, 30-23, 18-19, 16-17, 25-12, 23-31, 6-32, 29-10, 33-26, 9-24).
+
+Numara kesit+açılım. R=1.5 dışbükey. **Ölçek 1/25** (`Scale=2`): plan seçimi ×2 kopya + kesit/açılım.
+
+Kod: `DrawFlightDonati_*`, `DrawFlightTevziBaz_IlkKol`, `FilletDonatiPath`.
