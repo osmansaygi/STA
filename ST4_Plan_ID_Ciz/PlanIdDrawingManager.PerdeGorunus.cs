@@ -80,8 +80,6 @@ namespace ST4PlanIdCiz
         private const double PerdeGorunusAntetAraCm = 50.0;
         /// <summary>KAPAMADETAY: IC antetler arası ve SheetView iç çizgisine pay (cm).</summary>
         private const double KapamaAntetIcPayCm = 25.0;
-        /// <summary>KAPAMADETAY: yerleşim noktası = SheetViewOut sol-altın bu kadar solu (cm).</summary>
-        private const double KapamaYerlesimSheetViewOutSolPayCm = 50.0;
         /// <summary>
         /// KAPAMADETAY ana antet SheetView (iç) yüksekliği (cm).
         /// SheetViewOut başlangıç 4500; üst/alt 50 → SheetView = 4400.
@@ -653,7 +651,7 @@ namespace ST4PlanIdCiz
                 outDx = 0.0;
                 outDy = AntetDxfSheetViewOutYmin - AntetDxfSheetViewYmin;
             }
-            double desiredOutLeft = insertLl.X + KapamaYerlesimSheetViewOutSolPayCm;
+            double desiredOutLeft = insertLl.X + AntetYerlesimSheetViewOutSolPayCm;
             double desiredOutBottom = insertLl.Y;
             double antetSheetViewLeft = desiredOutLeft - outDx;
             double antetSheetViewBottom = desiredOutBottom - outDy;
@@ -749,7 +747,7 @@ namespace ST4PlanIdCiz
                 outDy = AntetDxfSheetViewOutYmin - AntetDxfSheetViewYmin;
             }
             // Yerleşim noktası = SheetViewOut sol-altın 50 cm solu.
-            double desiredOutLeft = insertLl.X + KapamaYerlesimSheetViewOutSolPayCm;
+            double desiredOutLeft = insertLl.X + AntetYerlesimSheetViewOutSolPayCm;
             double desiredOutBottom = insertLl.Y;
             double antetSheetViewLeft = desiredOutLeft - outDx;
             double antetSheetViewBottom = desiredOutBottom - outDy;
@@ -818,6 +816,10 @@ namespace ST4PlanIdCiz
                     GprPerdePanelDonatiParser.TryParse(gprPath, out _gprPerdePanelDonati, out _);
                     GprPerdePanelDonatiParser.TryReadMaterials(gprPath, out _rebarFckMPa, out _rebarFykMPa);
                 }
+                ApplyRebarMaterialsFromSt4(st4SourcePath);
+                EnsureKapamaPerdeDonatiFromSwx(st4SourcePath);
+                if (_kapamaDonatiFromSwx && ed != null)
+                    ed.WriteMessage("\nKAPAMADETAY: {0} kapama perde donatisi SWX.", _gprPerdePanelDonati.Count);
                 if (_model?.Floors == null || _model.Floors.Count == 0)
                 {
                     ed?.WriteMessage("\nKAPAMADETAY: ST4 kat yok.");

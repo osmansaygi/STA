@@ -17,6 +17,9 @@ namespace ST4PlanIdCiz
         /// <summary>Komut satırı / durum çubuğu üstünde kalsın.</summary>
         private const int MarginBottom = 56;
 
+        /// <summary>Sabit Guid — Yardımcı paletleriyle kimlik çakışmasın / layout bozulmasın.</summary>
+        private static readonly Guid PaletteGuid = new Guid("8F3C2A91-6D4E-4B17-9C55-A2E8D0F14B73");
+
         private static PaletteSet _palette;
         private static bool _suppressSave;
         private static int _lastFullHeight = PaletteHeight;
@@ -40,7 +43,8 @@ namespace ST4PlanIdCiz
                     }
                 }
 
-                _palette = new PaletteSet("STA Komut Paneli")
+                // cmd boşluksuz olmalı. Başlıktaki boşluk açılışta KOMUT / PANELI diye komut satırına düşer.
+                _palette = new PaletteSet("STA Komut Paneli", "STAPANEL", PaletteGuid)
                 {
                     Style = PaletteSetStyles.ShowAutoHideButton
                           | PaletteSetStyles.ShowCloseButton,
@@ -252,11 +256,6 @@ namespace ST4PlanIdCiz
             ("Temel Plan\u0131",   "TEMEL50ST4"),
             ("Rd. Temel Plan\u0131", "TEMELDONATI"),
         };
-        private static readonly (string label, string cmd)[] S25 =
-        {
-            ("Kolon D\u00fc\u015fey", "KOLONDUSEY25"),
-            ("Kolon D\u00fc\u015fey - 2", "KOLONDUSEY2"),
-        };
         private static readonly (string label, string cmd)[] S100 =
         {
             ("Kal\u0131p Plan\u0131",    "KALIP100ST4"),
@@ -282,6 +281,8 @@ namespace ST4PlanIdCiz
             ("Kapama Perde", "KAPAMADETAY"),
             ("Kolon Revize", "KOLONREVIZE"),
             ("Bina G\u00f6r\u00fcn\u00fc\u015f\u00fc", "BINAGORUNUS"),
+            ("Bina Kesiti", "BINAKESITI"),
+            ("Kiriş Açılımları", "KIRISACILIMLARI"),
         };
 
         public CommandPaletteControl()
@@ -291,7 +292,6 @@ namespace ST4PlanIdCiz
 
             int y = 6;
             y = AddGroup(y, "Ölçek 1:50", S50);
-            y = AddGroup(y, "Ölçek 1:25", S25);
             y = AddGroup(y, "Ölçek 1:100", S100);
             y = AddGroup(y, "İskele", Isk);
             y = AddGroup(y, "Genel", Gen);

@@ -21,6 +21,33 @@ namespace ST4Yardimci
         /// <summary>true = üst ilave (üst); false = alt ilave (alt).</summary>
         public static bool IlaveUst { get; set; }
 
+        static bool _loaded;
+
+        public static void EnsureLoaded()
+        {
+            if (_loaded) return;
+            _loaded = true;
+            var m = BaIni.Read("radyeilave.ini");
+            TemelYuksekligiCm = BaIni.GetD(m, "TemelYuksekligiCm", TemelYuksekligiCm);
+            PaspayiCm = BaIni.GetD(m, "PaspayiCm", PaspayiCm);
+            IlaveGonye = BaIni.GetB(m, "IlaveGonye", IlaveGonye);
+            GonyeBoyuMaxCm = BaIni.GetD(m, "GonyeBoyuMaxCm", GonyeBoyuMaxCm);
+            AralikCm = BaIni.GetD(m, "AralikCm", AralikCm);
+            IlaveUst = BaIni.GetB(m, "IlaveUst", IlaveUst);
+        }
+
+        public static void Save()
+        {
+            EnsureLoaded();
+            BaIni.Write("radyeilave.ini",
+                "TemelYuksekligiCm=" + BaIni.N(TemelYuksekligiCm),
+                "PaspayiCm=" + BaIni.N(PaspayiCm),
+                "IlaveGonye=" + BaIni.B(IlaveGonye),
+                "GonyeBoyuMaxCm=" + BaIni.N(GonyeBoyuMaxCm),
+                "AralikCm=" + BaIni.N(AralikCm),
+                "IlaveUst=" + BaIni.B(IlaveUst));
+        }
+
         /// <summary>Etiket son eki: "(üst)" / "(alt)".</summary>
         public static string IlaveKatEtiketi => IlaveUst ? "(üst)" : "(alt)";
 
@@ -66,6 +93,7 @@ namespace ST4Yardimci
 
         public static void ShowOrActivate()
         {
+            if (!BaFormSession.TryEnter("RADYEILAVE")) return;
             if (_instance == null || _instance.IsDisposed)
             {
                 _instance = new RadyeTemelDonatiForm();
@@ -79,10 +107,13 @@ namespace ST4Yardimci
                 _instance.Visible = true;
                 _instance.BringToFront();
             }
+            BaFormSession.Attach("RADYEILAVE", _instance);
+            BaFormSession.EndPick("RADYEILAVE");
         }
 
         public static void Shutdown()
         {
+            BaFormSession.Release("RADYEILAVE");
             if (_instance == null) return;
             try { _instance.Close(); } catch { }
             _instance = null;
@@ -98,6 +129,8 @@ namespace ST4Yardimci
                     _instance.BeginInvoke(new Action(HideTemporarily));
                     return;
                 }
+                
+                BaFormSession.BeginPick("RADYEILAVE");
                 _instance.Visible = false;
             }
             catch { }
@@ -105,6 +138,7 @@ namespace ST4Yardimci
 
         public static void ShowAfterPick()
         {
+            BaFormSession.EndPick("RADYEILAVE");
             try
             {
                 if (_instance != null && !_instance.IsDisposed)
@@ -116,6 +150,7 @@ namespace ST4Yardimci
 
         private RadyeTemelDonatiForm()
         {
+            RadyeTemelDonatiSettings.EnsureLoaded();
             Text = "Radye İlave Donatı";
             FormBorderStyle = FormBorderStyle.FixedToolWindow;
             StartPosition = FormStartPosition.Manual;
@@ -175,10 +210,14 @@ namespace ST4Yardimci
             Controls.Add(_btnRun);
             Controls.Add(_btnClose);
 
+            FormClosing += (s, e) => { try { PushSettings(); } catch { } };
             FormClosed += (s, e) =>
             {
                 if (ReferenceEquals(_instance, this))
+                {
                     _instance = null;
+                    BaFormSession.Release("RADYEILAVE");
+                }
             };
 
             try
@@ -226,6 +265,7 @@ namespace ST4Yardimci
             RadyeTemelDonatiSettings.IlaveGonye = _chkIlaveGonye.Checked;
             RadyeTemelDonatiSettings.GonyeBoyuMaxCm = (double)_numGonyeMax.Value;
             RadyeTemelDonatiSettings.IlaveUst = _rbUst.Checked;
+            RadyeTemelDonatiSettings.Save();
         }
 
         private void OnRun()

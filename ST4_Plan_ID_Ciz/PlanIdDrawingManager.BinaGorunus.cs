@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Autodesk.AutoCAD.Colors;
 using Autodesk.AutoCAD.DatabaseServices;
@@ -42,6 +43,65 @@ namespace ST4PlanIdCiz
         private const short GorunusOrtaAci = 116;
         private const short GorunusArkaAci = 251;
 
+        /// <summary>
+        /// Bina görünüş/kesit: merdiven döşmesi ve ona komşu ara sahanlık (OffsetFromFloorCm &lt; 0) çizilmez.
+        /// </summary>
+        private bool ShouldOmitSlabFromBinaView(SlabInfo slab)
+        {
+            if (slab == null || slab.SlabId <= 0) return true;
+            if (_model?.StairSlabIds != null && _model.StairSlabIds.Contains(slab.SlabId))
+                return true;
+            if (slab.OffsetFromFloorCm >= 0)
+                return false;
+
+            int floorNo = GetSlabFloorNo(slab.SlabId);
+            Geometry stairUnion = GetCachedStairFootprintUnionForFloorNo(floorNo);
+            if (stairUnion == null || stairUnion.IsEmpty)
+                return false;
+
+            Geometry slabPoly = null;
+            try { slabPoly = SlabFootprintPoly(slab); }
+            catch { return false; }
+            if (slabPoly == null || slabPoly.IsEmpty) return false;
+
+            const double adjTolCm = 8.0;
+            return AreSlabGeometriesAdjacent(slabPoly, stairUnion, adjTolCm)
+                || SafeGeometryIntersects(slabPoly, stairUnion);
+        }
+
+        private Dictionary<int, Geometry> _stairFootprintUnionByFloorNo;
+
+        private Geometry GetCachedStairFootprintUnionForFloorNo(int floorNo)
+        {
+            if (_stairFootprintUnionByFloorNo == null)
+                _stairFootprintUnionByFloorNo = new Dictionary<int, Geometry>();
+            if (_stairFootprintUnionByFloorNo.TryGetValue(floorNo, out Geometry cached))
+                return cached;
+
+            Geometry union = null;
+            if (_ntsDrawFactory == null)
+                _ntsDrawFactory = NetTopologySuite.NtsGeometryServices.Instance.CreateGeometryFactory();
+            var parts = new List<Geometry>();
+            if (_model?.Slabs != null && _model.StairSlabIds != null)
+            {
+                foreach (var s in _model.Slabs)
+                {
+                    if (s == null || !_model.StairSlabIds.Contains(s.SlabId)) continue;
+                    if (GetSlabFloorNo(s.SlabId) != floorNo) continue;
+                    try
+                    {
+                        var p = SlabFootprintPoly(s);
+                        if (p != null && !p.IsEmpty) parts.Add(p);
+                    }
+                    catch { /* atla */ }
+                }
+            }
+            if (parts.Count > 0)
+                union = TryCascadedPolygonUnionSafe(parts);
+            _stairFootprintUnionByFloorNo[floorNo] = union;
+            return union;
+        }
+
         private sealed class BinaGorunusFace
         {
             public Geometry Poly;
@@ -75,6 +135,251 @@ namespace ST4PlanIdCiz
             }
 
             _ntsDrawFactory = NetTopologySuite.NtsGeometryServices.Instance.CreateGeometryFactory();
+
+            try
+            {
+                using (var tr = db.TransactionManager.StartTransaction())
+                {
+                    EnsureLayers(tr, db);
+                    EnsureBinaGorunusLayers(tr, db);
+                    var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForWrite);
+                    string blockName = "BINAGORUNUS_" + Guid.NewGuid().ToString("N");
+                    while (bt.Has(blockName))
+                        blockName = "BINAGORUNUS_" + Guid.NewGuid().ToString("N");
+                    var btrDef = new BlockTableRecord { Name = blockName, Origin = Point3d.Origin };
+                    ObjectId blockId = bt.Add(btrDef);
+                    tr.AddNewlyCreatedDBObject(btrDef, true);
+
+                    if (!TryDrawBinaGorunusIntoBlock(tr, btrDef, bakis,
+                            out double uMin, out double zMin, out double spanU, out _,
+                            ed, "BINAGORUNUS"))
+                        return false;
+
+                    var ms = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
+                    var br = new BlockReference(new Point3d(insert.X, insert.Y, 0), blockId)
+                    {
+                        ScaleFactors = new Scale3d(BinaGorunusScale),
+                        Layer = LayerGorunusOn
+                    };
+                    AppendEntity(tr, ms, br);
+
+                    double cx = insert.X + spanU * BinaGorunusScale * 0.5;
+                    DrawKesitTitleBelowSchematic(tr, ms, db, BinaGorunusTitle, cx, insert.Y - BinaGorunusTitleGapCm);
+                    DrawBinaGorunusFloorKots(tr, ms, db, insert.X, insert.Y, uMin, zMin, spanU, BinaGorunusScale);
+                    DrawBinaGorunusFloorNameLabels(tr, ms, db, insert.X, insert.Y, zMin, BinaGorunusScale);
+
+                    tr.Commit();
+                }
+            }
+            catch (Exception ex)
+            {
+                ed.WriteMessage("\nBINAGORUNUS: Cizilemedi: {0}", ex.Message);
+                return false;
+            }
+
+            ed.WriteMessage("\nBINAGORUNUS: 1/200 gorunus yerlestirildi ({0}; on/orta/arka ton).", BinaGorunusBakisLabel(bakis));
+            return true;
+        }
+
+        /// <summary>
+        /// Hepsi: X/Y kesit + 4 görünüş (3×2 ızgara), 1/200 içerik, 1/50 antet içinde.
+        /// <paramref name="insert"/> = SheetViewOut sol-altının 50 cm solu.
+        /// </summary>
+        public bool DrawBinaGorunusHepsi(Database db, Editor ed, Point3d insert, string st4SourcePath)
+        {
+            if (db == null || ed == null || _model?.Floors == null || _model.Floors.Count == 0)
+            {
+                ed?.WriteMessage("\nBINAGORUNUS: Modelde kat bulunamadi.");
+                return false;
+            }
+
+            _ntsDrawFactory = NetTopologySuite.NtsGeometryServices.Instance.CreateGeometryFactory();
+            const double sc = BinaGorunusScale; // 1:200
+            const double gapCol = 220.0;
+            const double gapRow = 100.0;
+            const double titleBand = 55.0;
+            const double leftLabelPad = 40.0;
+            const double kotPad = 130.0;
+            const double contentLeftPad = 160.0;
+            const double contentBottomPad = 140.0;
+            const double contentTopPad = 80.0;
+            const double contentRightPad = 160.0;
+
+            string gprPath = ResolveGprPathNextToSt4(st4SourcePath);
+            if (!string.IsNullOrEmpty(gprPath))
+                ed.WriteMessage("\nBINAGORUNUS Hepsi: GPR bulundu ({0}).", Path.GetFileName(gprPath));
+            else
+                ed.WriteMessage("\nBINAGORUNUS Hepsi: ST4 yaninda GPR yok (antet ST4 ile doldurulur).");
+
+            try
+            {
+                using (var tr = db.TransactionManager.StartTransaction())
+                {
+                    EnsureLayers(tr, db);
+                    EnsureBinaGorunusLayers(tr, db);
+                    var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForWrite);
+                    var ms = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
+
+                    ObjectId MakeGorunus(BinaGorunusBakis bakis, out double uMin, out double zMin, out double spanU, out double spanZ)
+                    {
+                        uMin = zMin = spanU = spanZ = 0;
+                        string name = "BGOR_" + bakis + "_" + Guid.NewGuid().ToString("N");
+                        while (bt.Has(name)) name = "BGOR_" + Guid.NewGuid().ToString("N");
+                        var def = new BlockTableRecord { Name = name, Origin = Point3d.Origin };
+                        ObjectId id = bt.Add(def);
+                        tr.AddNewlyCreatedDBObject(def, true);
+                        if (!TryDrawBinaGorunusIntoBlock(tr, def, bakis, out uMin, out zMin, out spanU, out spanZ, ed, "BINAGORUNUS"))
+                            return ObjectId.Null;
+                        return id;
+                    }
+
+                    ObjectId MakeKesit(BinaKesitYon yon, out double amin, out double zmin, out double spanU, out double spanZ)
+                    {
+                        amin = zmin = spanU = spanZ = 0;
+                        string name = "BKES_" + yon + "_" + Guid.NewGuid().ToString("N");
+                        while (bt.Has(name)) name = "BKES_" + Guid.NewGuid().ToString("N");
+                        var def = new BlockTableRecord { Name = name, Origin = Point3d.Origin };
+                        ObjectId id = bt.Add(def);
+                        tr.AddNewlyCreatedDBObject(def, true);
+                        if (!TryDrawBinaKesitIntoBlock(tr, def, yon, out amin, out zmin, out spanU, out spanZ, out _, ed, "BINAGORUNUS"))
+                            return ObjectId.Null;
+                        return id;
+                    }
+
+                    var idX = MakeKesit(BinaKesitYon.X, out double aminX, out double zminX, out double spanUX, out double spanZX);
+                    var idY = MakeKesit(BinaKesitYon.Y, out double aminY, out double zminY, out double spanUY, out double spanZY);
+                    var idAsa = MakeGorunus(BinaGorunusBakis.AsagidanYukariya, out double uAsa, out double zAsa, out double spanUAsa, out double spanZAsa);
+                    var idSag = MakeGorunus(BinaGorunusBakis.SagdanSola, out double uSag, out double zSag, out double spanUSag, out double spanZSag);
+                    var idYuk = MakeGorunus(BinaGorunusBakis.YukaridanAsagiya, out double uYuk, out double zYuk, out double spanUYuk, out double spanZYuk);
+                    var idSol = MakeGorunus(BinaGorunusBakis.SoldanSaga, out double uSol, out double zSol, out double spanUSol, out double spanZSol);
+
+                    if (!idX.IsValid || !idY.IsValid || !idAsa.IsValid || !idSag.IsValid || !idYuk.IsValid || !idSol.IsValid)
+                        return false;
+
+                    double wX = spanUX * sc, hX = spanZX * sc;
+                    double wY = spanUY * sc, hY = spanZY * sc;
+                    double wAsa = spanUAsa * sc, hAsa = spanZAsa * sc;
+                    double wSag = spanUSag * sc, hSag = spanZSag * sc;
+                    double wYuk = spanUYuk * sc, hYuk = spanZYuk * sc;
+                    double wSol = spanUSol * sc, hSol = spanZSol * sc;
+
+                    double colW0 = Math.Max(wX, Math.Max(wAsa, wYuk)) + kotPad;
+                    double colW1 = Math.Max(wY, Math.Max(wSag, wSol)) + kotPad;
+                    double rowH0 = Math.Max(hX, hY) + titleBand;
+                    double rowH1 = Math.Max(hAsa, hSag) + titleBand;
+                    double rowH2 = Math.Max(hYuk, hSol) + titleBand;
+
+                    if (!TryGetEmbeddedAntetSheetViewOutOffsets(out double outDx, out double outDy, ed))
+                    {
+                        outDx = 0;
+                        outDy = AntetDxfSheetViewOutYmin - AntetDxfSheetViewYmin;
+                    }
+                    double svLeft = insert.X + AntetYerlesimSheetViewOutSolPayCm - outDx;
+                    double svBottom = insert.Y - outDy;
+
+                    double xL = svLeft + contentLeftPad + leftLabelPad;
+                    double xR = xL + colW0 + gapCol;
+                    double y2 = svBottom + contentBottomPad;
+                    double y1 = y2 + rowH2 + gapRow;
+                    double y0 = y1 + rowH1 + gapRow;
+
+                    void Place(ObjectId blockId, double ix, double iyTop, double panelH, double spanU, double zMin, double uMin,
+                        string title, bool kesitFloorIds)
+                    {
+                        double iy = iyTop - panelH;
+                        var br = new BlockReference(new Point3d(ix, iy, 0), blockId)
+                        {
+                            ScaleFactors = new Scale3d(sc),
+                            Layer = LayerKesit
+                        };
+                        AppendEntity(tr, ms, br);
+                        double cx = ix + spanU * sc * 0.5;
+                        DrawKesitTitleBelowSchematic(tr, ms, db, title, cx, iy - BinaGorunusTitleGapCm);
+                        if (kesitFloorIds)
+                        {
+                            DrawBinaKesitFloorKots(tr, ms, db, ix, iy, uMin, zMin, spanU);
+                            // DrawBinaKesitFloorKots uses BinaKesitScale internally — OK same 0.25
+                            DrawBinaKesitFloorNameLabels(tr, ms, db, ix, iy, zMin, sc);
+                        }
+                        else
+                        {
+                            DrawBinaGorunusFloorKots(tr, ms, db, ix, iy, uMin, zMin, spanU, sc);
+                            DrawBinaGorunusFloorNameLabels(tr, ms, db, ix, iy, zMin, sc);
+                        }
+                    }
+
+                    double top0 = y0 + rowH0 - titleBand;
+                    double top1 = y1 + rowH1 - titleBand;
+                    double top2 = y2 + rowH2 - titleBand;
+
+                    Place(idX, xL, top0, hX, spanUX, zminX, aminX, "KESIT X (1:200)", true);
+                    Place(idY, xR, top0, hY, spanUY, zminY, aminY, "KESIT Y (1:200)", true);
+                    Place(idAsa, xL, top1, hAsa, spanUAsa, zAsa, uAsa, "ON GORUNUS (1:200)", false);
+                    Place(idSag, xR, top1, hSag, spanUSag, zSag, uSag, "SAG GORUNUS (1:200)", false);
+                    Place(idYuk, xL, top2, hYuk, spanUYuk, zYuk, uYuk, "ARKA GORUNUS (1:200)", false);
+                    Place(idSol, xR, top2, hSol, spanUSol, zSol, uSol, "SOL GORUNUS (1:200)", false);
+
+                    double layoutMaxX = xR + colW1 + contentRightPad;
+                    // Genişlik: çizime göre (şablon varsayılanından daraltılabilir).
+                    double targetRight = layoutMaxX;
+                    // Min. SheetViewOut = 4500 cm. fitSheetViewHeightToContent, layoutMaxY'yi SheetView
+                    // iç üstü sayar; Out şablonda üstte ve altta 50 cm taşar. Bu pay düşülmezse Out 4600 olur.
+                    const double antetSheetViewSrcTop = 5758.942367378282;
+                    double outAboveSv = AntetDxfSheetViewOutYmax - antetSheetViewSrcTop;
+                    double outBelowSv = AntetDxfSheetViewYmin - AntetDxfSheetViewOutYmin;
+                    double minSheetViewH = TemelAntetBaslangicYukseklikCm - outAboveSv - outBelowSv;
+                    double contentTop = y0 + rowH0 + contentTopPad;
+                    double layoutMaxY = Math.Max(contentTop, svBottom + minSheetViewH);
+
+                    if (!TryDrawAntetFromEmbeddedTemplate(
+                            tr, ms,
+                            insert.X, insert.Y, layoutMaxY,
+                            svLeft, svBottom, targetRight,
+                            st4SourcePath, ed,
+                            "BINA GORUNUS / KESIT",
+                            null,
+                            out _, out _, out _,
+                            scaleTwoTimes: false,
+                            useKolonAntetScaleOneHundred: false,
+                            useKalipAntetScaleOneHundred: false,
+                            fitSheetViewHeightToContent: true,
+                            antetScaleTextOverride: "1:200"))
+                    {
+                        ed.WriteMessage("\nBINAGORUNUS Hepsi: Antet yerlestirilemedi (icerik cizildi).");
+                    }
+
+                    tr.Commit();
+                }
+            }
+            catch (Exception ex)
+            {
+                ed.WriteMessage("\nBINAGORUNUS Hepsi: Cizilemedi: {0}", ex.Message);
+                return false;
+            }
+
+            ed.WriteMessage("\nBINAGORUNUS Hepsi: X/Y kesit + 4 gorunus (1:200), 1/50 antet icinde yerlestirildi.");
+            return true;
+        }
+
+        /// <summary>Görünüş geometrisini mevcut blok tanımına çizer (orijin = sol-alt).</summary>
+        private bool TryDrawBinaGorunusIntoBlock(
+            Transaction tr,
+            BlockTableRecord btrDef,
+            BinaGorunusBakis bakis,
+            out double uMin,
+            out double zMin,
+            out double spanU,
+            out double spanZ,
+            Editor ed = null,
+            string errPrefix = null)
+        {
+            uMin = zMin = spanU = spanZ = 0;
+            string tag = string.IsNullOrWhiteSpace(errPrefix) ? "BINAGORUNUS" : errPrefix.Trim();
+            if (tr == null || btrDef == null || _model?.Floors == null || _model.Floors.Count == 0)
+                return false;
+            if (_ntsDrawFactory == null)
+                _ntsDrawFactory = NetTopologySuite.NtsGeometryServices.Instance.CreateGeometryFactory();
+
             var faces = new List<BinaGorunusFace>();
             try
             {
@@ -82,13 +387,13 @@ namespace ST4PlanIdCiz
             }
             catch (Exception ex)
             {
-                ed.WriteMessage("\nBINAGORUNUS: Geometri toplanamadi: {0}", ex.Message);
+                ed?.WriteMessage("\n{0}: Geometri toplanamadi: {1}", tag, ex.Message);
                 return false;
             }
 
             if (faces.Count == 0)
             {
-                ed.WriteMessage("\nBINAGORUNUS: Cizilecek eleman bulunamadi.");
+                ed?.WriteMessage("\n{0}: Cizilecek eleman bulunamadi.", tag);
                 return false;
             }
 
@@ -132,7 +437,7 @@ namespace ST4PlanIdCiz
 
             if (visibleParts.Count == 0)
             {
-                ed.WriteMessage("\nBINAGORUNUS: Gorunur kontur olusmadi.");
+                ed?.WriteMessage("\n{0}: Gorunur kontur olusmadi.", tag);
                 return false;
             }
 
@@ -141,89 +446,50 @@ namespace ST4PlanIdCiz
                 env.ExpandToInclude(part.Geom.EnvelopeInternal);
             if (env.Width < 1.0 || env.Height < 1.0)
             {
-                ed.WriteMessage("\nBINAGORUNUS: Gorunus olcusu gecersiz.");
+                ed?.WriteMessage("\n{0}: Gorunus olcusu gecersiz.", tag);
                 return false;
             }
 
-            double uMin = env.MinX;
-            double zMin = env.MinY;
-            double spanU = env.Width;
+            uMin = env.MinX;
+            zMin = env.MinY;
+            spanU = env.Width;
+            spanZ = env.Height;
 
-            try
+            var shift = new BinaGorunusShiftFilter(-uMin, -zMin);
+            var ordered = visibleParts
+                .Select(p => (p.Geom, p.Depth, Tier: BinaGorunusDepthTier(p.Depth, depthMin, depthSpan)))
+                .OrderByDescending(p => p.Tier)
+                .ThenByDescending(p => p.Depth)
+                .ToList();
+
+            foreach (var part in ordered)
             {
-                using (var tr = db.TransactionManager.StartTransaction())
-                {
-                    EnsureLayers(tr, db);
-                    EnsureBinaGorunusLayers(tr, db);
-                    var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForWrite);
-                    string blockName = "BINAGORUNUS_" + Guid.NewGuid().ToString("N");
-                    while (bt.Has(blockName))
-                        blockName = "BINAGORUNUS_" + Guid.NewGuid().ToString("N");
-                    var btrDef = new BlockTableRecord { Name = blockName, Origin = Point3d.Origin };
-                    ObjectId blockId = bt.Add(btrDef);
-                    tr.AddNewlyCreatedDBObject(btrDef, true);
-
-                    var shift = new BinaGorunusShiftFilter(-uMin, -zMin);
-
-                    // Arka → orta → ön çiz (ön çizgiler üstte kalsın).
-                    var ordered = visibleParts
-                        .Select(p => (p.Geom, p.Depth, Tier: BinaGorunusDepthTier(p.Depth, depthMin, depthSpan)))
-                        .OrderByDescending(p => p.Tier)
-                        .ThenByDescending(p => p.Depth)
-                        .ToList();
-
-                    foreach (var part in ordered)
-                    {
-                        var drawG = part.Geom.Copy();
-                        drawG.Apply(shift);
-                        string layer = BinaGorunusLayerForTier(part.Tier);
-                        DrawGeometryRingsAsPolylines(
-                            tr, btrDef, drawG, layer,
-                            addHatch: false,
-                            exteriorRingsOnly: false,
-                            applySmallTriangleTrim: true);
-                    }
-
-                    // Tüm görünürün dış silueti — ön katmanda.
-                    Geometry allVisible = null;
-                    foreach (var part in visibleParts)
-                    {
-                        var g = part.Geom.Copy();
-                        g.Apply(shift);
-                        allVisible = allVisible == null ? g : BinaGorunusPolygonal(BinaGorunusUnion(allVisible, g));
-                    }
-                    if (allVisible != null && !allVisible.IsEmpty)
-                    {
-                        DrawGeometryRingsAsPolylines(
-                            tr, btrDef, allVisible, LayerGorunusOn,
-                            addHatch: false,
-                            exteriorRingsOnly: true,
-                            applySmallTriangleTrim: true);
-                    }
-
-                    var ms = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
-                    var br = new BlockReference(new Point3d(insert.X, insert.Y, 0), blockId)
-                    {
-                        ScaleFactors = new Scale3d(BinaGorunusScale),
-                        Layer = LayerGorunusOn
-                    };
-                    AppendEntity(tr, ms, br);
-
-                    double cx = insert.X + spanU * BinaGorunusScale * 0.5;
-                    DrawKesitTitleBelowSchematic(tr, ms, db, BinaGorunusTitle, cx, insert.Y - BinaGorunusTitleGapCm);
-                    DrawBinaGorunusFloorKots(tr, ms, db, insert.X, insert.Y, uMin, zMin, spanU);
-                    DrawBinaGorunusFloorNameLabels(tr, ms, db, insert.X, insert.Y, zMin);
-
-                    tr.Commit();
-                }
-            }
-            catch (Exception ex)
-            {
-                ed.WriteMessage("\nBINAGORUNUS: Cizilemedi: {0}", ex.Message);
-                return false;
+                var drawG = part.Geom.Copy();
+                drawG.Apply(shift);
+                string layer = BinaGorunusLayerForTier(part.Tier);
+                DrawGeometryRingsAsPolylines(
+                    tr, btrDef, drawG, layer,
+                    addHatch: false,
+                    exteriorRingsOnly: false,
+                    applySmallTriangleTrim: true);
             }
 
-            ed.WriteMessage("\nBINAGORUNUS: 1/200 gorunus yerlestirildi ({0}; on/orta/arka ton).", BinaGorunusBakisLabel(bakis));
+            Geometry allVisible = null;
+            foreach (var part in visibleParts)
+            {
+                var g = part.Geom.Copy();
+                g.Apply(shift);
+                allVisible = allVisible == null ? g : BinaGorunusPolygonal(BinaGorunusUnion(allVisible, g));
+            }
+            if (allVisible != null && !allVisible.IsEmpty)
+            {
+                DrawGeometryRingsAsPolylines(
+                    tr, btrDef, allVisible, LayerGorunusOn,
+                    addHatch: false,
+                    exteriorRingsOnly: true,
+                    applySmallTriangleTrim: true);
+            }
+
             return true;
         }
 
@@ -269,9 +535,10 @@ namespace ST4PlanIdCiz
         /// <summary>Görünüşün solunda kat kısa adları (şematik kesitteki gibi, sol kenara).</summary>
         private void DrawBinaGorunusFloorNameLabels(
             Transaction tr, BlockTableRecord btr, Database db,
-            double insertX, double insertY, double zMin)
+            double insertX, double insertY, double zMin, double scale = BinaGorunusScale)
         {
             if (_model?.Floors == null || _model.Floors.Count == 0) return;
+            if (scale <= 1e-9) scale = BinaGorunusScale;
             ObjectId styleId = GetOrCreateYaziBeykentTextStyle(tr, db);
             double xLabel = insertX - 18.0;
             double textH = 14.0;
@@ -283,7 +550,7 @@ namespace ST4PlanIdCiz
                     : (!string.IsNullOrWhiteSpace(floor.Name) ? floor.Name : floor.FloorNo.ToString());
                 if (string.IsNullOrWhiteSpace(name)) continue;
                 double zFloor = (_model.BuildingBaseKotu + floor.ElevationM) * 100.0;
-                double y = insertY + (zFloor - zMin) * BinaGorunusScale - 4.0;
+                double y = insertY + (zFloor - zMin) * scale - 4.0;
                 var txt = new DBText
                 {
                     Layer = LayerKesitIsmi,
@@ -315,19 +582,20 @@ namespace ST4PlanIdCiz
 
         private void DrawBinaGorunusFloorKots(
             Transaction tr, BlockTableRecord btr, Database db,
-            double insertX, double insertY, double uMin, double zMin, double spanU)
+            double insertX, double insertY, double uMin, double zMin, double spanU, double scale = BinaGorunusScale)
         {
+            if (scale <= 1e-9) scale = BinaGorunusScale;
             var raw = new List<double> { _model.BuildingBaseKotu * 100.0 };
             foreach (var floor in _model.Floors)
                 raw.Add((_model.BuildingBaseKotu + floor.ElevationM) * 100.0);
             var zsAsc = MergeKesitElevationZsAscending(raw, KesitKotMergeTolCm);
             if (zsAsc == null || zsAsc.Count == 0) return;
 
-            double minSepModel = KesitKotCrowdedSeparationMinCm / BinaGorunusScale;
+            double minSepModel = KesitKotCrowdedSeparationMinCm / scale;
             double[] crowded = BuildKesitKotCrowdedShiftForLowerElevation(
                 zsAsc, minSepModel, KesitKotCrowdedShiftLowerCm);
             ObjectId styleId = GetOrCreateYaziBeykentTextStyle(tr, db);
-            double xRight = insertX + spanU * BinaGorunusScale;
+            double xRight = insertX + spanU * scale;
             double xDatumBase = xRight + KesitKotDatumGapFromSectionCm + 35.0;
             const double rot = 0.0;
 
@@ -336,7 +604,7 @@ namespace ST4PlanIdCiz
                 double zElev = zsAsc[zi];
                 double extra = zi < crowded.Length ? crowded[zi] : 0.0;
                 double apexX = xDatumBase + extra;
-                double apexY = insertY + (zElev - zMin) * BinaGorunusScale;
+                double apexY = insertY + (zElev - zMin) * scale;
                 DrawKesitKotClassicSymbol(tr, btr, apexX, apexY, rot, 1.0);
                 double lxText = KesitKotTriHalfWidthCm;
                 double lyText = KesitKotTriHeightCm + KesitKotTextAboveExtensionCm;
@@ -358,6 +626,7 @@ namespace ST4PlanIdCiz
                 foreach (var slab in _model.Slabs)
                 {
                     if (GetSlabFloorNo(slab.SlabId) != floorNo) continue;
+                    if (ShouldOmitSlabFromBinaView(slab)) continue;
                     double zt = floorLevelCm + slab.OffsetFromFloorCm;
                     double th = slab.ThicknessCm > 0 ? slab.ThicknessCm : 15.0;
                     AddBinaGorunusPlan(faces, bakis, SlabFootprintPoly(slab), zt - th, zt);

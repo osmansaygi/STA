@@ -36,6 +36,7 @@ namespace ST4Yardimci
 
         public static void ShowOrActivate()
         {
+            if (!BaFormSession.TryEnter("PLANOLCU")) return;
             PlanOlcuSettings.EnsureLoaded();
             PlanOlcuSettings.Save();
             if (_instance == null || _instance.IsDisposed)
@@ -50,10 +51,14 @@ namespace ST4Yardimci
                 _instance.Visible = true;
                 _instance.BringToFront();
             }
+
+            BaFormSession.Attach("PLANOLCU", _instance);
+            BaFormSession.EndPick("PLANOLCU");
         }
 
         public static void Shutdown()
         {
+            BaFormSession.Release("PLANOLCU");
             if (_instance == null) return;
             try
             {
@@ -180,7 +185,10 @@ namespace ST4Yardimci
             {
                 try { PushSettings(); } catch { }
                 if (ReferenceEquals(_instance, this))
+                {
                     _instance = null;
+                    BaFormSession.Release("PLANOLCU");
+                }
             };
 
             try
@@ -405,6 +413,8 @@ namespace ST4Yardimci
                     _instance.BeginInvoke(new Action(HideTemporarily));
                     return;
                 }
+                
+                BaFormSession.BeginPick("PLANOLCU");
                 _instance.Visible = false;
             }
             catch { }
@@ -412,6 +422,7 @@ namespace ST4Yardimci
 
         public static void ShowAfterPick()
         {
+            BaFormSession.EndPick("PLANOLCU");
             try { ShowOrActivate(); } catch { }
         }
 

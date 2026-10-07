@@ -170,7 +170,7 @@ namespace ST4PlanIdCiz
         private Dictionary<int, Geometry> _kalip50Deneme1SlabKesilmisBySlabId;
         /// <summary>DENEME1: son finalize’da döşeme hattı 4 kenarı → sınır aksı, kiriş/perde eşleşmesi ve iç ofset (cm).</summary>
         private Dictionary<int, Deneme1DosemeHattiEdgeAxisRecord[]> _kalip50Deneme1DosemeHattiEdgeAxisRecordsBySlabId;
-        /// <summary>KALIP50 bina şema kesiti: blok tanımı bir kez; her antet üstüne ayrı INSERT.</summary>
+        /// <summary>KALIP50 bina şema kesiti: X yönü blok (bir kez; her antette INSERT).</summary>
         private ObjectId _kalip50BinaSemaBlockId = ObjectId.Null;
         private double _kalip50BinaSemaAminT;
         private double _kalip50BinaSemaMinZT;
@@ -178,6 +178,13 @@ namespace ST4PlanIdCiz
         private double _kalip50BinaSemaSpanZT;
         /// <summary>Şema blok içi A ekseninde kesit genişlik ortası (originX=0, amin çıkarılmış blok cm).</summary>
         private double _kalip50BinaSemaLabelXBlock;
+        /// <summary>KALIP50 bina şema kesiti: Y yönü blok.</summary>
+        private ObjectId _kalip50BinaKesitYBlockId = ObjectId.Null;
+        private double _kalip50BinaKesitYAminT;
+        private double _kalip50BinaKesitYMinZT;
+        private double _kalip50BinaKesitYSpanAT;
+        private double _kalip50BinaKesitYSpanZT;
+        private double _kalip50BinaKesitYLabelXBlock;
         /// <summary>KALIP50: kot yüksekliğine göre sıralı model kat indeksleri (tekrarlayan OrderBy maliyetini önler).</summary>
         private List<int> _kalip50FloorIdxByElevationAsc;
         /// <summary>KALIP50: model kat indeksi → elevation sırasındaki pozisyon (0 = en alçak).</summary>
@@ -225,6 +232,8 @@ namespace ST4PlanIdCiz
         private const double AntetDxfSheetViewOutYmin = 1608.94236737828;
         private const double AntetDxfSheetViewOutYmax = 5808.942367378282;
         private const double AntetDxfSheetViewXmax = 4857.138603748386;
+        /// <summary>Antetli çizimlerde yerleşim tıklaması: SheetViewOut sol-alt köşesinin 50 cm solu.</summary>
+        private const double AntetYerlesimSheetViewOutSolPayCm = 50.0;
         /// <summary>KALIP antet ve genel gömülü antet şablonu: SheetViewOut başlangıç iç yüksekliği (cm).</summary>
         private const double TemelAntetBaslangicYukseklikCm = 4500.0;
         /// <summary>TEMEL50ST4 / TEMEL100ST4 antet: SheetViewOut başlangıç iç yüksekliği (cm); germe layoutMaxY aşımında adım adım uzar.</summary>
@@ -591,7 +600,101 @@ namespace ST4PlanIdCiz
             return created;
         }
 
-        public void Draw(Database db, Editor ed)
+        /// <summary>ST4PLANID: sol kesit tahminine göre plan ofseti. Antet sol kenarı sonradan oturtulur.</summary>
+        private double PredictSt4PlanIdOffsetX(
+            FloorInfo floor,
+            Geometry floorUnion,
+            (double Xmin, double Xmax, double Ymin, double Ymax) ext,
+            double nextOuterLeft,
+            double antetOutDx)
+        {
+            double l0 = ext.Xmin;
+            if (floor != null && floorUnion != null &&
+                TryComputeKalipLeftSectionMinXForAntetAnchor(floor, floorUnion, ext, 0.0, out double pred))
+                l0 = pred;
+            double targetSheetViewLeft = nextOuterLeft - antetOutDx;
+            return targetSheetViewLeft + 140.0 - l0;
+        }
+
+        private static string BuildPlanIdAntetTitle(FloorInfo floor)
+        {
+            string katAdi = floor == null ? string.Empty : (floor.Name ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(katAdi)) katAdi = "KAT";
+            katAdi = Regex.Replace(katAdi, @"\bNORMAL\b", string.Empty, RegexOptions.IgnoreCase).Trim();
+            katAdi = Regex.Replace(katAdi, @"(\d+)\.\s+", "$1.");
+            return katAdi + " PLANI";
+        }
+
+        /// <summary>Kalıp/temel ile aynı antet. SheetViewOut sol kenarı <paramref name="nextOuterLeft"/> olur; sonraki antet 50 cm sağda.</summary>
+        private void FinishSt4PlanIdAntet(
+            Transaction tr,
+            BlockTableRecord btr,
+            HashSet<ObjectId> idsBeforeSheet,
+            double leftSectionMinX,
+            double layMinX,
+            double layMinY,
+            double layMaxY,
+            double offsetX,
+            double offsetY,
+            (double Xmin, double Xmax, double Ymin, double Ymax) axisExt,
+            string title,
+            string st4SourcePath,
+            Editor ed,
+            ref double nextOuterLeft)
+        {
+            double antetSheetViewLeft = leftSectionMinX - 140.0;
+            double antetBottom = GetLowestHorizontalColumnAxisY(offsetY, axisExt) - 600.0;
+            double antetTargetRight = axisExt.Xmax + offsetX + AntetTargetRightExtraCm;
+            if (antetTargetRight < antetSheetViewLeft + 10.0)
+                antetTargetRight = antetSheetViewLeft + 10.0;
+
+            bool ok = TryDrawAntetFromEmbeddedTemplate(
+                tr, btr, layMinX, layMinY, layMaxY,
+                antetSheetViewLeft, antetBottom, antetTargetRight,
+                st4SourcePath, ed, title, null,
+                out double outerLeft, out double outerRight, out _,
+                scaleTwoTimes: false);
+            if (!ok)
+            {
+                double contentRight = Math.Max(axisExt.Xmax + offsetX, layMinX);
+                nextOuterLeft = contentRight + Kolon50AntetGapBetweenSheetsCm;
+                return;
+            }
+
+            double dx = nextOuterLeft - outerLeft;
+            if (Math.Abs(dx) > 0.05)
+                ShiftBlockEntitiesNotIn(tr, btr, idsBeforeSheet, dx, 0.0);
+            nextOuterLeft = outerRight + dx + Kolon50AntetGapBetweenSheetsCm;
+        }
+
+        private static HashSet<ObjectId> SnapshotBlockIds(BlockTableRecord btr)
+        {
+            var ids = new HashSet<ObjectId>();
+            if (btr == null) return ids;
+            foreach (ObjectId id in btr)
+                if (id.IsValid) ids.Add(id);
+            return ids;
+        }
+
+        private static void ShiftBlockEntitiesNotIn(Transaction tr, BlockTableRecord btr, HashSet<ObjectId> idsBefore, double dx, double dy)
+        {
+            if (tr == null || btr == null || idsBefore == null) return;
+            if (Math.Abs(dx) < 1e-6 && Math.Abs(dy) < 1e-6) return;
+            var disp = Matrix3d.Displacement(new Vector3d(dx, dy, 0));
+            foreach (ObjectId id in btr)
+            {
+                if (!id.IsValid || idsBefore.Contains(id)) continue;
+                try
+                {
+                    var ent = tr.GetObject(id, OpenMode.ForWrite, false) as Entity;
+                    if (ent == null || ent.IsErased) continue;
+                    ent.TransformBy(disp);
+                }
+                catch { }
+            }
+        }
+
+        public void Draw(Database db, Editor ed, Point3d baseInsertPoint, string st4SourcePath = null)
         {
             _ntsDrawFactory = NtsGeometryServices.Instance.CreateGeometryFactory();
             try
@@ -602,20 +705,34 @@ namespace ST4PlanIdCiz
                 var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
                 var btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
 
-                var ext = CalculateBaseExtents();
-                double floorWidth = (ext.Xmax - ext.Xmin) + 80.0;
-                double floorGap = 1000.0;
+                if (_model.Floors.Count == 0)
+                {
+                    ed?.WriteMessage("\nST4PLANID: Cizilecek kat bulunamadi.");
+                    return;
+                }
+
+                if (!TryGetEmbeddedAntetSheetViewOutOffsets(out double antetOutDx, out double antetOutDy, ed))
+                {
+                    antetOutDx = 0.0;
+                    antetOutDy = AntetDxfSheetViewOutYmin - AntetDxfSheetViewYmin;
+                }
+
+                var firstForY = _model.Floors[0];
+                Geometry firstUnionForY = BuildFloorElementUnion(firstForY);
+                var firstExtForY = GetAksSiniriEnvelope(firstUnionForY);
+                double yRef0 = GetLowestHorizontalColumnAxisY(0.0, firstExtForY);
+                double offsetY = baseInsertPoint.Y - antetOutDy - yRef0 + 600.0;
+                double nextOuterLeft = baseInsertPoint.X + AntetYerlesimSheetViewOutSolPayCm;
 
                 bool hasFoundations = _model.ContinuousFoundations.Count > 0 || _model.SlabFoundations.Count > 0 || _model.TieBeams.Count > 0 || _model.SingleFootings.Count > 0;
-                int planStartIndex = hasFoundations ? 1 : 0;
 
-                if (hasFoundations && _model.Floors.Count > 0)
+                if (hasFoundations)
                 {
-                    double offsetX = 0.0;
-                    double offsetY = 0.0;
+                    var idsBefore = SnapshotBlockIds(btr);
                     var firstFloor = _model.Floors[0];
                     Geometry firstFloorUnion = BuildFloorElementUnion(firstFloor);
                     var firstFloorAxisExt = GetAksSiniriEnvelope(firstFloorUnion);
+                    double offsetX = PredictSt4PlanIdOffsetX(firstFloor, firstFloorUnion, firstFloorAxisExt, nextOuterLeft, antetOutDx);
                     DrawAxes(tr, btr, offsetX, offsetY, firstFloorAxisExt);
                     DrawColumns(tr, btr, firstFloor, offsetX, offsetY);
                     DrawWallsForFloor(tr, btr, firstFloor, offsetX, offsetY);
@@ -631,18 +748,20 @@ namespace ST4PlanIdCiz
                     DrawPerdeLabelsForFloor(tr, btr, firstFloor, offsetX, offsetY, kolonPerdeUnion, drawPerdeKot: false);
                     DrawFloorTitle(tr, btr, firstFloor, offsetX, offsetY, firstFloorAxisExt, isFoundationPlan: true);
                     DrawPlanSections(tr, btr, db, firstFloor, offsetX, offsetY, firstFloorAxisExt, isFoundationPlan: true, firstFloorUnion,
-                        out _, out _, out _, out _, out _);
+                        out double layMinX, out _, out double layMinY, out double layMaxY, out double leftSectionMinX);
+                    FinishSt4PlanIdAntet(tr, btr, idsBefore, leftSectionMinX, layMinX, layMinY, layMaxY,
+                        offsetX, offsetY, firstFloorAxisExt, "TEMEL PLANI", st4SourcePath, ed, ref nextOuterLeft);
                 }
 
                 // Benzer kat birleştirme şimdilik kapalı; açmak için GetFormworkFloorGroups() ile döngüyü gruplar üzerinden çalıştır, labelFloor = en alt kat, DrawSimilarFloorsNote ile not yaz.
                 for (int floorIdx = 0; floorIdx < _model.Floors.Count; floorIdx++)
                 {
+                    var idsBefore = SnapshotBlockIds(btr);
                     var floor = _model.Floors[floorIdx];
-                    double offsetX = (floorIdx + planStartIndex) * (floorWidth + floorGap);
-                    double offsetY = 0.0;
-
                     Geometry elemUnion = BuildFloorElementUnion(floor);
                     var floorAxisExt = GetAksSiniriEnvelope(elemUnion);
+                    double offsetX = PredictSt4PlanIdOffsetX(floor, elemUnion, floorAxisExt, nextOuterLeft, antetOutDx);
+
                     DrawAxes(tr, btr, offsetX, offsetY, floorAxisExt);
                     DrawColumns(tr, btr, floor, offsetX, offsetY);
                     DrawBeamsAndWalls(tr, btr, floor, offsetX, offsetY);
@@ -651,7 +770,9 @@ namespace ST4PlanIdCiz
                     DrawUnifiedLayer(tr, btr, floor, offsetX, offsetY, elemUnion);
                     DrawFloorTitle(tr, btr, floor, offsetX, offsetY, floorAxisExt, isFoundationPlan: false);
                     DrawPlanSections(tr, btr, db, floor, offsetX, offsetY, floorAxisExt, isFoundationPlan: false, elemUnion,
-                        out _, out _, out _, out _, out _);
+                        out double layMinX, out _, out double layMinY, out double layMaxY, out double leftSectionMinX);
+                    FinishSt4PlanIdAntet(tr, btr, idsBefore, leftSectionMinX, layMinX, layMinY, layMaxY,
+                        offsetX, offsetY, floorAxisExt, BuildPlanIdAntetTitle(floor), st4SourcePath, ed, ref nextOuterLeft);
                 }
 
                 ApplyPlanStructuralLayerDrawOrder(tr, btr);
@@ -687,9 +808,12 @@ namespace ST4PlanIdCiz
                     GprPerdePanelDonatiParser.TryParse(gprPerdePath, out _gprPerdePanelDonati, out gprErr);
                     GprPerdePanelDonatiParser.TryReadMaterials(gprPerdePath, out _rebarFckMPa, out _rebarFykMPa);
                 }
+                ApplyRebarMaterialsFromSt4(st4SourcePath);
+                EnsureKapamaPerdeDonatiFromSwx(st4SourcePath);
                 int nPanel = _gprPerdePanelDonati != null ? _gprPerdePanelDonati.Count : 0;
                 if (ed != null)
-                    ed.WriteMessage("\nKOLON50ST4 GPR panel donati: {0} perde. C{1:0}/S{2:0}.{3}", nPanel,
+                    ed.WriteMessage("\nKOLON50ST4 {0} panel donati: {1} perde. C{2:0}/S{3:0}.{4}",
+                        _kapamaDonatiFromSwx ? "SWX" : "GPR", nPanel,
                         _rebarFckMPa, _rebarFykMPa,
                         nPanel == 0 && !string.IsNullOrEmpty(gprErr) ? " " + gprErr : "");
             }
@@ -717,7 +841,7 @@ namespace ST4PlanIdCiz
                     double baseDy = baseInsertPoint.Y - antetOutDy + 600.0 - firstLowestHorizontalAxisAtZero;
 
                     var copyLayouts = new List<(FloorInfo floor, double offsetX, double offsetY, (double Xmin, double Xmax, double Ymin, double Ymax) floorAxisExt)>();
-                    double? nextAntetOuterLeftTarget = baseInsertPoint.X;
+                    double? nextAntetOuterLeftTarget = baseInsertPoint.X + AntetYerlesimSheetViewOutSolPayCm;
                     double? antetOuterLeftDeltaFromSheetViewLeft = antetOutDx;
                     double kolonGprTableMaxAntetOuterTop = double.NegativeInfinity;
                     bool kolonGprTableHasAntetTop = false;
@@ -856,6 +980,8 @@ namespace ST4PlanIdCiz
             _kalipPlanScale = scaleMode;
             _kalip50BinaSemaBlockId = ObjectId.Null;
             _kalip50BinaSemaLabelXBlock = 0.0;
+            _kalip50BinaKesitYBlockId = ObjectId.Null;
+            _kalip50BinaKesitYLabelXBlock = 0.0;
             ClearKalip50FormworkSessionCaches();
             _drawnBeamGeometriesForSlabCut = null;
             _drawnWallGeometriesForSlabCut = null;
@@ -910,12 +1036,12 @@ namespace ST4PlanIdCiz
                     }
                     else if (TryComputeKalipLeftSectionMinXForAntetAnchor(firstFloor, firstUnion, firstExt, 0, out double L0))
                     {
-                        // Yerleşim referansı: SheetViewOut katmanı dış çerçevesinin sol-altı = kullanıcı noktası (şablonda SheetView’a göre dx,dy; KALIP100 antet 2× ile aynı katsayı).
+                        // Yerleşim: SheetViewOut sol-altı = tıklama + 50 cm (X). KALIP100 antet 2× ile aynı katsayı.
                         double kalipSvOutDx = 0.0;
                         double kalipSvOutDy = AntetDxfSheetViewOutYmin - AntetDxfSheetViewYmin;
                         TryGetEmbeddedAntetSheetViewOutOffsets(out kalipSvOutDx, out kalipSvOutDy, ed);
                         double yRefAntetBottom = GetLowestHorizontalColumnAxisY(0, firstExt);
-                        cursorX = baseInsertPoint.X - kalipAntetSpacingMul * kalipSvOutDx + firstExt.Xmin - L0 + 140.0 * kalipAntetSpacingMul;
+                        cursorX = baseInsertPoint.X + AntetYerlesimSheetViewOutSolPayCm - kalipAntetSpacingMul * kalipSvOutDx + firstExt.Xmin - L0 + 140.0 * kalipAntetSpacingMul;
                         baseDy = baseInsertPoint.Y - kalipAntetSpacingMul * kalipSvOutDy - yRefAntetBottom + 600.0 * kalipAntetSpacingMul;
                     }
                     else
@@ -937,6 +1063,8 @@ namespace ST4PlanIdCiz
                         !string.IsNullOrEmpty(gprPathDoseme) && File.Exists(gprPathDoseme) &&
                         GprDosemeDonatiParser.TryParse(gprPathDoseme, out var dosemeMap, out _))
                         gprKalipDosemeDonati = dosemeMap;
+                    if (!layoutFlags.SingleCopyPerFloor)
+                        gprKalipDosemeDonati = MergeKalipDosemeDonatiPreferDmx(gprKalipDosemeDonati, st4SourcePath, ed);
 
                     int gprDonatiSlabMatchCountTotal = 0;
                     int kalip50BinaSemaKesitSayisi = 0;
@@ -1127,7 +1255,7 @@ namespace ST4PlanIdCiz
                     }
                     string binaSemaScaleText = scaleMode == KalipPlanScale.Hundred ? "1:100" : "1:200";
                     string binaSemaNote = kalip50BinaSemaKesitSayisi > 0
-                        ? string.Format(CultureInfo.InvariantCulture, " Bina sema kesiti ({0}): {1} adet (her antet ustu).", binaSemaScaleText, kalip50BinaSemaKesitSayisi)
+                        ? string.Format(CultureInfo.InvariantCulture, " Bina kesiti X+Y ({0}): {1} antet (ici sol-ust).", binaSemaScaleText, kalip50BinaSemaKesitSayisi)
                         : string.Empty;
                     string kalipCmdTag = scaleMode == KalipPlanScale.Hundred ? "KALIP100ST4" : "KALIP50ST4";
                     string msgTag = string.IsNullOrWhiteSpace(completionMessageCmdTag) ? kalipCmdTag : completionMessageCmdTag.Trim();
@@ -1162,6 +1290,53 @@ namespace ST4PlanIdCiz
                 _mushroomBeamGeometriesForBoundary = null;
                 ClearKalip50FormworkSessionCaches();
             }
+        }
+
+        /// <summary>
+        /// /Materials/ satırının hemen altı: 250,4200,... → C25 ve fyk 420 MPa.
+        /// GPR okuması daha önce geldiyse bunun üzerine yazar.
+        /// </summary>
+        private void ApplyRebarMaterialsFromSt4(string st4SourcePath)
+        {
+            if (!TryReadSt4MaterialGrades(st4SourcePath, out double fck, out double fyk)) return;
+            _rebarFckMPa = fck;
+            _rebarFykMPa = fyk;
+        }
+
+        private static bool TryReadSt4MaterialGrades(string st4SourcePath, out double fckMPa, out double fykMPa)
+        {
+            fckMPa = 0;
+            fykMPa = 0;
+            if (string.IsNullOrWhiteSpace(st4SourcePath) || !File.Exists(st4SourcePath)) return false;
+            try
+            {
+                bool inMat = false;
+                foreach (string raw in File.ReadLines(st4SourcePath))
+                {
+                    string line = raw ?? string.Empty;
+                    if (!inMat)
+                    {
+                        if (line.TrimStart().StartsWith("/Materials/", StringComparison.OrdinalIgnoreCase))
+                            inMat = true;
+                        continue;
+                    }
+                    if (line.TrimStart().StartsWith("/")) return false;
+                    if (line.Trim().Length == 0) continue;
+                    var p = line.Split(',');
+                    if (p.Length < 2) return false;
+                    if (!double.TryParse(p[0].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double cKg)
+                        || !double.TryParse(p[1].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double sKg))
+                        return false;
+                    double fck = cKg / 10.0;
+                    double fyk = sKg / 10.0;
+                    if (fck < 16.0 || fck > 80.0 || fyk < 200.0 || fyk > 700.0) return false;
+                    fckMPa = fck;
+                    fykMPa = fyk;
+                    return true;
+                }
+            }
+            catch { }
+            return false;
         }
 
         /// <summary>ST4 ile aynı klasördeki .GPR / .gpr dosyası (ST4 adıyla).</summary>
@@ -1202,6 +1377,146 @@ namespace ST4PlanIdCiz
                 else sb.Append(ch);
             }
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// Kalıp döşeme yazısı: ST4 ile aynı adlı <c>.DMX</c>. GPR hücreleri DMX ile aynı çap/aralık sırasındaysa
+        /// (kesik satır DMX'in başı sayılır) DMX metni yazılır; GPR'de olup DMX'te boş olan yön GPR'de kalır.
+        /// DMX +140/+142 konstrüktif montaj: varsa tüm döşeme X'ine <c>(Mon.)</c> eklenir.
+        /// Kayıt sayısı veya bir hücre uyuşmazsa sözlük olduğu gibi bırakılır.
+        /// </summary>
+        private Dictionary<string, GprDosemeDonatiXy> MergeKalipDosemeDonatiPreferDmx(
+            Dictionary<string, GprDosemeDonatiXy> gpr,
+            string st4SourcePath,
+            Editor ed)
+        {
+            string dmxPath = DmxDosemeDonati.ResolvePath(st4SourcePath);
+            if (string.IsNullOrEmpty(dmxPath) || _model?.Slabs == null) return gpr;
+            var recs = DmxDosemeDonati.Read(dmxPath);
+            if (recs.Count == 0) return gpr;
+            if (recs.Count != _model.Slabs.Count)
+            {
+                ed?.WriteMessage(
+                    "\nKALIP50: DMX kayit {0}, ST4 doseme {1} (ST4 ile ayni adli DMX). Doseme donatisi GPR'de birakildi.",
+                    recs.Count, _model.Slabs.Count);
+                return gpr;
+            }
+
+            int conflict = 0;
+            int shorter = 0;
+            int compared = 0;
+            for (int i = 0; i < _model.Slabs.Count; i++)
+            {
+                SlabInfo slab = _model.Slabs[i];
+                FloorInfo floor = FloorForSlab(slab);
+                if (floor == null || gpr == null || gpr.Count == 0) continue;
+                if (!TryGetGprDonatiXyForSlab(gpr, floor, slab, 2, out GprDosemeDonatiXy xy)) continue;
+                bool any = false;
+                if (!string.IsNullOrWhiteSpace(xy.X))
+                {
+                    any = true;
+                    if (!DmxDosemeDonati.CellAgrees(xy.X, recs[i].X, out bool shortX)) conflict++;
+                    else if (shortX) shorter++;
+                }
+                if (!string.IsNullOrWhiteSpace(xy.Y))
+                {
+                    any = true;
+                    if (!DmxDosemeDonati.CellAgrees(xy.Y, recs[i].Y, out bool shortY)) conflict++;
+                    else if (shortY) shorter++;
+                }
+                if (any) compared++;
+            }
+            if (gpr != null && gpr.Count > 0 && compared == 0)
+            {
+                ed?.WriteMessage("\nKALIP50: DMX anahtari GPR doseme satiri ile eslesmedi. GPR birakildi.");
+                return gpr;
+            }
+            if (conflict > 0)
+            {
+                ed?.WriteMessage(
+                    "\nKALIP50: DMX ile GPR doseme donatisi uyusmadi ({0} hucre). GPR birakildi.",
+                    conflict);
+                return gpr;
+            }
+
+            var dict = gpr != null
+                ? new Dictionary<string, GprDosemeDonatiXy>(gpr, StringComparer.OrdinalIgnoreCase)
+                : new Dictionary<string, GprDosemeDonatiXy>(StringComparer.OrdinalIgnoreCase);
+            int written = 0;
+            for (int i = 0; i < _model.Slabs.Count; i++)
+            {
+                string x = DmxDosemeDonati.Format(recs[i].X);
+                string y = DmxDosemeDonati.Format(recs[i].Y);
+                if (x.Length == 0 && y.Length == 0) continue;
+                SlabInfo slab = _model.Slabs[i];
+                FloorInfo floor = FloorForSlab(slab);
+                if (floor == null) continue;
+                if (dict.Count > 0 && TryGetGprDonatiXyForSlab(dict, floor, slab, 2, out GprDosemeDonatiXy old))
+                {
+                    if (x.Length == 0) x = old.X ?? string.Empty;
+                    if (y.Length == 0) y = old.Y ?? string.Empty;
+                }
+                var xy = new GprDosemeDonatiXy(x, y);
+                foreach (string key in DosemeDonatiKeyCandidates(floor, slab))
+                    dict[key] = xy;
+                written++;
+            }
+            if (written == 0) return gpr;
+            bool hasMontaj = false;
+            for (int i = 0; i < recs.Count && !hasMontaj; i++)
+            {
+                var xs = recs[i].X;
+                if (xs == null) continue;
+                for (int j = 0; j < xs.Count; j++)
+                {
+                    if (xs[j].Kind == DosemeDonatiKind.Montaj) { hasMontaj = true; break; }
+                }
+            }
+            string montajNote = hasMontaj ? ", konstruktif montaj tum dosemelere" : "";
+            if (gpr == null || gpr.Count == 0)
+                ed?.WriteMessage("\nKALIP50: GPR yok, doseme donatisi DMX ({0} doseme{1}).", written, montajNote);
+            else if (shorter > 0)
+                ed?.WriteMessage("\nKALIP50: doseme donatisi DMX ({0} doseme, GPR'de kesik {1} hucre tamamlandi{2}).", written, shorter, montajNote);
+            else
+                ed?.WriteMessage("\nKALIP50: doseme donatisi DMX ({0} doseme, GPR ile ayni{1}).", written, montajNote);
+            return dict;
+        }
+
+        private FloorInfo FloorForSlab(SlabInfo slab)
+        {
+            if (slab == null || _model?.Floors == null) return null;
+            int floorNo = GetSlabFloorNo(slab.SlabId);
+            for (int i = 0; i < _model.Floors.Count; i++)
+            {
+                if (_model.Floors[i].FloorNo == floorNo) return _model.Floors[i];
+            }
+            return null;
+        }
+
+        private IEnumerable<string> DosemeDonatiKeyCandidates(FloorInfo floor, SlabInfo slab)
+        {
+            string raw = GetKalipGprStoryRawForDosemeKey(floor);
+            string core = raw.TrimEnd('-');
+            int n = GetSlabNumero(slab.SlabId);
+            var ci = CultureInfo.InvariantCulture;
+            string[] nums =
+            {
+                n.ToString(ci),
+                n.ToString("D2", ci),
+                n.ToString("D3", ci),
+                n < 10000 ? n.ToString("D4", ci) : n.ToString("D3", ci)
+            };
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string num in nums)
+            {
+                string[] keys = { "D" + core + "-" + num, "D" + raw + num, "D" + core + num };
+                foreach (string k in keys)
+                {
+                    if (string.IsNullOrEmpty(k)) continue;
+                    string u = k.ToUpperInvariant();
+                    if (seen.Add(u)) yield return u;
+                }
+            }
         }
 
         /// <summary>
@@ -1597,6 +1912,10 @@ namespace ST4PlanIdCiz
         /// GPR hücresini (X kırmızı / Y mavi) <c>+</c> parçalarına böler;
         /// <see cref="TryGetSlabKirmiziDonatiReferansCizgileri"/> / <see cref="TryGetSlabMaviDonatiReferansCizgileri"/> ile aynı üst-sol / alt-sağ kuralı.
         /// </summary>
+        /// <param name="yBakısSagdanSola">
+        /// true: Y (mavi) — bakış planda sağ (+X); yazı θ∈(−π/2,π/2] (düşey 90°);
+        /// &gt;90° +X çevirmesinde yanlar +X’e göre düzeltilir; düz bakış dışı, pilye arası, montaj karşı dışı.
+        /// </param>
         private static void DrawKalipGprDonatiCellAlongReferansCizgileri(
             Transaction tr,
             BlockTableRecord btr,
@@ -1613,7 +1932,8 @@ namespace ST4PlanIdCiz
             GeometryFactory dosemeFactory,
             short aciColor,
             string gprTextLayerName,
-            double referansDigerRenkCizgiUzunlukCm)
+            double referansDigerRenkCizgiUzunlukCm,
+            bool yBakısSagdanSola = false)
         {
             if (string.IsNullOrWhiteSpace(donatiCell)) return;
             var parts = DosemeDonatiParcalari.SplitDonatiCell(donatiCell);
@@ -1630,15 +1950,44 @@ namespace ST4PlanIdCiz
                 return;
             }
             Vector2d uAlong = du.GetNormal();
-            double rotAlong = Math.Atan2(uAlong.Y, uAlong.X);
             Point2d midUst = new Point2d((ust1.X + ust2.X) * 0.5, (ust1.Y + ust2.Y) * 0.5);
             Point2d midAlt = new Point2d((alt1.X + alt2.X) * 0.5, (alt1.Y + alt2.Y) * 0.5);
             Vector2d vUstTenAltCizgiye = new Vector2d(midAlt.X - midUst.X, midAlt.Y - midUst.Y);
-            Vector2d nTowardStrip = vUstTenAltCizgiye.Length > 1e-9
+            // Finalize: üst=sol, alt=sağ (+X tercihli ilerleme). >90° çizgide +X çevirmesi yanları tersleyebilir.
+            Vector2d nAltDis = vUstTenAltCizgiye.Length > 1e-9
                 ? vUstTenAltCizgiye.GetNormal()
                 : new Vector2d(uAlong.Y, -uAlong.X).GetNormal();
-            Vector2d nAwayFromStripUst = new Vector2d(-nTowardStrip.X, -nTowardStrip.Y);
+            Vector2d nUstDis = new Vector2d(-nAltDis.X, -nAltDis.Y);
             Point2d OffN(Point2d p, Vector2d n, double t) => new Point2d(p.X + n.X * t, p.Y + n.Y * t);
+
+            // Y: bakış planda sağ (+X) yan. Düz/pilye/montaj/ilave bu yana göre.
+            Point2d midBakıs = midAlt;
+            Point2d midKarsi = midUst;
+            Vector2d nBakısDis = nAltDis;
+            Vector2d nKarsiDis = nUstDis;
+            Point2d karsi1 = ust1, karsi2 = ust2;
+            if (yBakısSagdanSola && nAltDis.DotProduct(new Vector2d(1, 0)) < 0)
+            {
+                midBakıs = midUst;
+                midKarsi = midAlt;
+                nBakısDis = nUstDis;
+                nKarsiDis = nAltDis;
+                karsi1 = alt1;
+                karsi2 = alt2;
+            }
+
+            // Yazı: sağdan okunur → θ ∈ (−π/2, π/2] (düşey = 90°).
+            // +X tercihi sonrası ang<0 ≈ orijinal >90° çizgi → yalnız yazıyı +π (ters okuma).
+            double rotAlong = Math.Atan2(uAlong.Y, uAlong.X);
+            if (yBakısSagdanSola)
+            {
+                bool over90 = rotAlong < -1e-9;
+                if (rotAlong > Math.PI / 2 + 1e-9) rotAlong -= Math.PI;
+                if (rotAlong <= -Math.PI / 2 + 1e-9) rotAlong += Math.PI;
+                if (over90)
+                    rotAlong += Math.PI;
+            }
+
             var duk = new List<string>();
             var pil = new List<string>();
             var mon = new List<string>();
@@ -1659,55 +2008,93 @@ namespace ST4PlanIdCiz
                 }
             }
             double rowStep = textH + KalipGprDonatiYaziMaviSatirGapCm;
+
+            // Bakış sağı = izleyicinin sağı (planda genelde üst); sol = planda alt.
+            Point2d sagKarsiEnd = karsi2;
+            Point2d solKarsiEnd = karsi1;
+            Vector2d alongForIlave = uAlong;
+            if (yBakısSagdanSola)
+            {
+                Vector2d lookDir = nKarsiDis;
+                Vector2d viewerRight = new Vector2d(lookDir.Y, -lookDir.X);
+                if (viewerRight.Length > 1e-12) viewerRight = viewerRight.GetNormal();
+                double d1 = (karsi1.X - midKarsi.X) * viewerRight.X + (karsi1.Y - midKarsi.Y) * viewerRight.Y;
+                if (d1 >= 0)
+                {
+                    sagKarsiEnd = karsi1;
+                    solKarsiEnd = karsi2;
+                }
+                else
+                {
+                    sagKarsiEnd = karsi2;
+                    solKarsiEnd = karsi1;
+                }
+                alongForIlave = viewerRight;
+            }
+            else
+            {
+                sagKarsiEnd = ust2;
+                solKarsiEnd = ust1;
+                nBakısDis = nAltDis;
+                nKarsiDis = nUstDis;
+                midBakıs = midAlt;
+                midKarsi = midUst;
+            }
+
+            // Pilye: iki mavi arası (karşı çizgiden bakışa doğru).
             for (int i = 0; i < pil.Count; i++)
             {
                 double off = KalipGprDonatiYaziMaviPilyeUstCizgiGapCm + i * rowStep;
-                Point2d pos = OffN(midUst, nTowardStrip, off);
+                Point2d pos = OffN(midKarsi, nBakısDis, off);
                 AppendKalipGprDonatiColoredLine(tr, btr, db, textStyleId, gprTextLayerName, pil[i], pos.X, pos.Y, aciColor, textH, rotAlong);
             }
+            // Düz: bakış altı = bakış yanındaki mavi çizginin dışı.
             for (int i = 0; i < duk.Count; i++)
             {
                 double off = KalipGprDonatiYaziMaviDuzAltCizgiGapCm + i * rowStep;
-                Point2d pos = OffN(midAlt, nTowardStrip, off);
+                Point2d pos = OffN(midBakıs, nBakısDis, off);
                 AppendKalipGprDonatiColoredLine(tr, btr, db, textStyleId, gprTextLayerName, duk[i], pos.X, pos.Y, aciColor, textH, rotAlong);
             }
+            // Sağ ilave: karşı (üst) dışı + bakış sağı (planda üst).
             for (int i = 0; i < sag.Count; i++)
             {
                 Point2d basePos = new Point2d(
-                    ust2.X + uAlong.X * KalipGprDonatiYaziMaviIlaveKoseCm + nAwayFromStripUst.X * KalipGprDonatiYaziMaviIlaveKoseCm,
-                    ust2.Y + uAlong.Y * KalipGprDonatiYaziMaviIlaveKoseCm + nAwayFromStripUst.Y * KalipGprDonatiYaziMaviIlaveKoseCm);
+                    sagKarsiEnd.X + alongForIlave.X * KalipGprDonatiYaziMaviIlaveKoseCm + nKarsiDis.X * KalipGprDonatiYaziMaviIlaveKoseCm,
+                    sagKarsiEnd.Y + alongForIlave.Y * KalipGprDonatiYaziMaviIlaveKoseCm + nKarsiDis.Y * KalipGprDonatiYaziMaviIlaveKoseCm);
                 Point2d pos = new Point2d(
-                    basePos.X + uAlong.X * i * rowStep * 0.35,
-                    basePos.Y + uAlong.Y * i * rowStep * 0.35);
+                    basePos.X + alongForIlave.X * i * rowStep * 0.35,
+                    basePos.Y + alongForIlave.Y * i * rowStep * 0.35);
                 pos = NudgeKalipGprDonatiIlaveIntoSlab(kesilmisDoseme, dosemeFactory, pos, uAlong, sag[i], textH,
-                    dirAlongInterior: new Vector2d(-uAlong.X, -uAlong.Y), dirTowardSlabInteriorAlt: nTowardStrip);
+                    dirAlongInterior: new Vector2d(-alongForIlave.X, -alongForIlave.Y), dirTowardSlabInteriorAlt: nBakısDis);
                 AppendKalipGprDonatiColoredLine(tr, btr, db, textStyleId, gprTextLayerName, sag[i], pos.X, pos.Y, aciColor, textH, rotAlong);
             }
+            // Sol ilave: karşı/sol dışı + bakış solu (planda alt).
             for (int i = 0; i < sol.Count; i++)
             {
                 Point2d basePos = new Point2d(
-                    ust1.X - uAlong.X * KalipGprDonatiYaziMaviIlaveKoseCm + nAwayFromStripUst.X * KalipGprDonatiYaziMaviIlaveKoseCm,
-                    ust1.Y - uAlong.Y * KalipGprDonatiYaziMaviIlaveKoseCm + nAwayFromStripUst.Y * KalipGprDonatiYaziMaviIlaveKoseCm);
+                    solKarsiEnd.X - alongForIlave.X * KalipGprDonatiYaziMaviIlaveKoseCm + nKarsiDis.X * KalipGprDonatiYaziMaviIlaveKoseCm,
+                    solKarsiEnd.Y - alongForIlave.Y * KalipGprDonatiYaziMaviIlaveKoseCm + nKarsiDis.Y * KalipGprDonatiYaziMaviIlaveKoseCm);
                 Point2d pos = new Point2d(
-                    basePos.X - uAlong.X * i * rowStep * 0.35,
-                    basePos.Y - uAlong.Y * i * rowStep * 0.35);
+                    basePos.X - alongForIlave.X * i * rowStep * 0.35,
+                    basePos.Y - alongForIlave.Y * i * rowStep * 0.35);
                 pos = NudgeKalipGprDonatiIlaveIntoSlab(kesilmisDoseme, dosemeFactory, pos, uAlong, sol[i], textH,
-                    dirAlongInterior: uAlong, dirTowardSlabInteriorAlt: nTowardStrip);
+                    dirAlongInterior: alongForIlave, dirTowardSlabInteriorAlt: nBakısDis);
                 AppendKalipGprDonatiColoredLine(tr, btr, db, textStyleId, gprTextLayerName, sol[i], pos.X, pos.Y, aciColor, textH, rotAlong);
             }
+            // Montaj: iki mavi üstünde (karşı / bakış üstü dışı).
             if (mon.Count > 0)
             {
-                double rot = rotAlong;
-                Point2d baseMont = OffN(midUst, nAwayFromStripUst, KalipGprDonatiYaziMaviMontajUstCm + textH * 0.35);
+                Point2d baseMont = OffN(midKarsi, nKarsiDis, KalipGprDonatiYaziMaviMontajUstCm + textH * 0.35);
                 double span = (mon.Count <= 1) ? 0 : (mon.Count - 1) * KalipGprDonatiYaziMaviMontajAlongSpacingCm;
                 double start = -0.5 * span;
+                Vector2d uMont = new Vector2d(Math.Cos(rotAlong), Math.Sin(rotAlong));
                 for (int i = 0; i < mon.Count; i++)
                 {
                     double along = start + i * KalipGprDonatiYaziMaviMontajAlongSpacingCm;
                     Point2d pos = new Point2d(
-                        baseMont.X + uAlong.X * along,
-                        baseMont.Y + uAlong.Y * along);
-                    AppendKalipGprDonatiColoredLine(tr, btr, db, textStyleId, gprTextLayerName, mon[i], pos.X, pos.Y, aciColor, textH, rot);
+                        baseMont.X + uMont.X * along,
+                        baseMont.Y + uMont.Y * along);
+                    AppendKalipGprDonatiColoredLine(tr, btr, db, textStyleId, gprTextLayerName, mon[i], pos.X, pos.Y, aciColor, textH, rotAlong);
                 }
             }
         }
@@ -1729,7 +2116,7 @@ namespace ST4PlanIdCiz
             double enUzunKirmiziCizgiCm)
         {
             DrawKalipGprDonatiCellAlongReferansCizgileri(tr, btr, db, textStyleId, yCell, ust1, ust2, alt1, alt2, fallbackCenter, textH,
-                kesilmisDoseme, dosemeFactory, 5, LayerDonatiYazisiKalipGprMavi, enUzunKirmiziCizgiCm);
+                kesilmisDoseme, dosemeFactory, 5, LayerDonatiYazisiKalipGprMavi, enUzunKirmiziCizgiCm, yBakısSagdanSola: true);
         }
 
         /// <summary>
@@ -2908,9 +3295,14 @@ namespace ST4PlanIdCiz
             {
                 using (var tr = db.TransactionManager.StartTransaction())
                 {
+                    try
+                    {
                     EnsureLayers(tr, db);
                     var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
                     var btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
+                    var idsBeforeTemel = new HashSet<ObjectId>();
+                    foreach (ObjectId existingId in btr)
+                        if (existingId.IsValid) idsBeforeTemel.Add(existingId);
 
                     bool hasFoundations = _model.ContinuousFoundations.Count > 0 || _model.SlabFoundations.Count > 0 || _model.TieBeams.Count > 0 || _model.SingleFootings.Count > 0;
                     if (!hasFoundations || _model.Floors.Count == 0)
@@ -3006,6 +3398,7 @@ namespace ST4PlanIdCiz
 
                     double yLowestHorizontalAxis = GetLowestHorizontalColumnAxisY(offsetY, firstFloorAxisExt);
                     TryDrawTemelAntetFromDxf(tr, btr, antetLayMinX, antetLayMinY, antetLayMaxX, antetLayMaxY, leftSectionMinX, xRightBalloonTemel, yLowestHorizontalAxis, st4SourcePath, ed);
+                    ShiftNewEntitiesToSheetViewOutInsert(tr, btr, idsBeforeTemel, baseInsertPoint, copyLayouts);
 
                     ApplyPlanStructuralLayerDrawOrder(tr, btr);
                     tr.Commit();
@@ -3018,6 +3411,13 @@ namespace ST4PlanIdCiz
                         _model.TieBeams.Count,
                         _model.SingleFootings.Count,
                         planCopyCount > 1 ? " " + planCopyCount + " kopya, tek antet." : "");
+                  }
+                  catch (TopologyException tex)
+                  {
+                    ed?.WriteMessage("\n{0} hata: {1}", cmdTag, tex.Message);
+                    ed?.WriteMessage("\n{0}: birlestirilemeyen parca atlandi, cizilen plan kaydedildi.", cmdTag);
+                    try { tr.Commit(); } catch { }
+                  }
                 }
             }
             finally
@@ -3301,7 +3701,8 @@ namespace ST4PlanIdCiz
             EnsurePlanLayer(tr, db, "TEMEL HATILI (BEYKENT)", 230, LineWeight.LineWeight030, useDashed: false);
             EnsurePlanLayer(tr, db, LayerTemelHatiliIsmi, 243, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, db, LayerTemelIsmi, 40, LineWeight.LineWeight020, useDashed: false);
-            EnsurePlanLayer(tr, db, LayerKatSiniri, 41, LineWeight.LineWeight025, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerKatSiniri, 91, LineWeight.LineWeight025, useDashed: false);
+            SetPlanLayerColorIndex(tr, db, LayerKatSiniri, 91);
             EnsurePlanLayer(tr, db, LayerKalipBosluk, 30, LineWeight.LineWeight025, useDashed: false);
             SetPlanLayerLinetypeContinuous(tr, db, LayerKalipBosluk);
             EnsurePlanLayer(tr, db, LayerBos, 252, LineWeight.LineWeight020, useDashed: false);
@@ -3335,6 +3736,17 @@ namespace ST4PlanIdCiz
             EnsurePlanLayer(tr, db, LayerGrobeton, 70, LineWeight.LineWeight050, useDashed: false);
             EnsurePlanLayer(tr, db, LayerZemin, 43, LineWeight.LineWeight050, useDashed: false);
             EnsurePlanLayer(tr, db, LayerBlokaj, 8, LineWeight.LineWeight015, useDashed: false, layerTransparencyPercent: LayerBlokajTransparencyPercent);
+        }
+
+        /// <summary>Var olan katmanın yalnız ACI rengini günceller; çizgi tipi ve kalınlığa dokunmaz.</summary>
+        private static void SetPlanLayerColorIndex(Transaction tr, Database db, string layerName, short colorIndex)
+        {
+            var lt = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
+            if (!lt.Has(layerName)) return;
+            var rec = (LayerTableRecord)tr.GetObject(lt[layerName], OpenMode.ForRead);
+            if (rec.Color.ColorIndex == colorIndex) return;
+            rec.UpgradeOpen();
+            rec.Color = Color.FromColorIndex(ColorMethod.ByAci, colorIndex);
         }
 
         private static void SetPlanLayerLinetypeContinuous(Transaction tr, Database db, string layerName)
@@ -3408,7 +3820,7 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>
-        /// Plan çiziminde yapı katmanlarının üst üste binme sırası (önde = üstte): 1=Temel, 2=Kolon, 3=Perde, 4=Kiriş, 5=Kat sınırı, 6=Aks.
+        /// Plan çiziminde yapı katmanlarının üst üste binme sırası (önde = üstte): kat sınırı ve kalıp boşluk en önde; altında temel, kolon, perde, kiriş; en arkada aks.
         /// Yalnızca Model Space’te ve bu isimli katmanlardaki nesneler yeniden sıralanır; diğer katmanlara dokunulmaz.
         /// </summary>
         private static void ApplyPlanStructuralLayerDrawOrder(Transaction tr, BlockTableRecord btr)
@@ -3425,6 +3837,7 @@ namespace ST4PlanIdCiz
 
             var aks = new ObjectIdCollection();
             var kat = new ObjectIdCollection();
+            var bosluk = new ObjectIdCollection();
             var kiris = new ObjectIdCollection();
             var perde = new ObjectIdCollection();
             var kolon = new ObjectIdCollection();
@@ -3445,6 +3858,8 @@ namespace ST4PlanIdCiz
                     aks.Add(eid);
                 else if (lyr == LayerKatSiniri)
                     kat.Add(eid);
+                else if (lyr == LayerKalipBosluk || lyr == LayerBos)
+                    bosluk.Add(eid);
                 else if (lyr == LayerKiris || lyr == LayerKirisYazisi)
                     kiris.Add(eid);
                 else if (lyr == LayerPerde || lyr == LayerPerdeYazisi)
@@ -3455,8 +3870,8 @@ namespace ST4PlanIdCiz
                     temel.Add(eid);
             }
 
-            // Arkada (altta) kalan önce MoveToTop: Aks → … → en son Temel en üstte.
-            ObjectIdCollection[] order = { aks, kat, kiris, perde, kolon, temel };
+            // Arkada (altta) kalan önce MoveToTop. Kat sınırı ve kalıp boşluk en son, yani çizimde en önde.
+            ObjectIdCollection[] order = { aks, kiris, perde, kolon, temel, kat, bosluk };
             foreach (var coll in order)
             {
                 if (coll == null || coll.Count == 0) continue;
@@ -9574,7 +9989,7 @@ namespace ST4PlanIdCiz
             }
         }
 
-        /// <summary>Çizimde görüldüğü şekilde tüm poligonları birleştirip kalıpta DOSEME SINIRI, diğer komutlarda KAT SINIRI çizer.</summary>
+        /// <summary>Çizimde görüldüğü şekilde tüm poligonları birleştirip KAT SINIRI (BEYKENT) olarak çizer.</summary>
         private void DrawUnifiedLayer(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY, Geometry elementUnion)
         {
             var allPolygons = BuildKalipUnifiedPolygonList(floor, offsetX, offsetY, elementUnion, addElementUnionInteriorAsPolygons: true);
@@ -9582,7 +9997,7 @@ namespace ST4PlanIdCiz
             Geometry unionResult = TryCascadedPolygonUnionSafe(allPolygons);
             if (unionResult != null && !unionResult.IsEmpty)
             {
-                string ringLayer = _isKalip50Mode ? LayerDoseme : LayerKatSiniri;
+                string ringLayer = LayerKatSiniri;
                 // İç boşluk çevreleri tekrarlanmasın; dış sınır + ayrık adaların dış halkaları. Boşluk sınırı KALIP BOSLUK / BOS.
                 DrawGeometryRingsAsPolylines(tr, btr, unionResult, ringLayer, addHatch: false, applySmallTriangleTrim: false, exteriorRingsOnly: true, vertexAngleTolDeg: 0.3, minVertexDistCm: 0.1, collinearTolCm: 0.05);
             }
@@ -10958,7 +11373,7 @@ namespace ST4PlanIdCiz
                 Geometry toDraw = wallPoly;
                 if (kolonUnion != null && !kolonUnion.IsEmpty)
                 {
-                    var diff = wallPoly.Difference(kolonUnion);
+                    var diff = TryDifferenceSafe(wallPoly, kolonUnion);
                     if (diff != null && !diff.IsEmpty)
                     {
                         toDraw = ReducePrecisionSafe(diff, 100);
@@ -11036,9 +11451,15 @@ namespace ST4PlanIdCiz
                 {
                     if (i == currentObstacleIndex) continue;
                     var obs = obstaclePolygons[i];
-                    if (obs != null && !obs.IsEmpty && checkArea.Intersects(obs)) return true;
+                    if (obs == null || obs.IsEmpty) continue;
+                    try { if (checkArea.Intersects(obs)) return true; }
+                    catch { /* side location conflict: bu engeli atla */ }
                 }
-                if (slabUnion != null && !slabUnion.IsEmpty && checkArea.Intersects(slabUnion)) return true;
+                if (slabUnion != null && !slabUnion.IsEmpty)
+                {
+                    try { if (checkArea.Intersects(slabUnion)) return true; }
+                    catch { /* side location conflict */ }
+                }
                 return false;
             }
             if (!IntersectsObstaclesWithTolerance(LabelBoxAt(labelCx, labelCy))) return;
@@ -11111,6 +11532,76 @@ namespace ST4PlanIdCiz
                 }
             }
             return null;
+        }
+
+        /// <summary>Birleşim olmazsa parçalar koleksiyon olarak kalır; TEMEL50 çizimi bu yüzden tamamen iptal olmasın.</summary>
+        private static Geometry UnionPolygonsKeepParts(IReadOnlyList<Geometry> geoms)
+        {
+            Geometry u = TryCascadedPolygonUnionSafe(geoms);
+            if (u != null && !u.IsEmpty) return u;
+            if (geoms == null || geoms.Count == 0) return null;
+            var valid = new List<Geometry>();
+            foreach (var g in geoms)
+                if (g != null && !g.IsEmpty) valid.Add(g);
+            if (valid.Count == 0) return null;
+            if (valid.Count == 1) return valid[0];
+            try { return valid[0].Factory.BuildGeometry(valid); }
+            catch { return valid[0]; }
+        }
+
+        /// <summary>NTS side location conflict: ham fark, sonra ölçek indirgeme. Hepsi patlarsa kesilmemiş geometri.</summary>
+        private static Geometry TryDifferenceSafe(Geometry a, Geometry b)
+        {
+            if (a == null || a.IsEmpty) return a;
+            if (b == null || b.IsEmpty) return a;
+            foreach (double? scale in new double?[] { null, 1.0, 100.0, 50.0, 20.0 })
+            {
+                try
+                {
+                    Geometry aa = a, bb = b;
+                    if (scale != null)
+                    {
+                        aa = ReducePrecisionSafe(a, scale.Value);
+                        bb = ReducePrecisionSafe(b, scale.Value);
+                        if (aa == null || aa.IsEmpty) continue;
+                        if (bb == null || bb.IsEmpty) return a;
+                    }
+                    return aa.Difference(bb);
+                }
+                catch
+                {
+                    // bir sonraki ölçek
+                }
+            }
+            return a;
+        }
+
+        private static bool TryContainsSafe(Geometry container, Geometry inner)
+        {
+            if (container == null || inner == null || container.IsEmpty || inner.IsEmpty) return false;
+            try { return container.Contains(inner); }
+            catch
+            {
+                Geometry a = ReducePrecisionSafe(container, 1.0);
+                Geometry b = ReducePrecisionSafe(inner, 1.0);
+                if (a == null || b == null || a.IsEmpty || b.IsEmpty) return false;
+                try { return a.Contains(b); }
+                catch { return false; }
+            }
+        }
+
+        private static bool TryTouchesSafe(Geometry a, Geometry b)
+        {
+            if (a == null || b == null || a.IsEmpty || b.IsEmpty) return false;
+            try { return a.Touches(b); }
+            catch
+            {
+                Geometry ar = ReducePrecisionSafe(a, 1.0);
+                Geometry br = ReducePrecisionSafe(b, 1.0);
+                if (ar == null || br == null) return false;
+                try { return ar.Touches(br) || ar.Intersects(br); }
+                catch { return ar.EnvelopeInternal != null && br.EnvelopeInternal != null && ar.EnvelopeInternal.Intersects(br.EnvelopeInternal); }
+            }
         }
 
         /// <summary>Geometrinin sınırındaki köşe noktalarını döndürür (Polygon/MultiPolygon dış halkaları, kapalı halkanın son noktası hariç).</summary>
@@ -11747,9 +12238,7 @@ namespace ST4PlanIdCiz
             }
 
             if (geoms.Count == 0) return null;
-            return geoms.Count == 1
-                ? geoms[0]
-                : NetTopologySuite.Operation.Union.CascadedPolygonUnion.Union(geoms);
+            return geoms.Count == 1 ? geoms[0] : UnionPolygonsKeepParts(geoms);
         }
 
         /// <summary>Verilen aks kesişiminde (axisId1 x axisId2) bu katta kolon varsa kolon merkezini (offset dahil) döndürür. Kiriş uçlarını kolon aksına uzatmak/kısaltmak için kullanılır. Kesit bulunamazsa aks kesişim noktası döner (uzatma/kısaltma yine uygulanır).</summary>
@@ -11885,9 +12374,7 @@ namespace ST4PlanIdCiz
             }
 
             if (geoms.Count == 0) return null;
-            return geoms.Count == 1
-                ? geoms[0]
-                : NetTopologySuite.Operation.Union.CascadedPolygonUnion.Union(geoms);
+            return geoms.Count == 1 ? geoms[0] : UnionPolygonsKeepParts(geoms);
         }
 
         /// <summary>Verilen kattaki sadece bu katta kesiti tanımlı olan kolonların birleşik alanı. Perde kesiminde kullanılır; ColumnId fallback kullanılmaz.</summary>
@@ -11946,9 +12433,7 @@ namespace ST4PlanIdCiz
             }
 
             if (geoms.Count == 0) return null;
-            return geoms.Count == 1
-                ? geoms[0]
-                : NetTopologySuite.Operation.Union.CascadedPolygonUnion.Union(geoms);
+            return geoms.Count == 1 ? geoms[0] : UnionPolygonsKeepParts(geoms);
         }
 
         /// <summary>Kolon + perde + kiriş (IsWallFlag!=1) birleşimi; merdiveni bunlardan çıkararak çizmek için.</summary>
@@ -13491,18 +13976,18 @@ namespace ST4PlanIdCiz
             ObjectId textStyleId,
             Geometry drawnKolonPerdeKirisUnion)
         {
-            var classicRecords = new List<(SlabInfo slab, Geometry toDraw, Point2d center)>(slabRecords.Count);
+            var classicRecords = new List<(SlabInfo slab, Geometry toDraw, Geometry adjGeom, Point2d center)>(slabRecords.Count);
             foreach (var r in slabRecords)
             {
                 if (r.slab == null || _model.StairSlabIds.Contains(r.slab.SlabId)) continue;
-                classicRecords.Add((r.slab, r.toDraw, r.center));
+                classicRecords.Add(r);
             }
 
             Geometry floorBoundary = null;
             try
             {
                 Geometry floorUnion = drawnKolonPerdeKirisUnion;
-                foreach (var (_, toDraw, _) in classicRecords)
+                foreach (var (_, toDraw, _, _) in classicRecords)
                 {
                     if (toDraw == null || toDraw.IsEmpty) continue;
                     floorUnion = (floorUnion != null && !floorUnion.IsEmpty) ? floorUnion.Union(toDraw) : toDraw;
@@ -13511,7 +13996,8 @@ namespace ST4PlanIdCiz
             }
             catch { }
 
-            HashSet<int> slabIdsToLabel = ComputeSlabIdsToLabel(classicRecords, floor, floorBoundary);
+            var forIds = classicRecords.Select(r => (r.slab, r.toDraw, r.center)).ToList();
+            HashSet<int> slabIdsToLabel = ComputeSlabIdsToLabel(forIds, floor, floorBoundary);
             if (labelSlabsNoGeometry != null)
             {
                 foreach (int id in labelSlabsNoGeometry)
@@ -13534,7 +14020,8 @@ namespace ST4PlanIdCiz
             foreach (var r in classicRecords)
             {
                 if (!slabIdsToLabel.Contains(r.slab.SlabId)) continue;
-                AppendSlabLabel(tr, btr, r.slab, floor, storyId, GetSlabNumero(r.slab.SlabId), slabPad, r.center, textStyleId);
+                Point2d anchor = GetSlabLabelAnchorTopLeftQuarter(r.adjGeom ?? r.toDraw, r.center);
+                AppendSlabLabel(tr, btr, r.slab, floor, storyId, GetSlabNumero(r.slab.SlabId), slabPad, anchor, textStyleId);
             }
             if (labelSlabsNoGeometry != null)
             {
@@ -13547,6 +14034,27 @@ namespace ST4PlanIdCiz
                     AppendSlabLabel(tr, btr, slab, floor, storyId, GetSlabNumero(id), slabPad, new Point2d(0, 0), textStyleId);
                 }
             }
+        }
+
+        /// <summary>
+        /// Döşeme etiket kotası: aks dörtgeninin sol-üst 1/4 karo ortası
+        /// (üst/alt çizgi karolajının sol-üst hücresi; tam orta değil).
+        /// </summary>
+        private static Point2d GetSlabLabelAnchorTopLeftQuarter(Geometry boundsGeom, Point2d fallbackCenter)
+        {
+            try
+            {
+                if (boundsGeom != null && !boundsGeom.IsEmpty)
+                {
+                    Envelope e = boundsGeom.EnvelopeInternal;
+                    double w = e.Width;
+                    double h = e.Height;
+                    if (w > 1e-6 && h > 1e-6)
+                        return new Point2d(e.MinX + w * 0.25, e.MinY + h * 0.75);
+                }
+            }
+            catch { }
+            return fallbackCenter;
         }
 
         /// <summary>
@@ -14066,10 +14574,12 @@ namespace ST4PlanIdCiz
                     }
 
                     var rep = records[indices[chosen]].slab;
+                    Point2d fullCenter = records[indices[chosen]].center;
+                    Geometry labelBounds = records[indices[chosen]].adjGeom ?? records[indices[chosen]].toDraw;
                     groups.Add(new SlabLabelGroup
                     {
                         Representative = rep,
-                        Center = records[indices[chosen]].center,
+                        Center = GetSlabLabelAnchorTopLeftQuarter(labelBounds, fullCenter),
                         LoadLines = loadLines,
                         MemberSlabIds = memberIds
                     });
@@ -14100,7 +14610,11 @@ namespace ST4PlanIdCiz
             }
         }
 
-        /// <summary>Döşeme etiketi: D+KatId+-+no d=Xcm; farklı yükler alt alta; kot/sembol en alttaki yükün altında.</summary>
+        /// <summary>
+        /// Döşeme etiketi: D+KatId+-+no d=Xcm; farklı yükler alt alta; kot/sembol en alttaki yükün altında.
+        /// <paramref name="center"/> = yeşil DOSEME PAFTA çerçevesinin sol-üst köşesinin hedefi
+        /// (1/4 karo sol-üst ortası).
+        /// </summary>
         private void AppendSlabLabel(
             Transaction tr,
             BlockTableRecord btr,
@@ -14132,8 +14646,6 @@ namespace ST4PlanIdCiz
             string storyForLabel = (storyId ?? string.Empty).Trim();
             string mainLabel = string.Format(CultureInfo.InvariantCulture, "D{0}{1} d={2:F0}cm", storyForLabel, slabNoStr, thickness);
             double mainWidth = EstimateTextWidthCm(mainLabel, labelHeightCm);
-            double blockWidth = mainWidth;
-            double blockHeight = labelHeightCm;
             const double yukWidthFactor = 0.7;
 
             var qLines = new List<string>();
@@ -14152,24 +14664,14 @@ namespace ST4PlanIdCiz
                     qLines.Add(single);
             }
 
-            if (qLines.Count > 0)
-            {
-                foreach (string qLine in qLines)
-                    blockWidth = Math.Max(blockWidth, EstimateTextWidthCm(qLine, subTextHeightCm) * yukWidthFactor);
-                // Ana → ilk yük + (N-1) yük aralığı + son yük→kot
-                blockHeight += mainToQCm + subTextHeightCm + Math.Max(0, qLines.Count - 1) * qLineGapCm + qToUstKotCm;
-            }
-            else
-                blockHeight += mainToQCm + qToUstKotCm;
-
             double topElevM = _model.BuildingBaseKotu + (floor?.ElevationM ?? 0) + slab.OffsetFromFloorCm / 100.0;
             double bottomElevM = topElevM - thickness / 100.0;
             string topElevStr = FormatKotElevationMeters(topElevM);
             string bottomElevStr = FormatKotElevationMeters(bottomElevM);
-            blockWidth = Math.Max(blockWidth, Math.Max(EstimateTextWidthCm(topElevStr, kotTextHeightCm), EstimateTextWidthCm(bottomElevStr, kotTextHeightCm)));
-            blockHeight += kotTextHeightCm + kotArasiMesafeCm + kotTextHeightCm;
-            double leftX = center.X - blockWidth / 2.0;
-            double mainY = center.Y + blockHeight / 2.0 - labelHeightCm;
+
+            // Geçici yerleştirme; yeşil pafta sol-üst (x0,y1) → center'a oturtulur.
+            double leftX = 0.0;
+            double mainY = 0.0;
 
             var txtMain = new DBText
             {
@@ -14212,6 +14714,24 @@ namespace ST4PlanIdCiz
             double frameVerticalOffsetCm = 3.4828 * ann;
             double y0 = textCy - textH * 0.5 - framePaddingCm + frameVerticalOffsetCm;
             double y1 = textCy + textH * 0.5 + framePaddingCm + frameVerticalOffsetCm;
+
+            // Pafta AABB sol-üst (x0,y1) → hedef (1/4 karo sol-üst ortası)
+            double dx = center.X - x0;
+            double dy = center.Y - y1;
+            if (Math.Abs(dx) > 1e-9 || Math.Abs(dy) > 1e-9)
+            {
+                Matrix3d move = Matrix3d.Displacement(new Vector3d(dx, dy, 0));
+                txtMain.TransformBy(move);
+                leftX += dx;
+                mainY += dy;
+                x0 += dx;
+                x1 += dx;
+                y0 += dy;
+                y1 += dy;
+                textCx += dx;
+                textCy += dy;
+            }
+
             var pline = new Polyline();
             pline.SetDatabaseDefaults();
             pline.Layer = LayerDosemePafta;
@@ -14285,11 +14805,15 @@ namespace ST4PlanIdCiz
             AppendEntity(tr, btr, txtBottom);
         }
 
-        /// <summary>Bitişik ve aynı kalınlık/kot/hareketli yük radyelerden sadece en sol üstteki etiketlenir.</summary>
-        private static HashSet<int> ComputeRadyeIndicesToLabel(List<(SlabFoundationInfo sf, Geometry poly, Point2d center)> records, double buildingBaseKotu)
+        /// <summary>
+        /// Bitişik ve aynı kalınlık/kot/hareketli yük radyelerden tek etiket.
+        /// Numara çizim sırası değil, üstten alta / soldan sağa 1’den başlar.
+        /// Konum: grubun en-boy kutusunun sol kenarından en/4, üst kenarından boy/4.
+        /// </summary>
+        private static List<(SlabFoundationInfo sf, Point2d anchor)> ComputeRadyeLabelPlacements(List<(SlabFoundationInfo sf, Geometry poly, Point2d center)> records, double buildingBaseKotu)
         {
-            var result = new HashSet<int>();
-            if (records.Count == 0) return result;
+            var result = new List<(SlabFoundationInfo sf, Point2d anchor, double top, double left)>();
+            if (records.Count == 0) return new List<(SlabFoundationInfo, Point2d)>();
             double baseKotu = buildingBaseKotu;
             var keyToIndices = new Dictionary<(int t, int te, int be, int l), List<int>>();
             for (int i = 0; i < records.Count; i++)
@@ -14307,40 +14831,66 @@ namespace ST4PlanIdCiz
             {
                 var indices = kv.Value;
                 if (indices.Count == 0) continue;
-                if (indices.Count == 1) { result.Add(indices[0]); continue; }
-                int n = indices.Count;
-                var parent = new int[n];
-                for (int i = 0; i < n; i++) parent[i] = i;
-                int Root(int j) { while (parent[j] != j) j = parent[j]; return j; }
-                void Union(int a, int b) { parent[Root(a)] = Root(b); }
-                for (int i = 0; i < n; i++)
-                    for (int j = i + 1; j < n; j++)
-                        if (records[indices[i]].poly.Touches(records[indices[j]].poly))
-                            Union(i, j);
-                var byRoot = new Dictionary<int, List<int>>();
-                for (int i = 0; i < n; i++)
+                var components = new List<List<int>>();
+                if (indices.Count == 1)
+                    components.Add(new List<int> { 0 });
+                else
                 {
-                    int r = Root(i);
-                    if (!byRoot.TryGetValue(r, out var list)) { list = new List<int>(); byRoot[r] = list; }
-                    list.Add(i);
+                    int n = indices.Count;
+                    var parent = new int[n];
+                    for (int i = 0; i < n; i++) parent[i] = i;
+                    int Root(int j) { while (parent[j] != j) j = parent[j]; return j; }
+                    void Union(int a, int b) { parent[Root(a)] = Root(b); }
+                    for (int i = 0; i < n; i++)
+                        for (int j = i + 1; j < n; j++)
+                            if (TryTouchesSafe(records[indices[i]].poly, records[indices[j]].poly))
+                                Union(i, j);
+                    var byRoot = new Dictionary<int, List<int>>();
+                    for (int i = 0; i < n; i++)
+                    {
+                        int r = Root(i);
+                        if (!byRoot.TryGetValue(r, out var list)) { list = new List<int>(); byRoot[r] = list; }
+                        list.Add(i);
+                    }
+                    components.AddRange(byRoot.Values);
                 }
-                foreach (var comp in byRoot.Values)
+                foreach (var comp in components)
                 {
                     int chosen = comp[0];
                     double xChosen = records[indices[chosen]].center.X;
                     double yChosen = records[indices[chosen]].center.Y;
-                    for (int k = 1; k < comp.Count; k++)
+                    double minX = double.MaxValue, minY = double.MaxValue, maxX = double.MinValue, maxY = double.MinValue;
+                    for (int k = 0; k < comp.Count; k++)
                     {
                         int idx = comp[k];
                         double x = records[indices[idx]].center.X;
                         double y = records[indices[idx]].center.Y;
                         if (x < xChosen || (Math.Abs(x - xChosen) < 1e-6 && y > yChosen))
                         { chosen = idx; xChosen = x; yChosen = y; }
+                        var env = records[indices[idx]].poly?.EnvelopeInternal;
+                        if (env == null || env.IsNull) continue;
+                        if (env.MinX < minX) minX = env.MinX;
+                        if (env.MinY < minY) minY = env.MinY;
+                        if (env.MaxX > maxX) maxX = env.MaxX;
+                        if (env.MaxY > maxY) maxY = env.MaxY;
                     }
-                    result.Add(indices[chosen]);
+                    Point2d anchor;
+                    if (minX <= maxX && minY <= maxY)
+                    {
+                        double width = maxX - minX;
+                        double height = maxY - minY;
+                        anchor = new Point2d(minX + width * 0.25, maxY - height * 0.25);
+                    }
+                    else
+                        anchor = records[indices[chosen]].center;
+                    result.Add((records[indices[chosen]].sf, anchor, maxY, minX));
                 }
             }
-            return result;
+            return result
+                .OrderByDescending(p => p.top)
+                .ThenBy(p => p.left)
+                .Select(p => (p.sf, p.anchor))
+                .ToList();
         }
 
         /// <summary>Radye temel etiketi: RD-+no d=Xcm, çerçeve, Q (7. sütun/10 kN/m²), üst/alt kot, kot işareti. Üst kot = bina taban kotu; alt kot = üst kot - kalınlık.</summary>
@@ -14821,6 +15371,64 @@ namespace ST4PlanIdCiz
             }
         }
 
+        /// <summary>Yeni nesneleri, SheetViewOut sol-altı tıklamanın 50 cm sağına gelecek şekilde kaydırır. TEMELDONATI kopya zarfları aynı kaymayı alır.</summary>
+        private void ShiftNewEntitiesToSheetViewOutInsert(
+            Transaction tr,
+            BlockTableRecord btr,
+            HashSet<ObjectId> idsBefore,
+            Point3d insert,
+            IList<TemelPlanCopyLayout> copyLayouts)
+        {
+            if (tr == null || btr == null || idsBefore == null) return;
+            var fresh = new List<ObjectId>();
+            double minX = double.MaxValue, minY = double.MaxValue;
+            bool anyOut = false;
+            foreach (ObjectId id in btr)
+            {
+                if (!id.IsValid || idsBefore.Contains(id)) continue;
+                fresh.Add(id);
+                Entity ent;
+                try { ent = tr.GetObject(id, OpenMode.ForRead, false) as Entity; }
+                catch { continue; }
+                if (ent == null || ent.IsErased) continue;
+                if (!string.Equals(ent.Layer ?? string.Empty, AntetSheetViewOutLayerName, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                try
+                {
+                    Extents3d ex = ent.GeometricExtents;
+                    if (ex.MinPoint.X < minX) minX = ex.MinPoint.X;
+                    if (ex.MinPoint.Y < minY) minY = ex.MinPoint.Y;
+                    anyOut = true;
+                }
+                catch { }
+            }
+            if (!anyOut || fresh.Count == 0) return;
+            double dx = insert.X + AntetYerlesimSheetViewOutSolPayCm - minX;
+            double dy = insert.Y - minY;
+            if (Math.Abs(dx) < 1e-6 && Math.Abs(dy) < 1e-6) return;
+            var disp = Matrix3d.Displacement(new Vector3d(dx, dy, 0));
+            foreach (ObjectId id in fresh)
+            {
+                Entity ent;
+                try { ent = tr.GetObject(id, OpenMode.ForWrite, false) as Entity; }
+                catch { continue; }
+                try { ent?.TransformBy(disp); } catch { }
+            }
+            if (copyLayouts == null) return;
+            var ntsMove = NetTopologySuite.Geometries.Utilities.AffineTransformation.TranslationInstance(dx, dy);
+            for (int i = 0; i < copyLayouts.Count; i++)
+            {
+                TemelPlanCopyLayout copy = copyLayouts[i];
+                copy.OffsetX += dx;
+                copy.OffsetY += dy;
+                if (copy.Envelope != null)
+                    copy.Envelope = new Envelope(copy.Envelope.MinX + dx, copy.Envelope.MaxX + dx, copy.Envelope.MinY + dy, copy.Envelope.MaxY + dy);
+                if (copy.TemelGeom != null && !copy.TemelGeom.IsEmpty)
+                    copy.TemelGeom = ntsMove.Transform(copy.TemelGeom);
+                copyLayouts[i] = copy;
+            }
+        }
+
         /// <summary>TEMEL50ST4 / TEMEL100ST4: gömülü antet_02.dwg. TEMEL100: germe öncesi SheetViewOut yüksekliği ve sağ boşluk hedefi yarılanır; 2× sonrası plan cm'de ~9000 ve balon+640 olur. Üst taşma eşiği aynı mantıkla ölçek öncesine çevrilir.</summary>
         private void TryDrawTemelAntetFromDxf(Transaction tr, BlockTableRecord btr, double layoutMinX, double layoutMinY, double layoutMaxX, double layoutMaxY, double leftSectionMinX, double xRightBalloonTemel, double yLowestHorizontalAxis, string st4SourcePath, Editor ed)
         {
@@ -14971,7 +15579,8 @@ namespace ST4PlanIdCiz
             bool scaleTwoTimes = false,
             bool useKolonAntetScaleOneHundred = false,
             bool useKalipAntetScaleOneHundred = false,
-            bool fitSheetViewHeightToContent = false)
+            bool fitSheetViewHeightToContent = false,
+            string antetScaleTextOverride = null)
         {
             placedAntetOuterLeftAfterStretch = targetSheetViewLeft;
             placedAntetOuterRightAfterStretch = targetSheetViewLeft + (AntetDxfSheetViewXmax - AntetDxfSheetViewXmin);
@@ -15025,7 +15634,7 @@ namespace ST4PlanIdCiz
                         var entDst = tr.GetObject(pair.Value, OpenMode.ForWrite) as Entity;
                         if (entDst == null) continue;
                         RemapAntetLayer(entDst);
-                        ReplaceAntetDynamicTexts(entDst, antetValues, antetPlanTitle, useKolonAntetScaleOneHundred: useKolonAntetScaleOneHundred, useKalipAntetScaleOneHundred: useKalipAntetScaleOneHundred);
+                        ReplaceAntetDynamicTexts(entDst, antetValues, antetPlanTitle, useKolonAntetScaleOneHundred: useKolonAntetScaleOneHundred, useKalipAntetScaleOneHundred: useKalipAntetScaleOneHundred, antetScaleTextOverride: antetScaleTextOverride);
                         if (entSrc.BlockId.Equals(sourceMs.ObjectId))
                         {
                             entDst.TransformBy(xf);
@@ -15486,22 +16095,22 @@ namespace ST4PlanIdCiz
             catch { }
         }
 
-        private static void ReplaceAntetDynamicTexts(Entity ent, AntetValueSet v, string antetPlanTitle, bool useTemelAntetScaleOneHundred = false, bool useKolonAntetScaleOneHundred = false, bool useKalipAntetScaleOneHundred = false)
+        private static void ReplaceAntetDynamicTexts(Entity ent, AntetValueSet v, string antetPlanTitle, bool useTemelAntetScaleOneHundred = false, bool useKolonAntetScaleOneHundred = false, bool useKalipAntetScaleOneHundred = false, string antetScaleTextOverride = null)
         {
             if (v == null) return;
 
             if (ent is DBText t)
             {
-                t.TextString = ReplaceAntetTextCore(t.TextString, v, antetPlanTitle, useTemelAntetScaleOneHundred, useKolonAntetScaleOneHundred, useKalipAntetScaleOneHundred);
+                t.TextString = ReplaceAntetTextCore(t.TextString, v, antetPlanTitle, useTemelAntetScaleOneHundred, useKolonAntetScaleOneHundred, useKalipAntetScaleOneHundred, antetScaleTextOverride);
                 return;
             }
             if (ent is MText mt)
             {
-                mt.Contents = ReplaceAntetTextCore(mt.Contents, v, antetPlanTitle, useTemelAntetScaleOneHundred, useKolonAntetScaleOneHundred, useKalipAntetScaleOneHundred);
+                mt.Contents = ReplaceAntetTextCore(mt.Contents, v, antetPlanTitle, useTemelAntetScaleOneHundred, useKolonAntetScaleOneHundred, useKalipAntetScaleOneHundred, antetScaleTextOverride);
             }
         }
 
-        private static string ReplaceAntetTextCore(string text, AntetValueSet v, string antetPlanTitle, bool useTemelAntetScaleOneHundred = false, bool useKolonAntetScaleOneHundred = false, bool useKalipAntetScaleOneHundred = false)
+        private static string ReplaceAntetTextCore(string text, AntetValueSet v, string antetPlanTitle, bool useTemelAntetScaleOneHundred = false, bool useKolonAntetScaleOneHundred = false, bool useKalipAntetScaleOneHundred = false, string antetScaleTextOverride = null)
         {
             string s = text ?? string.Empty;
             if (!string.IsNullOrWhiteSpace(antetPlanTitle) &&
@@ -15509,6 +16118,17 @@ namespace ST4PlanIdCiz
             {
                 bool isUnderlined = s.IndexOf("%%u", StringComparison.OrdinalIgnoreCase) >= 0;
                 return isUnderlined ? ("%%u" + antetPlanTitle + "%%u") : antetPlanTitle;
+            }
+            // BINAGORUNUS Hepsi: antet ölçeği 1:200 (şablon 1:50 / 1:50-1:25).
+            if (!string.IsNullOrWhiteSpace(antetScaleTextOverride))
+            {
+                string trimmed = s.Trim();
+                if (string.Equals(trimmed, "1:50", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(trimmed, "1:50 - 1:25", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(trimmed, "1:100", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(trimmed, "1:100 - 1:25", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(trimmed, "1:25", StringComparison.OrdinalIgnoreCase))
+                    return antetScaleTextOverride.Trim();
             }
             if (useTemelAntetScaleOneHundred &&
                 string.Equals(s.Trim(), "1:50", StringComparison.OrdinalIgnoreCase))
@@ -15701,7 +16321,7 @@ namespace ST4PlanIdCiz
                 polygons.Add(factory.CreatePolygon(ring));
             }
             if (polygons.Count == 0) return null;
-            return polygons.Count == 1 ? polygons[0] : NetTopologySuite.Operation.Union.CascadedPolygonUnion.Union(polygons);
+            return polygons.Count == 1 ? polygons[0] : UnionPolygonsKeepParts(polygons);
         }
 
         /// <summary>Radye temellerin (slab foundations) birleşik alanı (offset uygulanmış); radye temel temel hatılı / bağ kirişi içinde mi kontrolü için.</summary>
@@ -15728,20 +16348,20 @@ namespace ST4PlanIdCiz
                 polygons.Add(factory.CreatePolygon(ring));
             }
             if (polygons.Count == 0) return null;
-            return polygons.Count == 1 ? polygons[0] : NetTopologySuite.Operation.Union.CascadedPolygonUnion.Union(polygons);
+            return polygons.Count == 1 ? polygons[0] : UnionPolygonsKeepParts(polygons);
         }
 
         /// <summary>Sürekli + radye + tekil temeller ve temel hatıllarının birleşimi (iç boşluklar korunur).</summary>
         private Geometry BuildTemelUnion(double offsetX, double offsetY, FloorInfo floorForSingleFootings)
         {
             var factory = _ntsDrawFactory;
-            Geometry result = null;
+            var parts = new List<Geometry>();
 
             Geometry cf = BuildContinuousFoundationsUnion(offsetX, offsetY);
-            if (cf != null && !cf.IsEmpty) result = cf;
+            if (cf != null && !cf.IsEmpty) parts.Add(cf);
 
             Geometry slab = BuildSlabFoundationsUnion(offsetX, offsetY);
-            if (slab != null && !slab.IsEmpty) result = result == null ? slab : result.Union(slab);
+            if (slab != null && !slab.IsEmpty) parts.Add(slab);
 
             foreach (var sf in _model.SingleFootings)
             {
@@ -15750,7 +16370,7 @@ namespace ST4PlanIdCiz
                 for (int i = 0; i < 4; i++) coords[i] = new Coordinate(rect[i].X, rect[i].Y);
                 coords[4] = coords[0];
                 var poly = factory.CreatePolygon(factory.CreateLinearRing(coords));
-                result = result == null ? poly : result.Union(poly);
+                parts.Add(poly);
             }
 
             // Radye temel temel hatılı ve bağ kirişi poligonları da birleşime dahil edilir.
@@ -15777,7 +16397,7 @@ namespace ST4PlanIdCiz
                     hatilCoords[i] = new Coordinate(hatilRect[i].X + offsetX, hatilRect[i].Y + offsetY);
                 hatilCoords[4] = hatilCoords[0];
                 var hatilPoly = factory.CreatePolygon(factory.CreateLinearRing(hatilCoords));
-                result = result == null ? hatilPoly : result.Union(hatilPoly);
+                parts.Add(hatilPoly);
             }
 
             // Bağ kirişleri (TieBeams) — TEMEL (BEYKENT) katmanına çizilen bağ kirişleri birleşime dahil; TEMEL HATILI katmanındakiler "radye temel temel hatılı"dır, DrawTieBeams'ta işlenir.
@@ -15803,10 +16423,10 @@ namespace ST4PlanIdCiz
                     coords[i] = new Coordinate(rect[i].X + offsetX, rect[i].Y + offsetY);
                 coords[4] = coords[0];
                 var tbPoly = factory.CreatePolygon(factory.CreateLinearRing(coords));
-                result = result == null ? tbPoly : result.Union(tbPoly);
+                parts.Add(tbPoly);
             }
 
-            return result;
+            return UnionPolygonsKeepParts(parts);
         }
 
         private bool TryGetSingleFootingRect(SingleFootingInfo sf, FloorInfo floor, double offsetX, double offsetY, out Point2d[] rect)
@@ -17044,7 +17664,7 @@ namespace ST4PlanIdCiz
                         Geometry toDrawHatil = hatilPoly;
                         if (kolonPerdeUnion != null && !kolonPerdeUnion.IsEmpty)
                         {
-                            var diffH = hatilPoly.Difference(kolonPerdeUnion);
+                            var diffH = TryDifferenceSafe(hatilPoly, kolonPerdeUnion);
                             if (diffH == null || diffH.IsEmpty) continue;
                             toDrawHatil = diffH;
                         }
@@ -17058,11 +17678,11 @@ namespace ST4PlanIdCiz
             {
                 Geometry ampatmanUnion = ampatmanPolygons.Count == 1
                     ? ampatmanPolygons[0]
-                    : NetTopologySuite.Operation.Union.CascadedPolygonUnion.Union(ampatmanPolygons);
+                    : UnionPolygonsKeepParts(ampatmanPolygons);
                 if (ampatmanUnion != null && !ampatmanUnion.IsEmpty)
                 {
                     Geometry toDraw = (temelUnion != null && !temelUnion.IsEmpty)
-                        ? ampatmanUnion.Difference(temelUnion)
+                        ? TryDifferenceSafe(ampatmanUnion, temelUnion)
                         : ampatmanUnion;
                     if (toDraw != null && !toDraw.IsEmpty)
                         DrawGeometryRingsAsPolylines(tr, btr, toDraw, layerAmpatman, applySmallTriangleTrim: false);
@@ -17198,8 +17818,8 @@ namespace ST4PlanIdCiz
                 for (int i = 0; i < 4; i++) coordsPass[i] = new Coordinate(rectLocal[i].X + offsetX, rectLocal[i].Y + offsetY);
                 coordsPass[4] = coordsPass[0];
                 var tbPolyPass = factory.CreatePolygon(factory.CreateLinearRing(coordsPass));
-                bool insideContinuous = cfUnion != null && !cfUnion.IsEmpty && cfUnion.Contains(tbPolyPass);
-                bool insideSlab = slabUnion != null && !slabUnion.IsEmpty && slabUnion.Contains(tbPolyPass);
+                bool insideContinuous = TryContainsSafe(cfUnion, tbPolyPass);
+                bool insideSlab = TryContainsSafe(slabUnion, tbPolyPass);
                 if (insideContinuous || insideSlab) continue;
                 double lengthCm = p1.GetDistanceTo(p2);
                 int w = (int)Math.Round(tb.WidthCm);
@@ -17249,8 +17869,8 @@ namespace ST4PlanIdCiz
                 var tbPoly = factory.CreatePolygon(factory.CreateLinearRing(coords));
 
                 // Tamamen sürekli temel veya radye alanı içinde → TEMEL HATILI (radye temel temel hatılı); dışında → TEMEL (bağ kirişi).
-                bool insideContinuous = cfUnion != null && !cfUnion.IsEmpty && cfUnion.Contains(tbPoly);
-                bool insideSlab = slabUnion != null && !slabUnion.IsEmpty && slabUnion.Contains(tbPoly);
+                bool insideContinuous = TryContainsSafe(cfUnion, tbPoly);
+                bool insideSlab = TryContainsSafe(slabUnion, tbPoly);
                 string layer = (insideContinuous || insideSlab) ? layerHatili : layerTemel;
 
                 if (layer == layerTemel)
@@ -17303,7 +17923,7 @@ namespace ST4PlanIdCiz
                     Geometry toDraw = geom;
                     if (kolonPerdeUnion != null && !kolonPerdeUnion.IsEmpty)
                     {
-                        var diff = geom.Difference(kolonPerdeUnion);
+                        var diff = TryDifferenceSafe(geom, kolonPerdeUnion);
                         if (diff != null && !diff.IsEmpty)
                         {
                             toDraw = ReducePrecisionSafe(diff, 100);
@@ -17344,7 +17964,7 @@ namespace ST4PlanIdCiz
                     {
                         var polys = list.Select(i => hatilPieces[i].poly).ToList();
                         var polysGeom = polys.Cast<Geometry>().ToList();
-                        Geometry part = polys.Count == 1 ? polys[0] : CascadedPolygonUnion.Union(polysGeom);
+                        Geometry part = polys.Count == 1 ? polys[0] : UnionPolygonsKeepParts(polysGeom);
                         if (part != null && !part.IsEmpty)
                         {
                             part = FilterSmallPolygons(part, minHatilAreaCm2);
@@ -17496,16 +18116,14 @@ namespace ST4PlanIdCiz
                     new Coordinate(p11.X, p11.Y)
                 })));
             }
-            int radyeCount = radyeRecords.Count;
-            int radyePad = GetLabelPadWidth(radyeCount);
             Database db = btr.Database;
             ObjectId radyeLabelStyleId = GetOrCreateYaziBeykentTextStyle(tr, db);
-            HashSet<int> radyeIndicesToLabel = ComputeRadyeIndicesToLabel(radyeRecords, _model.BuildingBaseKotu);
-            for (int i = 0; i < radyeRecords.Count; i++)
+            var radyePlacements = ComputeRadyeLabelPlacements(radyeRecords, _model.BuildingBaseKotu);
+            int radyePad = GetLabelPadWidth(radyePlacements.Count);
+            for (int i = 0; i < radyePlacements.Count; i++)
             {
-                if (!radyeIndicesToLabel.Contains(i)) continue;
-                var rec = radyeRecords[i];
-                AppendRadyeLabel(tr, btr, rec.sf, i + 1, radyePad, rec.center, radyeLabelStyleId);
+                var rec = radyePlacements[i];
+                AppendRadyeLabel(tr, btr, rec.sf, i + 1, radyePad, rec.anchor, radyeLabelStyleId);
             }
             if (polygons.Count == 0) return;
             if (!drawTemelOutline) return;

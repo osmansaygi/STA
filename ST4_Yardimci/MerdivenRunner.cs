@@ -3320,10 +3320,10 @@ namespace ST4Yardimci
             int hookCm = (int)Math.Round(hook, MidpointRounding.AwayFromZero);
             int Lcm = netBoyCm + 2 * hookCm;
             int aralikCm = (int)Math.Round(tevziAralik, MidpointRounding.AwayFromZero);
-            string etiket = string.Format(
+            string etiket = WithMerdivenCarpan(string.Format(
                 System.Globalization.CultureInfo.InvariantCulture,
                 "{0}\u00F8{1}/{2} L={3}",
-                tevziAdet, MerdivenSettings.TevziDonatiCapMm, aralikCm, Lcm);
+                tevziAdet, MerdivenSettings.TevziDonatiCapMm, aralikCm, Lcm));
 
             // Açılım: kesitteki üst/alt tevzinin kopyası — üst −40 cm, alt −55 cm
             const double ustAcilimAsagiCm = 40.0;
@@ -5213,10 +5213,10 @@ namespace ST4Yardimci
             double pasCm = MerdivenSettings.PaspayiCm;
             if (pasCm < 0) pasCm = 0;
             int adet = CalcDonatiAdet(_acilimKolGenislikCm, aralikCm, pasCm);
-            string etiket = string.Format(
+            string etiket = WithMerdivenCarpan(string.Format(
                 System.Globalization.CultureInfo.InvariantCulture,
                 "{0}\u00F8{1}/{2} L={3}",
-                adet, MerdivenSettings.AnaDonatiCapMm, aralikCm, boyCm);
+                adet, MerdivenSettings.AnaDonatiCapMm, aralikCm, boyCm));
 
             // Etiket: en uzun kol ortası, kol açısı; yazı kutusu alt kenarı donatıdan 4 cm
             Extents3d? etiketBox = null;
@@ -5927,11 +5927,7 @@ namespace ST4Yardimci
             AddLineRaw(tr, ms, pTR.X, pTR.Y, pTM.X, pTM.Y, LayerKotCizgisi);
             AddLineRaw(tr, ms, pTR.X, pTR.Y, pExt.X, pExt.Y, LayerKotCizgisi);
 
-            double m = kotCm / 100.0;
-            double rounded = Math.Round(m, 2, MidpointRounding.AwayFromZero);
-            string txt = Math.Abs(rounded) < 0.005
-                ? "\u00B10.00"
-                : string.Format(System.Globalization.CultureInfo.InvariantCulture, "{0:+0.00;-0.00}", rounded);
+            string txt = FormatMerdivenKot(kotCm);
 
             ObjectId styleId = EnsureTextStyle(tr, db);
             double textX = apexX + halfW;
@@ -5958,6 +5954,84 @@ namespace ST4Yardimci
                     t.TransformBy(Matrix3d.Displacement(new Vector3d(0, dy, 0)));
             }
             catch { }
+
+            StackBenzerKatKotlari(tr, db, ms, styleId, t, kotCm, textH);
+        }
+
+        /// <summary>Adet ve benzer kat 1'den büyükse L= etiketinin önüne katxadetx.</summary>
+        private static string WithMerdivenCarpan(string tag)
+        {
+            if (string.IsNullOrEmpty(tag)) return tag;
+            int nAdet = MerdivenSettings.BenzerAdet > 1 ? MerdivenSettings.BenzerAdet : 1;
+            int nKat = MerdivenSettings.BenzerKat > 1 ? MerdivenSettings.BenzerKat : 1;
+            if (nKat > 1 && nAdet > 1)
+                return nKat.ToString(System.Globalization.CultureInfo.InvariantCulture) + "x"
+                    + nAdet.ToString(System.Globalization.CultureInfo.InvariantCulture) + "x" + tag;
+            if (nKat > 1)
+                return nKat.ToString(System.Globalization.CultureInfo.InvariantCulture) + "x" + tag;
+            if (nAdet > 1)
+                return nAdet.ToString(System.Globalization.CultureInfo.InvariantCulture) + "x" + tag;
+            return tag;
+        }
+
+        /// <summary>
+        /// Benzer katların kotu, mevcut kot yazısının üstünde. 1/25 çizimde yazı kutuları arası 15.
+        /// Her kopya bir kat yüksekliği yukarıdadır.
+        /// </summary>
+        private static void StackBenzerKatKotlari(
+            Transaction tr, Database db, BlockTableRecord ms, ObjectId styleId,
+            DBText first, double kotCm, double textH)
+        {
+            int nKat = MerdivenSettings.BenzerKat;
+            if (first == null || nKat < 2) return;
+            double hKat = MerdivenSettings.KatYuksekligiCm;
+            if (hKat < 1) hKat = 300;
+            const double gap = 15.0;
+            double yTop;
+            try
+            {
+                Extents3d ex0 = first.GeometricExtents;
+                yTop = ex0.MaxPoint.Y;
+            }
+            catch { return; }
+
+            double textX = first.AlignmentPoint.X;
+            for (int k = 1; k < nKat; k++)
+            {
+                string txt = FormatMerdivenKot(kotCm + k * hKat);
+                var tk = new DBText
+                {
+                    TextString = txt,
+                    Height = textH,
+                    Layer = LayerKotYazi,
+                    TextStyleId = styleId,
+                    HorizontalMode = TextHorizontalMode.TextLeft,
+                    VerticalMode = TextVerticalMode.TextBottom,
+                    Position = new Point3d(textX, yTop + gap, 0),
+                    AlignmentPoint = new Point3d(textX, yTop + gap, 0)
+                };
+                ms.AppendEntity(tk);
+                tr.AddNewlyCreatedDBObject(tk, true);
+                try
+                {
+                    tk.AdjustAlignment(db);
+                    Extents3d ex = tk.GeometricExtents;
+                    double dy = (yTop + gap) - ex.MinPoint.Y;
+                    if (Math.Abs(dy) > 0.01)
+                        tk.TransformBy(Matrix3d.Displacement(new Vector3d(0, dy, 0)));
+                    ex = tk.GeometricExtents;
+                    yTop = ex.MaxPoint.Y;
+                }
+                catch { yTop += gap + textH; }
+            }
+        }
+
+        private static string FormatMerdivenKot(double kotCm)
+        {
+            double m = kotCm / 100.0;
+            double rounded = Math.Round(m, 2, MidpointRounding.AwayFromZero);
+            if (Math.Abs(rounded) < 0.005) return "\u00B10.00";
+            return string.Format(System.Globalization.CultureInfo.InvariantCulture, "{0:+0.00;-0.00}", rounded);
         }
 
         /// <summary>

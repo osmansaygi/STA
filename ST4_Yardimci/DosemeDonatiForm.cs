@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
 using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
@@ -7,7 +8,8 @@ using SdFont = System.Drawing.Font;
 namespace ST4Yardimci
 {
     /// <summary>
-    /// Döşeme Donatı formu — katmanlar sabit (KIRIS/KOLON/PERDE/DOSEME SINIRI/KALIP BOSLUK/MERDIVEN).
+    /// Döşeme Donatı formu. Donatı Çiz serbest yönle çalışır.
+    /// Sınır listesi konsol kenarı, mesnet listesi mesnet kabulü.
     /// </summary>
     internal sealed class DosemeDonatiForm : Form
     {
@@ -16,12 +18,17 @@ namespace ST4Yardimci
         private readonly RadioButton _rbSerbest;
         private readonly RadioButton _rbX;
         private readonly RadioButton _rbY;
-        private readonly Button _btnRun;
+        private readonly ListBox _lstSinir;
+        private readonly ListBox _lstMesnet;
+        private readonly ListBox _lstBosluk;
+        private readonly ListBox _lstKatSinir;
+        private readonly Button _btnCizgisel;
         private readonly Button _btnClose;
         private bool _starting;
 
         public static void ShowOrActivate()
         {
+            if (!BaFormSession.TryEnter("DOSEMEDONATI")) return;
             if (_instance == null || _instance.IsDisposed)
             {
                 _instance = new DosemeDonatiForm();
@@ -31,13 +38,18 @@ namespace ST4Yardimci
             else
             {
                 _instance._starting = false;
+                _instance.RefreshLists();
                 _instance.Visible = true;
                 _instance.BringToFront();
             }
+
+            BaFormSession.Attach("DOSEMEDONATI", _instance);
+            BaFormSession.EndPick("DOSEMEDONATI");
         }
 
         public static void Shutdown()
         {
+            BaFormSession.Release("DOSEMEDONATI");
             if (_instance == null) return;
             try { _instance.Close(); } catch { }
             _instance = null;
@@ -53,6 +65,8 @@ namespace ST4Yardimci
                     _instance.BeginInvoke(new Action(HideTemporarily));
                     return;
                 }
+                
+                BaFormSession.BeginPick("DOSEMEDONATI");
                 _instance.Visible = false;
             }
             catch { }
@@ -60,6 +74,7 @@ namespace ST4Yardimci
 
         public static void ShowAfterPick()
         {
+            BaFormSession.EndPick("DOSEMEDONATI");
             try { ShowOrActivate(); } catch { }
         }
 
@@ -71,20 +86,19 @@ namespace ST4Yardimci
             ShowInTaskbar = false;
             MinimizeBox = false;
             MaximizeBox = false;
-            ClientSize = new Size(360, 240);
+            ClientSize = new Size(368, 420);
             BackColor = AcadPaletteTheme.Bg;
             ForeColor = Color.White;
             Font = new SdFont("Segoe UI", 9f);
             KeyPreview = true;
 
             DosemeKonsolSettings.EnsureLoaded();
+            DosemeDonatiSettings.EnsureLoaded();
+            DosemeDonatiRunner.EnsureYonLoaded();
 
-            int y = 12;
-            Controls.Add(MakeLabel("Katmanlar: KIRIS / KOLON / PERDE", 14, y)); y += 18;
-            Controls.Add(MakeLabel("DOSEME SINIRI · KALIP BOSLUK · MERDIVEN (sabit)", 14, y)); y += 22;
-
-            Controls.Add(MakeLabel("Donatı yönü (GPR yazı: X kırmızı / Y mavi)", 14, y)); y += 20;
-            _rbSerbest = MakeRadio("Serbest", 14, y);
+            int y = 10;
+            Controls.Add(MakeLabel("Donatı yönü (GPR yazı: X kırmızı / Y mavi)", 12, y)); y += 20;
+            _rbSerbest = MakeRadio("Serbest", 12, y);
             _rbX = MakeRadio("X yönü", 110, y);
             _rbY = MakeRadio("Y yönü", 200, y);
             ApplyYonToRadios(DosemeDonatiRunner.Yon);
@@ -93,6 +107,7 @@ namespace ST4Yardimci
                 if (_rbX.Checked) DosemeDonatiRunner.Yon = DosemeDonatiRunner.DonatiYonu.X;
                 else if (_rbY.Checked) DosemeDonatiRunner.Yon = DosemeDonatiRunner.DonatiYonu.Y;
                 else DosemeDonatiRunner.Yon = DosemeDonatiRunner.DonatiYonu.Serbest;
+                try { DosemeDonatiRunner.SaveYon(); } catch { }
             };
             _rbSerbest.CheckedChanged += yonChanged;
             _rbX.CheckedChanged += yonChanged;
@@ -102,31 +117,57 @@ namespace ST4Yardimci
             Controls.Add(_rbY);
             y += 32;
 
-            var btnAyar = MakeButton("Konsol donatı ayarları…", 14, y, 312);
+            var btnAyar = MakeButton("Konsol donatı ayarları…", 12, y, 344);
             btnAyar.Click += (s, e) =>
             {
                 using (var f = new DosemeKonsolAyarForm())
-                {
-                    try { f.ShowDialog(this); }
-                    catch { f.ShowDialog(); }
-                }
+                    BaFormSession.ShowChildDialog(this, f);
             };
             Controls.Add(btnAyar);
             y += 36;
 
-            _btnRun = MakeButton("Donatı çiz", 14, y, 210);
-            _btnRun.Font = new SdFont("Segoe UI", 9f, FontStyle.Bold);
-            _btnRun.ForeColor = AcadPaletteTheme.Accent;
-            _btnRun.Click += OnRun;
-            _btnClose = MakeButton("Kapat", 232, y, 94);
+            _btnCizgisel = MakeButton("Donatı Çiz", 12, y, 230);
+            _btnCizgisel.Font = new SdFont("Segoe UI", 9f, FontStyle.Bold);
+            _btnCizgisel.ForeColor = AcadPaletteTheme.Accent;
+            _btnCizgisel.Click += OnCizgisel;
+            _btnClose = MakeButton("Kapat", 250, y, 106);
             _btnClose.Click += (s, e) => Close();
-            Controls.Add(_btnRun);
+            Controls.Add(_btnCizgisel);
             Controls.Add(_btnClose);
+            y += 36;
 
+            Controls.Add(MakeLabel("Konsol sınır çizgileri", 12, y)); y += 18;
+            _lstSinir = MakeList(12, y, 344, 56);
+            Controls.Add(_lstSinir); y += 60;
+            AddLayerButtons(y, DosemeKatmanListe.Sinir, _lstSinir); y += 34;
+
+            Controls.Add(MakeLabel("Mesnet çizgileri", 12, y)); y += 18;
+            _lstMesnet = MakeList(12, y, 344, 56);
+            Controls.Add(_lstMesnet); y += 60;
+            AddLayerButtons(y, DosemeKatmanListe.Mesnet, _lstMesnet); y += 34;
+
+            Controls.Add(MakeLabel("Boşluk poligonları (içine donatı yok)", 12, y)); y += 18;
+            _lstBosluk = MakeList(12, y, 344, 48);
+            Controls.Add(_lstBosluk); y += 52;
+            AddLayerButtons(y, DosemeKatmanListe.Bosluk, _lstBosluk); y += 34;
+
+            Controls.Add(MakeLabel("Kat sınırı poligonları (dışına donatı yok)", 12, y)); y += 18;
+            _lstKatSinir = MakeList(12, y, 344, 48);
+            Controls.Add(_lstKatSinir); y += 52;
+            AddLayerButtons(y, DosemeKatmanListe.KatSinir, _lstKatSinir);
+            y += 40;
+            ClientSize = new Size(368, y);
+
+            RefreshLists();
+
+            FormClosing += (s, e) => { try { DosemeDonatiSettings.Save(); } catch { } };
             FormClosed += (s, e) =>
             {
                 if (ReferenceEquals(_instance, this))
+                {
                     _instance = null;
+                    BaFormSession.Release("DOSEMEDONATI");
+                }
             };
 
             try
@@ -146,7 +187,9 @@ namespace ST4Yardimci
             }
             if (keyData == Keys.Enter || keyData == Keys.Return || keyData == Keys.Space)
             {
-                OnRun(this, EventArgs.Empty);
+                if (ActiveControl is ListBox)
+                    return base.ProcessCmdKey(ref msg, keyData);
+                OnCizgisel(this, EventArgs.Empty);
                 return true;
             }
             return base.ProcessCmdKey(ref msg, keyData);
@@ -161,7 +204,82 @@ namespace ST4Yardimci
                 _rbSerbest.Checked = true;
         }
 
-        private void OnRun(object sender, EventArgs e)
+        private void RefreshLists()
+        {
+            DosemeDonatiSettings.EnsureLoaded();
+            FillList(_lstSinir, DosemeDonatiSettings.SinirKatmanlar);
+            FillList(_lstMesnet, DosemeDonatiSettings.MesnetKatmanlar);
+            FillList(_lstBosluk, DosemeDonatiSettings.BoslukKatmanlar);
+            FillList(_lstKatSinir, DosemeDonatiSettings.KatSinirKatmanlar);
+        }
+
+        private void AddLayerButtons(int y, DosemeKatmanListe which, ListBox list)
+        {
+            var btnAdd = MakeButton("Katman ekle", 12, y, 110);
+            var btnDel = MakeButton("Listeden sil", 128, y, 110);
+            var btnRem = MakeButton("Katman kaldır", 244, y, 112);
+            btnAdd.Click += (s, e) => StartLayerPick(which, add: true);
+            btnDel.Click += (s, e) => RemoveSelected(which, list);
+            btnRem.Click += (s, e) => StartLayerPick(which, add: false);
+            Controls.Add(btnAdd);
+            Controls.Add(btnDel);
+            Controls.Add(btnRem);
+        }
+
+        private void StartLayerPick(DosemeKatmanListe which, bool add)
+        {
+            try
+            {
+                var doc = AcApp.DocumentManager.MdiActiveDocument;
+                if (doc == null) return;
+                DosemeDonatiSettings.PickList = which;
+                DosemeDonatiSettings.Save();
+                HideTemporarily();
+                doc.SendStringToExecute(
+                    add ? "DOSEMEDONATIKATMANEKLE " : "DOSEMEDONATIKATMANKALDIR ",
+                    true, false, false);
+            }
+            catch { }
+        }
+
+        private void RemoveSelected(DosemeKatmanListe which, ListBox list)
+        {
+            if (list.SelectedItems.Count == 0) return;
+            var toRemove = new List<string>();
+            foreach (object o in list.SelectedItems)
+            {
+                if (o is string s && !string.IsNullOrWhiteSpace(s))
+                    toRemove.Add(s);
+            }
+            foreach (string name in toRemove)
+                DosemeDonatiSettings.RemoveKatman(which, name);
+            RefreshLists();
+        }
+
+        private static void FillList(ListBox list, IEnumerable<string> names)
+        {
+            if (list == null) return;
+            list.Items.Clear();
+            if (names == null) return;
+            foreach (string n in names)
+            {
+                if (!string.IsNullOrWhiteSpace(n))
+                    list.Items.Add(n);
+            }
+        }
+
+        private static ListBox MakeList(int x, int y, int w, int h) => new ListBox
+        {
+            Location = new Point(x, y),
+            Size = new Size(w, h),
+            BackColor = AcadPaletteTheme.InputBg,
+            ForeColor = AcadPaletteTheme.Text,
+            BorderStyle = BorderStyle.FixedSingle,
+            IntegralHeight = false,
+            SelectionMode = SelectionMode.MultiExtended
+        };
+
+        private void OnCizgisel(object sender, EventArgs e)
         {
             if (_starting) return;
             try
@@ -171,9 +289,11 @@ namespace ST4Yardimci
                 if (_rbX.Checked) DosemeDonatiRunner.Yon = DosemeDonatiRunner.DonatiYonu.X;
                 else if (_rbY.Checked) DosemeDonatiRunner.Yon = DosemeDonatiRunner.DonatiYonu.Y;
                 else DosemeDonatiRunner.Yon = DosemeDonatiRunner.DonatiYonu.Serbest;
+                try { DosemeDonatiRunner.SaveYon(); } catch { }
+                DosemeDonatiSettings.Save();
                 _starting = true;
                 HideTemporarily();
-                doc.SendStringToExecute("DOSEMEDONATICIZ ", true, false, false);
+                doc.SendStringToExecute("DOSEMEDONATICIZGISEL ", true, false, false);
             }
             catch
             {

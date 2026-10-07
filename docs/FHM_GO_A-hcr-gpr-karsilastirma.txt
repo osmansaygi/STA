@@ -1,0 +1,57 @@
+============================================================
+FHM_GO_A — HCR dosyasi vs GPR karsilastirma
+============================================================
+
+GPR'de "Hcr" yazisi: sol hucrede yukleme satiri etiketi.
+Yanindaki sayilar N/M/V (ton, tm) — kritik yukseklik (metre) DEGIL.
+GPR bu projede Hcr yuksekligini metre olarak basmiyor; yalniz Hcr bayragi + Hk.
+
+HCR kaydi (16 bayt): f1  f2  f3  f4
+Onceki varsayim: f1=ust kot, f2=kat yuksekligi, f3/f4=Hcr
+Asagida GPR Hk ve kesit ile birebir kontrol.
+
+No   Kesit          f1       f2       f3       f4 | GPR id/Hk              Bx     By GPR Hcr?
+--------------------------------------------------------------------------------------------------------------
+1    25/180     26,277    3,299        0   15,046 | S5-01 Hk=3.0, S4-0     25    180 HCR dolu GPR Hcr VAR f2~Hk OK
+3    25/175     23,703    3,299        0   17,554 | S5-03 Hk=3.0, S4-0     25    175 HCR dolu GPR Hcr VAR f2~Hk OK
+4    25/160     23,718    3,299        0   13,367 | S5-04 Hk=3.0, S4-0     25    160 HCR dolu GPR Hcr VAR f2~Hk OK
+5    25/160     27,862    3,299        0   12,269 | S5-05 Hk=3.0, S4-0     25    160 HCR dolu GPR Hcr VAR f2~Hk OK
+6    25/160     23,884    3,299        0   12,251 | S5-06 Hk=3.0, S4-0     25    160 HCR dolu GPR Hcr VAR f2~Hk OK
+7    25/160     24,537    3,299        0   12,476 | S5-07 Hk=3.0, S4-0     25    160 HCR dolu GPR Hcr VAR f2~Hk OK
+8    25/150     23,143    3,299        0   10,299 | S5-08 Hk=3.0, S4-0     25    150 HCR dolu GPR Hcr VAR f2~Hk OK
+10   25/160     25,226    3,299        0   19,557 | S5-10 Hk=3.0, S4-1     25    160 HCR dolu GPR Hcr VAR f2~Hk OK
+11   25/155     22,799    3,299        0   17,988 | S5-11 Hk=3.0, S4-1     25    155 HCR dolu GPR Hcr VAR f2~Hk OK
+14   150/25     27,613    3,299   13,231        0 | S5-14 Hk=3.0, S4-1    150     25 HCR dolu GPR Hcr VAR f2~Hk OK
+16   150/25     27,247    3,299   13,528        0 | S5-16 Hk=3.0, S4-1    150     25 HCR dolu GPR Hcr VAR f2~Hk OK
+18   150/25     33,809    3,299    7,819        0 | SC-18 Hk=3.7, S5-1    150     25 HCR dolu GPR Hcr VAR f2~Hk OK
+19   150/25     33,213    3,299    8,129        0 | SC-19 Hk=3.7, S5-1    150     25 HCR dolu GPR Hcr VAR f2~Hk OK
+20   -          22,058    3,666  128,737  164,375 | SC-20 Hk=2.5, S5-2    150     25 HCR dolu GPR Hcr VAR f2-Hk=0,666
+22   25/150     39,407    3,299        0   10,338 | S5-22 Hk=3.0, S4-2     25    150 HCR dolu GPR Hcr VAR f2~Hk OK
+25   -          22,077    3,666  125,662  178,257 | SC-25 Hk=2.5, S5-2     60     25 HCR dolu GPR Hcr VAR f2-Hk=0,666
+26   150/25     29,694    3,299    8,816        0 | SC-26 Hk=3.7, S5-2    150     25 HCR dolu GPR Hcr VAR f2~Hk OK
+27   150/25     29,634    3,299    8,912        0 | SC-27 Hk=3.7, S5-2    150     25 HCR dolu GPR Hcr VAR f2~Hk OK
+29   150/25     23,316    3,299    9,022        0 | S3-29 Hk=3.0, S2-2    150     25 HCR dolu GPR Hcr VAR f2~Hk OK
+31   150/25     22,736    3,299    9,397        0 | S3-31 Hk=3.0, S2-3    150     25 HCR dolu GPR Hcr VAR f2~Hk OK
+34   25/180     16,029    3,299        0   17,245 | S3-34 Hk=3.0, S2-3     25    180 HCR dolu GPR Hcr VAR f2~Hk OK
+36   25/150     19,392    3,299        0    8,566 | S3-36 Hk=3.0, S2-3     25    150 HCR dolu GPR Hcr VAR f2~Hk OK
+37   25/150     17,756    3,299        0     8,37 | S3-37 Hk=3.0, S2-3     25    150 HCR dolu GPR Hcr VAR f2~Hk OK
+38   25/150     19,543    3,299        0    8,853 | S3-38 Hk=3.0, S2-3     25    150 HCR dolu GPR Hcr VAR f2~Hk OK
+39   25/150     16,851    3,299        0    8,788 | S3-39 Hk=3.0, S2-3     25    150 HCR dolu GPR Hcr VAR f2~Hk OK
+40   25/150     17,318    3,299        0    9,883 | S3-40 Hk=3.0, S2-4     25    150 HCR dolu GPR Hcr VAR f2~Hk OK
+42   25/180     13,166    3,299        0   47,612 | S3-42 Hk=3.0, S2-4     25    180 HCR dolu GPR Hcr VAR f2~Hk OK
+
+--- Bayrak eslesmesi (dolu <-> GPR Hcr) ---
+Bayrak ayni olan: 51 / 51
+f2 ~ GPR Hk (tol 5cm): 25 / 27 dolu kayit
+
+--- Ornek: kolon 1 GPR blok (SZ-01) ---
+SZ-01 Bx=25 By=180 Hk=3.3m  ... sonra satir etiketi "Hcr" (kuvvet satiri)
+HCR kolon1: f1=26.277  f2=3.299  f3=0  f4=15.046
+Eslesen: f2 ~= Hk=3.3m
+Eslesmeyen: f1 ve f4, GPR'de ayni sayi olarak basili degil.
+GPR Hcr satirindaki 61.25 / 9.74 / 0.80 / 2.50 kuvvet-As; metre degil.
+
+--- Alan 3 / Alan 4 ---
+Dusey uzun perde (25xH): genelde f4 dolu, f3=0
+Yatay uzun perde (Wx25): genelde f3 dolu, f4=0
+Poligon (tip 3, or. kolon 20/25): f3/f4 buyuk (128, 164) — muhtemel aci; Hcr yuksekligi degil.

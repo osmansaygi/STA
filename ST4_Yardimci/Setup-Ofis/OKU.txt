@@ -1,0 +1,19 @@
+BETONARME TOOL — ofis kurulumu (yalnız BEYKENT-2)
+
+1. Kur.cmd'e çift tıklayın. Açık AutoCAD otomatik kapatılır.
+2. Eski ST4_Yardimci.bundle silinir; kilitliyse __eski_ tarihli klasöre taşınır.
+3. Yeni sürüm yalnızca şuraya kurulur:
+
+%AppData%\Autodesk\ApplicationPlugins\ST4_Yardimci.bundle\
+
+Bu klasörün tamamını (Kur.cmd + PackageContents.xml + payload\) ofis PC'ye kopyalayın.
+Kurulum başka bilgisayarda durur.
+
+payload içinde ST4_Yardimci.dll + NetTopologySuite ve System.* olmalı.
+
+ÖNEMLİ:
+- APPLOAD Startup Suite içinde ST4_Yardimci / NETLOAD kalmasın.
+- Ayrı NETLOAD yapmayın.
+
+AutoCAD açılınca “BETONARME TOOL yuklendi” yazmalı.
+Eski yazısız şerit durursa paleti kapatın; COM silme artık yapılmaz (göçme).

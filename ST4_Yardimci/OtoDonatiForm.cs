@@ -37,6 +37,7 @@ namespace ST4Yardimci
         private readonly TextBox _txtUstAralik;
         private readonly GonyeSemasiPanel _gonyeSemasi;
         private readonly CheckBox _chkSehpa;
+        private readonly Button _btnManuel;
         private readonly Button _btnRun;
         private readonly Button _btnClose;
         private bool _starting;
@@ -45,6 +46,7 @@ namespace ST4Yardimci
 
         public static void ShowOrActivate()
         {
+            if (!BaFormSession.TryEnter("OTODONATI")) return;
             OtoDonatiSettings.EnsureLoaded();
             if (_instance == null || _instance.IsDisposed)
             {
@@ -59,10 +61,14 @@ namespace ST4Yardimci
                 _instance.Visible = true;
                 _instance.BringToFront();
             }
+
+            BaFormSession.Attach("OTODONATI", _instance);
+            BaFormSession.EndPick("OTODONATI");
         }
 
         public static void Shutdown()
         {
+            BaFormSession.Release("OTODONATI");
             if (_instance == null) return;
             try { _instance.Close(); } catch { }
             _instance = null;
@@ -78,6 +84,8 @@ namespace ST4Yardimci
                     _instance.BeginInvoke(new Action(HideTemporarily));
                     return;
                 }
+                
+                BaFormSession.BeginPick("OTODONATI");
                 _instance.Visible = false;
             }
             catch { }
@@ -85,6 +93,7 @@ namespace ST4Yardimci
 
         public static void ShowAfterPick()
         {
+            BaFormSession.EndPick("OTODONATI");
             try
             {
                 if (_instance != null && !_instance.IsDisposed)
@@ -175,6 +184,11 @@ namespace ST4Yardimci
             _chkSehpa = MakeCheck("Sehpa donatısı", Pad, y, OtoDonatiSettings.SehpaDonatisi);
             Controls.Add(_chkSehpa); y += 30;
 
+            _btnManuel = MakeButton("Manuel donatı at", Pad, y, contentW, accent: false);
+            _btnManuel.Click += OnManuel;
+            Controls.Add(_btnManuel);
+            y += 28 + 8;
+
             _btnRun = MakeButton("Donatı çiz", Pad, y, contentW - 86, accent: true);
             _btnRun.Click += OnRun;
             _btnClose = MakeButton("Kapat", Pad + contentW - 80, y, 80, accent: false);
@@ -200,7 +214,10 @@ namespace ST4Yardimci
             FormClosed += (s, e) =>
             {
                 if (ReferenceEquals(_instance, this))
+                {
                     _instance = null;
+                    BaFormSession.Release("OTODONATI");
+                }
             };
 
             try
@@ -415,6 +432,25 @@ namespace ST4Yardimci
                 p.SehpaDonatisi = _chkSehpa.Checked;
             }
             catch { }
+        }
+
+        private void OnManuel(object sender, EventArgs e)
+        {
+            if (_starting) return;
+            if (!TryPushSettings()) return;
+            OtoDonatiSettings.Save();
+            try
+            {
+                var doc = AcApp.DocumentManager.MdiActiveDocument;
+                if (doc == null) return;
+                _starting = true;
+                HideTemporarily();
+                doc.SendStringToExecute("OTODONATIMANUEL ", true, false, false);
+            }
+            catch
+            {
+                _starting = false;
+            }
         }
 
         private void OnRun(object sender, EventArgs e)

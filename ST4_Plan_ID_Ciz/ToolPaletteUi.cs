@@ -1,6 +1,9 @@
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
+using System.IO;
+using System.Reflection;
 using System.Windows.Forms;
 using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
 
@@ -108,8 +111,69 @@ namespace ST4PlanIdCiz
         private static readonly Color Accent = Color.FromArgb(153, 204, 51);
         private static readonly Color Light = Color.FromArgb(0xC8, 0xCD, 0xD4);
 
+        /// <summary>
+        /// %LocalAppData%\ST4Icons\KOMUT.png varsa onu kullanır (32×32’ye sığdırır).
+        /// AutoCAD’den PNG aktarımı için; panel yeniden açılınca okunur.
+        /// </summary>
+        static Image TryUserOverride(string cmd)
+        {
+            if (string.IsNullOrWhiteSpace(cmd)) return null;
+            try
+            {
+                string path = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "ST4Icons",
+                    cmd.Trim().ToUpperInvariant() + ".png");
+                if (!File.Exists(path)) return null;
+                byte[] bytes = File.ReadAllBytes(path);
+                using (var ms = new MemoryStream(bytes))
+                using (var src = Image.FromStream(ms))
+                    return Fit32(src);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        static Image TryEmbedded(string cmd)
+        {
+            if (string.IsNullOrWhiteSpace(cmd)) return null;
+            try
+            {
+                string res = "ST4PlanIdCiz.Icons.sta_" + cmd.Trim().ToLowerInvariant() + ".png";
+                using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(res))
+                {
+                    if (stream == null) return null;
+                    using (var src = Image.FromStream(stream))
+                        return new Bitmap(src);
+                }
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        static Bitmap Fit32(Image src)
+        {
+            var dst = new Bitmap(32, 32, PixelFormat.Format32bppArgb);
+            using (var g = Graphics.FromImage(dst))
+            {
+                g.Clear(Color.Transparent);
+                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                g.DrawImage(src, new Rectangle(0, 0, 32, 32));
+            }
+            return dst;
+        }
+
         public static Image ForCommand(string cmd)
         {
+            Image user = TryUserOverride(cmd);
+            if (user != null) return user;
+            Image embedded = TryEmbedded(cmd);
+            if (embedded != null) return embedded;
             if (string.IsNullOrEmpty(cmd)) return GlyphPlan();
             string c = cmd.ToUpperInvariant();
             if (c.Contains("KALIP")) return GlyphPlan();

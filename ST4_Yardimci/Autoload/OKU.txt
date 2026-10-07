@@ -1,0 +1,49 @@
+# ST4_Yardimci — AutoCAD 2027 otomatik yükleme
+
+APPLOAD → Startup Suite çoğu zaman **.NET DLL kabul etmez** (2025+ / 2027).
+Bunun yerine **Autoloader** (`.bundle`) kullanılır.
+
+## Kurulum (ofis PC)
+
+1. AutoCAD’i **kapatın**.
+2. Bu klasörün tamamını kopyalayın:
+
+   `ST4_Yardimci.bundle`
+
+   Hedef (kullanıcıya özel, yönetici gerekmez):
+
+   `%AppData%\Autodesk\ApplicationPlugins\`
+
+   Tam yol örneği:
+
+   `C:\Users\BEYKENT-2\AppData\Roaming\Autodesk\ApplicationPlugins\ST4_Yardimci.bundle\`
+
+3. İçinde şunlar olmalı:
+
+   - `PackageContents.xml`
+   - `Contents\Windows\ST4_Yardimci.dll`
+
+4. AutoCAD’i açın. Komut satırında “BETONARME TOOL yuklendi…” benzeri mesaj veya `BAPANEL` çalışmalı.
+
+## DLL güncelleme
+
+1. AutoCAD kapalıyken yeni derlenen (obfuscated) DLL’yi  
+   `...\ST4_Yardimci.bundle\Contents\Windows\ST4_Yardimci.dll`  
+   üzerine yazın (isim **sabit** `ST4_Yardimci.dll`).
+2. AutoCAD’i açın.
+
+Derleme çıktısı: `ST4_Yardimci\Autoload\ST4_Yardimci.bundle\` (build bunu doldurur).
+
+## Kaldırma
+
+1. AutoCAD’i kapatın.
+2. `ApplicationPlugins` içinden `ST4_Yardimci.bundle` klasörünü **silin**.
+3. AutoCAD’i açın — artık yüklenmez.
+
+## Çalışmıyorsa
+
+- `OPTIONS` → Files → **Trusted Locations** içine  
+  `%AppData%\Autodesk\ApplicationPlugins\` ekleyin (veya bundle yolunu).
+- `SECURELOAD` = 1 veya 0 deneyin (0 = daha gevşek; güvenlik politikasına göre).
+- Alternatif (geçici): her açılışta bir kez `NETLOAD` ile  
+  `...\Contents\Windows\ST4_Yardimci.dll` seçin.

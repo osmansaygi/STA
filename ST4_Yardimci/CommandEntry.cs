@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Reflection;
 using System.Threading;
 using Autodesk.AutoCAD.ApplicationServices;
@@ -21,6 +22,8 @@ namespace ST4Yardimci
         {
             try
             {
+                AppDomain.CurrentDomain.AssemblyResolve -= ResolvePluginDependency;
+                AppDomain.CurrentDomain.AssemblyResolve += ResolvePluginDependency;
                 var ed = AcApp.DocumentManager.MdiActiveDocument?.Editor;
                 WarnIfDuplicateAssemblies(ed);
                 try
@@ -46,7 +49,7 @@ namespace ST4Yardimci
                     return;
                 }
                 if (ed != null)
-                    ed.WriteMessage("\nBETONARME TOOL yuklendi. BAPANEL otomatik aciliyor…  |  OTOOLCU  PLANOLCU  MERDIVEN  DOSEMEDONATI  OTODONATI  RADYEILAVE  TEMELHATILI  DONATIBOYU  DONATIMETRAJ");
+                    ed.WriteMessage("\nBETONARME TOOL yuklendi. BAPANEL otomatik aciliyor…  |  OTOOLCU  PLANOLCU  MERDIVEN  DOSEMEDONATI  OTODONATI  SEHPADONATI  RADYEILAVE  TEMELHATILI  TEMELCEKURU  DONATIBOYU  DONATIMETRAJ  DONATI ADET  DONATI OKU  KOTDEGISTIR  KATMANYUKLE");
 
                 // NETLOAD sırasında palet hemen açılamayabilir; Idle'da bir kez aç.
                 AcApp.Idle -= OnIdleShowBaPanel;
@@ -60,28 +63,91 @@ namespace ST4Yardimci
             AcApp.Idle -= OnIdleShowBaPanel;
             try
             {
-                if (MachineLicense.IsAllowed())
+                if (!MachineLicense.IsAllowed()) return;
+                // Workspace oturmadan PaletteSet bazı sürümlerde göçürür.
+                if (_idleSkip < 2)
+                {
+                    _idleSkip++;
+                    AcApp.Idle += OnIdleShowBaPanel;
+                    return;
+                }
+                // Plan_ID Idle'da STA paneli açıyorsa aynı anda 3 PaletteSet yaratmayı engelle.
+                bool gotGate = false;
+                try
+                {
+                    bool created;
+                    _paletteGate = new Mutex(false, @"Local\ST4_AcadPaletteInit", out created);
+                    gotGate = _paletteGate.WaitOne(1200);
+                }
+                catch { }
+                try
+                {
+                    // Belge yokken PaletteSet bazı sürümlerde düşer — bir Idle daha bekle.
+                    if (AcApp.DocumentManager.MdiActiveDocument == null)
+                    {
+                        AcApp.Idle += OnIdleShowBaPanel;
+                        return;
+                    }
                     St4LispPaletteManager.Show();
+                    // BAUST paleti / COM toolbar silme ofiste süreç düşürür — açılışta yok.
+                }
+                finally
+                {
+                    if (gotGate)
+                    {
+                        try { _paletteGate?.ReleaseMutex(); } catch { }
+                    }
+                    try { _paletteGate?.Dispose(); } catch { }
+                    _paletteGate = null;
+                }
             }
             catch { }
+        }
+
+        private static Mutex _paletteGate;
+        private static int _idleSkip;
+
+        /// <summary>Bundle klasöründeki NTS / System.* — çalışma dizini AutoCAD olunca FileNotFound süreç düşürebilir.</summary>
+        private static Assembly ResolvePluginDependency(object sender, ResolveEventArgs args)
+        {
+            try
+            {
+                if (args == null || string.IsNullOrEmpty(args.Name)) return null;
+                string simple = new AssemblyName(args.Name).Name;
+                if (string.IsNullOrEmpty(simple) || simple.EndsWith(".resources", StringComparison.OrdinalIgnoreCase))
+                    return null;
+                string dir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+                if (string.IsNullOrEmpty(dir)) return null;
+                string path = Path.Combine(dir, simple + ".dll");
+                if (File.Exists(path))
+                    return Assembly.LoadFrom(path);
+            }
+            catch { }
+            return null;
         }
 
         public void Terminate()
         {
             try { AcApp.Idle -= OnIdleShowBaPanel; } catch { }
+            try { AppDomain.CurrentDomain.AssemblyResolve -= ResolvePluginDependency; } catch { }
             try { OtoOlcuSettings.Save(); } catch { }
             try { PlanOlcuSettings.Save(); } catch { }
             try { OtoDonatiSettings.Save(); } catch { }
-            OtoOlcuForm.Shutdown();
-            PlanOlcuForm.Shutdown();
-            MerdivenForm.Shutdown();
-            DosemeDonatiForm.Shutdown();
-            OtoDonatiForm.Shutdown();
-            RadyeTemelDonatiForm.Shutdown();
-            TemelHatiliForm.Shutdown();
-            DonatiBoyuForm.Shutdown();
-            DonatiMetrajForm.Shutdown();
-            St4LispPaletteManager.Shutdown();
+            try { SehpaDonatiSettings.Save(); } catch { }
+            try { OtoOlcuForm.Shutdown(); } catch { }
+            try { PlanOlcuForm.Shutdown(); } catch { }
+            try { MerdivenForm.Shutdown(); } catch { }
+            try { DosemeDonatiForm.Shutdown(); } catch { }
+            try { OtoDonatiForm.Shutdown(); } catch { }
+            try { SehpaDonatiForm.Shutdown(); } catch { }
+            try { RadyeTemelDonatiForm.Shutdown(); } catch { }
+            try { TemelHatiliForm.Shutdown(); } catch { }
+            try { DonatiBoyuForm.Shutdown(); } catch { }
+            try { DonatiMetrajForm.Shutdown(); } catch { }
+            try { KotDegistirForm.Shutdown(); } catch { }
+            try { BaFormSession.Clear(); } catch { }
+            try { St4LispPaletteManager.Shutdown(); } catch { }
+            try { BaTopToolbar.Shutdown(); } catch { }
         }
 
         /// <summary>Aynı oturumda birden fazla ST4_Yardimci / ST4_Plan_ID_Ciz kopyası (eski NETLOAD kalır).</summary>
@@ -125,12 +191,32 @@ namespace ST4Yardimci
 
     public class CommandEntry
     {
+        private static bool Gate(string family)
+        {
+            if (!MachineLicense.EnsureOrWarn()) return false;
+            return BaFormSession.EnsureCanEnter(family);
+        }
+
+        private static bool GateIdle()
+        {
+            if (!MachineLicense.EnsureOrWarn()) return false;
+            return BaFormSession.EnsureCanEnter(null);
+        }
+
         /// <summary>BETONARME TOOL paletini açar (STAPANEL gibi kısayol).</summary>
         [CommandMethod("BAPANEL")]
         public void BaPanel()
         {
             if (!MachineLicense.EnsureOrWarn()) return;
             St4LispPaletteManager.Show();
+        }
+
+        /// <summary>Eski yazısız simge şeridini kapatır (artık kullanılmaz).</summary>
+        [CommandMethod("BAUST")]
+        public void BaUst()
+        {
+            if (!MachineLicense.EnsureOrWarn()) return;
+            BaTopToolbar.Hide();
         }
 
         [CommandMethod("BETONARMETOOL")]
@@ -150,10 +236,9 @@ namespace ST4Yardimci
         [CommandMethod("OTOOLCU")]
         public void OtoOlcu()
         {
-            if (!MachineLicense.EnsureOrWarn()) return;
+            if (!Gate("OTOOLCU")) return;
             OtoOlcuSettings.EnsureLoaded();
             OtoOlcuDrawingBootstrap.EnsureForActiveDocument();
-            St4LispPaletteManager.Show();
             OtoOlcuForm.ShowOrActivate();
         }
 
@@ -161,92 +246,143 @@ namespace ST4Yardimci
         [CommandMethod("PLANOLCU")]
         public void PlanOlcu()
         {
-            if (!MachineLicense.EnsureOrWarn()) return;
+            if (!Gate("PLANOLCU")) return;
             PlanOlcuSettings.EnsureLoaded();
-            St4LispPaletteManager.Show();
             PlanOlcuForm.ShowOrActivate();
         }
 
         [CommandMethod("PLANOLCUKATMANEKLE")]
         public void PlanOlcuKatmanEkle()
         {
-            if (!MachineLicense.EnsureOrWarn()) return;
+            if (!Gate("PLANOLCU")) return;
             PlanOlcuLayerPick.RunAdd();
         }
 
         [CommandMethod("PLANOLCUKATMANKALDIR")]
         public void PlanOlcuKatmanKaldir()
         {
-            if (!MachineLicense.EnsureOrWarn()) return;
+            if (!Gate("PLANOLCU")) return;
             PlanOlcuLayerPick.RunRemove();
         }
 
         [CommandMethod("PLANOLCUCIFTKATMANEKLE")]
         public void PlanOlcuCiftKatmanEkle()
         {
-            if (!MachineLicense.EnsureOrWarn()) return;
+            if (!Gate("PLANOLCU")) return;
             PlanOlcuLayerPick.RunAddCift();
         }
 
         [CommandMethod("PLANOLCUCIFTKATMANKALDIR")]
         public void PlanOlcuCiftKatmanKaldir()
         {
-            if (!MachineLicense.EnsureOrWarn()) return;
+            if (!Gate("PLANOLCU")) return;
             PlanOlcuLayerPick.RunRemoveCift();
         }
 
         [CommandMethod("PLANOLCUCIZ")]
         public void PlanOlcuCiz()
         {
-            if (!MachineLicense.EnsureOrWarn()) return;
+            if (!Gate("PLANOLCU")) return;
             PlanOlcuRunner.RunInteractive();
         }
 
         [CommandMethod("OTOOLCUCIZ")]
         public void OtoOlcuCiz()
         {
-            if (!MachineLicense.EnsureOrWarn()) return;
+            if (!Gate("OTOOLCU")) return;
             OtoOlcuRunner.RunInteractive();
         }
 
-        [CommandMethod("MERDIVEN")]
+        [CommandMethod("MERDIVEN", CommandFlags.Modal)]
         public void Merdiven()
         {
-            if (!MachineLicense.EnsureOrWarn()) return;
-            St4LispPaletteManager.Show();
-            MerdivenForm.ShowOrActivate();
+            if (!Gate("MERDIVEN")) return;
+            if (!MerdivenForm.ShowModalAndAcceptDraw()) return;
+            MerdivenRunner.RunInteractive();
+        }
+
+        /// <summary>Doğrudan plandan çiz (form yok). Enter ile tekrarlanmaz — MERDIVEN kullanın.</summary>
+        [CommandMethod("MERDIVENCIZ", CommandFlags.Modal)]
+        public void MerdivenCiz()
+        {
+            if (!Gate("MERDIVEN")) return;
+            MerdivenRunner.RunInteractive();
         }
 
         [CommandMethod("DOSEMEDONATI")]
         public void DosemeDonati()
         {
-            if (!MachineLicense.EnsureOrWarn()) return;
-            St4LispPaletteManager.Show();
+            if (!Gate("DOSEMEDONATI")) return;
             DosemeDonatiForm.ShowOrActivate();
         }
 
         [CommandMethod("DOSEMEDONATICIZ", CommandFlags.Modal)]
         public void DosemeDonatiCiz()
         {
-            if (!MachineLicense.EnsureOrWarn()) return;
+            if (!Gate("DOSEMEDONATI")) return;
             DosemeDonatiRunner.RunInteractive();
+        }
+
+        /// <summary>Çizgisel donatı: serbest yön; sınır/mesnet katman listeleri.</summary>
+        [CommandMethod("DOSEMEDONATICIZGISEL", CommandFlags.Modal)]
+        public void DosemeDonatiCizgisel()
+        {
+            if (!Gate("DOSEMEDONATI")) return;
+            DosemeDonatiRunner.RunCizgisel();
+        }
+
+        [CommandMethod("DOSEMEDONATIKATMANEKLE", CommandFlags.Modal)]
+        public void DosemeDonatiKatmanEkle()
+        {
+            if (!Gate("DOSEMEDONATI")) return;
+            DosemeDonatiLayerPick.RunAdd();
+        }
+
+        [CommandMethod("DOSEMEDONATIKATMANKALDIR", CommandFlags.Modal)]
+        public void DosemeDonatiKatmanKaldir()
+        {
+            if (!Gate("DOSEMEDONATI")) return;
+            DosemeDonatiLayerPick.RunRemove();
         }
 
         /// <summary>Radye temel / mantar döşeme ana donatı (alt+üst). İlave/pilye yok.</summary>
         [CommandMethod("OTODONATI")]
         public void OtoDonati()
         {
-            if (!MachineLicense.EnsureOrWarn()) return;
+            if (!Gate("OTODONATI")) return;
             OtoDonatiSettings.EnsureLoaded();
-            St4LispPaletteManager.Show();
             OtoDonatiForm.ShowOrActivate();
         }
 
         [CommandMethod("OTODONATICIZ", CommandFlags.Modal)]
         public void OtoDonatiCiz()
         {
-            if (!MachineLicense.EnsureOrWarn()) return;
+            if (!Gate("OTODONATI")) return;
             OtoDonatiRunner.RunInteractive();
+        }
+
+        [CommandMethod("OTODONATIMANUEL", CommandFlags.Modal)]
+        public void OtoDonatiManuel()
+        {
+            if (!Gate("OTODONATI")) return;
+            OtoDonatiRunner.RunManual();
+        }
+
+        /// <summary>Radye temel / mantar döşeme sehpa donatısı kesiti.</summary>
+        [CommandMethod("SEHPADONATI")]
+        [CommandMethod("SEHPADONATISI")]
+        public void SehpaDonati()
+        {
+            if (!Gate("SEHPADONATI")) return;
+            SehpaDonatiSettings.EnsureLoaded();
+            SehpaDonatiForm.ShowOrActivate();
+        }
+
+        [CommandMethod("SEHPADONATICIZ", CommandFlags.Modal)]
+        public void SehpaDonatiCiz()
+        {
+            if (!Gate("SEHPADONATI")) return;
+            SehpaDonatiRunner.RunInteractive();
         }
 
         /// <summary>Radye ilave donatı formu (TEMEL ILAVE X ısı konturu → X ilave).</summary>
@@ -254,15 +390,14 @@ namespace ST4Yardimci
         [CommandMethod("RADYETEMEL")] // eski alias
         public void RadyeIlaveDonati()
         {
-            if (!MachineLicense.EnsureOrWarn()) return;
-            St4LispPaletteManager.Show();
+            if (!Gate("RADYEILAVE")) return;
             RadyeTemelDonatiForm.ShowOrActivate();
         }
 
         [CommandMethod("RADYEILAVECIZ", CommandFlags.Modal)]
         public void RadyeIlaveDonatiCiz()
         {
-            if (!MachineLicense.EnsureOrWarn()) return;
+            if (!Gate("RADYEILAVE")) return;
             RadyeIlaveRunner.RunInteractive();
         }
 
@@ -270,68 +405,182 @@ namespace ST4Yardimci
         [CommandMethod("TEMELHATILI")]
         public void TemelHatili()
         {
-            if (!MachineLicense.EnsureOrWarn()) return;
-            St4LispPaletteManager.Show();
+            if (!Gate("TEMELHATILI")) return;
             TemelHatiliForm.ShowOrActivate();
         }
 
         [CommandMethod("TEMELHATILICIZ", CommandFlags.Modal)]
         public void TemelHatiliCiz()
         {
-            if (!MachineLicense.EnsureOrWarn()) return;
+            if (!Gate("TEMELHATILI")) return;
             TemelHatiliRunner.RunManual();
         }
 
         [CommandMethod("TEMELHATILIPLAN", CommandFlags.Modal)]
         public void TemelHatiliPlan()
         {
-            if (!MachineLicense.EnsureOrWarn()) return;
+            if (!Gate("TEMELHATILI")) return;
             TemelHatiliRunner.RunFromPlan();
+        }
+
+        /// <summary>Temel çukuru kesiti — gömülü şablon, CIZGI katmanı form değişkeni.</summary>
+        [CommandMethod("TEMELCEKURU")]
+        [CommandMethod("TEMEL CEKURU")]
+        public void TemelCekuru()
+        {
+            if (!Gate("TEMELCEKURU")) return;
+            TemelCekuruForm.ShowOrActivate();
+        }
+
+        [CommandMethod("TEMELCEKURUCIZ", CommandFlags.Modal)]
+        public void TemelCekuruCiz()
+        {
+            if (!Gate("TEMELCEKURU")) return;
+            TemelCekuruRunner.RunInteractive();
+        }
+
+        [CommandMethod("TEMELCEKURUPLAN", CommandFlags.Modal)]
+        public void TemelCekuruPlan()
+        {
+            if (!Gate("TEMELCEKURU")) return;
+            TemelCekuruRunner.RunFromPlan();
         }
 
         [CommandMethod("DONATIBOYU")]
         public void DonatiBoyu()
         {
-            if (!MachineLicense.EnsureOrWarn()) return;
-            St4LispPaletteManager.Show();
+            if (!Gate("DONATIBOYU")) return;
             DonatiBoyuForm.ShowOrActivate();
         }
 
         [CommandMethod("DONATIBOYUCIZ")]
         public void DonatiBoyuCiz()
         {
-            if (!MachineLicense.EnsureOrWarn()) return;
+            if (!Gate("DONATIBOYU")) return;
             DonatiBoyuRunner.RunInteractive();
         }
 
-        /// <summary>Donatı yazılarından metraj tablosu. KSF METRAJ komutundan ayrıdır.</summary>
+        [CommandMethod("DONATIBOYUKATMANEKLE")]
+        public void DonatiBoyuKatmanEkle()
+        {
+            if (!Gate("DONATIBOYU")) return;
+            DonatiBoyuLayerPick.RunAdd();
+        }
+
+        [CommandMethod("DONATIBOYUKATMANKALDIR")]
+        public void DonatiBoyuKatmanKaldir()
+        {
+            if (!Gate("DONATIBOYU")) return;
+            DonatiBoyuLayerPick.RunRemove();
+        }
+
+        /// <summary>Mesafe / aralık → üst tamsayı adet; etiket güncellenir. Form yok.</summary>
+        [CommandMethod("DONATI ADET", CommandFlags.Modal)]
+        [CommandMethod("DONATIADET", CommandFlags.Modal)]
+        public void DonatiAdet()
+        {
+            if (!GateIdle()) return;
+            DonatiAdetRunner.RunInteractive();
+        }
+
+        /// <summary>Mesafe + donatı oku ölçüsü + halka, sonra aynı adet güncellemesi.</summary>
+        [CommandMethod("DONATI OKU", CommandFlags.Modal)]
+        [CommandMethod("DONATIOKU", CommandFlags.Modal)]
+        public void DonatiOku()
+        {
+            if (!GateIdle()) return;
+            DonatiOkuRunner.RunInteractive();
+        }
+
         [CommandMethod("DONATIMETRAJ")]
         public void DonatiMetraj()
         {
-            if (!MachineLicense.EnsureOrWarn()) return;
-            St4LispPaletteManager.Show();
+            if (!Gate("DONATIMETRAJ")) return;
             DonatiMetrajForm.ShowOrActivate();
         }
 
         [CommandMethod("DONATIMETRAJCIZ")]
         public void DonatiMetrajCiz()
         {
-            if (!MachineLicense.EnsureOrWarn()) return;
+            if (!Gate("DONATIMETRAJ")) return;
             DonatiMetrajRunner.RunInteractive();
+        }
+
+        [CommandMethod("DONATIMETRAJANTET")]
+        public void DonatiMetrajAntet()
+        {
+            if (!Gate("DONATIMETRAJ")) return;
+            DonatiMetrajRunner.RunByAntet();
+        }
+
+        [CommandMethod("DONATIMETRAJTOPLAM")]
+        public void DonatiMetrajToplam()
+        {
+            if (!Gate("DONATIMETRAJ")) return;
+            DonatiMetrajRunner.RunToplam();
+        }
+
+        [CommandMethod("DONATIMETRAJKATMANEKLE")]
+        public void DonatiMetrajKatmanEkle()
+        {
+            if (!Gate("DONATIMETRAJ")) return;
+            DonatiMetrajLayerPick.RunAdd();
+        }
+
+        [CommandMethod("DONATIMETRAJKATMANKALDIR")]
+        public void DonatiMetrajKatmanKaldir()
+        {
+            if (!Gate("DONATIMETRAJ")) return;
+            DonatiMetrajLayerPick.RunRemove();
+        }
+
+        [CommandMethod("KOTDEGISTIR")]
+        public void KotDegistir()
+        {
+            if (!Gate("KOTDEGISTIR")) return;
+            KotDegistirForm.ShowOrActivate();
+        }
+
+        [CommandMethod("KOTDEGISTIRUYGULA", CommandFlags.Modal)]
+        public void KotDegistirUygula()
+        {
+            if (!Gate("KOTDEGISTIR")) return;
+            KotDegistirRunner.Run();
+        }
+
+        [CommandMethod("KOTDEGISTIRKATMANEKLE")]
+        public void KotDegistirKatmanEkle()
+        {
+            if (!Gate("KOTDEGISTIR")) return;
+            KotDegistirLayerPick.RunAdd();
+        }
+
+        [CommandMethod("KOTDEGISTIRKATMANKALDIR")]
+        public void KotDegistirKatmanKaldir()
+        {
+            if (!Gate("KOTDEGISTIR")) return;
+            KotDegistirLayerPick.RunRemove();
         }
 
         [CommandMethod("OTOOLCUKATMANEKLE")]
         public void OtoOlcuKatmanEkle()
         {
-            if (!MachineLicense.EnsureOrWarn()) return;
+            if (!Gate("OTOOLCU")) return;
             OtoOlcuLayerPick.RunAdd();
         }
 
         [CommandMethod("OTOOLCUKATMANKALDIR")]
         public void OtoOlcuKatmanKaldir()
         {
-            if (!MachineLicense.EnsureOrWarn()) return;
+            if (!Gate("OTOOLCU")) return;
             OtoOlcuLayerPick.RunRemove();
+        }
+
+        /// <summary>Eksik BEYKENT katmanlarını açar. Var olanın renk ve kalınlığına dokunmaz.</summary>
+        [CommandMethod("KATMANYUKLE", CommandFlags.Modal)]
+        public void KatmanYukle()
+        {
+            BeykentKatmanYukle.Run();
         }
     }
 }

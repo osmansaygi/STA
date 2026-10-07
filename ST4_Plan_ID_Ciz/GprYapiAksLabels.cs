@@ -28,6 +28,49 @@ namespace ST4PlanIdCiz
                 Parse(gpr, model);
             }
             catch { /* GPR okunamazsa varsayılan etiketler */ }
+            if (model.GprAxisXLabelByRow.Count == 0 && model.GprAxisYLabelByRow.Count == 0)
+                TryFillFromAksBesideSt4(st4Path, model);
+        }
+
+        /// <summary>
+        /// GPR aks tablosu boşsa .AKS: ilk dolu blok X, ikinci blok Y.
+        /// Adet ST4 aks sayısıyla aynı değilse yazılmaz.
+        /// </summary>
+        private static void TryFillFromAksBesideSt4(string st4Path, St4Model model)
+        {
+            if (model.AxisX.Count == 0 && model.AxisY.Count == 0) return;
+            string dir = Path.GetDirectoryName(st4Path);
+            string baseName = Path.GetFileNameWithoutExtension(st4Path);
+            if (string.IsNullOrEmpty(dir) || string.IsNullOrEmpty(baseName)) return;
+            string aks = Path.Combine(dir, baseName + ".AKS");
+            if (!File.Exists(aks)) aks = Path.Combine(dir, baseName + ".aks");
+            if (!File.Exists(aks)) return;
+            string[] lines;
+            try { lines = File.ReadAllLines(aks); }
+            catch { return; }
+            var groups = new List<List<string>>();
+            List<string> cur = null;
+            foreach (string raw in lines)
+            {
+                string t = (raw ?? string.Empty).Trim();
+                if (t.Length == 0)
+                {
+                    cur = null;
+                    continue;
+                }
+                if (cur == null)
+                {
+                    cur = new List<string>();
+                    groups.Add(cur);
+                }
+                cur.Add(t);
+            }
+            if (groups.Count < 2) return;
+            if (groups[0].Count != model.AxisX.Count || groups[1].Count != model.AxisY.Count) return;
+            for (int i = 0; i < groups[0].Count; i++)
+                model.GprAxisXLabelByRow[i + 1] = groups[0][i];
+            for (int i = 0; i < groups[1].Count; i++)
+                model.GprAxisYLabelByRow[i + 1] = groups[1][i];
         }
 
         private static void Parse(string gprPath, St4Model model)

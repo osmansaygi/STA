@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
@@ -43,6 +43,7 @@ namespace ST4Yardimci
 
         public static void ShowOrActivate()
         {
+            if (!BaFormSession.TryEnter("OTOOLCU")) return;
             OtoOlcuSettings.EnsureLoaded();
             OtoOlcuSettings.Save();
             try { OtoOlcuDrawingBootstrap.EnsureForActiveDocument(); } catch { }
@@ -58,10 +59,13 @@ namespace ST4Yardimci
                 _instance.Visible = true;
                 _instance.BringToFront();
             }
+            BaFormSession.Attach("OTOOLCU", _instance);
+            BaFormSession.EndPick("OTOOLCU");
         }
 
         public static void Shutdown()
         {
+            BaFormSession.Release("OTOOLCU");
             if (_instance == null) return;
             try
             {
@@ -197,7 +201,10 @@ namespace ST4Yardimci
             {
                 try { PushSettings(); } catch { }
                 if (ReferenceEquals(_instance, this))
+                {
                     _instance = null;
+                    BaFormSession.Release("OTOOLCU");
+                }
             };
 
             try
@@ -429,7 +436,7 @@ namespace ST4Yardimci
                 RefreshFromDrawing();
         }
 
-        private static string PromptText(string prompt, string title)
+        private string PromptText(string prompt, string title)
         {
             using (var f = new Form())
             {
@@ -484,7 +491,7 @@ namespace ST4Yardimci
                 f.Controls.Add(cancel);
                 f.AcceptButton = ok;
                 f.CancelButton = cancel;
-                return f.ShowDialog() == DialogResult.OK ? tb.Text : null;
+                return BaFormSession.ShowChildDialog(this, f) == DialogResult.OK ? tb.Text : null;
             }
         }
 
@@ -564,6 +571,8 @@ namespace ST4Yardimci
                     _instance.BeginInvoke(new Action(HideTemporarily));
                     return;
                 }
+                
+                BaFormSession.BeginPick("OTOOLCU");
                 _instance.Visible = false;
             }
             catch { }
@@ -571,6 +580,7 @@ namespace ST4Yardimci
 
         public static void ShowAfterPick()
         {
+            BaFormSession.EndPick("OTOOLCU");
             try { ShowOrActivate(); } catch { }
         }
 

@@ -60,6 +60,7 @@ namespace ST4Yardimci
         private const double GonyeLabelClearCm = 4.0;
         private const double GonyeLabelHeightCm = 8.0;
         private const string TextStyleYazi = "YAZI (BEYKENT)";
+        private const string DimStylePlanOlcuDonati = "PLAN_OLCU_DONATI";
 
         public static void RunInteractive()
         {
@@ -117,6 +118,285 @@ namespace ST4Yardimci
             {
                 OtoDonatiForm.ShowAfterPick();
             }
+        }
+
+        /// <summary>
+        /// Sanal çizgi (iki nokta) boyunca, formdaki çap/aralık/gönye/paspayı ile alt+üst çizer.
+        /// Etikette adet yok.
+        /// </summary>
+        public static void RunManual()
+        {
+            OtoDonatiSettings.EnsureLoaded();
+            Document doc = AcApp.DocumentManager.MdiActiveDocument;
+            if (doc == null)
+            {
+                OtoDonatiForm.ShowAfterPick();
+                return;
+            }
+
+            Editor ed = doc.Editor;
+            Database db = doc.Database;
+
+            try
+            {
+                string tip = OtoDonatiSettings.Tip == OtoDonatiTip.MantarDoseme
+                    ? "Mantar döşeme"
+                    : "Radye temel";
+                ed.WriteMessage(
+                    "\nOTODONATIMANUEL ({0}): sanal çizgi boyunca alt Φ{1}/{2} üst Φ{3}/{4} (adetsiz). Esc=bitir.",
+                    tip,
+                    OtoDonatiSettings.AltDonatiCapMm,
+                    OtoDonatiSettings.AltAralikCm.ToString("0.##", CultureInfo.InvariantCulture),
+                    OtoDonatiSettings.UstDonatiCapMm,
+                    OtoDonatiSettings.UstAralikCm.ToString("0.##", CultureInfo.InvariantCulture));
+
+                while (true)
+                {
+                    var opt1 = new PromptPointOptions("\nSanal çizgi birinci nokta (bitir: Esc/sağ tık): ")
+                    {
+                        AllowNone = true
+                    };
+                    PromptPointResult p1 = ed.GetPoint(opt1);
+                    if (p1.Status != PromptStatus.OK)
+                        break;
+
+                    var opt2 = new PromptPointOptions("\nSanal çizgi ikinci nokta: ")
+                    {
+                        BasePoint = p1.Value,
+                        UseBasePoint = true,
+                        AllowNone = true
+                    };
+                    PromptPointResult p2 = ed.GetPoint(opt2);
+                    if (p2.Status != PromptStatus.OK)
+                        break;
+
+                    Point3d a = p1.Value;
+                    Point3d b = p2.Value;
+                    if (a.DistanceTo(b) < MinBarCm)
+                    {
+                        ed.WriteMessage("\nOTODONATIMANUEL: Çizgi çok kısa.");
+                        continue;
+                    }
+
+                    int n = DrawAlongVirtualLine(doc, db, a, b);
+                    ed.WriteMessage("\nOTODONATIMANUEL: {0} donatı. Başka çizgi (Esc=bitir).", n);
+                }
+            }
+            catch (System.Exception ex)
+            {
+                try { ed.WriteMessage("\nOTODONATIMANUEL hata: {0}", ex.Message); } catch { }
+            }
+            finally
+            {
+                OtoDonatiForm.ShowAfterPick();
+            }
+        }
+
+        private static int DrawAlongVirtualLine(Document doc, Database db, Point3d a, Point3d b)
+        {
+            Vector3d along = b - a;
+            along = new Vector3d(along.X, along.Y, 0);
+            if (along.Length < MinBarCm) return 0;
+            along = along.GetNormal();
+            Vector3d up = StabilizeUp(along);
+            Point3d origin = new Point3d(a.X, a.Y, 0);
+            double sEnd = (b - a).DotProduct(along);
+            if (sEnd < 0)
+            {
+                origin = new Point3d(b.X, b.Y, 0);
+                sEnd = -sEnd;
+                along = -along;
+                up = StabilizeUp(along);
+            }
+
+            double pas = OtoDonatiSettings.PaspayiCm;
+            double gonye = OtoDonatiSettings.EffectiveGonyeBoyuCm;
+            double s0 = pas;
+            double s1 = sEnd - pas;
+            if (s1 - s0 < MinBarCm)
+                return 0;
+
+            double gap = Math.Max(1.0, OtoDonatiSettings.GonyeBoyuMaxCm) + AltUstExtraGapCm;
+            var bars = new List<BarPath>();
+            AddManualBarsAlongRay(
+                bars, origin, along, up, s0, s1, 0,
+                OtoDonatiSettings.AltGonyeSol, OtoDonatiSettings.AltGonyeSag,
+                gonye, OtoDonatiSettings.AltDonatiCapMm, OtoDonatiSettings.AltAralikCm, isUst: false);
+            AddManualBarsAlongRay(
+                bars, origin, along, up, s0, s1, gap,
+                OtoDonatiSettings.UstGonyeSol, OtoDonatiSettings.UstGonyeSag,
+                gonye, OtoDonatiSettings.UstDonatiCapMm, OtoDonatiSettings.UstAralikCm, isUst: true);
+
+            if (bars.Count == 0) return 0;
+
+            int placed = 0;
+            using (doc.LockDocument())
+            using (var tr = db.TransactionManager.StartTransaction())
+            {
+                string donatiLyr = EnsureLayer(tr, db, LayerDonati, 4, LineWeight.LineWeight040);
+                string yaziLyr = EnsureLayer(tr, db, LayerYazi, 3, LineWeight.LineWeight020);
+                string olcuLyr = EnsureLayer(tr, db, LayerOlcu, 3, LineWeight.LineWeight030);
+                ObjectId yaziStyleId = GetOrCreateYaziBeykentTextStyle(tr, db);
+                ObjectId dimStyleId = ResolveDimStyleId(tr, db);
+                var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
+                var btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
+
+                foreach (BarPath bar in bars)
+                {
+                    if (bar.Pts == null || bar.Pts.Count < 2) continue;
+                    PlacePolylineWithBends(tr, btr, donatiLyr, bar.Pts, bar.CrankCornerIndices);
+                    if (!string.IsNullOrEmpty(bar.Label))
+                        PlaceBarLabel(tr, btr, db, yaziLyr, yaziStyleId, bar);
+                    if (bar.HasLapDim)
+                        PlaceLapDimensionManual(tr, btr, olcuLyr, dimStyleId, bar);
+                    placed++;
+                }
+                tr.Commit();
+            }
+            return placed;
+        }
+
+        private static void AddManualBarsAlongRay(
+            List<BarPath> bars,
+            Point3d origin, Vector3d along, Vector3d up,
+            double a, double b, double basePerp,
+            bool gonyeStart, bool gonyeEnd,
+            double gonyeLen,
+            int capMm, double aralikCm, bool isUst)
+        {
+            if (b - a < MinBarCm) return;
+            double realGonye = OtoDonatiSettings.RealGonyeBoyuCm;
+            double phiCm = Math.Max(0.6, capMm / 10.0);
+            double lap = LapDiameters * phiCm;
+            if (lap < MinBarCm) lap = MinBarCm;
+            if (lap > StockLenCm * 0.45) lap = StockLenCm * 0.45;
+
+            List<(double from, double to)> segs = SplitSpanWithStockAndLap(
+                a, b, capMm, gonyeStart, gonyeEnd);
+            for (int si = 0; si < segs.Count; si++)
+            {
+                double s0 = segs[si].from;
+                double s1 = segs[si].to;
+                if (s1 - s0 < MinBarCm) continue;
+
+                bool hookStart = gonyeStart && si == 0;
+                bool hookEnd = gonyeEnd && si == segs.Count - 1;
+                bool crankStart = si > 0;
+
+                List<int> crankCorners;
+                List<Point3d> pts = BuildManualBarPoints(
+                    origin, along, up, s0, s1, basePerp,
+                    hookStart, hookEnd, gonyeLen, isUst, crankStart, lap,
+                    out crankCorners);
+                if (pts == null || pts.Count < 2) continue;
+
+                double boy = s1 - s0;
+                if (hookStart) boy += realGonye;
+                if (hookEnd) boy += realGonye;
+                string label = FormatLabel(0, capMm, aralikCm, boy, isUst);
+
+                Point3d mid = RayPoint(origin, along, up, 0.5 * (s0 + s1), basePerp);
+                double crankOff = isUst ? -CrankOffsetCm : CrankOffsetCm;
+
+                bars.Add(new BarPath
+                {
+                    Pts = pts,
+                    CrankCornerIndices = crankCorners,
+                    Label = label,
+                    LabelAt = mid,
+                    Along = along,
+                    Up = up,
+                    Horizontal = false,
+                    FixedCoord = 0,
+                    AxisS0 = s0,
+                    AxisS1 = s1,
+                    IsUst = isUst,
+                    Adet = 0,
+                    CapMm = capMm,
+                    AralikCm = aralikCm,
+                    BoyCm = boy,
+                    HasLapDim = crankStart && lap > MinBarCm,
+                    LapDimFrom = s0,
+                    LapDimTo = s0 + lap,
+                    Origin = origin,
+                    AxisAlong = along,
+                    AxisUp = up,
+                    LapPerp = basePerp + (crankStart ? crankOff : 0)
+                });
+            }
+        }
+
+        private static Point3d RayPoint(
+            Point3d origin, Vector3d along, Vector3d up, double s, double perp)
+        {
+            return origin + along * s + up * perp;
+        }
+
+        private static List<Point3d> BuildManualBarPoints(
+            Point3d origin, Vector3d along, Vector3d up,
+            double s0, double s1, double basePerp,
+            bool hookStart, bool hookEnd, double gonyeLen, bool isUst,
+            bool crankStart, double lap, out List<int> crankCorners)
+        {
+            crankCorners = new List<int>();
+            double crankPerp = isUst ? -CrankOffsetCm : CrankOffsetCm;
+            bool doCrank = crankStart
+                && lap > MinBarCm
+                && (s1 - s0) >= lap + CrankAlongCm + MinBarCm;
+            double crank1 = s0 + lap + CrankAlongCm;
+            if (doCrank && crank1 > s1 - MinBarCm * 0.5)
+                doCrank = false;
+
+            var pts = new List<Point3d>();
+            if (doCrank)
+            {
+                Point3d tip = RayPoint(origin, along, up, s0, basePerp + crankPerp);
+                if (hookStart && gonyeLen > 0.5)
+                    pts.Add(tip + up * (isUst ? -gonyeLen : gonyeLen));
+                pts.Add(tip);
+                pts.Add(RayPoint(origin, along, up, s0 + lap, basePerp + crankPerp));
+                crankCorners.Add(pts.Count - 1);
+                pts.Add(RayPoint(origin, along, up, crank1, basePerp));
+                crankCorners.Add(pts.Count - 1);
+                pts.Add(RayPoint(origin, along, up, s1, basePerp));
+            }
+            else
+            {
+                Point3d pStart = RayPoint(origin, along, up, s0, basePerp);
+                if (hookStart && gonyeLen > 0.5)
+                    pts.Add(pStart + up * (isUst ? -gonyeLen : gonyeLen));
+                pts.Add(pStart);
+                pts.Add(RayPoint(origin, along, up, s1, basePerp));
+            }
+            if (hookEnd && gonyeLen > 0.5)
+            {
+                Point3d pEnd = RayPoint(origin, along, up, s1, basePerp);
+                pts.Add(pEnd + up * (isUst ? -gonyeLen : gonyeLen));
+            }
+            return pts;
+        }
+
+        private static void PlaceLapDimensionManual(
+            Transaction tr, BlockTableRecord btr, string layer, ObjectId dimStyleId, BarPath bar)
+        {
+            if (bar == null || !bar.HasLapDim) return;
+            if (bar.AxisAlong.Length < 1e-9)
+            {
+                PlaceLapDimension(tr, btr, layer, dimStyleId, bar);
+                return;
+            }
+            double a = bar.LapDimFrom;
+            double b = bar.LapDimTo;
+            if (b - a < MinBarCm * 0.5) return;
+            Vector3d along = bar.AxisAlong.GetNormal();
+            Vector3d up = bar.AxisUp.Length > 1e-9 ? bar.AxisUp.GetNormal() : StabilizeUp(along);
+            Point3d x1 = RayPoint(bar.Origin, along, up, a, bar.LapPerp);
+            Point3d x2 = RayPoint(bar.Origin, along, up, b, bar.LapPerp);
+            double dimOff = OtoDonatiSettings.Tip == OtoDonatiTip.MantarDoseme && bar.IsUst
+                ? LapDimOffsetMantarUstCm
+                : -LapDimOffsetCm;
+            Point3d dimPt = RayPoint(bar.Origin, along, up, 0.5 * (a + b), bar.LapPerp + dimOff);
+            OtoOlcuDimFactory.PlaceRotated(tr, btr, x1, x2, dimPt, dimStyleId, layer);
         }
 
         private static ObjectId PickClosedPolygon(Editor ed, string message)
@@ -1519,6 +1799,11 @@ namespace ST4Yardimci
             int ar = (int)Math.Round(aralikCm);
             string lMark = isUst ? "L" : "l";
             string side = isUst ? " (üst)" : " (alt)";
+            if (adet <= 0)
+            {
+                return string.Format(CultureInfo.InvariantCulture,
+                    "ø{0}/{1} {2}={3}{4}", capMm, ar, lMark, boy, side);
+            }
             return string.Format(CultureInfo.InvariantCulture,
                 "{0}ø{1}/{2} {3}={4}{5}", adet, capMm, ar, lMark, boy, side);
         }
@@ -1955,22 +2240,52 @@ namespace ST4Yardimci
             OtoOlcuDimFactory.PlaceRotated(tr, btr, x1, x2, dimPt, dimStyleId, layer);
         }
 
+        /// <summary>Bindirme ölçüleri her zaman PLAN_OLCU_DONATI; yoksa PLAN_OLCU'dan kopyalanarak oluşturulur.</summary>
         private static ObjectId ResolveDimStyleId(Transaction tr, Database db)
         {
             try
             {
                 var dst = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
-                string[] prefer =
+                if (dst.Has(DimStylePlanOlcuDonati))
+                    return dst[DimStylePlanOlcuDonati];
+
+                DimStyleTableRecord src = null;
+                foreach (string tryName in new[] { "PLAN_OLCU", "Standard" })
                 {
-                    OtoOlcuSettings.DefaultDimStyleName, // PLAN_OLCU
-                    OtoOlcuSettings.AksOlcuDimStyleName, // AKS_OLCU
-                    "Standard"
-                };
-                foreach (string name in prefer)
-                {
-                    if (dst.Has(name))
-                        return dst[name];
+                    if (!dst.Has(tryName)) continue;
+                    src = tr.GetObject(dst[tryName], OpenMode.ForRead) as DimStyleTableRecord;
+                    if (src != null) break;
                 }
+
+                ObjectId yaziId = ObjectId.Null;
+                try { yaziId = GetOrCreateYaziBeykentTextStyle(tr, db); } catch { }
+
+                dst.UpgradeOpen();
+                var rec = new DimStyleTableRecord { Name = DimStylePlanOlcuDonati };
+                if (src != null)
+                {
+                    try { rec.CopyFrom(src); } catch { }
+                    try { rec.Name = DimStylePlanOlcuDonati; } catch { }
+                }
+                try { if (!yaziId.IsNull) rec.Dimtxsty = yaziId; } catch { }
+                try { rec.Dimscale = 1.0; } catch { }
+                try { rec.Dimlfac = 1.0; } catch { }
+                try { rec.Dimtxt = 10.0; } catch { }
+                try { rec.Dimasz = 3.0; } catch { }
+                try { rec.Dimtsz = 3.0; } catch { }
+                try { rec.Dimexo = 3.0; } catch { }
+                try { rec.Dimgap = 2.0; } catch { }
+                try { rec.Dimtad = 1; } catch { }
+                try { rec.Dimtih = false; } catch { }
+                try { rec.Dimtoh = false; } catch { }
+                try { rec.Dimtofl = true; } catch { }
+                try { rec.Dimtix = true; } catch { }
+                try { rec.Dimdec = 0; } catch { }
+                try { rec.Dimtdec = 0; } catch { }
+                ObjectId id = dst.Add(rec);
+                tr.AddNewlyCreatedDBObject(rec, true);
+                dst.DowngradeOpen();
+                return id;
             }
             catch { }
             return db.Dimstyle;
@@ -2082,6 +2397,11 @@ namespace ST4Yardimci
             public double LapDimRefCoord;
             /// <summary>Yatayda ΔY, dikeyde ΔX (işaretli ofset).</summary>
             public double LapDimOffset;
+            /// <summary>Manuel sanal çizgi ekseni (PlaceLapDimensionManual).</summary>
+            public Point3d Origin;
+            public Vector3d AxisAlong;
+            public Vector3d AxisUp;
+            public double LapPerp;
         }
     }
 }

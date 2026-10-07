@@ -1,29 +1,49 @@
 # ST4_Yardimci — durum
 
-Güncelle: 2026-09-30
+Güncelle: 2026-10-06
 
 ## Son DLL
 
-`NETLOAD\ST4_Yardimci_20260930_193516.dll`
+`NETLOAD\ST4_Yardimci_20261006_163823.dll`
 
-## Ne çalışıyor (özet)
+## Son düzeltme
 
-- Açılım: etiket `nøcap/aralik L=boy`; kol boyu ByLayer; etiket çakışınca boy alt/üst soluna.
-- Basamaklı kesit: 1. ve 3. bölge kalınlığı (temelde 1. bölge yok); basamak alt ile sanal üst arası bel ölçüsü. 1/25 basamaksız sahanlıkta kolon/perde/kiriş kalınlığı ayrı (25+260).
-- Hız: kesit sınırı bir kez toplanır, sembol dwg bir kez açılır. Basamak kutusu tüm çizimi değil, bu komutta çizilenleri ve yakındaki eski elemanları tarar.
-- Kesitte tevzi ve ana donatı numarası yok. Kesit başlığı kol harfi (A, B, …).
-- Kesit kotu (KOLONDUSEY2 sembol): 1. bölge üst, 3. bölge üst, basamaksız üst; alt kottan rıht birikimi.
-- Temel üst kotu = form alt kotu. Dış çıkıntı ilk rıhttan 80 cm, iç çıkıntı ikinci rıhttan 50 cm. Soffit/sahanlık altı temel içinde silinir.
-- Temelde 1. açılım 70 cm dışa, 2. açılım 50 cm dışa. İkisinin tepesi temel alt çizgisinin 10 cm altında; diğer açılımlar aynı kadar iner ve kesit kutusunun içinde kalır.
-- Temelde 3 ve 4. donatı, temel üst kotunun altında kalan kısımdan kesilir.
-- Temelde 1. tevzi, basamak altına paralel, temel üstünün 4.5 cm üstünde; 28 ve 1–29 arası ona göre. Temelde 4. tevzi yok.
+- Döşeme donatısı ofis göçme: AutoCAD native IntersectWith yok (C# doğru kesişimi); NTS tüm kat yerine 800 cm karo. Pilye/düz/ilave aynı. Setup 2026.10.06.6.
+
+## Önceki
+
+- Döşeme donatısı: katman kapat + çift Regen kalktı. Açıklık poligonu bellekteki mesnet hücresinden; ekran gelip gitmez.
+
+## Önceki
+
+- `DONATI OKU`: iki nokta mesafe, üçüncü nokta ölçü çizgisi. DONATI OKU stili; `DONATI (BEYKENT)` kesişimine halka. Sonra etiket adedi (DONATI ADET ile aynı).
+
+## Önceki düzeltme
+
+- Ofis kurulum klasörü: `ST4_Yardimci\Setup-Ofis\Kur.cmd`. Yalnız BEYKENT-2 UUID’sinde kurulur; eski bundle/NETLOAD kaydını siler.
+- `KATMANYUKLE`: palet/üst şeritte **Katman Yükle**. Çizgi tipi işlem dışında yüklenir.
+- Kalıp boşluk içindeki döşeme sınırına donatı uzamıyor. Boundary poligonu hafızada kalır, çizilmez.
+- TEMELCEKURU: 60 cm kalınlıkta 1 ve 3'ün dibinde kalan noktalar da siliniyor.
+- Açıklık poligonu ve donatı altındaki döşeme adı çizilmez; ikisi de hafızada kalır, donatı yerleşimi aynı.
+- Y ve hat 90° üstü: yalnız GPR bakışı solu okur. Donatı çizimi ve yazı açısı eskisi gibi.
+- Mesnet ilavesi: demirin kestiği kiriş/perde/kolon çizgisinin üstündeki ilave yazısı kopyalanır.
+- Poligon: açıklığın mesnet hücresinden, bellekte. TraceBoundary yok.
+- Aynı döşeme adı (DB-23) ikinci kez taşkın poligona yazılmıyor; asıl hücrenin poligonu çiziliyor.
+- Uç döşeme (hat yalnız kenardan girer, iki yüzü geçmez) kendi donatısını almıyor; boydan kesilenin ilavesi duruyor.
+- Kiriş içindeki alt düz yazısı ek donatı ve poligon üretmiyor.
+- Döşeme poligonu kiriş/kolon gövdesinin dışına taşmıyor.
+- Palet açılışı: başlıktaki boşluk komut satırına düşmüyor (BAPANEL / BAUST).
+- Döşeme poligonu: bayı kesen tek çapraz kenar dik köşeye çevriliyor; paralel duvar çifti kalır.
+- Y mesnet: kiriş üstündeki uç GPR yazısı da ilave okunur (poligon dışı).
 
 ## Açık / test et
 
-- [ ] Basamak kesit detayı görsel (120×15, adet/gönye/açılım)
-- [ ] 1/25 plan rıht no / etiket 12 / ölçü zinciri görsel
+- [ ] X/Y düz-pilye doğru; ilave komşu mesnetinden; çalma yok
+- [ ] Y üst ilave (DB-15/21) — mesnet bandı
+- [ ] DONATI ADET görsel
+- [ ] DONATI OKU: ölçü, halka, adet
 
 ## Ana dosyalar
 
-- `ST4_Yardimci/MerdivenRunner.cs`, `MerdivenForm.cs`
-- `.cursor/rules/merdiven-kesit-donati.mdc`
+- `ST4_Yardimci/DosemeDonatiRunner.cs`
+- `ST4_Yardimci/DosemeKonsolSettings.cs`

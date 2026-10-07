@@ -1,0 +1,247 @@
+============================================================
+HCR  -  FHM_GO_A.HCR
+Kaynak: d:\projeler\projeler2026\ahmet_kustepe\fhm\genc_osman_td\statik\FHM_GO_A.HCR
+Boyut: 816 bayt = 51 kolon x 16 bayt (4 x float32).
+Sira = ST4 /Column axis data/ kolon numarasi (1..N).
+Dolu kayit = kritik perde yuksekligi (Hcr) tanimli perde.
+Bos kayit = Hcr yok.
+Alanlar (m): ust kot | kat yuksekligi | yatay? | Hcr
+============================================================
+
+Kolon  1  aks X1002/Y2003  (id 1002/2003)  kesit 25/180
+  Ust kot:        26,277 m
+  Kat yuksekligi: 3,299 m
+  Alan 3:         0 m
+  Hcr:            15,046 m
+
+Kolon  2  aks X1004/Y2003  (id 1004/2003)  kesit 60/30
+  (Hcr yok)
+
+Kolon  3  aks X1008/Y2003  (id 1008/2003)  kesit 25/175
+  Ust kot:        23,703 m
+  Kat yuksekligi: 3,299 m
+  Alan 3:         0 m
+  Hcr:            17,554 m
+
+Kolon  4  aks X1011/Y2003  (id 1011/2003)  kesit 25/160
+  Ust kot:        23,718 m
+  Kat yuksekligi: 3,299 m
+  Alan 3:         0 m
+  Hcr:            13,367 m
+
+Kolon  5  aks X1014/Y2003  (id 1014/2003)  kesit 25/160
+  Ust kot:        27,862 m
+  Kat yuksekligi: 3,299 m
+  Alan 3:         0 m
+  Hcr:            12,269 m
+
+Kolon  6  aks X1018/Y2003  (id 1018/2003)  kesit 25/160
+  Ust kot:        23,884 m
+  Kat yuksekligi: 3,299 m
+  Alan 3:         0 m
+  Hcr:            12,251 m
+
+Kolon  7  aks X1021/Y2003  (id 1021/2003)  kesit 25/160
+  Ust kot:        24,537 m
+  Kat yuksekligi: 3,299 m
+  Alan 3:         0 m
+  Hcr:            12,476 m
+
+Kolon  8  aks X1024/Y2004  (id 1024/2004)  kesit 25/150
+  Ust kot:        23,143 m
+  Kat yuksekligi: 3,299 m
+  Alan 3:         0 m
+  Hcr:            10,299 m
+
+Kolon  9  aks X1004/Y2006  (id 1004/2006)  kesit 25/60
+  (Hcr yok)
+
+Kolon 10  aks X1026/Y2005  (id 1026/2005)  kesit 25/160
+  Ust kot:        25,226 m
+  Kat yuksekligi: 3,299 m
+  Alan 3:         0 m
+  Hcr:            19,557 m
+
+Kolon 11  aks X1027/Y2008  (id 1027/2008)  kesit 25/155
+  Ust kot:        22,799 m
+  Kat yuksekligi: 3,299 m
+  Alan 3:         0 m
+  Hcr:            17,988 m
+
+Kolon 12  aks X1027/Y2025  (id 1027/2025)  kesit 25/60
+  (Hcr yok)
+
+Kolon 13  aks X1004/Y2011  (id 1004/2011)  kesit 30/60
+  (Hcr yok)
+
+Kolon 14  aks X1008/Y2011  (id 1008/2011)  kesit 150/25
+  Ust kot:        27,613 m
+  Kat yuksekligi: 3,299 m
+  Alan 3:         13,231 m
+  Hcr:            0 m
+
+Kolon 15  aks X1015/Y2011  (id 1015/2011)  kesit 60/30
+  (Hcr yok)
+
+Kolon 16  aks X1021/Y2011  (id 1021/2011)  kesit 150/25
+  Ust kot:        27,247 m
+  Kat yuksekligi: 3,299 m
+  Alan 3:         13,528 m
+  Hcr:            0 m
+
+Kolon 17  aks X1026/Y2011  (id 1026/2011)  kesit 30/60
+  (Hcr yok)
+
+Kolon 18  aks X1011/Y2014  (id 1011/2014)  kesit 150/25
+  Ust kot:        33,809 m
+  Kat yuksekligi: 3,299 m
+  Alan 3:         7,819 m
+  Hcr:            0 m
+
+Kolon 19  aks X1018/Y2014  (id 1018/2014)  kesit 150/25
+  Ust kot:        33,213 m
+  Kat yuksekligi: 3,299 m
+  Alan 3:         8,129 m
+  Hcr:            0 m
+
+Kolon 20  aks X1022/Y2014  (id 1022/2014)  kesit -
+  Ust kot:        22,058 m
+  Kat yuksekligi: 3,666 m
+  Alan 3:         128,737 m
+  Hcr:            164,375 m
+
+Kolon 21  aks X1002/Y2019  (id 1002/2019)  kesit 30/60
+  (Hcr yok)
+
+Kolon 22  aks X1014/Y2019  (id 1014/2019)  kesit 25/150
+  Ust kot:        39,407 m
+  Kat yuksekligi: 3,299 m
+  Alan 3:         0 m
+  Hcr:            10,338 m
+
+Kolon 23  aks X1027/Y2019  (id 1027/2019)  kesit 30/60
+  (Hcr yok)
+
+Kolon 24  aks X1023/Y2033  (id 1023/2033)  kesit 60/25
+  (Hcr yok)
+
+Kolon 25  aks X1007/Y2022  (id 1007/2022)  kesit -
+  Ust kot:        22,077 m
+  Kat yuksekligi: 3,666 m
+  Alan 3:         125,662 m
+  Hcr:            178,257 m
+
+Kolon 26  aks X1011/Y2022  (id 1011/2022)  kesit 150/25
+  Ust kot:        29,694 m
+  Kat yuksekligi: 3,299 m
+  Alan 3:         8,816 m
+  Hcr:            0 m
+
+Kolon 27  aks X1018/Y2022  (id 1018/2022)  kesit 150/25
+  Ust kot:        29,634 m
+  Kat yuksekligi: 3,299 m
+  Alan 3:         8,912 m
+  Hcr:            0 m
+
+Kolon 28  aks X1004/Y2025  (id 1004/2025)  kesit 30/60
+  (Hcr yok)
+
+Kolon 29  aks X1008/Y2025  (id 1008/2025)  kesit 150/25
+  Ust kot:        23,316 m
+  Kat yuksekligi: 3,299 m
+  Alan 3:         9,022 m
+  Hcr:            0 m
+
+Kolon 30  aks X1015/Y2025  (id 1015/2025)  kesit 60/30
+  (Hcr yok)
+
+Kolon 31  aks X1021/Y2025  (id 1021/2025)  kesit 150/25
+  Ust kot:        22,736 m
+  Kat yuksekligi: 3,299 m
+  Alan 3:         9,397 m
+  Hcr:            0 m
+
+Kolon 32  aks X1026/Y2025  (id 1026/2025)  kesit 35/60
+  (Hcr yok)
+
+Kolon 33  aks X1006/Y2033  (id 1006/2033)  kesit 60/25
+  (Hcr yok)
+
+Kolon 34  aks X1002/Y2028  (id 1002/2028)  kesit 25/180
+  Ust kot:        16,029 m
+  Kat yuksekligi: 3,299 m
+  Alan 3:         0 m
+  Hcr:            17,245 m
+
+Kolon 35  aks X1004/Y2028  (id 1004/2028)  kesit 60/30
+  (Hcr yok)
+
+Kolon 36  aks X1008/Y2028  (id 1008/2028)  kesit 25/150
+  Ust kot:        19,392 m
+  Kat yuksekligi: 3,299 m
+  Alan 3:         0 m
+  Hcr:            8,566 m
+
+Kolon 37  aks X1011/Y2028  (id 1011/2028)  kesit 25/150
+  Ust kot:        17,756 m
+  Kat yuksekligi: 3,299 m
+  Alan 3:         0 m
+  Hcr:            8,37 m
+
+Kolon 38  aks X1014/Y2028  (id 1014/2028)  kesit 25/150
+  Ust kot:        19,543 m
+  Kat yuksekligi: 3,299 m
+  Alan 3:         0 m
+  Hcr:            8,853 m
+
+Kolon 39  aks X1018/Y2028  (id 1018/2028)  kesit 25/150
+  Ust kot:        16,851 m
+  Kat yuksekligi: 3,299 m
+  Alan 3:         0 m
+  Hcr:            8,788 m
+
+Kolon 40  aks X1021/Y2028  (id 1021/2028)  kesit 25/150
+  Ust kot:        17,318 m
+  Kat yuksekligi: 3,299 m
+  Alan 3:         0 m
+  Hcr:            9,883 m
+
+Kolon 41  aks X1026/Y2028  (id 1026/2028)  kesit 60/30
+  (Hcr yok)
+
+Kolon 42  aks X1027/Y2028  (id 1027/2028)  kesit 25/180
+  Ust kot:        13,166 m
+  Kat yuksekligi: 3,299 m
+  Alan 3:         0 m
+  Hcr:            47,612 m
+
+Kolon 43  aks X1002/Y2033  (id 1002/2033)  kesit 60/25
+  (Hcr yok)
+
+Kolon 44  aks X1004/Y2033  (id 1004/2033)  kesit 60/25
+  (Hcr yok)
+
+Kolon 45  aks X1008/Y2033  (id 1008/2033)  kesit 60/25
+  (Hcr yok)
+
+Kolon 46  aks X1011/Y2033  (id 1011/2033)  kesit 60/25
+  (Hcr yok)
+
+Kolon 47  aks X1015/Y2033  (id 1015/2033)  kesit 60/25
+  (Hcr yok)
+
+Kolon 48  aks X1018/Y2033  (id 1018/2033)  kesit 60/25
+  (Hcr yok)
+
+Kolon 49  aks X1021/Y2033  (id 1021/2033)  kesit 60/25
+  (Hcr yok)
+
+Kolon 50  aks X1026/Y2033  (id 1026/2033)  kesit 60/25
+  (Hcr yok)
+
+Kolon 51  aks X1027/Y2033  (id 1027/2033)  kesit 25/60
+  (Hcr yok)
+
+------------------------------------------------------------
+Ozet: 51 kolon, 27 Hcr dolu, 24 bos.
+GPR karsiligi: ayni kolon no icin SB-/SZ-/S1- Hcr satirlari.

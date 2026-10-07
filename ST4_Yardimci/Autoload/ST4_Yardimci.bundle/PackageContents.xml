@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AutoCAD Autoloader paketi (APPLOAD Startup Suite yerine — özellikle AutoCAD 2025+ / 2027).
+  Kurulum: bu .bundle klasörünün tamamını şuraya kopyalayın:
+    %AppData%\Autodesk\ApplicationPlugins\
+  veya
+    %ProgramData%\Autodesk\ApplicationPlugins\
+  Sonra AutoCAD'i yeniden başlatın.
+  Kaldırma: ApplicationPlugins içinden ST4_Yardimci.bundle klasörünü silin.
+-->
+<ApplicationPackage
+  SchemaVersion="1.0"
+  AutodeskProduct="AutoCAD"
+  ProductType="Application"
+  Name="ST4_Yardimci"
+  Description="BETONARME TOOL (BAPANEL / Oto Ölçü)"
+  AppVersion="2026.10.06.6"
+  FriendlyVersion="2026.10.06.6"
+  ProductCode="{E1F7C35A-8B6D-4E2C-B05F-2C9D6E4F7182}"
+  UpgradeCode="{A7B3E91C-4D2F-4A8E-9C1B-8E5F2A0B1C3E}">
+
+  <CompanyDetails Name="ST4" Url="" Email="" />
+
+  <Components Description="ST4 Yardimci">
+    <RuntimeRequirements
+      OS="Win64"
+      Platform="AutoCAD*"
+      SeriesMin="R23.0"
+      SeriesMax="R28.0" />
+
+    <ComponentEntry
+      AppName="ST4_Yardimci"
+      ModuleName="./Contents/Windows/ST4_Yardimci.dll"
+      AppDescription="BETONARME TOOL"
+      LoadOnAutoCADStartup="True"
+      LoadOnCommandInvocation="False"
+      LoadOnAppearance="False">
+    </ComponentEntry>
+  </Components>
+</ApplicationPackage>

@@ -25,6 +25,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="NetTopologySuite" Version="2.6.0" />
     <PackageReference Include="Obfuscar" Version="2.2.49" GeneratePathProperty="true">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
@@ -66,6 +67,8 @@
     </EmbeddedResource>
     <EmbeddedResource Include="SEHPA.dwg" LogicalName="ST4Yardimci.Sehpa.SEHPA.dwg" Condition="Exists('$(MSBuildProjectDirectory)\SEHPA.dwg')" />
     <EmbeddedResource Include="kesit_sembol.dwg" LogicalName="ST4Yardimci.KesitSembol.kesit_sembol.dwg" Condition="Exists('$(MSBuildProjectDirectory)\kesit_sembol.dwg')" />
+    <EmbeddedResource Include="DEMIR_TABLOSU.dwg" LogicalName="ST4Yardimci.DemirTablosu.DEMIR_TABLOSU.dwg" Condition="Exists('$(MSBuildProjectDirectory)\DEMIR_TABLOSU.dwg')" />
+    <EmbeddedResource Include="TEMEL_CUKURU.dwg" LogicalName="ST4Yardimci.TemelCekuru.TEMEL_CUKURU.dwg" Condition="Exists('$(MSBuildProjectDirectory)\TEMEL_CUKURU.dwg')" />
   </ItemGroup>
 
   <ItemGroup Condition="Exists('$(AutoCADInstallDir)\acdbmgd.dll') and Exists('$(AutoCADInstallDir)\acmgd.dll')">
@@ -214,11 +217,32 @@
     <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="$(_NetloadDir)" SkipUnchangedFiles="false" />
     <Copy SourceFiles="$(OutputPath)$(AssemblyName).pdb" DestinationFolder="$(_NetloadDir)" SkipUnchangedFiles="false"
           Condition="'$(SkipObfuscar)' == 'true' and Exists('$(OutputPath)$(AssemblyName).pdb')" />
-    <!-- Autoloader: sabit isim (APPLOAD Startup Suite yerine AutoCAD 2025+/2027). -->
+    <!-- Autoloader: sabit isim + bagimliliklar (NTS yoksa ofiste gocme). -->
     <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll"
           DestinationFiles="$(_BundleWin)\ST4_Yardimci.dll"
           SkipUnchangedFiles="false" />
+    <ItemGroup>
+      <_BundleDeps Include="$(OutputPath)NetTopologySuite.dll" Condition="Exists('$(OutputPath)NetTopologySuite.dll')" />
+      <_BundleDeps Include="$(OutputPath)System.Buffers.dll" Condition="Exists('$(OutputPath)System.Buffers.dll')" />
+      <_BundleDeps Include="$(OutputPath)System.Memory.dll" Condition="Exists('$(OutputPath)System.Memory.dll')" />
+      <_BundleDeps Include="$(OutputPath)System.Numerics.Vectors.dll" Condition="Exists('$(OutputPath)System.Numerics.Vectors.dll')" />
+      <_BundleDeps Include="$(OutputPath)System.Runtime.CompilerServices.Unsafe.dll" Condition="Exists('$(OutputPath)System.Runtime.CompilerServices.Unsafe.dll')" />
+      <_BundleDeps Include="$(OutputPath)Microsoft.Bcl.HashCode.dll" Condition="Exists('$(OutputPath)Microsoft.Bcl.HashCode.dll')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_BundleDeps)" DestinationFolder="$(_BundleWin)" SkipUnchangedFiles="false"
+          Condition="'@(_BundleDeps)' != ''" />
+    <!-- Ofis setup payload (Kur.cmd). -->
+    <PropertyGroup>
+      <_SetupPayload>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\Setup-Ofis\payload'))</_SetupPayload>
+    </PropertyGroup>
+    <MakeDir Directories="$(_SetupPayload)" />
+    <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll"
+          DestinationFiles="$(_SetupPayload)\ST4_Yardimci.dll"
+          SkipUnchangedFiles="false" />
+    <Copy SourceFiles="@(_BundleDeps)" DestinationFolder="$(_SetupPayload)" SkipUnchangedFiles="false"
+          Condition="'@(_BundleDeps)' != ''" />
     <Message Importance="high" Text="NETLOAD guncellendi ($(_CopyNote)): $(_NetloadDir)\$(AssemblyName).dll" />
     <Message Importance="high" Text="Autoload bundle: $(_BundleWin)\ST4_Yardimci.dll" />
+    <Message Importance="high" Text="Setup-Ofis payload: $(_SetupPayload)\ST4_Yardimci.dll" />
   </Target>
 </Project>

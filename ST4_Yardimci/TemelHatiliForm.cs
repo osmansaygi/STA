@@ -29,6 +29,41 @@ namespace ST4Yardimci
         public static double YatayCapMm { get; set; } = 10;
         /// <summary>Yatay donatı aralığı (cm).</summary>
         public static double YatayAralikCm { get; set; } = 20;
+
+        static bool _loaded;
+
+        public static void EnsureLoaded()
+        {
+            if (_loaded) return;
+            _loaded = true;
+            var m = BaIni.Read("temelhatili.ini");
+            TemelYuksekligiCm = BaIni.GetD(m, "TemelYuksekligiCm", TemelYuksekligiCm);
+            TemelUstKotuCm = BaIni.GetD(m, "TemelUstKotuCm", TemelUstKotuCm);
+            DosemeKalinligiCm = BaIni.GetD(m, "DosemeKalinligiCm", DosemeKalinligiCm);
+            HatilYuksekligiCm = BaIni.GetD(m, "HatilYuksekligiCm", HatilYuksekligiCm);
+            HatilKalinligiCm = BaIni.GetD(m, "HatilKalinligiCm", HatilKalinligiCm);
+            PaspayiCm = BaIni.GetD(m, "PaspayiCm", PaspayiCm);
+            DikeyCapMm = BaIni.GetD(m, "DikeyCapMm", DikeyCapMm);
+            DikeyAralikCm = BaIni.GetD(m, "DikeyAralikCm", DikeyAralikCm);
+            YatayCapMm = BaIni.GetD(m, "YatayCapMm", YatayCapMm);
+            YatayAralikCm = BaIni.GetD(m, "YatayAralikCm", YatayAralikCm);
+        }
+
+        public static void Save()
+        {
+            EnsureLoaded();
+            BaIni.Write("temelhatili.ini",
+                "TemelYuksekligiCm=" + BaIni.N(TemelYuksekligiCm),
+                "TemelUstKotuCm=" + BaIni.N(TemelUstKotuCm),
+                "DosemeKalinligiCm=" + BaIni.N(DosemeKalinligiCm),
+                "HatilYuksekligiCm=" + BaIni.N(HatilYuksekligiCm),
+                "HatilKalinligiCm=" + BaIni.N(HatilKalinligiCm),
+                "PaspayiCm=" + BaIni.N(PaspayiCm),
+                "DikeyCapMm=" + BaIni.N(DikeyCapMm),
+                "DikeyAralikCm=" + BaIni.N(DikeyAralikCm),
+                "YatayCapMm=" + BaIni.N(YatayCapMm),
+                "YatayAralikCm=" + BaIni.N(YatayAralikCm));
+        }
     }
 
     /// <summary>Temel Hatılı formu — plandan çiz (sonra) / manuel çiz.</summary>
@@ -50,6 +85,7 @@ namespace ST4Yardimci
 
         public static void ShowOrActivate()
         {
+            if (!BaFormSession.TryEnter("TEMELHATILI")) return;
             if (_instance == null || _instance.IsDisposed)
             {
                 _instance = new TemelHatiliForm();
@@ -63,10 +99,13 @@ namespace ST4Yardimci
                 _instance.Visible = true;
                 _instance.BringToFront();
             }
+            BaFormSession.Attach("TEMELHATILI", _instance);
+            BaFormSession.EndPick("TEMELHATILI");
         }
 
         public static void Shutdown()
         {
+            BaFormSession.Release("TEMELHATILI");
             if (_instance == null) return;
             try { _instance.Close(); } catch { }
             _instance = null;
@@ -82,6 +121,8 @@ namespace ST4Yardimci
                     _instance.BeginInvoke(new Action(HideTemporarily));
                     return;
                 }
+                
+                BaFormSession.BeginPick("TEMELHATILI");
                 _instance.Visible = false;
             }
             catch { }
@@ -89,6 +130,7 @@ namespace ST4Yardimci
 
         private TemelHatiliForm()
         {
+            TemelHatiliSettings.EnsureLoaded();
             Text = "Temel Hatılı";
             FormBorderStyle = FormBorderStyle.FixedToolWindow;
             StartPosition = FormStartPosition.Manual;
@@ -126,10 +168,14 @@ namespace ST4Yardimci
             Controls.Add(btnManuel);
             Controls.Add(btnClose);
 
+            FormClosing += (s, e) => { try { PushSettings(); } catch { } };
             FormClosed += (s, e) =>
             {
                 if (ReferenceEquals(_instance, this))
+                {
                     _instance = null;
+                    BaFormSession.Release("TEMELHATILI");
+                }
             };
 
             try
@@ -184,6 +230,7 @@ namespace ST4Yardimci
             TemelHatiliSettings.DikeyAralikCm = (double)_numDikeyAralik.Value;
             TemelHatiliSettings.YatayCapMm = (double)_numYatayCap.Value;
             TemelHatiliSettings.YatayAralikCm = (double)_numYatayAralik.Value;
+            TemelHatiliSettings.Save();
         }
 
         private void OnPlan()

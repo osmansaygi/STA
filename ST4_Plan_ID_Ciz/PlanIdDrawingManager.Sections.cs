@@ -126,9 +126,13 @@ namespace ST4PlanIdCiz
         private const double Kalip50BuildingSchematicSectionScale = 0.25;
         /// <summary>KALIP100 için bina şeması ölçeği (KALIP100'de mevcut 1:400 durumuna göre 4× büyütülmüş).</summary>
         private const double Kalip100BuildingSchematicSectionScale = 0.5;
-        /// <summary>Şema kesitinin antet dış çerçeve üst çizgisinden boşluğu (cm).</summary>
-        private const double Kalip50BuildingSectionAboveAntetGapCm = 90.0;
-        /// <summary>Şema üstü başlık metninin alt kenarı ile şema üst kenarı arası (cm).</summary>
+        /// <summary>Antet SheetViewOut sol kenarından kesit soluna iç boşluk (cm).</summary>
+        private const double Kalip50BuildingSectionInsideAntetLeftInsetCm = 150.0;
+        /// <summary>Antet SheetViewOut üst kenarından kesit üstüne iç boşluk (cm).</summary>
+        private const double Kalip50BuildingSectionInsideAntetTopInsetCm = 130.0;
+        /// <summary>X sağ kenarı ile Y sol kenarı arası (kot + boşluk, cm).</summary>
+        private const double Kalip50BuildingSectionPairGapCm = 200.0;
+        /// <summary>Kesit altı başlık metninin üst kenarı ile kesit alt kenarı arası (cm).</summary>
         private const double Kalip50BuildingSectionTitleGapCm = 40.0;
         /// <summary>Aynı Y kabulü; bu eşik altında alternatif dilim ana gruba eklenir.</summary>
         private const double Kalip50AlternateCutSameYToleranceCm = 2.5;
@@ -976,7 +980,7 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>
-        /// KALIP50 yerleşimi: çizim yapmadan soldaki kesit referansı <see cref="leftSectionMinX"/> (antet SheetView solu ≈ bu − 140 cm; yerleşim tıklaması SheetViewOut sol-altına göre).
+        /// KALIP50 yerleşimi: çizim yapmadan soldaki kesit referansı <see cref="leftSectionMinX"/> (antet SheetView solu ≈ bu − 140 cm; yerleşim tıklaması SheetViewOut sol-altının 50 cm soluna göre).
         /// offsetX=0 iken değer L0 olur; genelde leftSectionMinX = offsetX + L0.
         /// </summary>
         private bool TryComputeKalipLeftSectionMinXForAntetAnchor(
@@ -1031,108 +1035,78 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>
-        /// KALIP50ST4: Bina şema kesiti blok tanımını bir kez oluşturur (model + kesit hattı değişmeden yeniden kullanılır).
+        /// KALIP50/100: Antet içi bina kesiti blokları (X ve Y — merdiven kaçınmalı + arka plan görünüş).
+        /// Birer kez oluşturulur; her antette INSERT paylaşılır.
         /// </summary>
         private bool TryEnsureKalip50BinaSemaBlockDefinition(Transaction tr, Database db, Editor ed)
         {
-            if (_kalip50BinaSemaBlockId.IsValid)
+            if (_kalip50BinaSemaBlockId.IsValid && _kalip50BinaKesitYBlockId.IsValid)
                 return true;
             if (!_isKalip50Mode || _model?.Floors == null || _model.Floors.Count == 0 || _ntsDrawFactory == null)
                 return false;
 
             try
             {
-                Geometry cutSearchUnion = TryMergeKalip50BinaKesitCutSearchUnion();
-                Geometry mergedOccFloors = TryMergeFormworkCutOccupancyAllFloors();
-                Geometry mergedOccFound = TryMergeFoundationOccupancyForKalip50Cut();
-                Geometry occForCut = TryMergeGeometryList(new List<Geometry>
+                EnsureBinaGorunusLayers(tr, db);
+                string errTag = _kalipPlanScale == KalipPlanScale.Hundred ? "KALIP100ST4" : "KALIP50ST4";
+                var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForWrite);
+
+                if (!_kalip50BinaSemaBlockId.IsValid)
                 {
-                    mergedOccFloors,
-                    mergedOccFound,
-                    cutSearchUnion
-                }.Where(g => g != null && !g.IsEmpty).ToList()) ?? cutSearchUnion ?? mergedOccFloors;
+                    string blockName = "K50BINAKESITX_" + Guid.NewGuid().ToString("N");
+                    while (bt.Has(blockName))
+                        blockName = "K50BINAKESITX_" + Guid.NewGuid().ToString("N");
+                    var btrDef = new BlockTableRecord { Name = blockName, Origin = Point3d.Origin };
+                    ObjectId blockId = bt.Add(btrDef);
+                    tr.AddNewlyCreatedDBObject(btrDef, true);
 
-                if (cutSearchUnion == null || cutSearchUnion.IsEmpty)
-                    return false;
+                    if (!TryDrawBinaKesitIntoBlock(tr, btrDef, BinaKesitYon.X,
+                            out double aminT, out double minZT, out double spanAT, out double spanZT, out double labelX,
+                            ed, errTag))
+                        return false;
 
-                var ext = GetAksSiniriEnvelope(cutSearchUnion);
-                double xmin = ext.Xmin, xmax = ext.Xmax, ymin = ext.Ymin, ymax = ext.Ymax;
-                double e = SectionLineExtendCm;
-                var refFloor = _model.Floors[0];
-                double yhCut = FindBestHorizontalCutY(refFloor, xmin, xmax, ymin, ymax, e, occForCut ?? cutSearchUnion, isFoundationPlan: false, cutSearchUnion);
-
-                Point2d topA = new Point2d(xmin - e, yhCut);
-                Point2d topB = new Point2d(xmax + e, yhCut);
-                Point2d alongOrigTop = new Point2d(xmin, yhCut);
-                Vector2d dirTop = new Vector2d(1, 0);
-
-                var primarySlices = new List<SectionSlice>();
-                var alternateByFloor = new Dictionary<int, List<SectionSlice>>();
-                for (int fi = 0; fi < _model.Floors.Count; fi++)
-                    CollectKalip50FloorHorizontalSlices(_model.Floors[fi], fi, e, topA, topB, alongOrigTop, dirTop, primarySlices, alternateByFloor);
-
-                if (Kalip50ModelHasFoundationGeometry())
-                {
-                    var ff = _model.Floors[0];
-                    var colExtraF = GetColumnTableExtraData(ff);
-                    var foundSlices = CollectAllSectionSlices(ff, topA, topB, alongOrigTop, dirTop, isFoundationPlan: true, colExtraF);
-                    if (foundSlices != null && foundSlices.Count > 0)
-                    {
-                        foreach (var s in foundSlices)
-                        {
-                            if (IsKalip50FoundationFootprintSlice(s))
-                                primarySlices.Add(s);
-                        }
-                    }
+                    _kalip50BinaSemaBlockId = blockId;
+                    _kalip50BinaSemaAminT = aminT;
+                    _kalip50BinaSemaMinZT = minZT;
+                    _kalip50BinaSemaSpanAT = spanAT;
+                    _kalip50BinaSemaSpanZT = spanZT;
+                    _kalip50BinaSemaLabelXBlock = labelX;
                 }
 
-                var allSlices = new List<SectionSlice>(primarySlices);
-                foreach (var kv in alternateByFloor)
-                    if (kv.Value != null && kv.Value.Count > 0)
-                        allSlices.AddRange(kv.Value);
+                if (!_kalip50BinaKesitYBlockId.IsValid)
+                {
+                    string blockNameY = "K50BINAKESITY_" + Guid.NewGuid().ToString("N");
+                    while (bt.Has(blockNameY))
+                        blockNameY = "K50BINAKESITY_" + Guid.NewGuid().ToString("N");
+                    var btrDefY = new BlockTableRecord { Name = blockNameY, Origin = Point3d.Origin };
+                    ObjectId blockIdY = bt.Add(btrDefY);
+                    tr.AddNewlyCreatedDBObject(btrDefY, true);
 
-                if (allSlices.Count == 0)
-                    return false;
+                    if (!TryDrawBinaKesitIntoBlock(tr, btrDefY, BinaKesitYon.Y,
+                            out double aminY, out double minZY, out double spanAY, out double spanZY, out double labelXY,
+                            ed, errTag))
+                        return false;
 
-                double aminT = allSlices.Min(s => s.A0) - 40.0;
-                double amaxT = allSlices.Max(s => s.A1) + 40.0;
-                double minZT = allSlices.Min(s => s.Z0) - 25.0;
-                double maxZT = allSlices.Max(s => s.Z1) + 25.0;
-                double spanAT = Math.Max(180.0, amaxT - aminT);
-                double spanZT = Math.Max(SectionMinStoryHeightCm * 0.5, maxZT - minZT);
-                double aLoL = allSlices.Min(s => Math.Min(s.A0, s.A1));
-                double aHiL = allSlices.Max(s => Math.Max(s.A0, s.A1));
-                _kalip50BinaSemaLabelXBlock = (aLoL + aHiL) * 0.5 - aminT;
+                    _kalip50BinaKesitYBlockId = blockIdY;
+                    _kalip50BinaKesitYAminT = aminY;
+                    _kalip50BinaKesitYMinZT = minZY;
+                    _kalip50BinaKesitYSpanAT = spanAY;
+                    _kalip50BinaKesitYSpanZT = spanZY;
+                    _kalip50BinaKesitYLabelXBlock = labelXY;
+                }
 
-                string blockName = "K50BINASEMA_" + Guid.NewGuid().ToString("N");
-                var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForWrite);
-                while (bt.Has(blockName))
-                    blockName = "K50BINASEMA_" + Guid.NewGuid().ToString("N");
-                var btrDef = new BlockTableRecord { Name = blockName, Origin = Point3d.Origin };
-                ObjectId blockId = bt.Add(btrDef);
-                tr.AddNewlyCreatedDBObject(btrDef, true);
-
-                const bool k50Clip = true;
-                DrawKalip50BinaSemaSliceGroups(tr, btrDef, primarySlices, alternateByFloor, aminT, minZT, spanAT, spanZT, k50Clip);
-
-                _kalip50BinaSemaBlockId = blockId;
-                _kalip50BinaSemaAminT = aminT;
-                _kalip50BinaSemaMinZT = minZT;
-                _kalip50BinaSemaSpanAT = spanAT;
-                _kalip50BinaSemaSpanZT = spanZT;
-                return true;
+                return _kalip50BinaSemaBlockId.IsValid && _kalip50BinaKesitYBlockId.IsValid;
             }
             catch (Exception ex)
             {
-                ed?.WriteMessage("\nKALIP50ST4: Bina sema kesiti (blok) olusturulamadi: {0}", ex.Message);
+                ed?.WriteMessage("\nKALIP50ST4: Bina kesiti (blok) olusturulamadi: {0}", ex.Message);
                 return false;
             }
         }
 
         /// <summary>
-        /// KALIP50ST4: Tüm katların tek yatay kesitte birleştirilmiş şeması; planda bu kesite ait çizgi yok.
-        /// Her çağrıda ilgili antet üstüne bir INSERT + başlık + kotlar; blok tanımı <see cref="TryEnsureKalip50BinaSemaBlockDefinition"/> ile paylaşılır.
-        /// Kat adı yalnızca bu antetin planına ait kat(lar)ın ST4 isimleriyle, temsil katının döşeme üstüne yakın çizilir.
+        /// KALIP50/100: X ve Y bina kesitleri yan yana; antet SheetViewOut içinde sol-üste.
+        /// Kat adı yalnızca bu antetin planına ait kat(lar)ın ST4 isimleriyle çizilir.
         /// </summary>
         private bool TryDrawKalip50WholeBuildingSchematicSectionAboveAntet(
             Transaction tr,
@@ -1154,45 +1128,102 @@ namespace ST4PlanIdCiz
                     return false;
 
                 double schematicScale = _kalipPlanScale == KalipPlanScale.Hundred ? Kalip100BuildingSchematicSectionScale : Kalip50BuildingSchematicSectionScale;
-                double schematicWidthCm = _kalip50BinaSemaSpanAT * schematicScale;
-                double insertX = (antetOuterLeft + antetOuterRight) * 0.5 - schematicWidthCm * 0.5;
-                double insertY = antetOuterTop + Kalip50BuildingSectionAboveAntetGapCm;
+                string scaleTitle = _kalipPlanScale == KalipPlanScale.Hundred ? "KESIT {0} (1:100)" : "KESIT {0} (1:200)";
 
-                var br = new BlockReference(new Point3d(insertX, insertY, 0), _kalip50BinaSemaBlockId)
-                {
-                    ScaleFactors = new Scale3d(schematicScale),
-                    Layer = LayerKesit
-                };
-                AppendEntity(tr, btr, br);
+                double widthX = _kalip50BinaSemaSpanAT * schematicScale;
+                double heightX = _kalip50BinaSemaSpanZT * schematicScale;
+                double widthY = _kalip50BinaKesitYSpanAT * schematicScale;
+                double heightY = _kalip50BinaKesitYSpanZT * schematicScale;
 
-                double cx = (antetOuterLeft + antetOuterRight) * 0.5;
-                double yTitleTop = insertY - Kalip50BuildingSectionTitleGapCm;
-                var titleTxt = new DBText
-                {
-                    Layer = LayerKesitIsmi,
-                    Height = KesitIsmiLayerYaziYukseklikCm,
-                    TextStyleId = GetOrCreateYaziBeykentTextStyle(tr, db),
-                    TextString = _kalipPlanScale == KalipPlanScale.Hundred ? "SEMATIK KESIT (1:100)" : "SEMATIK KESIT (1:200)",
-                    HorizontalMode = TextHorizontalMode.TextCenter,
-                    VerticalMode = TextVerticalMode.TextTop,
-                    Position = new Point3d(cx, yTitleTop, 0),
-                    AlignmentPoint = new Point3d(cx, yTitleTop, 0),
-                    LineWeight = LineWeight.LineWeight020
-                };
-                try { titleTxt.AdjustAlignment(db); } catch { /* sürüm farkı */ }
-                AppendEntity(tr, btr, titleTxt);
+                double insertXX = antetOuterLeft + Kalip50BuildingSectionInsideAntetLeftInsetCm;
+                double insertYX = insertXX + widthX + Kalip50BuildingSectionPairGapCm;
+                double insertXY = antetOuterTop - Kalip50BuildingSectionInsideAntetTopInsetCm - heightX;
+                double insertYY = antetOuterTop - Kalip50BuildingSectionInsideAntetTopInsetCm - heightY;
 
-                DrawKalip50BuildingSchematicFloorLevelKotsInModelSpace(tr, btr, db, insertX, insertY,
-                    _kalip50BinaSemaAminT, _kalip50BinaSemaMinZT, _kalip50BinaSemaSpanAT, _kalip50BinaSemaSpanZT);
-                DrawKalip50BinaSemaAntetFloorNameInModelSpace(tr, btr, db, insertX, insertY, antetPrimaryFloor, antetSimilarOtherFloors);
+                // X (sol)
+                PlaceKalip50BinaKesitPairItem(
+                    tr, btr, db,
+                    _kalip50BinaSemaBlockId,
+                    insertXX, insertXY,
+                    widthX, schematicScale,
+                    string.Format(CultureInfo.InvariantCulture, scaleTitle, "X"),
+                    _kalip50BinaSemaAminT, _kalip50BinaSemaMinZT, _kalip50BinaSemaSpanAT, _kalip50BinaSemaSpanZT,
+                    _kalip50BinaSemaLabelXBlock,
+                    antetPrimaryFloor, antetSimilarOtherFloors);
+
+                // Y (sağ)
+                PlaceKalip50BinaKesitPairItem(
+                    tr, btr, db,
+                    _kalip50BinaKesitYBlockId,
+                    insertYX, insertYY,
+                    widthY, schematicScale,
+                    string.Format(CultureInfo.InvariantCulture, scaleTitle, "Y"),
+                    _kalip50BinaKesitYAminT, _kalip50BinaKesitYMinZT, _kalip50BinaKesitYSpanAT, _kalip50BinaKesitYSpanZT,
+                    _kalip50BinaKesitYLabelXBlock,
+                    antetPrimaryFloor, antetSimilarOtherFloors);
 
                 return true;
             }
             catch (Exception ex)
             {
-                ed?.WriteMessage("\nKALIP50ST4: Bina sema kesiti yerlestirilemedi: {0}", ex.Message);
+                ed?.WriteMessage("\nKALIP50ST4: Bina kesiti yerlestirilemedi: {0}", ex.Message);
                 return false;
             }
+        }
+
+        private void PlaceKalip50BinaKesitPairItem(
+            Transaction tr,
+            BlockTableRecord btr,
+            Database db,
+            ObjectId blockId,
+            double insertX,
+            double insertY,
+            double schematicWidthCm,
+            double schematicScale,
+            string title,
+            double amin,
+            double minZ,
+            double spanA,
+            double spanZ,
+            double labelXBlock,
+            FloorInfo antetPrimaryFloor,
+            List<FloorInfo> antetSimilarOtherFloors)
+        {
+            var br = new BlockReference(new Point3d(insertX, insertY, 0), blockId)
+            {
+                ScaleFactors = new Scale3d(schematicScale),
+                Layer = LayerKesit
+            };
+            AppendEntity(tr, btr, br);
+
+            double cx = insertX + schematicWidthCm * 0.5;
+            double yTitleTop = insertY - Kalip50BuildingSectionTitleGapCm;
+            var titleTxt = new DBText
+            {
+                Layer = LayerKesitIsmi,
+                Height = KesitIsmiLayerYaziYukseklikCm,
+                TextStyleId = GetOrCreateYaziBeykentTextStyle(tr, db),
+                TextString = title,
+                HorizontalMode = TextHorizontalMode.TextCenter,
+                VerticalMode = TextVerticalMode.TextTop,
+                Position = new Point3d(cx, yTitleTop, 0),
+                AlignmentPoint = new Point3d(cx, yTitleTop, 0),
+                LineWeight = LineWeight.LineWeight020
+            };
+            try { titleTxt.AdjustAlignment(db); } catch { /* sürüm farkı */ }
+            AppendEntity(tr, btr, titleTxt);
+
+            DrawKalip50BuildingSchematicFloorLevelKotsInModelSpace(tr, btr, db, insertX, insertY,
+                amin, minZ, spanA, spanZ);
+            DrawBinaKesitFloorNameLabels(tr, btr, db, insertX, insertY, minZ, schematicScale);
+
+            double prevLabelX = _kalip50BinaSemaLabelXBlock;
+            double prevMinZ = _kalip50BinaSemaMinZT;
+            _kalip50BinaSemaLabelXBlock = labelXBlock;
+            _kalip50BinaSemaMinZT = minZ;
+            DrawKalip50BinaSemaAntetFloorNameInModelSpace(tr, btr, db, insertX, insertY, antetPrimaryFloor, antetSimilarOtherFloors);
+            _kalip50BinaSemaLabelXBlock = prevLabelX;
+            _kalip50BinaSemaMinZT = prevMinZ;
         }
 
         /// <summary>
@@ -1263,6 +1294,7 @@ namespace ST4PlanIdCiz
             _kalip50FloorNoToModelIndex = null;
             _kalip50BinaSemaKotZsAsc = null;
             _kalip50BinaSemaKotCrowdedShiftLower = null;
+            _stairFootprintUnionByFloorNo = null;
             ClearFloorGeometrySessionCaches();
         }
 
@@ -3169,7 +3201,8 @@ namespace ST4PlanIdCiz
         }
 
         private List<SectionSlice> CollectAllSectionSlices(FloorInfo floor, Point2d pa, Point2d pb, Point2d alongOrigin, Vector2d dirUnit,
-            bool isFoundationPlan, Dictionary<int, (double altKotCm, double yukseklikCm, double? k)> colExtra)
+            bool isFoundationPlan, Dictionary<int, (double altKotCm, double yukseklikCm, double? k)> colExtra,
+            bool omitStairAndAdjacentLandings = false)
         {
             var list = new List<SectionSlice>();
             var factory = _ntsDrawFactory;
@@ -3298,6 +3331,7 @@ namespace ST4PlanIdCiz
                 foreach (var slab in _model.Slabs)
                 {
                     if (GetSlabFloorNo(slab.SlabId) != floorNo) continue;
+                    if (omitStairAndAdjacentLandings && ShouldOmitSlabFromBinaView(slab)) continue;
                     var poly = SlabFootprintPoly(slab);
                     double zt = floorLevelCm + slab.OffsetFromFloorCm;
                     // ST4 kalınlığı; Max(.,15) ince döşemeyi 15 cm gösteriyordu (plan etiketi 12 iken kesit 15).

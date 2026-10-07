@@ -12,6 +12,10 @@ namespace ST4Yardimci
     {
         public static double KatYuksekligiCm { get; set; } = 300;
         public static double AltKotCm { get; set; } = 0;
+        /// <summary>Aynı katta benzer merdiven adedi. L= etiketinin önüne çarpan.</summary>
+        public static int BenzerAdet { get; set; } = 1;
+        /// <summary>Benzer kat sayısı (çizilen kat dahil). Ek çarpan ve kot kopyası.</summary>
+        public static int BenzerKat { get; set; } = 1;
         /// <summary>Merdiven plak / döşeme kalınlığı (cm) — kesitte eğik alt yüz.</summary>
         public static double DosemeKalinligiCm { get; set; } = 15;
         /// <summary>Plandan okunamayan kiriş yüksekliği varsayılanı (cm).</summary>
@@ -45,6 +49,8 @@ namespace ST4Yardimci
             var m = BaIni.Read("merdiven.ini");
             KatYuksekligiCm = BaIni.GetD(m, "KatYuksekligiCm", KatYuksekligiCm);
             AltKotCm = BaIni.GetD(m, "AltKotCm", AltKotCm);
+            BenzerAdet = BaIni.GetI(m, "BenzerAdet", BenzerAdet);
+            BenzerKat = BaIni.GetI(m, "BenzerKat", BenzerKat);
             DosemeKalinligiCm = BaIni.GetD(m, "DosemeKalinligiCm", DosemeKalinligiCm);
             KirisYuksekligiCm = BaIni.GetD(m, "KirisYuksekligiCm", KirisYuksekligiCm);
             PaspayiCm = BaIni.GetD(m, "PaspayiCm", PaspayiCm);
@@ -66,6 +72,8 @@ namespace ST4Yardimci
             BaIni.Write("merdiven.ini",
                 "KatYuksekligiCm=" + BaIni.N(KatYuksekligiCm),
                 "AltKotCm=" + BaIni.N(AltKotCm),
+                "BenzerAdet=" + BenzerAdet.ToString(CultureInfo.InvariantCulture),
+                "BenzerKat=" + BenzerKat.ToString(CultureInfo.InvariantCulture),
                 "DosemeKalinligiCm=" + BaIni.N(DosemeKalinligiCm),
                 "KirisYuksekligiCm=" + BaIni.N(KirisYuksekligiCm),
                 "PaspayiCm=" + BaIni.N(PaspayiCm),
@@ -92,6 +100,8 @@ namespace ST4Yardimci
 
         private readonly NumericUpDown _numKat;
         private readonly NumericUpDown _numAltKot;
+        private readonly NumericUpDown _numAdet;
+        private readonly NumericUpDown _numBenzerKat;
         private readonly NumericUpDown _numDoseme;
         private readonly NumericUpDown _numKirisH;
         private readonly NumericUpDown _numPaspayi;
@@ -105,18 +115,22 @@ namespace ST4Yardimci
         /// <summary>Modal form. true = «Plandan çiz» (ayarlar kaydedildi).</summary>
         public static bool ShowModalAndAcceptDraw()
         {
+            if (!BaFormSession.TryEnter("MERDIVEN")) return false;
             Shutdown();
             using (var f = new MerdivenForm())
             {
+                BaFormSession.Attach("MERDIVEN", f);
                 DialogResult dr;
                 try { dr = AcApp.ShowModalDialog(f); }
                 catch { dr = f.ShowDialog(); }
+                BaFormSession.Release("MERDIVEN");
                 return dr == DialogResult.OK;
             }
         }
 
         public static void Shutdown()
         {
+            BaFormSession.Release("MERDIVEN");
             if (_instance == null) return;
             try { _instance.Close(); } catch { }
             _instance = null;
@@ -143,6 +157,10 @@ namespace ST4Yardimci
                 (decimal)MerdivenSettings.KatYuksekligiCm);
             _numAltKot = AddRow("Alt kot", "cm", ref y, -5000, 5000, 1, 0,
                 (decimal)MerdivenSettings.AltKotCm);
+            _numAdet = AddRow("Adet", "ad", ref y, 1, 50, 1, 0,
+                MerdivenSettings.BenzerAdet);
+            _numBenzerKat = AddRow("Benzer kat", "kat", ref y, 1, 40, 1, 0,
+                MerdivenSettings.BenzerKat);
             _numDoseme = AddRow("Döşeme kalınlık", "cm", ref y, 8, 40, 1, 0,
                 (decimal)MerdivenSettings.DosemeKalinligiCm);
             _numKirisH = AddRow("Kiriş yükseklik*", "cm", ref y, 20, 150, 1, 0,
@@ -265,6 +283,8 @@ namespace ST4Yardimci
         {
             MerdivenSettings.KatYuksekligiCm = (double)_numKat.Value;
             MerdivenSettings.AltKotCm = (double)_numAltKot.Value;
+            MerdivenSettings.BenzerAdet = (int)_numAdet.Value;
+            MerdivenSettings.BenzerKat = (int)_numBenzerKat.Value;
             MerdivenSettings.DosemeKalinligiCm = (double)_numDoseme.Value;
             MerdivenSettings.KirisYuksekligiCm = (double)_numKirisH.Value;
             MerdivenSettings.TemelVar = _chkTemel.Checked;

@@ -1,0 +1,1498 @@
+﻿A_TFL donati dosyalari — okunur dokum
+Kaynak: A_TFL.SMX  A_TFL.KMX  A_TFL.DMX  A_TFL.TMX
+Sayilar GPR betonarme tablolari ile ayni kayittir.
+Cap mm, aralik cm, moment tm, As cm2.
+
+============================================================
+KOLON ve PERDE  —  A_TFL.SMX
+32 kayit x 300 bayt. Donati, kayit basi ofset 161 (9 tamsayi).
+Ilk 16 kayit zemin kati SZ, sonraki 16 kayit 1. normal kat S1.
+============================================================
+
+SZ-01   (kolon, kayit 1)
+  Boyuna: 2 yuzde 3 adet cap 14  +  govde 2 yuzde 2 adet cap 14
+  Etriye: cap 10 / aralik 15 / 8
+  Eksenel N (G+Q) yaklasik: 35,89 t
+  Ham: 10, 15, 8, 1, 2, 3, 14, 2, 14
+
+SZ-02   (kolon, kayit 2)
+  Boyuna: 2 yuzde 4 adet cap 14  +  govde 2 yuzde 3 adet cap 14
+  Etriye: cap 10 / aralik 12 / 8
+  Eksenel N (G+Q) yaklasik: 67,54 t
+  Ham: 10, 12, 8, 1, 2, 4, 14, 3, 14
+
+SZ-03   (kolon, kayit 3)
+  Boyuna: 2 yuzde 3 adet cap 14  +  govde 2 yuzde 2 adet cap 14
+  Etriye: cap 10 / aralik 15 / 8
+  Eksenel N (G+Q) yaklasik: 35,85 t
+  Ham: 10, 15, 8, 1, 2, 3, 14, 2, 14
+
+SZ-04   (kolon, kayit 4)
+  Boyuna: 2 yuzde 3 adet cap 14  +  govde 2 yuzde 2 adet cap 14
+  Etriye: cap 10 / aralik 15 / 8
+  Eksenel N (G+Q) yaklasik: 60,76 t
+  Ham: 10, 15, 8, 1, 2, 3, 14, 2, 14
+
+SZ-05   (kolon, kayit 5)
+  Boyuna: 2 yuzde 5 adet cap 14  +  govde 2 yuzde 3 adet cap 14
+  Etriye: cap 10 / aralik 15 / 8
+  Eksenel N (G+Q) yaklasik: 95,31 t
+  Ham: 10, 15, 8, 1, 2, 5, 14, 3, 14
+
+SZ-06   (kolon, kayit 6)
+  Boyuna: 2 yuzde 5 adet cap 14  +  govde 2 yuzde 3 adet cap 14
+  Etriye: cap 10 / aralik 15 / 8
+  Eksenel N (G+Q) yaklasik: 95,21 t
+  Ham: 10, 15, 8, 1, 2, 5, 14, 3, 14
+
+SZ-07   (kolon, kayit 7)
+  Boyuna: 2 yuzde 3 adet cap 14  +  govde 2 yuzde 2 adet cap 14
+  Etriye: cap 10 / aralik 15 / 8
+  Eksenel N (G+Q) yaklasik: 60,78 t
+  Ham: 10, 15, 8, 1, 2, 3, 14, 2, 14
+
+SZ-08   (perde, kayit 8)
+  Boyuna: 9 adet cap 14  +  7 adet cap 12
+  Etriye: cap 8 / aralik 16 / 8
+  Eksenel N (G+Q) yaklasik: 3,98 t
+  Ham: 8, 16, 8, 0, 0, 9, 14, 7, 12
+
+SZ-09   (kolon, kayit 9)
+  Boyuna: 2 yuzde 3 adet cap 14  +  govde 2 yuzde 2 adet cap 14
+  Etriye: cap 10 / aralik 15 / 8
+  Eksenel N (G+Q) yaklasik: 57,49 t
+  Ham: 10, 15, 8, 1, 2, 3, 14, 2, 14
+
+SZ-10   (kolon, kayit 10)
+  Boyuna: 2 yuzde 3 adet cap 14  +  govde 2 yuzde 2 adet cap 14
+  Etriye: cap 10 / aralik 15 / 8
+  Eksenel N (G+Q) yaklasik: 81,43 t
+  Ham: 10, 15, 8, 1, 2, 3, 14, 2, 14
+
+SZ-11   (kolon, kayit 11)
+  Boyuna: 2 yuzde 3 adet cap 14  +  govde 2 yuzde 2 adet cap 14
+  Etriye: cap 10 / aralik 15 / 8
+  Eksenel N (G+Q) yaklasik: 54,47 t
+  Ham: 10, 15, 8, 1, 2, 3, 14, 2, 14
+
+SZ-12   (kolon, kayit 12)
+  Boyuna: 2 yuzde 3 adet cap 14  +  govde 2 yuzde 2 adet cap 14
+  Etriye: cap 10 / aralik 15 / 8
+  Eksenel N (G+Q) yaklasik: 81,41 t
+  Ham: 10, 15, 8, 1, 2, 3, 14, 2, 14
+
+SZ-13   (kolon, kayit 13)
+  Boyuna: 2 yuzde 3 adet cap 14  +  govde 2 yuzde 2 adet cap 14
+  Etriye: cap 10 / aralik 15 / 8
+  Eksenel N (G+Q) yaklasik: 57,50 t
+  Ham: 10, 15, 8, 1, 2, 3, 14, 2, 14
+
+SZ-14   (kolon, kayit 14)
+  Boyuna: 2 yuzde 3 adet cap 14  +  govde 2 yuzde 2 adet cap 14
+  Etriye: cap 10 / aralik 15 / 8
+  Eksenel N (G+Q) yaklasik: 25,69 t
+  Ham: 10, 15, 8, 1, 2, 3, 14, 2, 14
+
+SZ-15   (kolon, kayit 15)
+  Boyuna: 2 yuzde 3 adet cap 14  +  govde 2 yuzde 2 adet cap 14
+  Etriye: cap 10 / aralik 15 / 8
+  Eksenel N (G+Q) yaklasik: 39,67 t
+  Ham: 10, 15, 8, 1, 2, 3, 14, 2, 14
+
+SZ-16   (kolon, kayit 16)
+  Boyuna: 2 yuzde 3 adet cap 14  +  govde 2 yuzde 2 adet cap 14
+  Etriye: cap 10 / aralik 15 / 8
+  Eksenel N (G+Q) yaklasik: 25,68 t
+  Ham: 10, 15, 8, 1, 2, 3, 14, 2, 14
+
+S1-01   (kolon, kayit 17)
+  Boyuna: 2 yuzde 3 adet cap 14  +  govde 2 yuzde 2 adet cap 14
+  Etriye: cap 10 / aralik 15 / 8
+  Eksenel N (G+Q) yaklasik: 14,58 t
+  Ham: 10, 15, 8, 1, 2, 3, 14, 2, 14
+
+S1-02   (kolon, kayit 18)
+  Boyuna: 2 yuzde 4 adet cap 14  +  govde 2 yuzde 3 adet cap 14
+  Etriye: cap 10 / aralik 15 / 8
+  Eksenel N (G+Q) yaklasik: 26,79 t
+  Ham: 10, 15, 8, 1, 2, 4, 14, 3, 14
+
+S1-03   (kolon, kayit 19)
+  Boyuna: 2 yuzde 3 adet cap 14  +  govde 2 yuzde 2 adet cap 14
+  Etriye: cap 10 / aralik 15 / 8
+  Eksenel N (G+Q) yaklasik: 14,57 t
+  Ham: 10, 15, 8, 1, 2, 3, 14, 2, 14
+
+S1-04   (kolon, kayit 20)
+  Boyuna: 2 yuzde 3 adet cap 14  +  govde 2 yuzde 2 adet cap 14
+  Etriye: cap 10 / aralik 15 / 8
+  Eksenel N (G+Q) yaklasik: 20,77 t
+  Ham: 10, 15, 8, 1, 2, 3, 14, 2, 14
+
+S1-05   (kolon, kayit 21)
+  Boyuna: 2 yuzde 5 adet cap 14  +  govde 2 yuzde 3 adet cap 14
+  Etriye: cap 10 / aralik 8 / 0
+  Eksenel N (G+Q) yaklasik: 36,35 t
+  Ham: 10, 8, 0, 1, 2, 5, 14, 3, 14
+
+S1-06   (kolon, kayit 22)
+  Boyuna: 2 yuzde 5 adet cap 14  +  govde 2 yuzde 3 adet cap 14
+  Etriye: cap 10 / aralik 8 / 0
+  Eksenel N (G+Q) yaklasik: 36,35 t
+  Ham: 10, 8, 0, 1, 2, 5, 14, 3, 14
+
+S1-07   (kolon, kayit 23)
+  Boyuna: 2 yuzde 3 adet cap 14  +  govde 2 yuzde 2 adet cap 14
+  Etriye: cap 10 / aralik 15 / 8
+  Eksenel N (G+Q) yaklasik: 20,76 t
+  Ham: 10, 15, 8, 1, 2, 3, 14, 2, 14
+
+S1-08   (perde, kayit 24)
+  Boyuna: 6 adet cap 14  +  9 adet cap 12
+  Etriye: cap 8 / aralik 16 / 16
+  Eksenel N (G+Q) yaklasik: 29,36 t
+  Ham: 8, 16, 16, 0, 0, 6, 14, 9, 12
+
+S1-09   (kolon, kayit 25)
+  Boyuna: 2 yuzde 3 adet cap 14  +  govde 2 yuzde 2 adet cap 14
+  Etriye: cap 10 / aralik 15 / 8
+  Eksenel N (G+Q) yaklasik: 21,16 t
+  Ham: 10, 15, 8, 1, 2, 3, 14, 2, 14
+
+S1-10   (kolon, kayit 26)
+  Boyuna: 2 yuzde 3 adet cap 14  +  govde 2 yuzde 2 adet cap 14
+  Etriye: cap 10 / aralik 15 / 8
+  Eksenel N (G+Q) yaklasik: 29,90 t
+  Ham: 10, 15, 8, 1, 2, 3, 14, 2, 14
+
+S1-11   (kolon, kayit 27)
+  Boyuna: 2 yuzde 3 adet cap 14  +  govde 2 yuzde 2 adet cap 14
+  Etriye: cap 10 / aralik 15 / 8
+  Eksenel N (G+Q) yaklasik: 23,82 t
+  Ham: 10, 15, 8, 1, 2, 3, 14, 2, 14
+
+S1-12   (kolon, kayit 28)
+  Boyuna: 2 yuzde 3 adet cap 14  +  govde 2 yuzde 2 adet cap 14
+  Etriye: cap 10 / aralik 15 / 8
+  Eksenel N (G+Q) yaklasik: 29,93 t
+  Ham: 10, 15, 8, 1, 2, 3, 14, 2, 14
+
+S1-13   (kolon, kayit 29)
+  Boyuna: 2 yuzde 3 adet cap 14  +  govde 2 yuzde 2 adet cap 14
+  Etriye: cap 10 / aralik 15 / 8
+  Eksenel N (G+Q) yaklasik: 21,15 t
+  Ham: 10, 15, 8, 1, 2, 3, 14, 2, 14
+
+S1-14   (kolon, kayit 30)
+  Boyuna: 2 yuzde 3 adet cap 14  +  govde 2 yuzde 2 adet cap 14
+  Etriye: cap 10 / aralik 15 / 8
+  Eksenel N (G+Q) yaklasik: 12,41 t
+  Ham: 10, 15, 8, 1, 2, 3, 14, 2, 14
+
+S1-15   (kolon, kayit 31)
+  Boyuna: 2 yuzde 3 adet cap 14  +  govde 2 yuzde 2 adet cap 14
+  Etriye: cap 10 / aralik 15 / 8
+  Eksenel N (G+Q) yaklasik: 18,23 t
+  Ham: 10, 15, 8, 1, 2, 3, 14, 2, 14
+
+S1-16   (kolon, kayit 32)
+  Boyuna: 2 yuzde 3 adet cap 14  +  govde 2 yuzde 2 adet cap 14
+  Etriye: cap 10 / aralik 15 / 8
+  Eksenel N (G+Q) yaklasik: 12,41 t
+  Ham: 10, 15, 8, 1, 2, 3, 14, 2, 14
+
+============================================================
+KIRIS  —  A_TFL.KMX
+61 kayit x 300 bayt. Donati ofset 108. Kayit 1 = KZ-01.
+Bazi kirisler iki acikliga bolunmustur; o zaman ayni KZ iki kayit surer.
+============================================================
+
+Kiris kayit 1
+  Montaj: 2 adet cap 12
+  Duz: 3 adet cap 12
+  Govde: -
+  Sol ust ilave: 2 adet cap 12
+  Sag ust ilave: 2 adet cap 12
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 6,15  -2,06  -6,48  1,14
+  As cm2: 3,97  1,28  4,19  1,26  aciklik 2,84
+
+Kiris kayit 2
+  Montaj: 2 adet cap 12
+  Duz: 3 adet cap 12
+  Govde: -
+  Sol ust ilave: -
+  Sag ust ilave: 2 adet cap 12
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 6,46  -1,15  -6,25  2,04
+  As cm2: 4,18  1,25  4,03  1,27  aciklik 2,84
+
+Kiris kayit 3
+  Montaj: 2 adet cap 12
+  Duz: 3 adet cap 14
+  Govde: 2 adet cap 12
+  Sol ust ilave: -
+  Sag ust ilave: 1 adet cap 12
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 0,27  -0,92  -4,58  0,00
+  As cm2: 0,18  0,46  3,06  0,00  aciklik 3,48
+
+Kiris kayit 4
+  Montaj: 2 adet cap 12
+  Duz: 3 adet cap 14
+  Govde: 2 adet cap 12
+  Sol ust ilave: 1 adet cap 14
+  Sag ust ilave: -
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 5,41  0,00  -0,28  0,93
+  As cm2: 3,63  0,00  0,18  0,47  aciklik 3,48
+
+Kiris kayit 5
+  Montaj: 3 adet cap 12
+  Duz: 4 adet cap 14
+  Govde: -
+  Sol ust ilave: 4 adet cap 14
+  Sag ust ilave: 2 adet cap 14
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 13,05  -0,53  -9,54  1,52
+  As cm2: 8,77  2,63  6,25  1,87  aciklik 5,71
+
+Kiris kayit 6
+  Montaj: 3 adet cap 12
+  Duz: 4 adet cap 14
+  Govde: -
+  Sol ust ilave: 2 adet cap 14
+  Sag ust ilave: 4 adet cap 14
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 9,48  -1,53  -13,24  0,49
+  As cm2: 6,21  1,86  8,92  2,67  aciklik 5,85
+
+Kiris kayit 7
+  Montaj: 2 adet cap 12
+  Duz: 3 adet cap 12
+  Govde: -
+  Sol ust ilave: 1 adet cap 14
+  Sag ust ilave: -
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 5,73  0,00  -6,33  0,00
+  As cm2: 3,68  0,00  4,09  1,23  aciklik 2,84
+
+Kiris kayit 8
+  Montaj: 2 adet cap 12
+  Duz: 3 adet cap 12
+  Govde: -
+  Sol ust ilave: 2 adet cap 12
+  Sag ust ilave: 1 adet cap 14
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 6,94  0,00  -5,76  0,00
+  As cm2: 4,50  1,35  3,70  0,00  aciklik 2,84
+
+Kiris kayit 9
+  Montaj: 3 adet cap 12
+  Duz: 4 adet cap 14
+  Govde: -
+  Sol ust ilave: 3 adet cap 14
+  Sag ust ilave: -
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 11,97  0,00  -9,71  0,00
+  As cm2: 7,98  2,39  6,37  1,91  aciklik 5,72
+
+Kiris kayit 10
+  Montaj: 3 adet cap 12
+  Duz: 3 adet cap 14
+  Govde: -
+  Sol ust ilave: 3 adet cap 12
+  Sag ust ilave: 1 adet cap 12
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 10,05  0,00  -5,48  0,24
+  As cm2: 6,60  1,98  4,39  1,32  aciklik 3,41
+
+Kiris kayit 11
+  Montaj: 3 adet cap 12
+  Duz: 3 adet cap 14
+  Govde: -
+  Sol ust ilave: -
+  Sag ust ilave: 3 adet cap 12
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 5,45  -0,26  -10,19  0,00
+  As cm2: 4,39  1,32  6,70  2,01  aciklik 3,41
+
+Kiris kayit 12
+  Montaj: 3 adet cap 12
+  Duz: 4 adet cap 14
+  Govde: -
+  Sol ust ilave: -
+  Sag ust ilave: 3 adet cap 14
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 9,67  0,00  -11,97  0,00
+  As cm2: 6,34  1,90  7,98  2,39  aciklik 5,68
+
+Kiris kayit 13
+  Montaj: 2 adet cap 12
+  Duz: 3 adet cap 12
+  Govde: -
+  Sol ust ilave: -
+  Sag ust ilave: 1 adet cap 12
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 0,38  -0,39  -3,01  0,00
+  As cm2: 0,30  0,24  2,46  0,00  aciklik 2,84
+
+Kiris kayit 14
+  Montaj: 2 adet cap 12
+  Duz: 3 adet cap 12
+  Govde: -
+  Sol ust ilave: 1 adet cap 12
+  Sag ust ilave: -
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 3,00  0,00  -0,39  0,39
+  As cm2: 2,45  0,00  0,31  0,24  aciklik 2,84
+
+Kiris kayit 15
+  Montaj: 2 adet cap 12
+  Duz: 3 adet cap 12
+  Govde: -
+  Sol ust ilave: 1 adet cap 14
+  Sag ust ilave: 1 adet cap 14
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 5,00  -1,54  -5,58  0,24
+  As cm2: 3,66  1,10  3,66  1,10  aciklik 2,84
+
+Kiris kayit 16
+  Montaj: 2 adet cap 12
+  Duz: 3 adet cap 12
+  Govde: -
+  Sol ust ilave: -
+  Sag ust ilave: 1 adet cap 14
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 5,56  -0,27  -5,08  1,52
+  As cm2: 3,66  1,10  3,66  1,10  aciklik 2,84
+
+Kiris kayit 17
+  Montaj: 3 adet cap 12
+  Duz: 2 adet cap 12
+  Govde: -
+  Sol ust ilave: -
+  Sag ust ilave: -
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 8,48  0,00  0,00  0,50
+  As cm2: 5,51  1,65  0,00  0,31  aciklik 0,00
+
+Kiris kayit 18
+  Montaj: 3 adet cap 12
+  Duz: 4 adet cap 14
+  Govde: 2 adet cap 12
+  Sol ust ilave: 4 adet cap 14
+  Sag ust ilave: 2 adet cap 14
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 16,87  0,00  -11,89  0,07
+  As cm2: 9,14  2,74  6,28  1,88  aciklik 5,96
+
+Kiris kayit 19
+  Montaj: 3 adet cap 12
+  Duz: 2 adet cap 12
+  Govde: 2 adet cap 12
+  Sol ust ilave: -
+  Sag ust ilave: -
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 0,00  -0,88  -10,97  0,00
+  As cm2: 0,00  0,44  5,77  1,73  aciklik 0,00
+
+Kiris kayit 20
+  Montaj: 4 adet cap 14
+  Duz: 3 adet cap 14
+  Govde: -
+  Sol ust ilave: -
+  Sag ust ilave: -
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 12,90  -0,07  0,00  4,13
+  As cm2: 8,66  2,60  0,00  2,57  aciklik 3,41
+
+Kiris kayit 21
+  Montaj: 4 adet cap 14
+  Duz: 3 adet cap 14
+  Govde: -
+  Sol ust ilave: -
+  Sag ust ilave: -
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 0,00  -4,16  -6,74  3,83
+  As cm2: 0,00  2,60  4,39  2,39  aciklik 3,41
+
+Kiris kayit 22
+  Montaj: 4 adet cap 14
+  Duz: 5 adet cap 14
+  Govde: -
+  Sol ust ilave: 8 adet cap 14
+  Sag ust ilave: -
+  Etriye: cap 8 / aralik 10 / 9
+  Moment tm: 24,72  0,00  -0,08  9,42
+  As cm2: 18,01  5,40  0,07  5,89  aciklik 6,32
+
+Kiris kayit 23
+  Montaj: 4 adet cap 14
+  Duz: 5 adet cap 14
+  Govde: -
+  Sol ust ilave: -
+  Sag ust ilave: 2 adet cap 14
+  Etriye: cap 8 / aralik 10 / 9
+  Moment tm: 0,83  -8,33  -13,31  0,00
+  As cm2: 0,67  5,20  8,97  2,69  aciklik 6,32
+
+Kiris kayit 24
+  Montaj: 4 adet cap 14
+  Duz: 4 adet cap 12
+  Govde: 2 adet cap 12
+  Sol ust ilave: 1 adet cap 12
+  Sag ust ilave: -
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 13,00  -4,45  0,00  6,90
+  As cm2: 6,91  2,26  0,00  3,52  aciklik 4,18
+
+Kiris kayit 25
+  Montaj: 4 adet cap 14
+  Duz: 4 adet cap 12
+  Govde: 2 adet cap 12
+  Sol ust ilave: -
+  Sag ust ilave: -
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 0,00  -7,02  -16,29  5,09
+  As cm2: 0,00  3,57  8,79  2,64  aciklik 4,18
+
+Kiris kayit 26
+  Montaj: 2 adet cap 12
+  Duz: 3 adet cap 12
+  Govde: -
+  Sol ust ilave: 3 adet cap 12
+  Sag ust ilave: 1 adet cap 14
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 8,18  0,00  -5,70  2,38
+  As cm2: 5,36  1,61  3,66  1,47  aciklik 2,84
+
+Kiris kayit 27
+  Montaj: 2 adet cap 12
+  Duz: 3 adet cap 12
+  Govde: 2 adet cap 14
+  Sol ust ilave: 1 adet cap 14
+  Sag ust ilave: -
+  Etriye: cap 8 / aralik 9 / 0
+  Moment tm: 5,61  -6,46  -7,79  4,11
+  As cm2: 3,66  4,09  5,09  2,57  aciklik 2,84
+
+Kiris kayit 28
+  Montaj: 4 adet cap 12
+  Duz: 6 adet cap 14
+  Govde: 2 adet cap 12
+  Sol ust ilave: 6 adet cap 14
+  Sag ust ilave: 7 adet cap 14
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 23,46  0,00  -24,08  0,00
+  As cm2: 13,52  4,05  13,94  4,18  aciklik 8,67
+
+Kiris kayit 29
+  Montaj: 4 adet cap 14
+  Duz: 3 adet cap 14
+  Govde: -
+  Sol ust ilave: -
+  Sag ust ilave: -
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 12,94  -0,08  0,00  4,17
+  As cm2: 8,69  2,61  0,00  2,59  aciklik 3,41
+
+Kiris kayit 30
+  Montaj: 4 adet cap 14
+  Duz: 3 adet cap 14
+  Govde: -
+  Sol ust ilave: -
+  Sag ust ilave: -
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 0,00  -4,20  -6,79  3,96
+  As cm2: 0,00  2,62  4,39  2,47  aciklik 3,41
+
+Kiris kayit 31
+  Montaj: 4 adet cap 14
+  Duz: 5 adet cap 14
+  Govde: -
+  Sol ust ilave: 8 adet cap 14
+  Sag ust ilave: -
+  Etriye: cap 8 / aralik 10 / 9
+  Moment tm: 24,72  0,00  -0,16  9,46
+  As cm2: 18,00  5,40  0,13  5,92  aciklik 6,33
+
+Kiris kayit 32
+  Montaj: 4 adet cap 14
+  Duz: 5 adet cap 14
+  Govde: -
+  Sol ust ilave: -
+  Sag ust ilave: 2 adet cap 14
+  Etriye: cap 8 / aralik 10 / 9
+  Moment tm: 0,89  -8,33  -13,18  0,00
+  As cm2: 0,71  5,20  8,87  2,66  aciklik 6,33
+
+Kiris kayit 33
+  Montaj: 4 adet cap 14
+  Duz: 4 adet cap 12
+  Govde: 2 adet cap 12
+  Sol ust ilave: 1 adet cap 12
+  Sag ust ilave: -
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 13,12  -4,50  0,00  7,17
+  As cm2: 6,98  2,29  0,00  3,66  aciklik 4,18
+
+Kiris kayit 34
+  Montaj: 4 adet cap 14
+  Duz: 4 adet cap 12
+  Govde: 2 adet cap 12
+  Sol ust ilave: -
+  Sag ust ilave: -
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 0,00  -7,18  -16,14  5,22
+  As cm2: 0,00  3,65  8,71  2,64  aciklik 4,18
+
+Kiris kayit 35
+  Montaj: 3 adet cap 12
+  Duz: 2 adet cap 12
+  Govde: -
+  Sol ust ilave: -
+  Sag ust ilave: -
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 8,48  0,00  0,00  0,50
+  As cm2: 5,51  1,65  0,00  0,31  aciklik 0,00
+
+Kiris kayit 36
+  Montaj: 3 adet cap 12
+  Duz: 4 adet cap 14
+  Govde: 2 adet cap 12
+  Sol ust ilave: 4 adet cap 14
+  Sag ust ilave: 2 adet cap 14
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 17,05  0,00  -11,80  0,14
+  As cm2: 9,24  2,77  6,24  1,87  aciklik 6,13
+
+Kiris kayit 37
+  Montaj: 3 adet cap 12
+  Duz: 2 adet cap 12
+  Govde: 2 adet cap 12
+  Sol ust ilave: -
+  Sag ust ilave: -
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 0,00  -0,87  -11,35  0,00
+  As cm2: 0,00  0,44  5,98  1,79  aciklik 0,00
+
+Kiris kayit 38
+  Montaj: 2 adet cap 12
+  Duz: 3 adet cap 12
+  Govde: -
+  Sol ust ilave: 1 adet cap 14
+  Sag ust ilave: 1 adet cap 14
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 4,26  -1,49  -4,84  0,11
+  As cm2: 3,52  1,06  3,66  1,10  aciklik 2,84
+
+Kiris kayit 39
+  Montaj: 2 adet cap 12
+  Duz: 3 adet cap 12
+  Govde: -
+  Sol ust ilave: -
+  Sag ust ilave: 1 adet cap 14
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 4,84  -0,11  -4,24  1,50
+  As cm2: 3,66  1,10  3,50  1,05  aciklik 2,84
+
+Kiris kayit 40
+  Montaj: 2 adet cap 12
+  Duz: 3 adet cap 14
+  Govde: -
+  Sol ust ilave: 2 adet cap 14
+  Sag ust ilave: 2 adet cap 14
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 7,42  -1,34  -7,79  0,00
+  As cm2: 4,79  1,44  5,04  1,51  aciklik 3,41
+
+Kiris kayit 41
+  Montaj: 2 adet cap 12
+  Duz: 3 adet cap 14
+  Govde: -
+  Sol ust ilave: 2 adet cap 14
+  Sag ust ilave: 2 adet cap 14
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 7,79  0,00  -7,40  1,35
+  As cm2: 5,04  1,51  4,77  1,43  aciklik 3,41
+
+Kiris kayit 42
+  Montaj: 2 adet cap 12
+  Duz: 3 adet cap 12
+  Govde: -
+  Sol ust ilave: 3 adet cap 14
+  Sag ust ilave: -
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 8,87  0,00  -1,05  1,86
+  As cm2: 5,86  1,76  0,84  1,15  aciklik 2,84
+
+Kiris kayit 43
+  Montaj: 2 adet cap 12
+  Duz: 3 adet cap 12
+  Govde: -
+  Sol ust ilave: -
+  Sag ust ilave: 3 adet cap 14
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 1,14  -1,92  -8,87  0,00
+  As cm2: 0,92  1,19  5,85  1,76  aciklik 2,84
+
+Kiris kayit 44
+  Montaj: 2 adet cap 12
+  Duz: 3 adet cap 14
+  Govde: -
+  Sol ust ilave: 2 adet cap 14
+  Sag ust ilave: 2 adet cap 12
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 7,79  -0,27  -5,84  0,00
+  As cm2: 5,04  1,51  4,39  1,32  aciklik 3,41
+
+Kiris kayit 45
+  Montaj: 2 adet cap 12
+  Duz: 3 adet cap 14
+  Govde: -
+  Sol ust ilave: -
+  Sag ust ilave: 2 adet cap 12
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 5,10  0,00  -5,01  0,00
+  As cm2: 4,21  1,26  4,14  1,24  aciklik 3,41
+
+Kiris kayit 46
+  Montaj: 2 adet cap 12
+  Duz: 3 adet cap 14
+  Govde: -
+  Sol ust ilave: -
+  Sag ust ilave: -
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 5,01  0,00  -5,11  0,00
+  As cm2: 4,14  1,24  4,22  1,27  aciklik 3,41
+
+Kiris kayit 47
+  Montaj: 2 adet cap 12
+  Duz: 3 adet cap 14
+  Govde: -
+  Sol ust ilave: 2 adet cap 12
+  Sag ust ilave: 2 adet cap 14
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 5,82  0,00  -7,79  0,26
+  As cm2: 4,39  1,32  5,04  1,51  aciklik 3,41
+
+Kiris kayit 48
+  Montaj: 2 adet cap 12
+  Duz: 3 adet cap 12
+  Govde: -
+  Sol ust ilave: 1 adet cap 12
+  Sag ust ilave: 1 adet cap 14
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 4,00  -1,09  -4,61  0,00
+  As cm2: 3,30  0,99  3,66  1,10  aciklik 2,84
+
+Kiris kayit 49
+  Montaj: 2 adet cap 12
+  Duz: 3 adet cap 12
+  Govde: -
+  Sol ust ilave: -
+  Sag ust ilave: 1 adet cap 12
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 4,60  0,00  -3,93  1,08
+  As cm2: 3,66  1,10  3,24  0,97  aciklik 2,84
+
+Kiris kayit 50
+  Montaj: 2 adet cap 12
+  Duz: 4 adet cap 14
+  Govde: 2 adet cap 12
+  Sol ust ilave: 3 adet cap 12
+  Sag ust ilave: 2 adet cap 12
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 8,34  0,00  -6,21  0,08
+  As cm2: 5,37  1,61  4,18  1,25  aciklik 5,84
+
+Kiris kayit 51
+  Montaj: 3 adet cap 12
+  Duz: 3 adet cap 14
+  Govde: -
+  Sol ust ilave: -
+  Sag ust ilave: 1 adet cap 12
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 6,88  0,00  -3,80  1,84
+  As cm2: 4,42  1,33  3,41  1,13  aciklik 3,41
+
+Kiris kayit 52
+  Montaj: 3 adet cap 12
+  Duz: 4 adet cap 12
+  Govde: -
+  Sol ust ilave: 4 adet cap 14
+  Sag ust ilave: 2 adet cap 12
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 13,22  0,00  -8,29  0,00
+  As cm2: 8,90  2,67  5,38  1,61  aciklik 4,51
+
+Kiris kayit 53
+  Montaj: 3 adet cap 12
+  Duz: 3 adet cap 14
+  Govde: -
+  Sol ust ilave: 1 adet cap 12
+  Sag ust ilave: -
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 6,53  -1,15  -5,84  1,69
+  As cm2: 4,39  1,32  4,39  1,32  aciklik 3,41
+
+Kiris kayit 54
+  Montaj: 2 adet cap 12
+  Duz: 3 adet cap 12
+  Govde: -
+  Sol ust ilave: 1 adet cap 14
+  Sag ust ilave: 1 adet cap 12
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 5,72  0,00  -3,66  1,05
+  As cm2: 3,68  1,10  3,01  0,90  aciklik 2,84
+
+Kiris kayit 55
+  Montaj: 2 adet cap 12
+  Duz: 3 adet cap 12
+  Govde: 2 adet cap 12
+  Sol ust ilave: 1 adet cap 12
+  Sag ust ilave: -
+  Etriye: cap 8 / aralik 9 / 0
+  Moment tm: 4,05  -5,38  -5,02  2,29
+  As cm2: 3,34  3,39  3,66  1,42  aciklik 2,84
+
+Kiris kayit 56
+  Montaj: 3 adet cap 12
+  Duz: 3 adet cap 14
+  Govde: 2 adet cap 12
+  Sol ust ilave: 4 adet cap 14
+  Sag ust ilave: -
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 15,36  0,00  0,00  6,38
+  As cm2: 8,38  2,51  0,00  3,23  aciklik 3,90
+
+Kiris kayit 57
+  Montaj: 3 adet cap 12
+  Duz: 3 adet cap 14
+  Govde: 2 adet cap 12
+  Sol ust ilave: -
+  Sag ust ilave: 2 adet cap 14
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 0,00  -6,92  -10,89  0,93
+  As cm2: 0,00  3,51  5,79  1,74  aciklik 3,90
+
+Kiris kayit 58
+  Montaj: 3 adet cap 12
+  Duz: 3 adet cap 14
+  Govde: -
+  Sol ust ilave: -
+  Sag ust ilave: 1 adet cap 12
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 6,92  0,00  -3,57  1,84
+  As cm2: 4,45  1,33  3,41  1,14  aciklik 3,41
+
+Kiris kayit 59
+  Montaj: 3 adet cap 12
+  Duz: 4 adet cap 12
+  Govde: -
+  Sol ust ilave: 4 adet cap 14
+  Sag ust ilave: 2 adet cap 12
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 13,20  0,00  -8,31  0,00
+  As cm2: 8,88  2,66  5,40  1,62  aciklik 4,34
+
+Kiris kayit 60
+  Montaj: 3 adet cap 12
+  Duz: 3 adet cap 14
+  Govde: -
+  Sol ust ilave: 1 adet cap 12
+  Sag ust ilave: -
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 6,49  -1,16  -5,95  1,74
+  As cm2: 4,39  1,32  4,39  1,32  aciklik 3,41
+
+Kiris kayit 61
+  Montaj: 2 adet cap 12
+  Duz: 4 adet cap 14
+  Govde: 2 adet cap 12
+  Sol ust ilave: 3 adet cap 12
+  Sag ust ilave: 2 adet cap 12
+  Etriye: cap 8 / aralik 20 / 9
+  Moment tm: 8,14  0,00  -6,09  0,13
+  As cm2: 5,37  1,61  4,18  1,25  aciklik 5,82
+
+============================================================
+DOSEME  —  A_TFL.DMX
+49 kayit x 250 bayt. Donati ofset 96: cap / aralik (cm).
+Ilk 3 kayit bos. Kayit 4 = DZ-01.
+Sira: X duz, X pilye, X sol, X sag, Y duz, Y pilye, Y sol, Y sag.
+============================================================
+
+Doseme kayit 1
+  (donati yok)
+
+Doseme kayit 2
+  (donati yok)
+
+Doseme kayit 3
+  (donati yok)
+
+Doseme kayit 4   (DZ sirasi 1)
+  X duz: cap 8 / 28 cm
+  X pilye: cap 8 / 28 cm
+  X sol: cap 8 / 30 cm
+  X sag: cap 8 / 30 cm
+  Y duz: cap 8 / 24 cm
+  Y pilye: cap 8 / 24 cm
+  Y sol: cap 8 / 30 cm
+
+Doseme kayit 5   (DZ sirasi 2)
+  X duz: cap 8 / 28 cm
+  X pilye: cap 8 / 28 cm
+  X sag: cap 8 / 30 cm
+  Y duz: cap 8 / 24 cm
+  Y pilye: cap 8 / 24 cm
+  Y sol: cap 8 / 30 cm
+
+Doseme kayit 6   (DZ sirasi 3)
+  X duz: cap 8 / 20 cm
+  Y duz: cap 8 / 20 cm
+
+Doseme kayit 7   (DZ sirasi 4)
+  X duz: cap 8 / 20 cm
+  X sol: cap 10 / 21 cm
+  X sag: cap 10 / 29 cm
+  Y duz: cap 8 / 40 cm
+  Y pilye: cap 8 / 40 cm
+  Y sol: cap 8 / 30 cm
+
+Doseme kayit 8   (DZ sirasi 5)
+  X duz: cap 8 / 20 cm
+  X sol: cap 10 / 29 cm
+  X sag: cap 10 / 21 cm
+  Y duz: cap 8 / 40 cm
+  Y pilye: cap 8 / 40 cm
+  Y sol: cap 8 / 30 cm
+
+Doseme kayit 9   (DZ sirasi 6)
+  X duz: cap 8 / 20 cm
+  Y duz: cap 8 / 20 cm
+
+Doseme kayit 10   (DZ sirasi 7)
+  X duz: cap 10 / 31 cm
+  X pilye: cap 10 / 31 cm
+  X sol: cap 8 / 30 cm
+  X sag: cap 8 / 20 cm
+  Y duz: cap 8 / 27 cm
+  Y pilye: cap 8 / 27 cm
+  Y sol: cap 8 / 29 cm
+
+Doseme kayit 11   (DZ sirasi 8)
+  X duz: cap 10 / 31 cm
+  X pilye: cap 10 / 31 cm
+  X sol: cap 8 / 20 cm
+  X sag: cap 10 / 21 cm
+  Y duz: cap 8 / 27 cm
+  Y pilye: cap 8 / 27 cm
+  Y sol: cap 8 / 29 cm
+
+Doseme kayit 12   (DZ sirasi 9)
+  X duz: cap 10 / 20 cm
+  X sag: cap 8 / 30 cm
+  Y duz: cap 10 / 20 cm
+  Y sol: cap 8 / 30 cm
+
+Doseme kayit 13   (DZ sirasi 10)
+  X duz: cap 10 / 20 cm
+  X sol: cap 8 / 30 cm
+  Y duz: cap 10 / 20 cm
+  Y sol: cap 8 / 30 cm
+
+Doseme kayit 14   (DZ sirasi 11)
+  X duz: cap 10 / 20 cm
+  Y duz: cap 10 / 20 cm
+
+Doseme kayit 15   (DZ sirasi 12)
+  X duz: cap 10 / 20 cm
+  Y duz: cap 10 / 20 cm
+
+Doseme kayit 16   (DZ sirasi 13)
+  X duz: cap 8 / 20 cm
+  X sol: cap 10 / 21 cm
+  X sag: cap 8 / 30 cm
+  Y duz: cap 8 / 40 cm
+  Y pilye: cap 8 / 40 cm
+
+Doseme kayit 17   (DZ sirasi 14)
+  X duz: cap 8 / 40 cm
+  X pilye: cap 8 / 40 cm
+  X sol: cap 8 / 27 cm
+  X sag: cap 8 / 30 cm
+  Y duz: cap 8 / 40 cm
+  Y pilye: cap 8 / 40 cm
+  Y sag: cap 10 / 27 cm
+
+Doseme kayit 18   (DZ sirasi 15)
+  X duz: cap 8 / 40 cm
+  X pilye: cap 8 / 40 cm
+  X sag: cap 8 / 27 cm
+  Y duz: cap 8 / 40 cm
+  Y pilye: cap 8 / 40 cm
+  Y sag: cap 10 / 27 cm
+
+Doseme kayit 19   (DZ sirasi 16)
+  X duz: cap 8 / 20 cm
+  X sag: cap 10 / 21 cm
+  Y duz: cap 8 / 40 cm
+  Y pilye: cap 8 / 40 cm
+
+Doseme kayit 20   (DZ sirasi 17)
+  X duz: cap 10 / 20 cm
+  X sag: cap 8 / 30 cm
+  Y duz: cap 8 / 20 cm
+
+Doseme kayit 21   (DZ sirasi 18)
+  X duz: cap 10 / 20 cm
+  X sag: cap 12 / 28 cm
+  Y duz: cap 10 / 20 cm
+
+Doseme kayit 22   (DZ sirasi 19)
+  X duz: cap 10 / 20 cm
+  Y duz: cap 10 / 20 cm
+
+Doseme kayit 23   (DZ sirasi 20)
+  X duz: cap 10 / 20 cm
+  Y duz: cap 8 / 20 cm
+
+Doseme kayit 24   (DZ sirasi 21)
+  X duz: cap 10 / 20 cm
+  Y duz: cap 8 / 20 cm
+
+Doseme kayit 25   (DZ sirasi 22)
+  X duz: cap 10 / 20 cm
+  X sag: cap 12 / 28 cm
+  Y duz: cap 10 / 20 cm
+
+Doseme kayit 26   (DZ sirasi 23)
+  X duz: cap 8 / 20 cm
+  Y duz: cap 10 / 20 cm
+  Y sol: cap 8 / 30 cm
+  Y sag: cap 8 / 30 cm
+
+Doseme kayit 27   (DZ sirasi 24)
+  X duz: cap 8 / 20 cm
+  Y duz: cap 10 / 20 cm
+  Y sol: cap 8 / 30 cm
+  Y sag: cap 8 / 30 cm
+
+Doseme kayit 28   (DZ sirasi 25)
+  X duz: cap 10 / 20 cm
+  X sag: cap 8 / 30 cm
+  Y duz: cap 10 / 19 cm
+
+Doseme kayit 29   (DZ sirasi 26)
+  X duz: cap 10 / 19 cm
+  Y duz: cap 8 / 20 cm
+
+Doseme kayit 30   (DZ sirasi 27)
+  X duz: cap 8 / 20 cm
+  Y duz: cap 8 / 20 cm
+
+Doseme kayit 31   (DZ sirasi 28)
+  X duz: cap 8 / 20 cm
+  Y duz: cap 8 / 20 cm
+
+Doseme kayit 32   (DZ sirasi 29)
+  X duz: cap 8 / 40 cm
+  X pilye: cap 8 / 40 cm
+  X sol: cap 10 / 30 cm
+  X sag: cap 8 / 30 cm
+  Y duz: cap 8 / 40 cm
+  Y pilye: cap 8 / 40 cm
+  Y sol: cap 8 / 30 cm
+  Y sag: cap 8 / 21 cm
+
+Doseme kayit 33   (DZ sirasi 30)
+  X duz: cap 8 / 40 cm
+  X pilye: cap 8 / 40 cm
+  X sag: cap 8 / 30 cm
+  Y duz: cap 8 / 40 cm
+  Y pilye: cap 8 / 40 cm
+  Y sol: cap 8 / 30 cm
+  Y sag: cap 8 / 30 cm
+
+Doseme kayit 34   (DZ sirasi 31)
+  X duz: cap 8 / 20 cm
+  Y duz: cap 8 / 20 cm
+
+Doseme kayit 35   (DZ sirasi 32)
+  X duz: cap 8 / 20 cm
+  Y duz: cap 8 / 20 cm
+
+Doseme kayit 36   (DZ sirasi 33)
+  X duz: cap 8 / 20 cm
+  Y duz: cap 8 / 20 cm
+
+Doseme kayit 37   (DZ sirasi 34)
+  X duz: cap 8 / 39 cm
+  X pilye: cap 8 / 39 cm
+  X sol: cap 10 / 25 cm
+  X sag: cap 8 / 30 cm
+  Y duz: cap 8 / 40 cm
+  Y pilye: cap 8 / 40 cm
+  Y sol: cap 8 / 27 cm
+  Y sag: cap 10 / 30 cm
+
+Doseme kayit 38   (DZ sirasi 35)
+  X duz: cap 8 / 20 cm
+  Y duz: cap 8 / 20 cm
+
+Doseme kayit 39   (DZ sirasi 36)
+  X duz: cap 8 / 40 cm
+  X pilye: cap 8 / 40 cm
+  X sag: cap 8 / 30 cm
+  Y duz: cap 8 / 40 cm
+  Y pilye: cap 8 / 40 cm
+  Y sol: cap 8 / 30 cm
+
+Doseme kayit 40   (DZ sirasi 37)
+  X duz: cap 8 / 40 cm
+  X pilye: cap 8 / 40 cm
+  X sag: cap 8 / 30 cm
+  Y duz: cap 8 / 40 cm
+  Y pilye: cap 8 / 40 cm
+  Y sol: cap 8 / 30 cm
+
+Doseme kayit 41   (DZ sirasi 38)
+  X duz: cap 8 / 39 cm
+  X pilye: cap 8 / 39 cm
+  X sag: cap 8 / 27 cm
+  Y duz: cap 8 / 40 cm
+  Y pilye: cap 8 / 40 cm
+  Y sol: cap 8 / 27 cm
+  Y sag: cap 10 / 30 cm
+
+Doseme kayit 42   (DZ sirasi 39)
+  X duz: cap 8 / 20 cm
+  Y duz: cap 8 / 20 cm
+
+Doseme kayit 43   (DZ sirasi 40)
+  X duz: cap 8 / 20 cm
+  Y duz: cap 8 / 20 cm
+
+Doseme kayit 44   (DZ sirasi 41)
+  X duz: cap 8 / 40 cm
+  X pilye: cap 8 / 40 cm
+  X sol: cap 8 / 30 cm
+  X sag: cap 8 / 30 cm
+  Y duz: cap 8 / 40 cm
+  Y pilye: cap 8 / 40 cm
+  Y sol: cap 8 / 30 cm
+
+Doseme kayit 45   (DZ sirasi 42)
+  X duz: cap 8 / 40 cm
+  X pilye: cap 8 / 40 cm
+  X sag: cap 8 / 30 cm
+  Y duz: cap 8 / 40 cm
+  Y pilye: cap 8 / 40 cm
+  Y sol: cap 8 / 30 cm
+
+Doseme kayit 46   (DZ sirasi 43)
+  X duz: cap 8 / 20 cm
+  Y duz: cap 8 / 20 cm
+
+Doseme kayit 47   (DZ sirasi 44)
+  X duz: cap 8 / 20 cm
+  Y duz: cap 8 / 20 cm
+
+Doseme kayit 48   (DZ sirasi 45)
+  X duz: cap 8 / 20 cm
+  Y duz: cap 8 / 20 cm
+
+Doseme kayit 49   (DZ sirasi 46)
+  X duz: cap 8 / 20 cm
+  Y duz: cap 8 / 20 cm
+
+============================================================
+SUREKLI TEMEL  —  A_TFL.TMX
+57 kayit x 250 bayt.
+Her kayitta ayni ampatman agi da var: cap 12 / 15 cm ve cap 10 / 20 cm.
+Asagida yalniz kiris donatisi (montaj, duz, ilave, etriye) yazilir.
+Kayit 1, GPR T1 ile ayni.
+============================================================
+
+Temel kayit 1
+  Montaj: 4 adet cap 12
+  Duz: 7 adet cap 12
+  Sag alt ilave: 3 adet cap 12
+  Etriye: 2 kol, cap 8 / 20 cm
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 2
+  Montaj: 4 adet cap 12
+  Duz: 7 adet cap 12
+  Sag alt ilave: 3 adet cap 12
+  Etriye: 2 kol, cap 8 / 20 cm / 10
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 3
+  Montaj: 4 adet cap 12
+  Duz: 7 adet cap 12
+  Sag alt ilave: 3 adet cap 12
+  Etriye: 2 kol, cap 8 / 20 cm / 10
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 4
+  Montaj: 4 adet cap 12
+  Duz: 7 adet cap 12
+  Etriye: 2 kol, cap 8 / 20 cm
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 5
+  Montaj: 3 adet cap 12
+  Duz: 4 adet cap 12
+  Etriye: 1 kol, cap 8 / 20 cm
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 6
+  Montaj: 3 adet cap 12
+  Duz: 4 adet cap 12
+  Sag alt ilave: 2 adet cap 12
+  Etriye: 1 kol, cap 8 / 20 cm / 10
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 7
+  Montaj: 3 adet cap 12
+  Duz: 4 adet cap 12
+  Etriye: 1 kol, cap 8 / 20 cm
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 8
+  Montaj: 3 adet cap 12
+  Duz: 4 adet cap 12
+  Etriye: 1 kol, cap 8 / 20 cm
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 9
+  Montaj: 3 adet cap 12
+  Duz: 4 adet cap 12
+  Ilave: 2 adet cap 12
+  Etriye: 1 kol, cap 8 / 20 cm / 10
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 10
+  Montaj: 3 adet cap 12
+  Duz: 4 adet cap 12
+  Etriye: 1 kol, cap 8 / 20 cm
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 11
+  Montaj: 4 adet cap 12
+  Duz: 5 adet cap 14
+  Sag alt ilave: 3 adet cap 12
+  Etriye: 2 kol, cap 8 / 20 cm
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 12
+  Montaj: 4 adet cap 12
+  Duz: 5 adet cap 14
+  Sag alt ilave: 3 adet cap 12
+  Etriye: 2 kol, cap 8 / 20 cm / 10
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 13
+  Montaj: 4 adet cap 12
+  Duz: 5 adet cap 14
+  Etriye: 2 kol, cap 8 / 20 cm
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 14
+  Montaj: 4 adet cap 12
+  Duz: 5 adet cap 14
+  Sag alt ilave: 3 adet cap 12
+  Etriye: 2 kol, cap 8 / 20 cm
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 15
+  Montaj: 4 adet cap 12
+  Duz: 5 adet cap 14
+  Sag alt ilave: 3 adet cap 12
+  Etriye: 2 kol, cap 8 / 20 cm / 10
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 16
+  Montaj: 4 adet cap 12
+  Duz: 10 adet cap 12
+  Etriye: 2 kol, cap 8 / 20 cm / 10
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 17
+  Montaj: 4 adet cap 12
+  Duz: 10 adet cap 12
+  Sag alt ilave: 3 adet cap 12
+  Etriye: 2 kol, cap 8 / 20 cm / 10
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 18
+  Montaj: 4 adet cap 12
+  Duz: 5 adet cap 14
+  Sag alt ilave: 3 adet cap 12
+  Etriye: 2 kol, cap 8 / 20 cm / 10
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 19
+  Montaj: 4 adet cap 12
+  Duz: 5 adet cap 14
+  Etriye: 2 kol, cap 8 / 20 cm
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 20
+  Montaj: 4 adet cap 12
+  Duz: 5 adet cap 14
+  Sag alt ilave: 3 adet cap 12
+  Etriye: 2 kol, cap 8 / 20 cm
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 21
+  Montaj: 4 adet cap 12
+  Duz: 5 adet cap 14
+  Sag alt ilave: 3 adet cap 12
+  Etriye: 2 kol, cap 8 / 20 cm / 10
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 22
+  Montaj: 4 adet cap 12
+  Duz: 5 adet cap 14
+  Sag alt ilave: 3 adet cap 12
+  Etriye: 2 kol, cap 8 / 20 cm / 10
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 23
+  Montaj: 4 adet cap 12
+  Duz: 5 adet cap 14
+  Etriye: 2 kol, cap 8 / 20 cm
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 24
+  Montaj: 4 adet cap 12
+  Duz: 5 adet cap 14
+  Etriye: 2 kol, cap 8 / 20 cm
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 25
+  Montaj: 4 adet cap 12
+  Duz: 5 adet cap 14
+  Ilave: 5 adet cap 14
+  Sag alt ilave: 3 adet cap 12
+  Etriye: 2 kol, cap 8 / 20 cm / 10
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 26
+  Montaj: 4 adet cap 12
+  Duz: 7 adet cap 12
+  Sag alt ilave: 5 adet cap 14
+  Etriye: 2 kol, cap 8 / 20 cm / 10
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 27
+  Montaj: 4 adet cap 12
+  Duz: 7 adet cap 12
+  Etriye: 2 kol, cap 8 / 20 cm
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 28
+  Montaj: 4 adet cap 12
+  Duz: 7 adet cap 12
+  Etriye: 2 kol, cap 8 / 20 cm
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 29
+  Montaj: 4 adet cap 12
+  Duz: 7 adet cap 12
+  Sag alt ilave: 3 adet cap 12
+  Etriye: 2 kol, cap 8 / 10 cm
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 30
+  Montaj: 4 adet cap 12
+  Duz: 5 adet cap 14
+  Sag alt ilave: 3 adet cap 12
+  Etriye: 2 kol, cap 8 / 20 cm / 10
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 31
+  Montaj: 4 adet cap 12
+  Duz: 5 adet cap 14
+  Etriye: 2 kol, cap 8 / 20 cm
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 32
+  Montaj: 4 adet cap 12
+  Duz: 7 adet cap 12
+  Sag alt ilave: 3 adet cap 12
+  Etriye: 2 kol, cap 8 / 20 cm
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 33
+  Montaj: 4 adet cap 12
+  Duz: 7 adet cap 12
+  Sag alt ilave: 3 adet cap 14
+  Etriye: 2 kol, cap 8 / 20 cm / 10
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 34
+  Montaj: 4 adet cap 12
+  Duz: 7 adet cap 12
+  Sag alt ilave: 3 adet cap 14
+  Etriye: 2 kol, cap 8 / 20 cm / 10
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 35
+  Montaj: 4 adet cap 12
+  Duz: 5 adet cap 14
+  Sag alt ilave: 3 adet cap 12
+  Etriye: 2 kol, cap 8 / 20 cm / 10
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 36
+  Montaj: 4 adet cap 12
+  Duz: 5 adet cap 14
+  Sag alt ilave: 3 adet cap 12
+  Etriye: 2 kol, cap 8 / 20 cm / 10
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 37
+  Montaj: 4 adet cap 12
+  Duz: 5 adet cap 14
+  Sag alt ilave: 3 adet cap 12
+  Etriye: 2 kol, cap 8 / 20 cm / 10
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 38
+  Montaj: 4 adet cap 12
+  Duz: 5 adet cap 14
+  Etriye: 2 kol, cap 8 / 20 cm
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 39
+  Montaj: 4 adet cap 12
+  Duz: 5 adet cap 14
+  Sag alt ilave: 3 adet cap 12
+  Etriye: 2 kol, cap 8 / 20 cm
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 40
+  Montaj: 4 adet cap 12
+  Duz: 5 adet cap 14
+  Etriye: 2 kol, cap 8 / 20 cm / 10
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 41
+  Montaj: 4 adet cap 12
+  Duz: 5 adet cap 14
+  Sag alt ilave: 3 adet cap 12
+  Etriye: 2 kol, cap 8 / 10 cm
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 42
+  Montaj: 4 adet cap 12
+  Duz: 7 adet cap 12
+  Sag alt ilave: 3 adet cap 12
+  Etriye: 2 kol, cap 8 / 20 cm / 10
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 43
+  Montaj: 4 adet cap 12
+  Duz: 7 adet cap 12
+  Etriye: 2 kol, cap 8 / 20 cm
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 44
+  Montaj: 4 adet cap 12
+  Duz: 5 adet cap 14
+  Sag alt ilave: 3 adet cap 12
+  Etriye: 2 kol, cap 8 / 20 cm
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 45
+  Montaj: 4 adet cap 12
+  Duz: 5 adet cap 14
+  Sag alt ilave: 3 adet cap 14
+  Etriye: 2 kol, cap 8 / 20 cm / 10
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 46
+  Montaj: 4 adet cap 12
+  Duz: 5 adet cap 14
+  Sag alt ilave: 3 adet cap 14
+  Etriye: 2 kol, cap 8 / 20 cm / 10
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 47
+  Montaj: 4 adet cap 12
+  Duz: 5 adet cap 14
+  Sag alt ilave: 3 adet cap 12
+  Etriye: 2 kol, cap 8 / 20 cm / 10
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 48
+  Montaj: 4 adet cap 12
+  Duz: 5 adet cap 14
+  Sag alt ilave: 3 adet cap 12
+  Etriye: 2 kol, cap 8 / 20 cm / 10
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 49
+  Montaj: 4 adet cap 12
+  Duz: 5 adet cap 14
+  Sag alt ilave: 3 adet cap 12
+  Etriye: 2 kol, cap 8 / 20 cm / 10
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 50
+  Montaj: 4 adet cap 12
+  Duz: 5 adet cap 14
+  Etriye: 2 kol, cap 8 / 20 cm
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 51
+  Montaj: 4 adet cap 12
+  Duz: 7 adet cap 12
+  Etriye: 2 kol, cap 8 / 20 cm
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 52
+  Montaj: 4 adet cap 12
+  Duz: 7 adet cap 12
+  Sag alt ilave: 3 adet cap 12
+  Etriye: 2 kol, cap 8 / 10 cm
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 53
+  Montaj: 4 adet cap 12
+  Duz: 5 adet cap 14
+  Sag alt ilave: 3 adet cap 12
+  Etriye: 2 kol, cap 8 / 20 cm / 10
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 54
+  Montaj: 4 adet cap 12
+  Duz: 5 adet cap 14
+  Etriye: 2 kol, cap 8 / 20 cm
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 55
+  Montaj: 4 adet cap 12
+  Duz: 5 adet cap 14
+  Sag alt ilave: 3 adet cap 12
+  Etriye: 2 kol, cap 8 / 20 cm
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 56
+  Montaj: 4 adet cap 12
+  Duz: 5 adet cap 14
+  Sag alt ilave: 3 adet cap 12
+  Etriye: 2 kol, cap 8 / 20 cm / 10
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm
+
+Temel kayit 57
+  Montaj: 4 adet cap 12
+  Duz: 5 adet cap 14
+  Etriye: 2 kol, cap 8 / 20 cm
+  Ampatman: cap 12 / 15 cm , cap 10 / 20 cm

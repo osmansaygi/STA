@@ -53,6 +53,12 @@
     <EmbeddedResource Include="..\dosyalar\ISKELE_KESIT.dxf" LogicalName="ST4PlanIdCiz.IskeleKesitTemplates.ISKELE_KESIT.dxf" Condition="Exists('$(MSBuildProjectDirectory)\..\dosyalar\ISKELE_KESIT.dxf')" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Icons\*.png">
+      <LogicalName>ST4PlanIdCiz.Icons.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
   <!-- KIRISDUZELT: DONATI_TAR blok DXF (KOT/KES_DET/DONATI programa gomulu geometri) -->
   <ItemGroup>
     <EmbeddedResource Include="..\lisp\DONATI_TAR.dxf" LogicalName="ST4PlanIdCiz.KirisDuzeltBlocks.DONATI_TAR.dxf" Condition="Exists('$(MSBuildProjectDirectory)\..\lisp\DONATI_TAR.dxf')" />

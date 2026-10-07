@@ -36,11 +36,52 @@ namespace ST4PlanIdCiz
                 catch { }
                 return;
             }
-            CommandPaletteManager.Show();
+            // NETLOAD sırasında PaletteSet açmak (özellikle Yardımcı ile birlikte) AutoCAD'i göçertebilir.
+            Application.Idle -= OnIdleShowStaPanel;
+            Application.Idle += OnIdleShowStaPanel;
         }
+
+        private static void OnIdleShowStaPanel(object sender, EventArgs e)
+        {
+            Application.Idle -= OnIdleShowStaPanel;
+            try
+            {
+                // Yardımcı Idle'da BAPANEL açıyorsa aynı tick'te çakışmayı azalt.
+                if (TryEnterPaletteInitGate(1200))
+                {
+                    try { CommandPaletteManager.Show(); }
+                    finally { ExitPaletteInitGate(); }
+                }
+                else
+                    CommandPaletteManager.Show();
+            }
+            catch { }
+        }
+
+        /// <summary>Yardımcı ile ortak named mutex — iki eklenti aynı anda PaletteSet yaratmasın.</summary>
+        internal static bool TryEnterPaletteInitGate(int timeoutMs)
+        {
+            try
+            {
+                bool created;
+                _paletteGate = new System.Threading.Mutex(false, @"Local\ST4_AcadPaletteInit", out created);
+                return _paletteGate.WaitOne(timeoutMs < 0 ? 0 : timeoutMs);
+            }
+            catch { return false; }
+        }
+
+        internal static void ExitPaletteInitGate()
+        {
+            try { _paletteGate?.ReleaseMutex(); } catch { }
+            try { _paletteGate?.Dispose(); } catch { }
+            _paletteGate = null;
+        }
+
+        private static System.Threading.Mutex _paletteGate;
 
         public void Terminate()
         {
+            try { Application.Idle -= OnIdleShowStaPanel; } catch { }
             CommandPaletteManager.Shutdown();
         }
 
@@ -50,8 +91,8 @@ namespace ST4PlanIdCiz
             foreach (System.Reflection.Assembly a in System.AppDomain.CurrentDomain.GetAssemblies())
             {
                 string name = a.GetName().Name ?? "";
-                if (name.StartsWith("ST4_Plan_ID_Ciz", System.StringComparison.OrdinalIgnoreCase)
-                    || name.StartsWith("ST4_Aks_Ciz_CSharp", System.StringComparison.OrdinalIgnoreCase))
+                // ST4_Aks kaynak olarak Plan_ID içinde; ayrı DLL sayma (yanlış "çift yükleme" uyarısı).
+                if (name.StartsWith("ST4_Plan_ID_Ciz", System.StringComparison.OrdinalIgnoreCase))
                     n++;
             }
             return n;
@@ -153,7 +194,8 @@ namespace ST4PlanIdCiz
 
         /// <summary>
         /// ST4 dosyasından akslar, kolonlar (poligon dahil), kirişler ve perdeleri
-        /// tüm eleman ID'leriyle çizer; katlar yan yana dizilir.
+        /// tüm eleman ID'leriyle çizer. Her plan kendi antetindedir; yerleşim noktası
+        /// en soldaki antetin SheetViewOut sol-altının 50 cm soludur. Antetler arası 50 cm.
         /// </summary>
         [CommandMethod("ST4PLANID")]
         public void Run()
@@ -169,6 +211,10 @@ namespace ST4PlanIdCiz
                 "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
                 return;
 
+            var insRes = ed.GetPoint(new PromptPointOptions(
+                "\nST4PLANID yerlesim noktasi (SheetViewOut sol-altin 50 cm solu): ") { AllowNone = false });
+            if (insRes.Status != PromptStatus.OK) return;
+
             try
             {
                 ConfigureNtsNextGenOverlay();
@@ -177,7 +223,7 @@ namespace ST4PlanIdCiz
                 GprYapiAksLabels.TryMergeFromGprBesideSt4(st4Path, model);
                 WriteGprAxisSummary(ed, model);
                 var manager = new PlanIdDrawingManager(model);
-                manager.Draw(db, ed);
+                manager.Draw(db, ed, insRes.Value, st4Path);
                 FinishStaDrawing(doc);
             }
             catch (System.Exception ex)
@@ -530,7 +576,7 @@ namespace ST4PlanIdCiz
                 GprYapiAksLabels.TryMergeFromGprBesideSt4(st4Path, model);
                 WriteGprAxisSummary(ed, model);
                 var manager = new PlanIdDrawingManager(model);
-                var insRes = ed.GetPoint(new PromptPointOptions("\nTEMEL50ST4 yerlestirme noktasi (sol-alt): ") { AllowNone = false });
+                var insRes = ed.GetPoint(new PromptPointOptions("\nTEMEL50ST4 yerlesim noktasi (SheetViewOut sol-altin 50 cm solu): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
                 manager.DrawFoundationPlanWithSections(db, ed, insRes.Value, st4Path);
                 FinishStaDrawing(doc);
@@ -563,7 +609,7 @@ namespace ST4PlanIdCiz
                 GprYapiAksLabels.TryMergeFromGprBesideSt4(st4Path, model);
                 WriteGprAxisSummary(ed, model);
                 var manager = new PlanIdDrawingManager(model);
-                var insRes = ed.GetPoint(new PromptPointOptions("\nTEMEL100ST4 yerlestirme noktasi (sol-alt): ") { AllowNone = false });
+                var insRes = ed.GetPoint(new PromptPointOptions("\nTEMEL100ST4 yerlesim noktasi (SheetViewOut sol-altin 50 cm solu): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
                 manager.DrawFoundationPlanWithSections(db, ed, insRes.Value, st4Path, TemelFoundationPlanScale.Hundred);
                 FinishStaDrawing(doc);
@@ -596,7 +642,7 @@ namespace ST4PlanIdCiz
                 GprYapiAksLabels.TryMergeFromGprBesideSt4(st4Path, model);
                 WriteGprAxisSummary(ed, model);
                 var manager = new PlanIdDrawingManager(model);
-                var insRes = ed.GetPoint(new PromptPointOptions("\nKOLON50ST4 yerlestirme noktasi (sol-alt): ") { AllowNone = false });
+                var insRes = ed.GetPoint(new PromptPointOptions("\nKOLON50ST4 yerlesim noktasi (SheetViewOut sol-altin 50 cm solu): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
                 manager.DrawColumnApplicationPlan(db, ed, insRes.Value, st4Path, KolonApplicationPlanScale.Fifty, drawPerdeGorunus: true);
                 FinishStaDrawing(doc);
@@ -629,7 +675,7 @@ namespace ST4PlanIdCiz
                 GprYapiAksLabels.TryMergeFromGprBesideSt4(st4Path, model);
                 WriteGprAxisSummary(ed, model);
                 var manager = new PlanIdDrawingManager(model);
-                var insRes = ed.GetPoint(new PromptPointOptions("\nKOLON100ST4 yerlestirme noktasi (sol-alt): ") { AllowNone = false });
+                var insRes = ed.GetPoint(new PromptPointOptions("\nKOLON100ST4 yerlesim noktasi (SheetViewOut sol-altin 50 cm solu): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
                 manager.DrawColumnApplicationPlan(db, ed, insRes.Value, st4Path, KolonApplicationPlanScale.Hundred);
                 FinishStaDrawing(doc);
@@ -662,7 +708,7 @@ namespace ST4PlanIdCiz
                 GprYapiAksLabels.TryMergeFromGprBesideSt4(st4Path, model);
                 WriteGprAxisSummary(ed, model);
                 var manager = new PlanIdDrawingManager(model);
-                var insRes = ed.GetPoint(new PromptPointOptions("\nKALIP50ST4: En soldaki antet SheetViewOut (dis cerceve) sol-alt kosesi (yerlesim referansi): ") { AllowNone = false });
+                var insRes = ed.GetPoint(new PromptPointOptions("\nKALIP50ST4: En soldaki antet SheetViewOut sol-altinin 50 cm solu: ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
                 manager.DrawFormworkPlan50(db, ed, insRes.Value, st4Path, KalipPlanScale.Fifty);
                 FinishStaDrawing(doc);
@@ -750,7 +796,7 @@ namespace ST4PlanIdCiz
                 WriteGprAxisSummary(ed, model);
                 ed.WriteMessage("\nMANTARDOSEME: Mantar fiktif kiris sayisi = {0}.", model.MushroomBeams?.Count ?? 0);
                 var manager = new PlanIdDrawingManager(model);
-                var insRes = ed.GetPoint(new PromptPointOptions("\nMANTARDOSEME: En soldaki antet SheetViewOut (dis cerceve) sol-alt kosesi (yerlesim referansi): ") { AllowNone = false });
+                var insRes = ed.GetPoint(new PromptPointOptions("\nMANTARDOSEME: En soldaki antet SheetViewOut sol-altinin 50 cm solu: ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
                 manager.DrawFormworkPlan50(
                     db,
@@ -768,7 +814,7 @@ namespace ST4PlanIdCiz
             }
         }
 
-        /// <summary>ST4 modelinden 1/200 bina görünüşü. Bakış planın alt/üst/sol/sağ kenarına göredir.</summary>
+        /// <summary>ST4 modelinden 1/200 bina görünüşü veya Hepsi (X/Y kesit + 4 görünüş, 1/50 antet).</summary>
         [CommandMethod("BINAGORUNUS")]
         public void BinaGorunus()
         {
@@ -783,7 +829,7 @@ namespace ST4PlanIdCiz
                 "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
                 return;
 
-            ed.WriteMessage("\nBINAGORUNUS bakis (plan): Asagidan = alttan yukari, Yukaridan = ustten asagi, Soldan = soldan saga, Sagdan = sagdan sola.");
+            ed.WriteMessage("\nBINAGORUNUS: Asagidan/Yukaridan/Soldan/Sagdan = tek gorunus; Hepsi = X/Y kesit + 4 gorunus (1/50 antet).");
             var kwo = new PromptKeywordOptions("\nBakis yonu")
             {
                 AllowNone = false,
@@ -793,12 +839,36 @@ namespace ST4PlanIdCiz
             kwo.Keywords.Add("Yukaridan");
             kwo.Keywords.Add("Soldan");
             kwo.Keywords.Add("Sagdan");
+            kwo.Keywords.Add("Hepsi");
             kwo.Keywords.Default = "Asagidan";
             var kres = ed.GetKeywords(kwo);
             if (kres.Status != PromptStatus.OK) return;
 
+            string key = (kres.StringResult ?? string.Empty).ToUpperInvariant();
+            if (key == "HEPSI")
+            {
+                var insHepsi = ed.GetPoint(new PromptPointOptions(
+                    "\nBINAGORUNUS Hepsi yerlesim noktasi (SheetViewOut sol-altin 50 cm solu): ") { AllowNone = false });
+                if (insHepsi.Status != PromptStatus.OK) return;
+
+                try
+                {
+                    ConfigureNtsNextGenOverlay();
+                    var parser = new St4Parser();
+                    var model = parser.Parse(st4Path);
+                    var manager = new PlanIdDrawingManager(model);
+                    manager.DrawBinaGorunusHepsi(db, ed, insHepsi.Value, st4Path);
+                    FinishStaDrawing(doc);
+                }
+                catch (System.Exception ex)
+                {
+                    WriteStaCommandError(ed, "BINAGORUNUS", ex);
+                }
+                return;
+            }
+
             BinaGorunusBakis bakis;
-            switch ((kres.StringResult ?? string.Empty).ToUpperInvariant())
+            switch (key)
             {
                 case "YUKARIDAN": bakis = BinaGorunusBakis.YukaridanAsagiya; break;
                 case "SOLDAN": bakis = BinaGorunusBakis.SoldanSaga; break;
@@ -824,7 +894,90 @@ namespace ST4PlanIdCiz
             }
         }
 
-        /// <summary>Kolon düşey açılımı (DENEME): yalnız ST4, donatısız, benzer kolonlar tek görünüş.</summary>
+        /// <summary>ST4 modelinden 1/200 bina kesiti. X/Y yönü; merdiven döşemesini kesmeyen hat; arka plan görünüş tonu.</summary>
+        [CommandMethod("BINAKESITI")]
+        public void BinaKesiti()
+        {
+            var doc = Application.DocumentManager.MdiActiveDocument;
+            if (doc == null) return;
+            ApplyStaDefaultDrawingDisplaySettings(doc);
+
+            var ed = doc.Editor;
+            var db = doc.Database;
+
+            if (!RememberedFilePrompt.TryPrompt(ed, "\nBINAKESITI icin ST4 Dosyasi Secin",
+                "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
+                return;
+
+            ed.WriteMessage("\nBINAKESITI: X = yatay kesit hatti (Y sabit, bina boyunca X); Y = dikey kesit hatti (X sabit). Merdiven dosemeleri kacinilir.");
+            var kwo = new PromptKeywordOptions("\nKesit yonu")
+            {
+                AllowNone = false,
+                AppendKeywordsToMessage = true
+            };
+            kwo.Keywords.Add("X");
+            kwo.Keywords.Add("Y");
+            kwo.Keywords.Default = "X";
+            var kres = ed.GetKeywords(kwo);
+            if (kres.Status != PromptStatus.OK) return;
+
+            BinaKesitYon yon = string.Equals(kres.StringResult, "Y", StringComparison.OrdinalIgnoreCase)
+                ? BinaKesitYon.Y
+                : BinaKesitYon.X;
+
+            var insRes = ed.GetPoint(new PromptPointOptions("\nBINAKESITI yerlestirme noktasi (kesit sol-alt): ") { AllowNone = false });
+            if (insRes.Status != PromptStatus.OK) return;
+
+            try
+            {
+                ConfigureNtsNextGenOverlay();
+                var parser = new St4Parser();
+                var model = parser.Parse(st4Path);
+                var manager = new PlanIdDrawingManager(model);
+                manager.DrawBinaKesit(db, ed, insRes.Value, yon);
+                FinishStaDrawing(doc);
+            }
+            catch (System.Exception ex)
+            {
+                WriteStaCommandError(ed, "BINAKESITI", ex);
+            }
+        }
+
+        /// <summary>Kiriş açılımı (DENEME): ana aks boyunca düşey kesit. 25°'ye kadar kırılan kirişler tek şeritte. Donatı yok.</summary>
+        [CommandMethod("KIRISACILIMLARI")]
+        public void KirisAcilimlari()
+        {
+            var doc = Application.DocumentManager.MdiActiveDocument;
+            if (doc == null) return;
+            ApplyStaDefaultDrawingDisplaySettings(doc);
+
+            var ed = doc.Editor;
+            var db = doc.Database;
+
+            if (!RememberedFilePrompt.TryPrompt(ed, "\nKIRISACILIMLARI icin ST4 Dosyasi Secin",
+                "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
+                return;
+
+            var insRes = ed.GetPoint(new PromptPointOptions("\nKIRISACILIMLARI yerlestirme noktasi (ilk kiris alt-sol): ") { AllowNone = false });
+            if (insRes.Status != PromptStatus.OK) return;
+
+            try
+            {
+                ConfigureNtsNextGenOverlay();
+                var parser = new St4Parser();
+                var model = parser.Parse(st4Path);
+                GprYapiAksLabels.TryMergeFromGprBesideSt4(st4Path, model);
+                var manager = new PlanIdDrawingManager(model);
+                manager.DrawKirisAcilimlari(db, ed, insRes.Value);
+                FinishStaDrawing(doc);
+            }
+            catch (System.Exception ex)
+            {
+                WriteStaCommandError(ed, "KIRISACILIMLARI", ex);
+            }
+        }
+
+        /// <summary>Kolon düşey açılımı: form (ölçek + kat alma + sınır) → ST4 → yerleştirme.</summary>
         [CommandMethod("KOLONDUSEY")]
         public void KolonDusey()
         {
@@ -835,24 +988,46 @@ namespace ST4PlanIdCiz
             var ed = doc.Editor;
             var db = doc.Database;
 
+            if (!KolonDuseyForm.ShowModalAndAccept())
+                return;
+
             if (!RememberedFilePrompt.TryPrompt(ed, "\nKOLONDUSEY icin ST4 Dosyasi Secin",
                 "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
                 return;
-
-            var insRes = ed.GetPoint(new PromptPointOptions("\nKOLONDUSEY yerlestirme noktasi (sol-alt): ") { AllowNone = false });
-            if (insRes.Status != PromptStatus.OK) return;
 
             try
             {
                 ConfigureNtsNextGenOverlay();
                 var parser = new St4Parser();
                 var model = parser.Parse(st4Path);
+
+                HashSet<int> allowedFloors = null;
+                if (KolonDuseySettings.KatSinirla)
+                {
+                    if (!KolonDuseyForm.TryPickSonKat(model, out allowedFloors))
+                    {
+                        ed.WriteMessage("\nKOLONDUSEY: kat siniri iptal.");
+                        return;
+                    }
+                }
+
+                string yerPrompt = KolonDuseySettings.KatKatCiz
+                    ? "\nKOLONDUSEY yerlesim noktasi (SheetViewOut sol-altin 50 cm solu): "
+                    : "\nKOLONDUSEY yerlestirme noktasi (sol-alt): ";
+                var insRes = ed.GetPoint(new PromptPointOptions(yerPrompt) { AllowNone = false });
+                if (insRes.Status != PromptStatus.OK) return;
+
                 var planMgr = new PlanIdDrawingManager(model);
                 using (var tr = db.TransactionManager.StartTransaction())
                 {
                     var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
                     var btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
-                    bool ok = planMgr.DrawKolonDuseyFromSt4(insRes.Value, db, ed, tr, btr, st4Path);
+                    bool ok = planMgr.DrawKolonDuseyFromSt4(
+                        insRes.Value, db, ed, tr, btr, st4Path,
+                        olcek25: KolonDuseySettings.Olcek25,
+                        katKatCiz: KolonDuseySettings.KatKatCiz,
+                        benzerKatBirlestir: KolonDuseySettings.BenzerKatBirlestir,
+                        allowedFloorIndexes: allowedFloors);
                     if (ok)
                         tr.Commit();
                 }
@@ -861,86 +1036,6 @@ namespace ST4PlanIdCiz
             catch (System.Exception ex)
             {
                 WriteStaCommandError(ed, "KOLONDUSEY", ex);
-            }
-        }
-
-        /// <summary>Kolon düşey açılımı 1:25: 1:50 çizimin 2× scale hali; yazılar yarı, ölçüler 1:50 yazı boyunda.</summary>
-        [CommandMethod("KOLONDUSEY25")]
-        public void KolonDusey25()
-        {
-            var doc = Application.DocumentManager.MdiActiveDocument;
-            if (doc == null) return;
-            ApplyStaDefaultDrawingDisplaySettings(doc);
-
-            var ed = doc.Editor;
-            var db = doc.Database;
-
-            if (!RememberedFilePrompt.TryPrompt(ed, "\nKOLONDUSEY25 icin ST4 Dosyasi Secin",
-                "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
-                return;
-
-            var insRes = ed.GetPoint(new PromptPointOptions("\nKOLONDUSEY25 yerlestirme noktasi (sol-alt): ") { AllowNone = false });
-            if (insRes.Status != PromptStatus.OK) return;
-
-            try
-            {
-                ConfigureNtsNextGenOverlay();
-                var parser = new St4Parser();
-                var model = parser.Parse(st4Path);
-                var planMgr = new PlanIdDrawingManager(model);
-                using (var tr = db.TransactionManager.StartTransaction())
-                {
-                    var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
-                    var btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
-                    bool ok = planMgr.DrawKolonDuseyFromSt4(insRes.Value, db, ed, tr, btr, st4Path, olcek25: true);
-                    if (ok)
-                        tr.Commit();
-                }
-                FinishStaDrawing(doc);
-            }
-            catch (System.Exception ex)
-            {
-                WriteStaCommandError(ed, "KOLONDUSEY25", ex);
-            }
-        }
-
-        /// <summary>KOLONDUSEY2: 1:25; her kat (veya benzer kat grubu) ayrı açılım üst üste, ayrı antet.</summary>
-        [CommandMethod("KOLONDUSEY2")]
-        public void KolonDusey2()
-        {
-            var doc = Application.DocumentManager.MdiActiveDocument;
-            if (doc == null) return;
-            ApplyStaDefaultDrawingDisplaySettings(doc);
-
-            var ed = doc.Editor;
-            var db = doc.Database;
-
-            if (!RememberedFilePrompt.TryPrompt(ed, "\nKOLONDUSEY2 icin ST4 Dosyasi Secin",
-                "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
-                return;
-
-            var insRes = ed.GetPoint(new PromptPointOptions("\nKOLONDUSEY2 yerlesim noktasi (SheetViewOut sol-altin 50 cm solu): ") { AllowNone = false });
-            if (insRes.Status != PromptStatus.OK) return;
-
-            try
-            {
-                ConfigureNtsNextGenOverlay();
-                var parser = new St4Parser();
-                var model = parser.Parse(st4Path);
-                var planMgr = new PlanIdDrawingManager(model);
-                using (var tr = db.TransactionManager.StartTransaction())
-                {
-                    var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
-                    var btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
-                    bool ok = planMgr.DrawKolonDuseyFromSt4(insRes.Value, db, ed, tr, btr, st4Path, olcek25: true, katKatCiz: true);
-                    if (ok)
-                        tr.Commit();
-                }
-                FinishStaDrawing(doc);
-            }
-            catch (System.Exception ex)
-            {
-                WriteStaCommandError(ed, "KOLONDUSEY2", ex);
             }
         }
 
@@ -1031,7 +1126,7 @@ namespace ST4PlanIdCiz
                 GprYapiAksLabels.TryMergeFromGprBesideSt4(st4Path, model);
                 WriteGprAxisSummary(ed, model);
                 var manager = new PlanIdDrawingManager(model);
-                var insRes = ed.GetPoint(new PromptPointOptions("\nTEMELDONATI yerlestirme noktasi (sol-alt, TEMEL50 ile ayni): ") { AllowNone = false });
+                var insRes = ed.GetPoint(new PromptPointOptions("\nTEMELDONATI yerlesim noktasi (SheetViewOut sol-altin 50 cm solu): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
 
                 var copies = new List<PlanIdDrawingManager.TemelPlanCopyLayout>();
@@ -1122,7 +1217,7 @@ namespace ST4PlanIdCiz
                 GprYapiAksLabels.TryMergeFromGprBesideSt4(st4Path, model);
                 WriteGprAxisSummary(ed, model);
                 var manager = new PlanIdDrawingManager(model);
-                var insRes = ed.GetPoint(new PromptPointOptions("\nKALIP100ST4: En soldaki antet SheetViewOut (dis cerceve) sol-alt kosesi (yerlesim referansi): ") { AllowNone = false });
+                var insRes = ed.GetPoint(new PromptPointOptions("\nKALIP100ST4: En soldaki antet SheetViewOut sol-altinin 50 cm solu: ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
                 manager.DrawFormworkPlan50(db, ed, insRes.Value, st4Path, KalipPlanScale.Hundred);
                 FinishStaDrawing(doc);
