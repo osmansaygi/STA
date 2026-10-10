@@ -968,7 +968,7 @@ namespace ST4PlanIdCiz
                 var model = parser.Parse(st4Path);
                 GprYapiAksLabels.TryMergeFromGprBesideSt4(st4Path, model);
                 var manager = new PlanIdDrawingManager(model);
-                manager.DrawKirisAcilimlari(db, ed, insRes.Value);
+                manager.DrawKirisAcilimlari(db, ed, insRes.Value, st4Path);
                 FinishStaDrawing(doc);
             }
             catch (System.Exception ex)
