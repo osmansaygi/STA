@@ -127,6 +127,8 @@ namespace ST4PlanIdCiz
         private const string LayerEtiketCizgisi = "ETIKET CIZGISI (BEYKENT)";
         private const string LayerCirozBeykent = "CIROZ (BEYKENT)";
         private string _perdeGorunusAntetPrefix = "S-";
+        /// <summary>KAPAMADETAY: true = görünüşte temel hatılı çizilir; false = çizilmez (bağ kirişi/temel hatılı yokmuş gibi).</summary>
+        private bool _kapamaTemelHatili = true;
 
         private sealed class Kolon50GorunusPending
         {
@@ -798,7 +800,8 @@ namespace ST4PlanIdCiz
             Editor ed,
             Transaction tr,
             BlockTableRecord btr,
-            string st4SourcePath = null)
+            string st4SourcePath = null,
+            bool temelHatili = true)
         {
             _ntsDrawFactory = NtsGeometryServices.Instance.CreateGeometryFactory();
             _gprPerdePanelDonati = null;
@@ -808,6 +811,8 @@ namespace ST4PlanIdCiz
             bool prevKolon50 = _isKolon50Mode;
             bool prevGorunus = _kolon50DrawPerdeGorunus;
             string prevPrefix = _perdeGorunusAntetPrefix;
+            bool prevTemelHatili = _kapamaTemelHatili;
+            _kapamaTemelHatili = temelHatili;
             try
             {
                 string gprPath = ResolveGprPathNextToSt4(st4SourcePath);
@@ -924,6 +929,7 @@ namespace ST4PlanIdCiz
                 _isKolon50Mode = prevKolon50;
                 _kolon50DrawPerdeGorunus = prevGorunus;
                 _perdeGorunusAntetPrefix = prevPrefix;
+                _kapamaTemelHatili = prevTemelHatili;
             }
         }
 
@@ -990,12 +996,16 @@ namespace ST4PlanIdCiz
             bool drawTemelZoneExtras = lowest.p.Floor.ElevationM <= minFloorElev + 1e-6;
             if (drawTemelZoneExtras && lowest.planUnion != null && !lowest.planUnion.IsEmpty)
             {
-                try
+                // KAPAMADETAY: temel hatılı istemiyorsa hatıl hiç toplanmaz (subasman kendi kuralıyla devam eder).
+                if (_kapamaTemelHatili)
                 {
-                    CollectTemelHatilSpansAlongWall(lowest.planUnion, lowest.p.Rot, lowest.p.Trf,
-                        lowest.p.PlanOffsetX, lowest.p.PlanOffsetY, hatilSpans, sectionY);
+                    try
+                    {
+                        CollectTemelHatilSpansAlongWall(lowest.planUnion, lowest.p.Rot, lowest.p.Trf,
+                            lowest.p.PlanOffsetX, lowest.p.PlanOffsetY, hatilSpans, sectionY);
+                    }
+                    catch { hatilSpans.Clear(); }
                 }
-                catch { hatilSpans.Clear(); }
                 if (hatilSpans.Count > 0)
                     zSubasmanRef = hatilSpans.Max(t => t.z1);
                 else if (_model.HasSubasmanStory)
@@ -1846,13 +1856,22 @@ namespace ST4PlanIdCiz
                     if (hp != null && !hp.IsEmpty)
                         _hatilFootprintCache.Add((hp, zTemel1, zTemel1 + cf.HatilLabelHeightCm));
                 }
+                // Bağ kirişi (Tie beams): yalnız sürekli temel veya radye alanı içinde kalanlar
+                // "radye temel temel hatılı"dır (TEMEL HATILI). Dışarıda kalanlar "bağ kirişi"
+                // (TEMEL) olur; kapama perde/kolon görünüşünde temel hatılı olarak çizilmez.
+                // Temel planındaki DrawTieBeams sınıflandırmasıyla aynı kural.
+                Geometry cfUnionHatil = BuildContinuousFoundationsUnion(0, 0);
+                Geometry slabUnionHatil = BuildSlabFoundationsUnion(0, 0);
                 foreach (var tb in _model.TieBeams)
                 {
                     double z0 = (_model.BuildingBaseKotu + tb.BottomKotM) * 100.0;
                     double h = tb.HeightCm > 0 ? tb.HeightCm : 25.0;
                     var poly = TieBeamFootprintPoly(tb);
-                    if (poly != null && !poly.IsEmpty)
-                        _hatilFootprintCache.Add((poly, z0, z0 + h));
+                    if (poly == null || poly.IsEmpty) continue;
+                    bool insideContinuous = TryContainsSafe(cfUnionHatil, poly);
+                    bool insideSlab = TryContainsSafe(slabUnionHatil, poly);
+                    if (!insideContinuous && !insideSlab) continue;
+                    _hatilFootprintCache.Add((poly, z0, z0 + h));
                 }
             }
 

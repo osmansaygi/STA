@@ -21,6 +21,8 @@ namespace ST4Yardimci
         public static bool SadeceDonatiKatmani { get; set; } = true;
         public static double MinFarkCm { get; set; } = 0.5;
         public static bool OnizlemeMesaji { get; set; } = true;
+        /// <summary>Poz balonunun içi çapa göre pastel dolar. Tarama katmanı çıktıda kapalıdır.</summary>
+        public static bool Renkli { get; set; } = true;
         public static List<string> Katmanlar { get; } = new List<string>();
 
         static bool _loaded;
@@ -38,6 +40,7 @@ namespace ST4Yardimci
             SadeceDonatiKatmani = BaIni.GetB(m, "SadeceDonatiKatmani", SadeceDonatiKatmani);
             MinFarkCm = BaIni.GetD(m, "MinFarkCm", MinFarkCm);
             OnizlemeMesaji = BaIni.GetB(m, "OnizlemeMesaji", OnizlemeMesaji);
+            Renkli = BaIni.GetB(m, "Renkli", Renkli);
             ReplaceKatmanlar(SplitKatmanlar(BaIni.Get(m, "Katmanlar", "")));
         }
 
@@ -51,6 +54,7 @@ namespace ST4Yardimci
                 "SadeceDonatiKatmani=" + BaIni.B(SadeceDonatiKatmani),
                 "MinFarkCm=" + BaIni.N(MinFarkCm),
                 "OnizlemeMesaji=" + BaIni.B(OnizlemeMesaji),
+                "Renkli=" + BaIni.B(Renkli),
                 "Katmanlar=" + JoinKatmanlar());
         }
 
@@ -136,6 +140,7 @@ namespace ST4Yardimci
         private readonly TextBox _txtMax;
         private readonly ListBox _lstLayers;
         private readonly CheckBox _chkOnizleme;
+        private readonly CheckBox _chkRenkli;
 
         public static void ShowOrActivate()
         {
@@ -303,6 +308,18 @@ namespace ST4Yardimci
                 Checked = DonatiMetrajSettings.OnizlemeMesaji
             };
             Controls.Add(_chkOnizleme);
+            y += 22;
+
+            _chkRenkli = new CheckBox
+            {
+                Text = "Renkli poz balonu",
+                Location = new Point(10, y),
+                AutoSize = true,
+                ForeColor = AcadPaletteTheme.Text,
+                BackColor = Color.Transparent,
+                Checked = DonatiMetrajSettings.Renkli
+            };
+            Controls.Add(_chkRenkli);
             y += 26;
 
             var btnAntet = MkButton("Antet seç", 10, y, 146, false);
@@ -361,6 +378,7 @@ namespace ST4Yardimci
             _txtFi.Text = string.IsNullOrWhiteSpace(DonatiMetrajSettings.FiIsareti) ? "ø" : DonatiMetrajSettings.FiIsareti;
             _txtMax.Text = DonatiMetrajSettings.MaxBoyCm.ToString("0.##", CultureInfo.InvariantCulture);
             _chkOnizleme.Checked = DonatiMetrajSettings.OnizlemeMesaji;
+            _chkRenkli.Checked = DonatiMetrajSettings.Renkli;
             FillList(_lstLayers, DonatiMetrajSettings.Katmanlar);
         }
 
@@ -370,6 +388,7 @@ namespace ST4Yardimci
             string fi = (_txtFi.Text ?? "").Trim();
             DonatiMetrajSettings.FiIsareti = fi.Length == 0 ? "ø" : fi;
             DonatiMetrajSettings.OnizlemeMesaji = _chkOnizleme.Checked;
+            DonatiMetrajSettings.Renkli = _chkRenkli.Checked;
             DonatiMetrajSettings.SetKatmanlar(CollectList(_lstLayers));
         }
 

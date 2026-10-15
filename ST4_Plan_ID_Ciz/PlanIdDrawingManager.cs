@@ -203,6 +203,9 @@ namespace ST4PlanIdCiz
         /// <summary>Oturum: GetColumnFoundationHeights (ilk kat).</summary>
         private Dictionary<int, (double? temelCm, double? hatilCm)> _columnFoundationHeightsCache;
         private int _columnFoundationHeightsFloorNo = int.MinValue;
+        /// <summary>Oturum: GetColumnRadyeTemelHatiliHeights (ilk kat).</summary>
+        private Dictionary<int, double?> _columnRadyeTemelHatiliCache;
+        private int _columnRadyeTemelHatiliFloorNo = int.MinValue;
         /// <summary>Oturum: temel / hatıl plan izleri (CollectTemel* için bir kez).</summary>
         private List<(Geometry poly, double z0, double z1)> _temelFootprintCache;
         private List<(Geometry poly, double z0, double z1)> _hatilFootprintCache;
@@ -243,6 +246,8 @@ namespace ST4PlanIdCiz
         private const string TemelAntetEmbeddedResourceName = "ST4PlanIdCiz.TemelAntet.antet_02.dwg";
         /// <summary>Eski 1:50 kalıp kot işareti (Desktop\kot.dwg → YATAY_KOT.dwg).</summary>
         private const string KotSymbolEmbeddedResourceName = "ST4PlanIdCiz.KotSymbol.YATAY_KOT.dwg";
+        /// <summary>Temel kesiti yan detayları (Drawing2.dwg: sol drenaj detayı + sağ ampatman detayı).</summary>
+        private const string TemelDetayEmbeddedResourceName = "ST4PlanIdCiz.TemelDetay.Drawing2.dwg";
         // kot.dwg ölçüleri (1:50 çizim birimi = cm): daire merkezi → üst/alt yazı sol kenarı X farkı
         private const double KotRefTextOffsetFromCircleCx = 7.80433020385;
         private const double KotRefTopTextAboveLineCm = 1.0;
@@ -403,6 +408,69 @@ namespace ST4PlanIdCiz
             }
             _columnFoundationHeightsCache = result;
             _columnFoundationHeightsFloorNo = firstFloor.FloorNo;
+            return result;
+        }
+
+        /// <summary>
+        /// Kolon/perde görünüşü için "radye temel temel hatılı" yüksekliği (cm). GetColumnFoundationHeights'ın
+        /// hatilCm'sinden farkı: "bağ kirişi" (sürekli temel/radye dışındaki Tie beams) buraya girmez; yalnız
+        /// sürekli temel üstü hatıl şeridi (TieBeamWidthCm>0 && HatilLabelHeightCm>0) ve sürekli temel/radye
+        /// içinde kalan Tie beams sayılır. Görünüşte TEMEL HATILI çizilip çizilmeyeceği bununla belirlenir.
+        /// </summary>
+        public Dictionary<int, double?> GetColumnRadyeTemelHatiliHeights(FloorInfo firstFloor)
+        {
+            if (firstFloor == null || _model?.Columns == null) return new Dictionary<int, double?>();
+            if (_columnRadyeTemelHatiliCache != null && _columnRadyeTemelHatiliFloorNo == firstFloor.FloorNo)
+                return _columnRadyeTemelHatiliCache;
+            var result = new Dictionary<int, double?>();
+            var factory = _ntsDrawFactory ?? NtsGeometryServices.Instance.CreateGeometryFactory();
+            const double offsetX = 0.0, offsetY = 0.0;
+            Geometry cfUnion = BuildContinuousFoundationsUnion(offsetX, offsetY);
+            Geometry slabUnion = BuildSlabFoundationsUnion(offsetX, offsetY);
+            foreach (var col in _model.Columns)
+            {
+                if (col == null) continue;
+                int colNo = col.ColumnNo;
+                double? hatilCm = null;
+                Geometry colPoly = GetColumnPolygonForTable(firstFloor, col, offsetX, offsetY, factory);
+                if (colPoly != null && !colPoly.IsEmpty)
+                {
+                    foreach (var cf in _model.ContinuousFoundations)
+                    {
+                        if (cf.TieBeamWidthCm <= 0 || cf.HatilLabelHeightCm <= 0) continue;
+                        var hp = HatilStripOnContinuousPoly(cf);
+                        if (hp == null || hp.IsEmpty) continue;
+                        try
+                        {
+                            if (hp.Intersects(colPoly))
+                            {
+                                if (!hatilCm.HasValue || cf.HatilLabelHeightCm > hatilCm.Value)
+                                    hatilCm = cf.HatilLabelHeightCm;
+                            }
+                        }
+                        catch { }
+                    }
+                    foreach (var tb in _model.TieBeams)
+                    {
+                        var tp = TieBeamFootprintPoly(tb);
+                        if (tp == null || tp.IsEmpty) continue;
+                        bool inside = TryContainsSafe(cfUnion, tp) || TryContainsSafe(slabUnion, tp);
+                        if (!inside) continue;
+                        try
+                        {
+                            if (tp.Intersects(colPoly) && tb.HeightCm > 0)
+                            {
+                                if (!hatilCm.HasValue || tb.HeightCm > hatilCm.Value)
+                                    hatilCm = tb.HeightCm;
+                            }
+                        }
+                        catch { }
+                    }
+                }
+                result[colNo] = hatilCm;
+            }
+            _columnRadyeTemelHatiliCache = result;
+            _columnRadyeTemelHatiliFloorNo = firstFloor.FloorNo;
             return result;
         }
 
@@ -1057,14 +1125,15 @@ namespace ST4PlanIdCiz
                     double? kalipAntetOuterLeftDeltaFromSheetViewLeft = null;
 
                     Dictionary<string, GprDosemeDonatiXy> gprKalipDosemeDonati = null;
+                    bool gprDosemeKeysCollapsed = false;
                     string gprPathDoseme = ResolveGprPathNextToSt4(st4SourcePath);
                     // Yalnizca ST4 ile ayni adli .GPR/.gpr; yoksa veya okunamazsa donati yazisi eklenmez (dosya secmesi yok).
                     if (!layoutFlags.SingleCopyPerFloor &&
                         !string.IsNullOrEmpty(gprPathDoseme) && File.Exists(gprPathDoseme) &&
-                        GprDosemeDonatiParser.TryParse(gprPathDoseme, out var dosemeMap, out _))
+                        GprDosemeDonatiParser.TryParse(gprPathDoseme, out var dosemeMap, out _, out gprDosemeKeysCollapsed))
                         gprKalipDosemeDonati = dosemeMap;
                     if (!layoutFlags.SingleCopyPerFloor)
-                        gprKalipDosemeDonati = MergeKalipDosemeDonatiPreferDmx(gprKalipDosemeDonati, st4SourcePath, ed);
+                        gprKalipDosemeDonati = MergeKalipDosemeDonatiPreferDmx(gprKalipDosemeDonati, st4SourcePath, ed, gprDosemeKeysCollapsed);
 
                     int gprDonatiSlabMatchCountTotal = 0;
                     int kalip50BinaSemaKesitSayisi = 0;
@@ -1255,7 +1324,7 @@ namespace ST4PlanIdCiz
                     }
                     string binaSemaScaleText = scaleMode == KalipPlanScale.Hundred ? "1:100" : "1:200";
                     string binaSemaNote = kalip50BinaSemaKesitSayisi > 0
-                        ? string.Format(CultureInfo.InvariantCulture, " Bina kesiti X+Y ({0}): {1} antet (ici sol-ust).", binaSemaScaleText, kalip50BinaSemaKesitSayisi)
+                        ? string.Format(CultureInfo.InvariantCulture, " Bina kesiti X+Y ({0}): {1} antet (ustu 500 cm).", binaSemaScaleText, kalip50BinaSemaKesitSayisi)
                         : string.Empty;
                     string kalipCmdTag = scaleMode == KalipPlanScale.Hundred ? "KALIP100ST4" : "KALIP50ST4";
                     string msgTag = string.IsNullOrWhiteSpace(completionMessageCmdTag) ? kalipCmdTag : completionMessageCmdTag.Trim();
@@ -1380,15 +1449,16 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>
-        /// Kalıp döşeme yazısı: ST4 ile aynı adlı <c>.DMX</c>. GPR hücreleri DMX ile aynı çap/aralık sırasındaysa
-        /// (kesik satır DMX'in başı sayılır) DMX metni yazılır; GPR'de olup DMX'te boş olan yön GPR'de kalır.
-        /// DMX +140/+142 konstrüktif montaj: varsa tüm döşeme X'ine <c>(Mon.)</c> eklenir.
-        /// Kayıt sayısı veya bir hücre uyuşmazsa sözlük olduğu gibi bırakılır.
+        /// Kalıp döşeme yazısı: ST4 ile aynı adlı <c>.DMX</c>, kayıt sırası ST4 döşeme sırası.
+        /// GPR hücreleri DMX ile aynı çap/aralık sırasındaysa DMX metni yazılır.
+        /// Tablo sütunu numarayı kesip aynı anahtarı ezerse (D3B-001 → D3B-00) karşılaştırma yapılmaz;
+        /// kesik anahtarlar atılır, donatı DMX sırasından tam ada yazılır.
         /// </summary>
         private Dictionary<string, GprDosemeDonatiXy> MergeKalipDosemeDonatiPreferDmx(
             Dictionary<string, GprDosemeDonatiXy> gpr,
             string st4SourcePath,
-            Editor ed)
+            Editor ed,
+            bool gprKeysCollapsed)
         {
             string dmxPath = DmxDosemeDonati.ResolvePath(st4SourcePath);
             if (string.IsNullOrEmpty(dmxPath) || _model?.Slabs == null) return gpr;
@@ -1405,41 +1475,46 @@ namespace ST4PlanIdCiz
             int conflict = 0;
             int shorter = 0;
             int compared = 0;
-            for (int i = 0; i < _model.Slabs.Count; i++)
+            // Kesik sütunda aynı GPR anahtarı birçok döşemeyi ezer; hücre karşılaştırması sahte uyuşmazlık üretir.
+            if (!gprKeysCollapsed)
             {
-                SlabInfo slab = _model.Slabs[i];
-                FloorInfo floor = FloorForSlab(slab);
-                if (floor == null || gpr == null || gpr.Count == 0) continue;
-                if (!TryGetGprDonatiXyForSlab(gpr, floor, slab, 2, out GprDosemeDonatiXy xy)) continue;
-                bool any = false;
-                if (!string.IsNullOrWhiteSpace(xy.X))
+                for (int i = 0; i < _model.Slabs.Count; i++)
                 {
-                    any = true;
-                    if (!DmxDosemeDonati.CellAgrees(xy.X, recs[i].X, out bool shortX)) conflict++;
-                    else if (shortX) shorter++;
+                    SlabInfo slab = _model.Slabs[i];
+                    FloorInfo floor = FloorForSlab(slab);
+                    if (floor == null || gpr == null || gpr.Count == 0) continue;
+                    if (!TryGetGprDonatiXyForSlab(gpr, floor, slab, 2, out GprDosemeDonatiXy xy)) continue;
+                    bool any = false;
+                    if (!string.IsNullOrWhiteSpace(xy.X))
+                    {
+                        any = true;
+                        if (!DmxDosemeDonati.CellAgrees(xy.X, recs[i].X, out bool shortX)) conflict++;
+                        else if (shortX) shorter++;
+                    }
+                    if (!string.IsNullOrWhiteSpace(xy.Y))
+                    {
+                        any = true;
+                        if (!DmxDosemeDonati.CellAgrees(xy.Y, recs[i].Y, out bool shortY)) conflict++;
+                        else if (shortY) shorter++;
+                    }
+                    if (any) compared++;
                 }
-                if (!string.IsNullOrWhiteSpace(xy.Y))
+                if (gpr != null && gpr.Count > 0 && compared == 0)
                 {
-                    any = true;
-                    if (!DmxDosemeDonati.CellAgrees(xy.Y, recs[i].Y, out bool shortY)) conflict++;
-                    else if (shortY) shorter++;
+                    ed?.WriteMessage("\nKALIP50: DMX anahtari GPR doseme satiri ile eslesmedi. GPR birakildi.");
+                    return gpr;
                 }
-                if (any) compared++;
-            }
-            if (gpr != null && gpr.Count > 0 && compared == 0)
-            {
-                ed?.WriteMessage("\nKALIP50: DMX anahtari GPR doseme satiri ile eslesmedi. GPR birakildi.");
-                return gpr;
-            }
-            if (conflict > 0)
-            {
-                ed?.WriteMessage(
-                    "\nKALIP50: DMX ile GPR doseme donatisi uyusmadi ({0} hucre). GPR birakildi.",
-                    conflict);
-                return gpr;
+                if (conflict > 0)
+                {
+                    ed?.WriteMessage(
+                        "\nKALIP50: DMX ile GPR doseme donatisi uyusmadi ({0} hucre). GPR birakildi.",
+                        conflict);
+                    return gpr;
+                }
             }
 
-            var dict = gpr != null
+            // Kesik isimleri sözlükte bırakma: D3B-01, 010–019 grubunun son kaydını döşeme 01 sanır.
+            var dict = (!gprKeysCollapsed && gpr != null)
                 ? new Dictionary<string, GprDosemeDonatiXy>(gpr, StringComparer.OrdinalIgnoreCase)
                 : new Dictionary<string, GprDosemeDonatiXy>(StringComparer.OrdinalIgnoreCase);
             int written = 0;
@@ -1451,7 +1526,7 @@ namespace ST4PlanIdCiz
                 SlabInfo slab = _model.Slabs[i];
                 FloorInfo floor = FloorForSlab(slab);
                 if (floor == null) continue;
-                if (dict.Count > 0 && TryGetGprDonatiXyForSlab(dict, floor, slab, 2, out GprDosemeDonatiXy old))
+                if (!gprKeysCollapsed && dict.Count > 0 && TryGetGprDonatiXyForSlab(dict, floor, slab, 2, out GprDosemeDonatiXy old))
                 {
                     if (x.Length == 0) x = old.X ?? string.Empty;
                     if (y.Length == 0) y = old.Y ?? string.Empty;
@@ -1473,7 +1548,9 @@ namespace ST4PlanIdCiz
                 }
             }
             string montajNote = hasMontaj ? ", konstruktif montaj tum dosemelere" : "";
-            if (gpr == null || gpr.Count == 0)
+            if (gprKeysCollapsed)
+                ed?.WriteMessage("\nKALIP50: GPR doseme no sutunu kesik. Donati DMX kayit sirasindan ({0} doseme{1}).", written, montajNote);
+            else if (gpr == null || gpr.Count == 0)
                 ed?.WriteMessage("\nKALIP50: GPR yok, doseme donatisi DMX ({0} doseme{1}).", written, montajNote);
             else if (shorter > 0)
                 ed?.WriteMessage("\nKALIP50: doseme donatisi DMX ({0} doseme, GPR'de kesik {1} hucre tamamlandi{2}).", written, shorter, montajNote);
@@ -10822,6 +10899,15 @@ namespace ST4PlanIdCiz
             return used;
         }
 
+        /// <summary>
+        /// 1000’lik projede yedek formül kat*100+kolonNo, kolon no 100’ü geçince 1. kat kesidine düşer
+        /// (çatı kolon 104 → 1004). 100’lük numara 1000 ve üstüne taşarsa kabul etme.
+        /// </summary>
+        private static bool IsHundredStepIdInsideThousandBlock(int step, int other, int sectionId)
+        {
+            return step == 1000 && other == 100 && sectionId >= 1000;
+        }
+
         /// <summary>Kolon kesit: floorNo*100+colNo, floorNo*1000+colNo (TZN 1001,2001,8001), 1000+colNo. 2xx-9xx, 14xx, 2xxx-9xxx varsa 1000+colNo yok.</summary>
         private int ResolveColumnSectionId(int floorNo, int colNo)
         {
@@ -10835,7 +10921,9 @@ namespace ST4PlanIdCiz
                 if (other != step)
                 {
                     int sidOther = floorNo * other + colNo;
-                    if (_model.ColumnDimsBySectionId.ContainsKey(sidOther)) return sidOther;
+                    if (!IsHundredStepIdInsideThousandBlock(step, other, sidOther)
+                        && _model.ColumnDimsBySectionId.ContainsKey(sidOther))
+                        return sidOther;
                 }
             }
             else
@@ -10863,7 +10951,9 @@ namespace ST4PlanIdCiz
                 if (other != step)
                 {
                     int sidOther = floorNo * other + colNo;
-                    if (_model.PolygonColumnSectionByPositionSectionId.ContainsKey(sidOther)) return sidOther;
+                    if (!IsHundredStepIdInsideThousandBlock(step, other, sidOther)
+                        && _model.PolygonColumnSectionByPositionSectionId.ContainsKey(sidOther))
+                        return sidOther;
                 }
             }
             else
@@ -12883,10 +12973,20 @@ namespace ST4PlanIdCiz
                 int Find(int x) { while (parent[x] != x) x = parent[x] = parent[parent[x]]; return x; }
                 void Merge(int x, int y) { parent[Find(x)] = Find(y); }
                 for (int i = 0; i < n; i++)
+                {
+                    var ei = beamPieces[i] != null ? beamPieces[i].EnvelopeInternal : null;
                     for (int j = i + 1; j < n; j++)
+                    {
+                        if (ei != null && beamPieces[j] != null)
+                        {
+                            var ej = beamPieces[j].EnvelopeInternal;
+                            if (ei.Distance(ej) > 1.0) continue;
+                        }
                         if (ProperlyTouches(beamPieces[i], beamPieces[j], touchToleranceCm, beamMergeBoundary)
                             || ShareAtLeastTwoVertices(beamPieces[i], beamPieces[j], touchToleranceCm))
                             Merge(i, j);
+                    }
+                }
                 var componentGroups = new Dictionary<int, List<Geometry>>();
                 for (int i = 0; i < n; i++)
                 {
@@ -15082,6 +15182,248 @@ namespace ST4PlanIdCiz
             }
         }
 
+        private static string _embeddedTemelDetayTempDwg;
+        private static readonly object EmbeddedTemelDetayTempLock = new object();
+
+        /// <summary>Gömülü Drawing2.dwg (temel detayları) oturum başına bir kez geçici dosyaya yazılır.</summary>
+        private static string GetEmbeddedTemelDetayTempDwg()
+        {
+            lock (EmbeddedTemelDetayTempLock)
+            {
+                if (!string.IsNullOrEmpty(_embeddedTemelDetayTempDwg) && File.Exists(_embeddedTemelDetayTempDwg))
+                    return _embeddedTemelDetayTempDwg;
+                Assembly asm = typeof(PlanIdDrawingManager).Assembly;
+                using (Stream stream = asm.GetManifestResourceStream(TemelDetayEmbeddedResourceName))
+                {
+                    if (stream == null) return null;
+                    string path = Path.Combine(Path.GetTempPath(),
+                        "ST4PlanIdCiz_temeldetay_" + asm.ManifestModule.ModuleVersionId.ToString("N") + ".dwg");
+                    if (!File.Exists(path) || new FileInfo(path).Length != stream.Length)
+                    {
+                        string tmp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                        using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.Read))
+                            stream.CopyTo(fs);
+                        try
+                        {
+                            if (File.Exists(path)) File.Delete(path);
+                            File.Move(tmp, path);
+                        }
+                        catch
+                        {
+                            try { File.Delete(tmp); } catch { }
+                            if (!File.Exists(path)) return null;
+                        }
+                    }
+                    _embeddedTemelDetayTempDwg = path;
+                    return path;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Drawing2.dwg içindeki iki takım detayı kesit grobetonuna oturtur.
+        /// Sağ detayın AR-CONC grobeton taramasının <b>sol-üst</b> köşesi <paramref name="rightAnchorX"/>/<paramref name="rightAnchorY"/> noktasına,
+        /// sol detayın grobeton taramasının <b>sağ-üst</b> köşesi <paramref name="leftAnchorX"/>/<paramref name="leftAnchorY"/> noktasına gider.
+        /// <paramref name="rotationRad"/> kaynak grobeton köşesi etrafında uygulanır (dikey kesitte +π/2).
+        /// </summary>
+        private void DrawTemelDetayDrawings(Transaction tr, BlockTableRecord btr,
+            double leftAnchorX, double leftAnchorY, double rightAnchorX, double rightAnchorY, double rotationRad,
+            out double detMinX, out double detMaxX, out double detMinY, out double detMaxY)
+        {
+            detMinX = detMaxX = detMinY = detMaxY = double.NaN;
+            if (double.IsNaN(leftAnchorX) || double.IsNaN(leftAnchorY) || double.IsNaN(rightAnchorX) || double.IsNaN(rightAnchorY)) return;
+            string path = GetEmbeddedTemelDetayTempDwg();
+            if (string.IsNullOrEmpty(path)) return;
+            Database sourceDb = null;
+            try
+            {
+                sourceDb = new Database(false, true);
+                sourceDb.ReadDwgFile(path, FileOpenMode.OpenForReadAndAllShare, true, null);
+
+                var allIds = new ObjectIdCollection();
+                double envMinX = double.MaxValue, envMaxX = double.MinValue;
+                using (Transaction trSrc = sourceDb.TransactionManager.StartTransaction())
+                {
+                    var ms = trSrc.GetObject(sourceDb.CurrentSpaceId, OpenMode.ForRead) as BlockTableRecord;
+                    if (ms == null) return;
+                    foreach (ObjectId id in ms)
+                    {
+                        if (!id.IsValid || id.IsErased) continue;
+                        if (!(trSrc.GetObject(id, OpenMode.ForRead) is Entity ent)) continue;
+                        allIds.Add(id);
+                        try { var e = ent.GeometricExtents; envMinX = Math.Min(envMinX, e.MinPoint.X); envMaxX = Math.Max(envMaxX, e.MaxPoint.X); }
+                        catch { }
+                    }
+                    trSrc.Commit();
+                }
+                if (allIds.Count == 0 || double.IsInfinity(envMinX) || double.IsInfinity(envMaxX)) return;
+                double midX = (envMinX + envMaxX) * 0.5;
+
+                var leftIds = new ObjectIdCollection();
+                var rightIds = new ObjectIdCollection();
+                using (Transaction trSrc = sourceDb.TransactionManager.StartTransaction())
+                {
+                    foreach (ObjectId id in allIds)
+                    {
+                        if (!(trSrc.GetObject(id, OpenMode.ForRead) is Entity ent)) continue;
+                        double cx;
+                        try { var e = ent.GeometricExtents; cx = (e.MinPoint.X + e.MaxPoint.X) * 0.5; }
+                        catch { cx = envMinX; }
+                        if (cx < midX) leftIds.Add(id); else rightIds.Add(id);
+                    }
+                    trSrc.Commit();
+                }
+
+                bool placed = false;
+                if (rightIds.Count > 0 && TryGetTemelDetayGrobetonCorner(sourceDb, rightIds, topLeft: true, out double rAx, out double rAy))
+                {
+                    if (PlaceTemelDetayGroup(tr, btr, sourceDb, rightIds, rAx, rAy, rightAnchorX, rightAnchorY, rotationRad, out double rMinX, out double rMaxX, out double rMinY, out double rMaxY))
+                    {
+                        detMinX = rMinX; detMaxX = rMaxX; detMinY = rMinY; detMaxY = rMaxY; placed = true;
+                    }
+                }
+                if (leftIds.Count > 0 && TryGetTemelDetayGrobetonCorner(sourceDb, leftIds, topLeft: false, out double lAx, out double lAy))
+                {
+                    if (PlaceTemelDetayGroup(tr, btr, sourceDb, leftIds, lAx, lAy, leftAnchorX, leftAnchorY, rotationRad, out double lMinX, out double lMaxX, out double lMinY, out double lMaxY))
+                    {
+                        if (!placed) { detMinX = lMinX; detMaxX = lMaxX; detMinY = lMinY; detMaxY = lMaxY; }
+                        else
+                        {
+                            detMinX = Math.Min(detMinX, lMinX); detMaxX = Math.Max(detMaxX, lMaxX);
+                            detMinY = Math.Min(detMinY, lMinY); detMaxY = Math.Max(detMaxY, lMaxY);
+                        }
+                    }
+                }
+            }
+            finally { sourceDb?.Dispose(); }
+        }
+
+        /// <summary>
+        /// Detay grubundaki AR-CONC grobeton taramasının üst kenar köşesi.
+        /// <paramref name="topLeft"/>: en yüksek Y, eşitse en küçük X; aksi halde en yüksek Y, eşitse en büyük X.
+        /// </summary>
+        private static bool TryGetTemelDetayGrobetonCorner(Database sourceDb, ObjectIdCollection ids, bool topLeft, out double x, out double y)
+        {
+            x = y = double.NaN;
+            if (sourceDb == null || ids == null || ids.Count == 0) return false;
+            bool found = false;
+            double bestX = 0, bestY = double.NegativeInfinity;
+            const double eps = 1e-4;
+            void Consider(double px, double py)
+            {
+                if (!found || py > bestY + eps || (Math.Abs(py - bestY) <= eps && (topLeft ? px < bestX - eps : px > bestX + eps)))
+                {
+                    found = true;
+                    bestX = px;
+                    bestY = py;
+                }
+            }
+            using (Transaction trSrc = sourceDb.TransactionManager.StartTransaction())
+            {
+                foreach (ObjectId id in ids)
+                {
+                    if (!(trSrc.GetObject(id, OpenMode.ForRead) is Hatch hatch)) continue;
+                    if (!string.Equals(hatch.PatternName, GrobetonHatchPatternName, StringComparison.OrdinalIgnoreCase)) continue;
+                    bool loopPoint = false;
+                    try
+                    {
+                        for (int i = 0; i < hatch.NumberOfLoops; i++)
+                        {
+                            HatchLoop loop = hatch.GetLoopAt(i);
+                            if ((loop.LoopType & HatchLoopTypes.Polyline) == HatchLoopTypes.Polyline && loop.Polyline != null)
+                            {
+                                foreach (BulgeVertex bv in loop.Polyline)
+                                {
+                                    Consider(bv.Vertex.X, bv.Vertex.Y);
+                                    loopPoint = true;
+                                }
+                            }
+                            else if (loop.Curves != null)
+                            {
+                                foreach (Curve2d c in loop.Curves)
+                                {
+                                    if (c == null) continue;
+                                    Consider(c.StartPoint.X, c.StartPoint.Y);
+                                    loopPoint = true;
+                                }
+                            }
+                        }
+                    }
+                    catch { loopPoint = false; }
+                    if (!loopPoint)
+                    {
+                        try
+                        {
+                            var e = hatch.GeometricExtents;
+                            Consider(topLeft ? e.MinPoint.X : e.MaxPoint.X, e.MaxPoint.Y);
+                        }
+                        catch { }
+                    }
+                }
+                trSrc.Commit();
+            }
+            if (!found) return false;
+            x = bestX;
+            y = bestY;
+            return true;
+        }
+
+        /// <summary>
+        /// Detay grubunu klonlar. Kaynak <paramref name="srcAnchorX"/>/<paramref name="srcAnchorY"/> noktası
+        /// <paramref name="rotationRad"/> kadar döndürülüp hedef çapa taşınır.
+        /// </summary>
+        private bool PlaceTemelDetayGroup(Transaction tr, BlockTableRecord btr, Database sourceDb, ObjectIdCollection ids,
+            double srcAnchorX, double srcAnchorY, double dstAnchorX, double dstAnchorY, double rotationRad,
+            out double minX, out double maxX, out double minY, out double maxY)
+        {
+            minX = maxX = minY = maxY = double.NaN;
+            if (ids == null || ids.Count == 0) return false;
+            double gMinX = double.MaxValue, gMaxX = double.MinValue, gMinY = double.MaxValue, gMaxY = double.MinValue;
+            using (Transaction trSrc = sourceDb.TransactionManager.StartTransaction())
+            {
+                foreach (ObjectId id in ids)
+                {
+                    if (!(trSrc.GetObject(id, OpenMode.ForRead) is Entity ent)) continue;
+                    try
+                    {
+                        var e = ent.GeometricExtents;
+                        gMinX = Math.Min(gMinX, e.MinPoint.X); gMaxX = Math.Max(gMaxX, e.MaxPoint.X);
+                        gMinY = Math.Min(gMinY, e.MinPoint.Y); gMaxY = Math.Max(gMaxY, e.MaxPoint.Y);
+                    }
+                    catch { }
+                }
+                trSrc.Commit();
+            }
+            if (double.IsInfinity(gMinX)) return false;
+
+            IdMapping mapping = new IdMapping();
+            btr.Database.WblockCloneObjects(ids, btr.ObjectId, mapping, DuplicateRecordCloning.Ignore, false);
+            Matrix3d rot = Matrix3d.Rotation(rotationRad, Vector3d.ZAxis, new Point3d(srcAnchorX, srcAnchorY, 0));
+            Matrix3d disp = Matrix3d.Displacement(new Vector3d(dstAnchorX - srcAnchorX, dstAnchorY - srcAnchorY, 0));
+            Matrix3d xform = disp * rot;
+            foreach (IdPair pair in mapping)
+            {
+                if (!pair.Value.IsValid) continue;
+                if (tr.GetObject(pair.Value, OpenMode.ForWrite) is Entity ent)
+                    ent.TransformBy(xform);
+            }
+
+            double c = Math.Cos(rotationRad), s = Math.Sin(rotationRad);
+            double ox0 = double.NaN, ox1 = double.NaN, oy0 = double.NaN, oy1 = double.NaN;
+            void Acc(double px, double py)
+            {
+                double dx = px - srcAnchorX, dy = py - srcAnchorY;
+                double fx = srcAnchorX + dx * c - dy * s + (dstAnchorX - srcAnchorX);
+                double fy = srcAnchorY + dx * s + dy * c + (dstAnchorY - srcAnchorY);
+                if (double.IsNaN(ox0)) { ox0 = ox1 = fx; oy0 = oy1 = fy; return; }
+                ox0 = Math.Min(ox0, fx); ox1 = Math.Max(ox1, fx);
+                oy0 = Math.Min(oy0, fy); oy1 = Math.Max(oy1, fy);
+            }
+            Acc(gMinX, gMinY); Acc(gMinX, gMaxY); Acc(gMaxX, gMinY); Acc(gMaxX, gMaxY);
+            minX = ox0; maxX = ox1; minY = oy0; maxY = oy1;
+            return true;
+        }
+
         /// <summary>Noktayı (cx, cy) etrafında angleRad radyan döndürür.</summary>
         private static void RotatePointAround(double x, double y, double cx, double cy, double angleRad, out double outX, out double outY)
         {
@@ -16485,7 +16827,26 @@ namespace ST4PlanIdCiz
             Geometry unionResult = temelUnion ?? BuildTemelUnion(offsetX, offsetY, floor);
             if (unionResult == null || unionResult.IsEmpty) return;
             DrawGeometryRingsAsPolylines(tr, btr, unionResult, layer, applySmallTriangleTrim: true);
-            DrawTemelIcBoslukTarama(tr, btr, BuildTemelCizimGeometrisi(unionResult));
+            // İç tarama: ampatmanı da hesaba kat. Tarama ampatmanın İÇ yüzünden başlar; ampatman bandı
+            // (gövde ile ampatman arası, "ampatman üstü") ayrı eleman sayıldığı için taranmaz.
+            Geometry hatchBase = unionResult;
+            Geometry ampForHatch = BuildAmpatmanUnion(offsetX, offsetY);
+            if (ampForHatch != null && !ampForHatch.IsEmpty)
+                hatchBase = UnionPolygonsKeepParts(new List<Geometry> { unionResult, ampForHatch });
+            DrawTemelIcBoslukTarama(tr, btr, BuildTemelCizimGeometrisi(hatchBase));
+        }
+
+        /// <summary>Sürekli temel ampatmanlarının (taban genişlemesi) birleşik alanı; plan iç taramasını ampatman iç yüzünden başlatmak için.</summary>
+        private Geometry BuildAmpatmanUnion(double offsetX, double offsetY)
+        {
+            var list = new List<Geometry>();
+            foreach (var cf in _model.ContinuousFoundations)
+            {
+                var p = AmpatmanFootprintPoly(cf, offsetX, offsetY);
+                if (p != null && !p.IsEmpty) list.Add(p);
+            }
+            if (list.Count == 0) return null;
+            return list.Count == 1 ? list[0] : UnionPolygonsKeepParts(list);
         }
 
         /// <summary>Temel planı içinde kalan iç boşlukları TARAMA katmanında AR-SAND olarak tarar.</summary>
@@ -17589,52 +17950,9 @@ namespace ST4PlanIdCiz
                 }
                 cfIndex++;
 
-                if (cf.AmpatmanWidthCm > 0 && Math.Abs(cf.AmpatmanWidthCm - cf.WidthCm) > 1e-6)
-                {
-                    double ampW = cf.AmpatmanWidthCm;
-                    int align = cf.AmpatmanAlign;
-                    if (cf.FixedAxisId >= 1001 && cf.FixedAxisId <= 1999 && align != 0)
-                        align = align == 1 ? 2 : 1;
-                    Point2d[] ampRect;
-                    if (align == 0)
-                    {
-                        double hwAmp = ampW / 2.0;
-                        ampRect = new[]
-                        {
-                            p1Eff + perp.MultiplyBy(hwAmp),
-                            p2Eff + perp.MultiplyBy(hwAmp),
-                            p2Eff - perp.MultiplyBy(hwAmp),
-                            p1Eff - perp.MultiplyBy(hwAmp)
-                        };
-                    }
-                    else if (align == 1)
-                    {
-                        ampRect = new[]
-                        {
-                            p1Eff + perp.MultiplyBy(lowerEdge),
-                            p2Eff + perp.MultiplyBy(lowerEdge),
-                            p2Eff + perp.MultiplyBy(lowerEdge + ampW),
-                            p1Eff + perp.MultiplyBy(lowerEdge + ampW)
-                        };
-                    }
-                    else
-                    {
-                        ampRect = new[]
-                        {
-                            p1Eff + perp.MultiplyBy(upperEdge),
-                            p2Eff + perp.MultiplyBy(upperEdge),
-                            p2Eff + perp.MultiplyBy(upperEdge - ampW),
-                            p1Eff + perp.MultiplyBy(upperEdge - ampW)
-                        };
-                    }
-                    for (int i = 0; i < ampRect.Length; i++)
-                        ampRect[i] = new Point2d(ampRect[i].X + offsetX, ampRect[i].Y + offsetY);
-                    var ampCoords = new Coordinate[5];
-                    for (int i = 0; i < 4; i++) ampCoords[i] = new Coordinate(ampRect[i].X, ampRect[i].Y);
-                    ampCoords[4] = ampCoords[0];
-                    var ampPoly = factory.CreatePolygon(factory.CreateLinearRing(ampCoords));
+                var ampPoly = AmpatmanFootprintPoly(cf, offsetX, offsetY);
+                if (ampPoly != null && !ampPoly.IsEmpty)
                     ampatmanPolygons.Add(ampPoly);
-                }
 
                 if (cf.TieBeamWidthCm > 0)
                 {
@@ -17673,7 +17991,8 @@ namespace ST4PlanIdCiz
                 }
             }
 
-            // Tüm ampatmanları birleştir, birleşik temel içinde kalan kısımları çıkar, tek çizim olarak çiz.
+            // Tüm ampatmanları birleştir, birleşik temel gövdesi içinde kalan kısımları çıkar, kalan basamak
+            // şeritlerini TEMEL AMPATMAN katmanında tek çizim olarak çiz.
             if (ampatmanPolygons.Count > 0)
             {
                 Geometry ampatmanUnion = ampatmanPolygons.Count == 1

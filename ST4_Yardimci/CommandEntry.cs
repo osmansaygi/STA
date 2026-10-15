@@ -49,7 +49,7 @@ namespace ST4Yardimci
                     return;
                 }
                 if (ed != null)
-                    ed.WriteMessage("\nBETONARME TOOL yuklendi. BAPANEL otomatik aciliyor…  |  OTOOLCU  PLANOLCU  MERDIVEN  DOSEMEDONATI  OTODONATI  SEHPADONATI  RADYEILAVE  TEMELHATILI  TEMELCEKURU  DONATIBOYU  DONATIMETRAJ  DONATI ADET  DONATI OKU  KOTDEGISTIR  KATMANYUKLE");
+                    ed.WriteMessage("\nBETONARME TOOL yuklendi. BAPANEL otomatik aciliyor…  |  OTOOLCU  PLANOLCU  MERDIVEN  DOSEMEDONATI  OTODONATI  SEHPADONATI  HASIRDONATI  RADYEILAVE  TEMELHATILI  TEMELCEKURU  DONATIBOYU  DONATIMETRAJ  DONATI ADET  DONATI OKU  KOTDEGISTIR  KATMANYUKLE");
 
                 // NETLOAD sırasında palet hemen açılamayabilir; Idle'da bir kez aç.
                 AcApp.Idle -= OnIdleShowBaPanel;
@@ -134,12 +134,14 @@ namespace ST4Yardimci
             try { PlanOlcuSettings.Save(); } catch { }
             try { OtoDonatiSettings.Save(); } catch { }
             try { SehpaDonatiSettings.Save(); } catch { }
+            try { HasirDonatiSettings.Save(); } catch { }
             try { OtoOlcuForm.Shutdown(); } catch { }
             try { PlanOlcuForm.Shutdown(); } catch { }
             try { MerdivenForm.Shutdown(); } catch { }
             try { DosemeDonatiForm.Shutdown(); } catch { }
             try { OtoDonatiForm.Shutdown(); } catch { }
             try { SehpaDonatiForm.Shutdown(); } catch { }
+            try { HasirDonatiForm.Shutdown(); } catch { }
             try { RadyeTemelDonatiForm.Shutdown(); } catch { }
             try { TemelHatiliForm.Shutdown(); } catch { }
             try { KuranglezForm.Shutdown(); } catch { }
@@ -384,6 +386,23 @@ namespace ST4Yardimci
         {
             if (!Gate("SEHPADONATI")) return;
             SehpaDonatiRunner.RunInteractive();
+        }
+
+        /// <summary>Hasır donatı: tip/ebat/bindirme/paspayı formu → alana dizilim.</summary>
+        [CommandMethod("HASIRDONATI")]
+        [CommandMethod("HASIR DONATI")]
+        public void HasirDonati()
+        {
+            if (!Gate("HASIRDONATI")) return;
+            HasirDonatiSettings.EnsureLoaded();
+            HasirDonatiForm.ShowOrActivate();
+        }
+
+        [CommandMethod("HASIRDONATICIZ", CommandFlags.Modal)]
+        public void HasirDonatiCiz()
+        {
+            if (!Gate("HASIRDONATI")) return;
+            HasirDonatiRunner.RunInteractive();
         }
 
         /// <summary>Radye ilave donatı formu (TEMEL ILAVE X ısı konturu → X ilave).</summary>

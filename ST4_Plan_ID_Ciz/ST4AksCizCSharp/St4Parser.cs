@@ -30,6 +30,7 @@ namespace ST4AksCizCSharp
             bool inTieBeams = false;
             bool inSingleFootings = false;
             string pendingContinuousName = null;
+            ContinuousFoundationInfo lastContinuousForAmpatman = null;
             string pendingSlabName = null;
             string pendingTieBeamName = null;
             string pendingSingleFootingName = null;
@@ -492,7 +493,19 @@ namespace ST4AksCizCSharp
                 }
                 if (inContinuousFoundations)
                 {
-                    if (skipNextContinuousLine) { skipNextContinuousLine = false; continue; }
+                    if (skipNextContinuousLine)
+                    {
+                        skipNextContinuousLine = false;
+                        // Kaydın 3. satırı: ampatmanı veren ikinci veri satırı. 2. sütun = ampatman yüksekliği Da (cm).
+                        var pa = St4Text.SplitCsv(line);
+                        if (lastContinuousForAmpatman != null && pa.Count >= 2 &&
+                            St4Text.TryParseDouble(pa[1], out double ampatmanHeightCm))
+                        {
+                            lastContinuousForAmpatman.AmpatmanHeightCm = ampatmanHeightCm;
+                        }
+                        lastContinuousForAmpatman = null;
+                        continue;
+                    }
                     var p = St4Text.SplitCsv(line);
                     if (p.Count >= 10 &&
                         St4Text.TryParseInt(p[4], out int fixedAxis) &&
@@ -541,7 +554,7 @@ namespace ST4AksCizCSharp
                             bottomKotBinaGoreCm = bottomKotM * 100.0;
                         double hatilLabelHeightCm = 0.0;
                         if (p.Count > 12 && St4Text.TryParseDouble(p[12], out double h13) && h13 > 0) hatilLabelHeightCm = h13;
-                        model.ContinuousFoundations.Add(new ContinuousFoundationInfo
+                        var cfInfo = new ContinuousFoundationInfo
                         {
                             Name = pendingContinuousName ?? "",
                             FixedAxisId = fixedAxis,
@@ -559,7 +572,9 @@ namespace ST4AksCizCSharp
                             AmpatmanWidthCm = ampatmanWidthCm,
                             TieBeamWidthCm = tieBeamWidthCm,
                             TieBeamOffsetRaw = tieBeamOffsetRaw
-                        });
+                        };
+                        model.ContinuousFoundations.Add(cfInfo);
+                        lastContinuousForAmpatman = cfInfo;
                         pendingContinuousName = null;
                         skipNextContinuousLine = true;
                     }

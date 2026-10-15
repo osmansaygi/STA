@@ -113,8 +113,10 @@ namespace ST4AksCizCSharp
         public int OffsetRaw { get; set; }
         /// <summary>2. satır 1. sütun: ampatman hizalama (0=ortada, 1=alt çizgi temel ile çakışık ampatman yukarı, 2=üst çizgi temel ile çakışık ampatman aşağı).</summary>
         public int AmpatmanAlign { get; set; }
-        /// <summary>2. satır 4. sütun: ampatman genişliği (cm); 3. sütundan farklı ise çizilir.</summary>
+        /// <summary>2. satır 4. sütun: ampatman genişliği (Ba, cm); 3. sütundan (Bo) farklı ise ampatman vardır.</summary>
         public double AmpatmanWidthCm { get; set; }
+        /// <summary>3. satır 2. sütun: ampatman yüksekliği (Da, cm). GPR etiketi "AMPATMAN B/Da" ile aynı. Kesitte ampatman basamağı bu yükseklikte gösterilir.</summary>
+        public double AmpatmanHeightCm { get; set; }
         /// <summary>2. satır 12. sütun: radye temel temel hatılı genişliği (cm); 0 ise çizilmez.</summary>
         public double TieBeamWidthCm { get; set; }
         /// <summary>1. satır 13. sütun (p[12]): altında sürekli temel bulunan temel hatılı yüksekliği (cm); etiket metninde TH-xx (en/yükseklik) olarak yazılır.</summary>

@@ -1068,6 +1068,9 @@ namespace ST4PlanIdCiz
             var ed = doc.Editor;
             var db = doc.Database;
 
+            if (!KapamaPerdeForm.ShowModalAndAccept())
+                return;
+
             if (!RememberedFilePrompt.TryPrompt(ed, "\nKAPAMADETAY icin ST4 Dosyasi Secin",
                 "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
                 return;
@@ -1086,7 +1089,8 @@ namespace ST4PlanIdCiz
                 {
                     var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
                     var btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
-                    bool ok = planMgr.DrawKapamaDetayFromSt4(insRes.Value, db, ed, tr, btr, st4Path);
+                    bool ok = planMgr.DrawKapamaDetayFromSt4(insRes.Value, db, ed, tr, btr, st4Path,
+                        temelHatili: KapamaPerdeSettings.TemelHatili);
                     if (ok)
                         tr.Commit();
                 }

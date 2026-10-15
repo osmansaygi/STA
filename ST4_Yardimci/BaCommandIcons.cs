@@ -31,6 +31,7 @@ namespace ST4Yardimci
             new BaTool("Döşeme Donatı", "DOSEMEDONATI", "ST4Yardimci.Icons.ba_doseme.png"),
             new BaTool("Oto Donatı", "OTODONATI", "ST4Yardimci.Icons.ba_otodonati.png"),
             new BaTool("Sehpa Donatısı", "SEHPADONATI", "ST4Yardimci.Icons.ba_sehpa.png"),
+            new BaTool("Hasır Donatı", "HASIRDONATI", "ST4Yardimci.Icons.ba_hasirdonati.png"),
             new BaTool("Radye İlave Donatı", "RADYEILAVE", "ST4Yardimci.Icons.ba_radyeilave.png"),
             new BaTool("Temel Hatılı", "TEMELHATILI", "ST4Yardimci.Icons.ba_temelhatili.png"),
             new BaTool("Temel Çukuru", "TEMELCEKURU", "ST4Yardimci.Icons.ba_temelcekuru.png"),

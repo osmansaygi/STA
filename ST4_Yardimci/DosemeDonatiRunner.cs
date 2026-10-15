@@ -183,7 +183,13 @@ namespace ST4Yardimci
 
         private static List<KirmiziGprCizgi> _kirmiziGprCizgi;
         private static readonly HashSet<ObjectId> _parkBelow = new HashSet<ObjectId>();
+        /// <summary>Bu komutta çizilen donatı bu poligonun dışında kalmaz. Poligon çizimine karışmaz.</summary>
+        private static List<ClosedArea> _katSinirClamp;
+        /// <summary>Yeni donatı yazısına aktarılan GPR yazıları. Çift çizgi ancak poligondakilerin hepsi buradaysa iner.</summary>
+        private static readonly HashSet<ObjectId> _gprTransferred = new HashSet<ObjectId>();
         private const double ParkBelowCm = 10000.0;
+        /// <summary>Aktarılan GPR yazısı ve (hepsi aktarıldıysa) çift çizgi 10000 cm aşağı iner.</summary>
+        private const bool ParkBelowEnabled = true;
 
         private struct SpanRec
         {
@@ -360,6 +366,7 @@ namespace ST4Yardimci
                 var slabTextsEarly = CollectSlabLabelTexts(tr, btr);
                 var closedAreas = CollectClosedAreas(tr, btr);
                 var katSinirAreas = CollectKatSinirAreas(tr, btr);
+                _katSinirClamp = katSinirAreas;
                 if (katSinirAreas.Count > 0)
                     ed.WriteMessage("\nDOSEMEDONATICIZ: Kat sınırı poligon {0} — dışarı donatı yok.",
                         katSinirAreas.Count);
@@ -391,6 +398,7 @@ namespace ST4Yardimci
                 // Kapalı alanlar bir kez (zoom'dan bağımsız model geometrisi)
                 _kotCache = null;
                 _parkBelow.Clear();
+                _gprTransferred.Clear();
                 EnsureKotCache(tr, btr);
                 ed.WriteMessage("\nDOSEMEDONATICIZ: KOT YAZI cache={0}", _kotCache?.Count ?? 0);
                 var slabTexts = slabTextsEarly;
@@ -519,6 +527,11 @@ namespace ST4Yardimci
                         barL = leftOuter + u * PaspayiCm;
                         barR = rightOuter - u * PaspayiCm;
                     }
+                    if (katSinirAreas.Count > 0 && PointInsideKatSinir(katSinirAreas, mid))
+                    {
+                        barL = ClampEndToKatSinir(katSinirAreas, mid, barL);
+                        barR = ClampEndToKatSinir(katSinirAreas, mid, barR);
+                    }
                     if (barL.DistanceTo(barR) < 20.0)
                         continue;
 
@@ -585,6 +598,13 @@ namespace ST4Yardimci
                 Polyline[] spanBounds = CollectSpanBoundaries(allSpans, altDuzAlan, a, u, n);
                 Polyline[] ownPoly = spanBounds == null ? null : (Polyline[])spanBounds.Clone();
 
+                // BOUNDARY: yalnız mesnet katmanı. Ekran yenilenmez; katmanlar komut bitmeden geri açılır.
+                ObjectId boundaryClayer = ObjectId.Null;
+                List<ObjectId> boundaryHidden = null;
+                if (EtkinYon != DonatiYonu.Serbest)
+                    boundaryHidden = HideNonMesnetForBoundary(tr, db, out boundaryClayer);
+                try
+                {
                 for (int si = 0; si < allSpans.Count; si++)
                 {
                     SpanRec span = allSpans[si];
@@ -712,6 +732,30 @@ namespace ST4Yardimci
                             }
                         }
                     }
+                    // Dilatasyon / iki kat sınırı: yüzün 3 cm dışı kendi halkadan çıkıyorsa
+                    // komşu blokta devam yok → gönye (L/4 veya konsol uzatması yok).
+                    Point3d spanMidKat = Mid(span.LeftInner, span.RightInner);
+                    if (hasPrev && !KatSinirAllowsContinue(katSinirAreas, spanMidKat, span.LeftOuter, -u))
+                    {
+                        hasPrev = false;
+                        Lprev = 0;
+                    }
+                    if (hasNext && !KatSinirAllowsContinue(katSinirAreas, spanMidKat, span.RightOuter, u))
+                    {
+                        hasNext = false;
+                        Lnext = 0;
+                    }
+                    if (konsolPrev && !KatSinirAllowsContinue(katSinirAreas, spanMidKat, span.LeftOuter, -u))
+                    {
+                        konsolPrev = false;
+                        konsolBoyPrev = 0;
+                    }
+                    if (konsolNext && !KatSinirAllowsContinue(katSinirAreas, spanMidKat, span.RightOuter, u))
+                    {
+                        konsolNext = false;
+                        konsolBoyNext = 0;
+                    }
+
                     span.ExtPrev = hasPrev || konsolPrev;
                     span.ExtNext = hasNext || konsolNext;
                     span.LprevExt = Lprev;
@@ -772,8 +816,6 @@ namespace ST4Yardimci
                     double topCm = (span.SupportLeft % 2) * StaggerCm + (okPil ? PilyeKirimRiseCm : 0);
                     if (topCm > maxTopAlongNCm) maxTopAlongNCm = topCm;
 
-                    Polyline opening = spanBounds != null && si < spanBounds.Length ? spanBounds[si] : null;
-                    AssignXGprFromKirmiziCizgi(ref span, altDuzAlan, gprNotes, u, opening);
                     allSpans[si] = span;
                     SlabInfo slab = span.Slab;
                     double Lbar = span.BarL.DistanceTo(span.BarR);
@@ -793,6 +835,25 @@ namespace ST4Yardimci
                                 duzMid = q;
                                 break;
                             }
+                        }
+                    }
+                    if (EtkinYon != DonatiYonu.Serbest && ownPoly != null && si < ownPoly.Length)
+                    {
+                        // AutoCAD BOUNDARY, ada algılama açık. Tohum: alt düz ortası.
+                        Polyline built = TraceSlabBoundary(ed, duzMid, n);
+                        if (built == null)
+                            built = BoundaryAtSeed(altDuzAlan, duzMid);
+                        if (built != null)
+                        {
+                            try { ownPoly[si]?.Dispose(); } catch { }
+                            ownPoly[si] = built;
+                            if (spanBounds != null && si < spanBounds.Length)
+                                spanBounds[si] = built;
+                            SpanRec spG = span;
+                            AssignXGprFromKirmiziCizgi(ref spG, gprNotes, u, built);
+                            span = spG;
+                            allSpans[si] = span;
+                            slab = span.Slab;
                         }
                     }
                     bool duzCopied = TakeOwnedGpr(slab.GprSteels, duzMid, GprSteelKind.Duz, ref adet, ref cap, ref aralik,
@@ -824,9 +885,6 @@ namespace ST4Yardimci
                             pilGpr = true;
                         }
                     }
-                    if (duzCopied && pilCopied)
-                        ParkGuidesOverSpan(span, altDuzAlan, opening, u);
-
                     if (!span.DuzOnly)
                     {
                         spanSlabs.Add((span.SupportLeft, slab, adet, cap, aralik));
@@ -893,18 +951,10 @@ namespace ST4Yardimci
 
                     placed++;
                 }
-
-                int boundN = 0;
-                if (ownPoly != null)
+                }
+                finally
                 {
-                    for (int i = 0; i < ownPoly.Length; i++)
-                    {
-                        if (ownPoly[i] != null) boundN++;
-                        try { ownPoly[i]?.Dispose(); } catch { }
-                        ownPoly[i] = null;
-                        if (spanBounds != null && i < spanBounds.Length)
-                            spanBounds[i] = null;
-                    }
+                    RestoreBoundaryLayers(tr, db, boundaryHidden, boundaryClayer);
                 }
 
                 // İlave üst: çizilen açıklıklara komşu mesnetler; devam = aynı d/kot komşu açıklık
@@ -914,13 +964,40 @@ namespace ST4Yardimci
                     donatiLayer, yaziLayer, yaziStyleId,
                     maxTopAlongNCm + UstIlaveAboveTopCm, spanSlabs, placedKonsolUst,
                     gprNotes, altDuzAlan != null ? altDuzAlan.SupportSegs : null);
-                // Sadece kiriş+konsol kesildiğinde (bitişik döşeme InPick değil) üst ilave/firkete
                 PlaceSoloKonsolIlaves(
                     tr, btr, db, allSpans, boundaries, closedAreas, slabTexts, gprNotes, u, n,
                     Math.Max(maxTopAlongNCm, 0) + UstIlaveAboveTopCm,
                     donatiLayer, yaziLayer, yaziStyleId, placedKonsolUst);
+                ParkGuidePairIfTextsConsumed(allSpans, ownPoly, gprNotes);
 
-                ed.WriteMessage("\nDOSEMEDONATICIZ: Açıklık boundary {0} (hafızada, çizilmedi).",
+                int boundN = 0;
+                if (ownPoly != null)
+                {
+                    string polyLayer = EnsureLayer(tr, db, LayerAltDuzAlan, 6, LineWeight.LineWeight020);
+                    ForceLayerVisible(tr, db, polyLayer);
+                    for (int i = 0; i < ownPoly.Length; i++)
+                    {
+                        Polyline pl = ownPoly[i];
+                        if (pl == null) continue;
+                        boundN++;
+                        try
+                        {
+                            pl.Layer = polyLayer;
+                            pl.ColorIndex = 6;
+                            if (pl.ObjectId.IsNull)
+                            {
+                                btr.AppendEntity(pl);
+                                tr.AddNewlyCreatedDBObject(pl, true);
+                            }
+                        }
+                        catch { }
+                        ownPoly[i] = null;
+                        if (spanBounds != null && i < spanBounds.Length)
+                            spanBounds[i] = null;
+                    }
+                }
+
+                ed.WriteMessage("\nDOSEMEDONATICIZ: Açıklık poligonu {0} çizildi (kontrol, magenta).",
                     boundN);
                 FlushParkBelow(tr);
 
@@ -977,16 +1054,133 @@ namespace ST4Yardimci
                 && FindSmallestContaining(areas, new Point3d(p.X, p.Y, 0), a => a.IsBosluk).HasValue;
         }
 
+        private static bool IsKatSinirLayer(string lyr)
+        {
+            if (string.IsNullOrEmpty(lyr)) return false;
+            DosemeDonatiSettings.EnsureLoaded();
+            return DosemeDonatiSettings.KatSinirKatmanlar.Count > 0
+                && DosemeDonatiSettings.ListHas(DosemeDonatiSettings.KatSinirKatmanlar, lyr);
+        }
+
         private static bool PointInsideKatSinir(List<ClosedArea> areas, Point3d p)
         {
             if (areas == null || areas.Count == 0) return true;
-            Point3d q = new Point3d(p.X, p.Y, 0);
-            foreach (var a in areas)
+            return TryFindKatSinirContaining(areas, p, out _);
+        }
+
+        /// <summary>
+        /// Yüzün dışına 3 cm sonda hâlâ aynı kat sınırındaysa komşu döşemeye devam vardır.
+        /// Dilatasyon boşluğunda sonda halka dışına çıkar → devam yok (gönye).
+        /// </summary>
+        private static bool KatSinirAllowsContinue(
+            List<ClosedArea> areas, Point3d spanMid, Point3d faceOuter, Vector3d outward)
+        {
+            if (areas == null || areas.Count == 0) return true;
+            if (!TryFindKatSinirContaining(areas, spanMid, out ClosedArea home))
+                return true;
+            if (outward.LengthSqrd < 1e-12) return true;
+            Point3d probe = faceOuter + outward.GetNormal() * 3.0;
+            return PointInClosedArea(home, probe);
+        }
+
+        /// <summary>
+        /// Noktayı içeren kat sınırı (en küçük halka). İki dilatasyon = iki poligon;
+        /// birleşim değil, her blok kendi halkası.
+        /// </summary>
+        private static bool TryFindKatSinirContaining(
+            List<ClosedArea> areas, Point3d p, out ClosedArea found)
+        {
+            found = default;
+            if (areas == null || areas.Count == 0) return false;
+            double best = double.MaxValue;
+            bool ok = false;
+            for (int i = 0; i < areas.Count; i++)
             {
-                if (a.Ring != null && PointInRing(a.Ring, q.X, q.Y))
-                    return true;
+                ClosedArea a = areas[i];
+                if (a.Ring == null) continue;
+                if (!PointInRing(a.Ring, p.X, p.Y)) continue;
+                if (a.Area >= best) continue;
+                best = a.Area;
+                found = a;
+                ok = true;
             }
-            return false;
+            return ok;
+        }
+
+        private static bool PointInClosedArea(ClosedArea a, Point3d p)
+        {
+            return a.Ring != null && PointInRing(a.Ring, p.X, p.Y);
+        }
+
+        /// <summary>Uç, referansın bulunduğu kat sınırı dışındaysa o halkada kesilir (öteki dilatasyona geçmez).</summary>
+        private static Point3d ClampEndToKatSinir(List<ClosedArea> areas, Point3d insideRef, Point3d end)
+        {
+            if (!TryFindKatSinirContaining(areas, insideRef, out ClosedArea home))
+                return end;
+            return ClampEndToOneKatSinir(home, insideRef, end);
+        }
+
+        private static Point3d ClampEndToOneKatSinir(ClosedArea home, Point3d insideRef, Point3d end)
+        {
+            if (PointInClosedArea(home, end)) return end;
+            if (!PointInClosedArea(home, insideRef)) return end;
+            Point3d lo = insideRef;
+            Point3d hi = end;
+            for (int k = 0; k < 24; k++)
+            {
+                Point3d m = Mid(lo, hi);
+                if (PointInClosedArea(home, m)) lo = m;
+                else hi = m;
+            }
+            return lo;
+        }
+
+        /// <summary>Yol, ilk noktanın kat sınırı halkasında kalır; dilatasyon ötesi / diğer blok kesilir.</summary>
+        private static IList<Point3d> ClipPathToKatSinir(IList<Point3d> path)
+        {
+            if (path == null || _katSinirClamp == null || _katSinirClamp.Count == 0)
+                return path;
+            ClosedArea home = default;
+            bool have = false;
+            for (int i = 0; i < path.Count; i++)
+            {
+                if (!TryFindKatSinirContaining(_katSinirClamp, path[i], out home)) continue;
+                have = true;
+                break;
+            }
+            if (!have) return new List<Point3d>();
+
+            bool Inside(Point3d p) => PointInClosedArea(home, p);
+            var dst = new List<Point3d>();
+            if (path.Count > 0 && Inside(path[0]))
+                dst.Add(path[0]);
+            for (int i = 1; i < path.Count; i++)
+            {
+                Point3d a = path[i - 1];
+                Point3d b = path[i];
+                bool aIn = Inside(a);
+                bool bIn = Inside(b);
+                if (aIn && bIn)
+                {
+                    dst.Add(b);
+                    continue;
+                }
+                if (aIn)
+                {
+                    Point3d cut = ClampEndToOneKatSinir(home, a, b);
+                    if (dst.Count == 0 || dst[dst.Count - 1].DistanceTo(cut) > 0.5)
+                        dst.Add(cut);
+                    continue;
+                }
+                if (bIn)
+                {
+                    Point3d cut = ClampEndToOneKatSinir(home, b, a);
+                    if (dst.Count == 0 || dst[dst.Count - 1].DistanceTo(cut) > 0.5)
+                        dst.Add(cut);
+                    dst.Add(b);
+                }
+            }
+            return dst;
         }
 
         /// <summary>Formdaki kat sınırı katmanlarından kapalı poligonlar.</summary>
@@ -1002,7 +1196,7 @@ namespace ST4Yardimci
                 string lyr = ent.Layer ?? "";
                 if (!DosemeDonatiSettings.ListHas(DosemeDonatiSettings.KatSinirKatmanlar, lyr))
                     continue;
-                if (!TryGetClosedRing(ent, out Point2d[] ring, out double area))
+                if (!TryGetKatSinirRing(tr, ent, out Point2d[] ring, out double area))
                     continue;
                 list.Add(new ClosedArea
                 {
@@ -1015,6 +1209,51 @@ namespace ST4Yardimci
             }
             list.Sort((a, b) => b.Area.CompareTo(a.Area)); // büyük (dış) önce
             return list;
+        }
+
+        /// <summary>Kapalı polyline veya ucu ucuna değen halka. Eski polyline dahil.</summary>
+        private static bool TryGetKatSinirRing(Transaction tr, Entity ent, out Point2d[] ring, out double area)
+        {
+            ring = null;
+            area = 0;
+            var verts = new List<Point2d>();
+            bool flagged = false;
+            if (ent is Polyline pl && pl.NumberOfVertices >= 3)
+            {
+                flagged = pl.Closed;
+                int n = pl.NumberOfVertices;
+                for (int i = 0; i < n; i++)
+                    verts.Add(pl.GetPoint2dAt(i));
+            }
+            else if (ent is Polyline2d p2)
+            {
+                flagged = p2.Closed;
+                foreach (ObjectId vid in p2)
+                {
+                    try
+                    {
+                        if (tr.GetObject(vid, OpenMode.ForRead) is Vertex2d v)
+                            verts.Add(new Point2d(v.Position.X, v.Position.Y));
+                    }
+                    catch { }
+                }
+            }
+            else
+                return false;
+
+            int count = verts.Count;
+            if (!flagged)
+            {
+                if (count < 4 || verts[0].GetDistanceTo(verts[count - 1]) > 1.0)
+                    return false;
+                count--;
+            }
+            if (count < 3) return false;
+            ring = new Point2d[count];
+            for (int i = 0; i < count; i++)
+                ring[i] = verts[i];
+            area = Math.Abs(RingSignedArea(ring));
+            return area > 1.0;
         }
 
         private static bool PointInsideMesnetBody(List<ClosedArea> areas, Point3d p)
@@ -2210,97 +2449,307 @@ namespace ST4Yardimci
         }
 
         /// <summary>
-        /// X: iki kırmızı çizginin altı düz, arası pilye, üstü kenar ilave / orta montaj.
-        /// Y: bakış yönü (düşey yazıda üst = sol, alt = sağ). Sağ = düz, ara = pilye,
-        /// sol kenar = ilave, sol merkez = montaj.
+        /// Poligon içi: çift çizginin altı düz, arası pilye, üstü montaj.
+        /// Üstteki yazılardan her uca en yakın olan ilavedir.
+        /// X’te yukarı ekran +Y, Y’de bakış solu. Katman tersse çizgiler yer değiştirir.
         /// </summary>
         private static void AssignXGprFromKirmiziCizgi(
-            ref SpanRec span, AltDuzAlanModel model, List<GprSteelRec> notes, Vector3d u,
-            Polyline opening)
+            ref SpanRec span, List<GprSteelRec> notes, Vector3d u, Polyline opening)
         {
-            if (EtkinYon == DonatiYonu.Serbest || notes == null || notes.Count == 0) return;
-            if (_kirmiziGprCizgi == null || _kirmiziGprCizgi.Count == 0) return;
-            bool hasFace = TryFaceContaining(model, span.Mid, out var face);
-            if (opening == null && !hasFace) return;
-
-            double spanLen = span.LeftInner.DistanceTo(span.RightInner);
-            Vector3d ax = u.GetNormal();
-            var inside = new List<GprSteelRec>();
-            foreach (GprSteelRec n0 in notes)
+            if (EtkinYon == DonatiYonu.Serbest) return;
+            if (!TryZoneGpr(span, notes, u, opening, out List<GprSteelRec> zoned))
             {
-                if (NoteInOpening(opening, face, n0.Pos, span.LeftInner, ax, spanLen))
-                    inside.Add(n0);
+                SlabInfo empty = span.Slab;
+                empty.GprSteels = new List<GprSteelRec>();
+                span.Slab = empty;
+                return;
             }
-            if (inside.Count == 0) return;
+            SlabInfo info = span.Slab;
+            info.GprSteels = zoned;
+            span.Slab = info;
+        }
+
+        private static bool TryZoneGpr(
+            SpanRec span, List<GprSteelRec> notes, Vector3d u, Polyline opening,
+            out List<GprSteelRec> zoned)
+        {
+            zoned = null;
+            if (notes == null || opening == null || _kirmiziGprCizgi == null) return false;
+
+            var inside = new List<GprSteelRec>();
+            for (int i = 0; i < notes.Count; i++)
+            {
+                if (PolyContains(opening, notes[i].Pos))
+                    inside.Add(notes[i]);
+            }
+            if (inside.Count == 0) return false;
 
             KirmiziGprCizgi ust = default, alt = default;
-            double bestU = -1, bestA = -1;
+            double bestU = 0, bestA = 0;
             foreach (KirmiziGprCizgi c in _kirmiziGprCizgi)
             {
                 if (!c.Active) continue;
-                if (!LineOverOpening(c, opening, face, span.LeftInner, ax, spanLen)) continue;
-                double len = OverlapOnSpan(c.A, c.B, span.LeftInner, ax, spanLen);
-                if (c.Ust && len > bestU) { bestU = len; ust = c; }
-                if (!c.Ust && len > bestA) { bestA = len; alt = c; }
+                double chord = ChordInsidePolyline(c.A, c.B, opening);
+                if (chord <= 0) continue;
+                if (c.Ust && chord > bestU) { bestU = chord; ust = c; }
+                if (!c.Ust && chord > bestA) { bestA = chord; alt = c; }
             }
-            if (bestU < 10.0 || bestA < 10.0) return;
+            if (bestU <= 0 || bestA <= 0) return false;
 
+            Vector3d up = EtkinYon == DonatiYonu.Y ? BarUpNormal(u) : Vector3d.YAxis;
             Point3d ma = Mid(alt.A, alt.B);
             Point3d mu = Mid(ust.A, ust.B);
-            Vector3d up;
-            double yUst;
-            if (EtkinYon == DonatiYonu.Y)
+            if ((mu - ma).DotProduct(up) < 0)
             {
-                // Düşey yazı: bakış üstü −X (sol), bakış altı +X (sağ) = düz.
-                // 90° üstü Y'de aynı sol taraf (StabilizeUpNormal orada sağı seçer).
-                up = BarUpNormal(u);
-                Point3d o = Mid(ma, mu);
-                if ((mu - o).DotProduct(up) < (ma - o).DotProduct(up))
-                {
-                    Point3d tmp = mu;
-                    mu = ma;
-                    ma = tmp;
-                }
-                yUst = (mu - ma).DotProduct(up);
+                Point3d tmp = mu;
+                mu = ma;
+                ma = tmp;
+                KirmiziGprCizgi swap = ust;
+                ust = alt;
+                alt = swap;
             }
-            else
-            {
-                up = mu - ma;
-                if (up.Length < 3.0) return;
-                up = up.GetNormal();
-                yUst = (mu - ma).DotProduct(up);
-            }
-            if (yUst < 3.0) return;
+            double yUst = (mu - ma).DotProduct(up);
+            if (yUst <= 1e-6) return false;
 
             for (int i = 0; i < inside.Count; i++)
             {
                 GprSteelRec g = inside[i];
                 double y = (g.Pos - ma).DotProduct(up);
-                double t = spanLen > 1.0
-                    ? (g.Pos - span.LeftInner).DotProduct(ax) / spanLen
-                    : 0.5;
-                // Kiriş üstündeki uç yazısı da ilave (poligon dışında kalsa bile).
-                bool endIlave = (t < 0.18 || t > 0.82) && y >= yUst * 0.35;
-                if (endIlave)
-                {
-                    g.Kind = t < 0.5 ? GprSteelKind.SolIlave : GprSteelKind.SagIlave;
-                }
-                else if (y < yUst * 0.22)
+                if (y < 0)
                     g.Kind = GprSteelKind.Duz;
-                else if (y < yUst * 0.85)
+                else if (y <= yUst)
                     g.Kind = GprSteelKind.Pilye;
-                else if (t < 0.38)
-                    g.Kind = GprSteelKind.SolIlave;
-                else if (t > 0.62)
-                    g.Kind = GprSteelKind.SagIlave;
                 else
                     g.Kind = GprSteelKind.Montaj;
                 inside[i] = g;
             }
 
-            SlabInfo info = span.Slab;
-            info.GprSteels = inside;
-            span.Slab = info;
+            // İlave: üst çizgi × poligon kenarı kesişiminde, üst çizginin üstündeki (çizgi üstü dahil) yazı.
+            // Kesişim bölgesinde yazı yoksa başka yerden çalma.
+            if (!TryGuidePolyEndHits(ust, opening, span.LeftInner, span.RightInner,
+                    out Point3d hitL, out Point3d hitR))
+            {
+                zoned = inside;
+                return true;
+            }
+
+            int NoteIndexOf(ObjectId id)
+            {
+                for (int k = 0; k < inside.Count; k++)
+                    if (inside[k].Id == id) return k;
+                return -1;
+            }
+
+            // Bölge: iki kesişim arasının yarısı. Orta montaj yazısı uç ilavesi olmasın.
+            double half = hitL.DistanceTo(hitR) * 0.5;
+            if (half < 1.0) half = Math.Max(span.L * 0.5, 1.0);
+            Point3d midSpan = Mid(span.LeftInner, span.RightInner);
+            Vector3d along = span.RightInner - span.LeftInner;
+            double spanLen = along.Length;
+            Vector3d ax = spanLen > 1e-9 ? along / spanLen : u;
+
+            int PickIlaveAtHit(Point3d hit, Point3d otherHit)
+            {
+                int best = -1;
+                double bestD = double.MaxValue;
+                for (int n = 0; n < notes.Count; n++)
+                {
+                    Point3d p = notes[n].Pos;
+                    double y = (p - ma).DotProduct(up);
+                    // Yazı kutusu üst çizgiye oturabilir; çizgi altı (pilye/düz) alınmaz.
+                    if (y < yUst - 3.0) continue;
+                    double d = p.DistanceTo(hit);
+                    if (d >= p.DistanceTo(otherHit)) continue;
+                    if (d > half) continue;
+                    // Orta montaj: kesişimden çok açıklık ortasına yakınsa ilave değil.
+                    if (d >= p.DistanceTo(midSpan)) continue;
+                    if (d < bestD) { bestD = d; best = n; }
+                }
+                return best;
+            }
+
+            int nLeft = PickIlaveAtHit(hitL, hitR);
+            int nRight = PickIlaveAtHit(hitR, hitL);
+            if (nLeft >= 0 && nRight >= 0 && notes[nLeft].Id == notes[nRight].Id)
+            {
+                if (notes[nLeft].Pos.DistanceTo(hitL) <= notes[nLeft].Pos.DistanceTo(hitR))
+                    nRight = -1;
+                else
+                    nLeft = -1;
+            }
+
+            void ApplyIlave(int noteIdx, bool leftSide)
+            {
+                if (noteIdx < 0) return;
+                GprSteelKind kind = leftSide ? GprSteelKind.SolIlave : GprSteelKind.SagIlave;
+                int at = NoteIndexOf(notes[noteIdx].Id);
+                if (at >= 0)
+                {
+                    GprSteelRec g = inside[at];
+                    g.Kind = kind;
+                    inside[at] = g;
+                }
+                else
+                {
+                    GprSteelRec g = notes[noteIdx];
+                    g.Kind = kind;
+                    inside.Add(g);
+                }
+            }
+            ApplyIlave(nLeft, true);
+            ApplyIlave(nRight, false);
+
+            // Uç bandındaki (ilave bölgesi) montaj kalmasın → düz/montaj çalmasın.
+            if (spanLen > 1e-6)
+            {
+                for (int i = 0; i < inside.Count; i++)
+                {
+                    GprSteelRec g = inside[i];
+                    if (g.Kind != GprSteelKind.Montaj
+                        && g.Kind != GprSteelKind.Duz
+                        && g.Kind != GprSteelKind.Pilye)
+                        continue;
+                    if (g.Kind == GprSteelKind.SolIlave || g.Kind == GprSteelKind.SagIlave)
+                        continue;
+                    double t = (g.Pos - span.LeftInner).DotProduct(ax) / spanLen;
+                    if (t >= 0.22 && t <= 0.78) continue;
+                    // Düz/pilye uçta kalmışsa orta türden çıkar (ilave değilse unused).
+                    if (g.Kind == GprSteelKind.Duz || g.Kind == GprSteelKind.Pilye
+                        || g.Kind == GprSteelKind.Montaj)
+                    {
+                        g.Kind = GprSteelKind.Unknown;
+                        inside[i] = g;
+                    }
+                }
+            }
+
+            zoned = inside;
+            return true;
+        }
+
+        /// <summary>
+        /// Üst GPR çizgisinin poligon kenarlarıyla kesişimleri; sol/sağ uca en yakın iki nokta.
+        /// </summary>
+        private static bool TryGuidePolyEndHits(
+            KirmiziGprCizgi ust, Polyline pl, Point3d leftInner, Point3d rightInner,
+            out Point3d hitL, out Point3d hitR)
+        {
+            hitL = default;
+            hitR = default;
+            if (pl == null) return false;
+            int n = pl.NumberOfVertices;
+            if (n < 2) return false;
+            int segs = pl.Closed ? n : n - 1;
+            var hits = new List<Point3d>();
+            for (int i = 0; i < segs; i++)
+            {
+                Point3d a = pl.GetPoint3dAt(i);
+                Point3d b = pl.GetPoint3dAt((i + 1) % n);
+                if (TryLineSegHit(ust.A, ust.B, a, b, out Point3d h))
+                    hits.Add(h);
+            }
+            if (hits.Count == 0) return false;
+            int iL = 0, iR = 0;
+            double dL = double.MaxValue, dR = double.MaxValue;
+            for (int i = 0; i < hits.Count; i++)
+            {
+                double dl = hits[i].DistanceTo(leftInner);
+                double dr = hits[i].DistanceTo(rightInner);
+                if (dl < dL) { dL = dl; iL = i; }
+                if (dr < dR) { dR = dr; iR = i; }
+            }
+            if (iL == iR && hits.Count > 1)
+            {
+                // Tek nokta her iki uca da en yakınsa diğer uca ikinci en yakını ver.
+                int i2 = -1;
+                double d2 = double.MaxValue;
+                Point3d other = dL <= dR ? rightInner : leftInner;
+                for (int i = 0; i < hits.Count; i++)
+                {
+                    if (i == iL) continue;
+                    double d = hits[i].DistanceTo(other);
+                    if (d < d2) { d2 = d; i2 = i; }
+                }
+                if (i2 >= 0)
+                {
+                    if (dL <= dR) iR = i2;
+                    else iL = i2;
+                }
+            }
+            hitL = hits[iL];
+            hitR = hits[iR];
+            return true;
+        }
+
+        /// <summary>Sonsuz doğru (la–lb) ile segment (sa–sb) kesişimi.</summary>
+        private static bool TryLineSegHit(
+            Point3d la, Point3d lb, Point3d sa, Point3d sb, out Point3d hit)
+        {
+            hit = default;
+            double rx = lb.X - la.X, ry = lb.Y - la.Y;
+            double sx = sb.X - sa.X, sy = sb.Y - sa.Y;
+            double den = rx * sy - ry * sx;
+            if (Math.Abs(den) < 1e-8) return false;
+            double qx = sa.X - la.X, qy = sa.Y - la.Y;
+            double t = (qx * sy - qy * sx) / den;
+            double uu = (qx * ry - qy * rx) / den;
+            if (uu < -1e-6 || uu > 1.0 + 1e-6) return false;
+            hit = new Point3d(la.X + t * rx, la.Y + t * ry, 0);
+            return true;
+        }
+
+        private static Point3d CloserEnd(KirmiziGprCizgi c, Point3d target)
+        {
+            return c.A.DistanceTo(target) <= c.B.DistanceTo(target) ? c.A : c.B;
+        }
+
+        private static double ChordInsidePolyline(Point3d a, Point3d b, Polyline pl)
+        {
+            if (pl == null) return 0;
+            bool aIn = PolyContains(pl, a);
+            bool bIn = PolyContains(pl, b);
+            var ts = new List<double>();
+            if (aIn) ts.Add(0);
+            if (bIn) ts.Add(1);
+            int n = pl.NumberOfVertices;
+            if (n < 2) return 0;
+            int segs = pl.Closed ? n : n - 1;
+            for (int i = 0; i < segs; i++)
+            {
+                Point3d p = pl.GetPoint3dAt(i);
+                Point3d q = pl.GetPoint3dAt((i + 1) % n);
+                if (TrySegmentT(a, b, p, q, out double t))
+                    ts.Add(t);
+            }
+            if (ts.Count == 0) return 0;
+            ts.Sort();
+            double lineLen = a.DistanceTo(b);
+            double len = 0;
+            for (int i = 0; i + 1 < ts.Count; i++)
+            {
+                double t0 = ts[i], t1 = ts[i + 1];
+                if (t1 - t0 < 1e-6) continue;
+                Point3d mid = a + (b - a) * ((t0 + t1) * 0.5);
+                if (PolyContains(pl, mid))
+                    len += (t1 - t0) * lineLen;
+            }
+            return len;
+        }
+
+        private static bool TrySegmentT(Point3d a, Point3d b, Point3d c, Point3d d, out double t)
+        {
+            t = 0;
+            double rx = b.X - a.X, ry = b.Y - a.Y;
+            double sx = d.X - c.X, sy = d.Y - c.Y;
+            double den = rx * sy - ry * sx;
+            if (Math.Abs(den) < 1e-8) return false;
+            double qx = c.X - a.X, qy = c.Y - a.Y;
+            t = (qx * sy - qy * sx) / den;
+            double uu = (qx * ry - qy * rx) / den;
+            if (t < -1e-6 || t > 1.0 + 1e-6 || uu < -1e-6 || uu > 1.0 + 1e-6) return false;
+            if (t < 0) t = 0;
+            else if (t > 1) t = 1;
+            return true;
         }
 
         /// <summary>
@@ -3124,15 +3573,29 @@ namespace ST4Yardimci
         }
 
         /// <summary>
-        /// Mesnet demiri iki döşemenin arasında, kestiği kiriş/perde/kolon çizgisinin üstündedir.
-        /// İlave yazısı o çizginin üzerinde aranır ve kopyalanır.
-        /// Aynı mesnette iki yazı varsa 1 m'deki As büyük olan kopyalanır, küçüğü silinir.
+        /// Üst ilave yazısı bu döşemenin: poligonun içi, ya da kiriş üstünde 120 cm
+        /// ve en yakın döşeme adı bu açıklık. Yandaki döşemenin yazısı alınmaz.
+        /// </summary>
+        private static bool IlaveTextOfThisSlab(
+            Point3d p, Polyline opening, List<SlabTextRec> slabTexts, string slabName)
+        {
+            if (opening != null && PolyContains(opening, p)) return true;
+            if (opening != null && DistToPolyline(opening, p) > 120.0) return false;
+            if (!string.IsNullOrEmpty(slabName) && !NearestSlabIs(p, slabTexts, slabName))
+                return false;
+            return true;
+        }
+
+        /// <summary>
+        /// Mesnet demiri iki döşemenin arasında, kestiği kiriş çizgisinin üstündedir.
+        /// Yazı bu döşemenin poligonunda veya 120 cm yakınında olmalıdır; yandaki döşemenin ilavesi kopyalanmaz.
         /// </summary>
         private static bool TryCopyIlaveOnMesnetLine(
             Transaction tr,
             List<GprSteelRec> notes, List<RawSeg> segs,
             Point3d atFace, Vector3d u, Vector3d up,
-            ref int adet, ref int cap, ref int aralik)
+            ref int adet, ref int cap, ref int aralik,
+            Polyline opening, List<SlabTextRec> slabTexts, string slabName)
         {
             if (notes == null || notes.Count == 0 || segs == null || segs.Count == 0) return false;
             Vector3d ax = u.Length > 1e-9 ? u.GetNormal() : Vector3d.XAxis;
@@ -3143,6 +3606,7 @@ namespace ST4Yardimci
             for (int i = 0; i < notes.Count; i++)
             {
                 Point3d p = notes[i].Pos;
+                if (!IlaveTextOfThisSlab(p, opening, slabTexts, slabName)) continue;
                 double upCm = (p - atFace).DotProduct(nn);
                 if (upCm < -200.0 || upCm > 550.0) continue;
                 bool onBeam = false;
@@ -3230,7 +3694,10 @@ namespace ST4Yardimci
         private static void MarkPark(ObjectId id)
         {
             if (!id.IsNull && id.IsValid && !id.IsErased)
+            {
                 _parkBelow.Add(id);
+                _gprTransferred.Add(id);
+            }
         }
 
         private static bool HasGprKind(List<GprSteelRec> notes, GprSteelKind kind)
@@ -3267,7 +3734,7 @@ namespace ST4Yardimci
             return mine != null || myD < 1.0e9;
         }
 
-        /// <summary>Düz/pilye: yalnız bu döşemenin yazısı kopyalanır ve taşınır.</summary>
+        /// <summary>Düz/pilye: yalnız bu döşemenin orta bant yazısı kopyalanır ve taşınır.</summary>
         private static bool TakeOwnedGpr(
             List<GprSteelRec> notes, Point3d near, GprSteelKind want,
             ref int adet, ref int cap, ref int aralik,
@@ -3276,13 +3743,15 @@ namespace ST4Yardimci
         {
             if (notes == null || notes.Count == 0) return false;
             double len = spanLeft.DistanceTo(spanRight);
-            Vector3d ax = spanAlong.Length > 1e-9 ? spanAlong.GetNormal() : Vector3d.XAxis;
+            Vector3d ax = len > 1e-9 ? (spanRight - spanLeft) / len : spanAlong;
+            if (ax.LengthSqrd > 1e-12) ax = ax.GetNormal();
             int best = -1;
             double bestD = double.MaxValue;
             for (int i = 0; i < notes.Count; i++)
             {
                 if (notes[i].Kind != want) continue;
                 if (!SpanOwnsGprText(notes[i].Pos, spanIndex, spans, ownPoly)) continue;
+                // Uç ilave bandı (t&lt;0.22 / t&gt;0.78) düz/pilye/montaj sayılmaz.
                 if (len > 1e-6)
                 {
                     double t = (notes[i].Pos - spanLeft).DotProduct(ax) / len;
@@ -3335,7 +3804,7 @@ namespace ST4Yardimci
             }
         }
 
-        /// <summary>Pilye ve düz ikisi de kopyalandıysa bu açıklığın kırmızı ve mavi çizgileri.</summary>
+        /// <summary>Bu açıklığın üzerinden geçen kırmızı ve mavi GPR çizgileri 10000 cm aşağı iner.</summary>
         private static void ParkGuidesOverSpan(
             SpanRec span, AltDuzAlanModel model, Polyline opening, Vector3d u)
         {
@@ -3345,16 +3814,94 @@ namespace ST4Yardimci
             Vector3d ax = u.Length > 1e-9 ? u.GetNormal() : Vector3d.XAxis;
             foreach (KirmiziGprCizgi c in _kirmiziGprCizgi)
             {
-                // X'te yalnız kırmızı, Y'de yalnız mavi. Diğer renk yerinde kalır.
-                if (!c.Active) continue;
-                if (!LineOverOpening(c, opening, face, span.LeftInner, ax, spanLen)) continue;
+                if (!GuideOverThisSpan(c, opening, face, span.LeftInner, ax, spanLen)) continue;
                 MarkPark(c.Id);
+            }
+        }
+
+        /// <summary>Çubuğa paralel bant ya da açıklığı kesen dik çizgi (diğer renk).</summary>
+        private static bool GuideOverThisSpan(
+            KirmiziGprCizgi c, Polyline opening, NetTopologySuite.Geometries.Polygon face,
+            Point3d left, Vector3d ax, double spanLen)
+        {
+            if (LineOverOpening(c, opening, face, left, ax, spanLen)) return true;
+            if (opening == null) return false;
+            if (PolyContains(opening, c.A) || PolyContains(opening, c.B)) return true;
+            return SegmentCutsPolyline(c.A, c.B, opening);
+        }
+
+        private static bool SegmentCutsPolyline(Point3d a, Point3d b, Polyline pl)
+        {
+            if (pl == null) return false;
+            int n = pl.NumberOfVertices;
+            if (n < 2) return false;
+            int segs = pl.Closed ? n : n - 1;
+            for (int i = 0; i < segs; i++)
+            {
+                Point3d p = pl.GetPoint3dAt(i);
+                Point3d q = pl.GetPoint3dAt((i + 1) % n);
+                if (SegmentsCross(a, b, p, q)) return true;
+            }
+            return false;
+        }
+
+        private static bool SegmentsCross(Point3d a, Point3d b, Point3d c, Point3d d)
+        {
+            double rx = b.X - a.X, ry = b.Y - a.Y;
+            double sx = d.X - c.X, sy = d.Y - c.Y;
+            double den = rx * sy - ry * sx;
+            if (Math.Abs(den) < 1e-8) return false;
+            double qx = c.X - a.X, qy = c.Y - a.Y;
+            double t = (qx * sy - qy * sx) / den;
+            double uu = (qx * ry - qy * rx) / den;
+            return t >= -1e-6 && t <= 1.0 + 1e-6 && uu >= -1e-6 && uu <= 1.0 + 1e-6;
+        }
+
+        private static bool TryGetClassedIlave(SpanRec sp, bool sagSide, out GprSteelRec found)
+        {
+            found = default;
+            List<GprSteelRec> notes = sp.Slab.GprSteels;
+            if (notes == null || notes.Count == 0) return false;
+            GprSteelKind want = sagSide ? GprSteelKind.SagIlave : GprSteelKind.SolIlave;
+            Point3d near = sagSide ? sp.RightInner : sp.LeftInner;
+            return TryFindGprSteel(notes, near, want, out found);
+        }
+
+        /// <summary>
+        /// Bu rengin poligon içindeki GPR yazılarının hepsi yeni donatıya aktarıldıysa çift çizgi 10000 cm iner.
+        /// </summary>
+        private static void ParkGuidePairIfTextsConsumed(
+            List<SpanRec> spans, Polyline[] ownPoly, List<GprSteelRec> notes)
+        {
+            if (EtkinYon == DonatiYonu.Serbest || spans == null || ownPoly == null || notes == null)
+                return;
+            if (_kirmiziGprCizgi == null) return;
+            int n = Math.Min(spans.Count, ownPoly.Length);
+            for (int i = 0; i < n; i++)
+            {
+                if (!spans[i].InPick) continue;
+                Polyline op = ownPoly[i];
+                if (op == null) continue;
+                int total = 0, done = 0;
+                for (int k = 0; k < notes.Count; k++)
+                {
+                    if (!PolyContains(op, notes[k].Pos)) continue;
+                    total++;
+                    if (_gprTransferred.Contains(notes[k].Id)) done++;
+                }
+                if (total == 0 || done != total) continue;
+                foreach (KirmiziGprCizgi c in _kirmiziGprCizgi)
+                {
+                    if (!c.Active) continue;
+                    if (ChordInsidePolyline(c.A, c.B, op) <= 0) continue;
+                    MarkPark(c.Id);
+                }
             }
         }
 
         private static void FlushParkBelow(Transaction tr)
         {
-            if (_parkBelow.Count == 0) return;
+            if (!ParkBelowEnabled || _parkBelow.Count == 0) return;
             var move = Matrix3d.Displacement(new Vector3d(0, -ParkBelowCm, 0));
             foreach (ObjectId id in _parkBelow)
             {
@@ -4074,7 +4621,8 @@ namespace ST4Yardimci
 
         private static string FormatLabel(int adet, int capMm, int aralikCm, double boyCm, bool upper)
         {
-            int boy = (int)Math.Round(boyCm);
+            // DONATIBOYU 5 cm kuralı (artık ≤1 → alta, fazlası üste); çizgi boyu değişmez.
+            int boy = (int)DonatiBoyuRunner.RoundLen(boyCm, DonatiBoyuYuvarlama.BesCm);
             string lMark = upper ? "L" : "l";
             // Serbest: adet yazılmaz → ø12/20 L=350. X/Y: GPR adedi durur.
             if (CizgiselMod && EtkinYon == DonatiYonu.Serbest)
@@ -4246,15 +4794,20 @@ namespace ST4Yardimci
             bool pilyeOrtada = false)
         {
             if (path == null || path.Count < 2) return;
-            List<StockSeg> pieces = SplitPathToStock(tr, btr, donatiLayer, path, capMm, up, pilyeOrtada);
+            IList<Point3d> drawPath = ClipPathToKatSinir(path);
+            if (drawPath == null || drawPath.Count < 2) return;
+            List<StockSeg> pieces = SplitPathToStock(tr, btr, donatiLayer, drawPath, capMm, up, pilyeOrtada);
             if (pieces.Count == 0) return;
-            double cover = pieces.Count == 1 ? pieces[0].Boy : PathLengthOf(path);
+            double cover = pieces.Count == 1 ? pieces[0].Boy : PathLengthOf(drawPath);
             if (cover < minLen) return;
 
             for (int i = 0; i < pieces.Count; i++)
             {
                 StockSeg pc = pieces[i];
                 Point3d at = pieces.Count == 1 ? singleLabelAt : pc.Mid;
+                if (pieces.Count == 1 && _katSinirClamp != null && _katSinirClamp.Count > 0
+                    && !PointInsideKatSinir(_katSinirClamp, at))
+                    at = pc.Mid;
                 string label = FormatLabel(adet, capMm, aralik, pc.Boy, upper);
                 ObjectId lbl = PlaceLabel(tr, btr, db, at, label, yaziLayer, yaziStyleId, textAlong, up,
                     missingGprMatch: missingGprMatch);
@@ -5216,8 +5769,6 @@ namespace ST4Yardimci
             {
                 PickSteel(sp, out adet, out cap, out aralik);
                 Point3d near = sagSide ? sp.RightInner : sp.LeftInner;
-                if (TryCopyIlaveOnMesnetLine(tr, gprNotes, mesnetSegs, near, u, n, ref adet, ref cap, ref aralik))
-                    return true;
                 return TryApplyGprIlaveSteel(sp.Slab.GprSteels, near, sagSide, adetRefLen, ref adet, ref cap, ref aralik);
             }
 
@@ -5227,8 +5778,6 @@ namespace ST4Yardimci
             {
                 PickSteel(sp, out adet, out cap, out aralik);
                 Point3d near = sagSide ? sp.RightInner : sp.LeftInner;
-                if (TryCopyIlaveOnMesnetLine(tr, gprNotes, mesnetSegs, near, u, n, ref adet, ref cap, ref aralik))
-                    return true;
                 return ApplyKonsolSteelWithGprGate(
                     sp.Slab.GprSteels, near, sagSide, konsolBoy, adetRefLen,
                     ref adet, ref cap, ref aralik);
@@ -5346,8 +5895,24 @@ namespace ST4Yardimci
 
                 int ad = 1, cp = 8, ar = 20;
                 bool contGpr = false;
-                // Sürekli ilave: sol açıklığın sağ ilavesi tercih; yoksa sağın sol ilavesi
-                if (leftDrawn && leftSp.HasValue)
+                GprSteelRec gL = default, gR = default;
+                bool hasL = leftSp.HasValue && TryGetClassedIlave(leftSp.Value, true, out gL);
+                bool hasR = rightSp.HasValue && TryGetClassedIlave(rightSp.Value, false, out gR);
+                if (hasL && hasR)
+                {
+                    double asL = AsPerMeterCm2(gL.CapMm, gL.AralikCm);
+                    double asR = AsPerMeterCm2(gR.CapMm, gR.AralikCm);
+                    GprSteelRec win = asL >= asR ? gL : gR;
+                    if (win.CapMm > 0) cp = win.CapMm;
+                    if (win.AralikCm > 0) ar = win.AralikCm;
+                    if (win.Adet > 0) ad = win.Adet;
+                    else if (ar > 0)
+                        ad = Math.Max(1, (int)Math.Round(Math.Max(Ll, Lr) * 0.25 / ar) + 1);
+                    MarkPark(gL.Id);
+                    MarkPark(gR.Id);
+                    contGpr = true;
+                }
+                else if (leftDrawn && leftSp.HasValue)
                     contGpr = PickIlaveSteel(leftSp.Value, sagSide: true, Math.Max(Ll, Lr) * 0.25, out ad, out cp, out ar);
                 else if (rightDrawn && rightSp.HasValue)
                     contGpr = PickIlaveSteel(rightSp.Value, sagSide: false, Math.Max(Ll, Lr) * 0.25, out ad, out cp, out ar);
@@ -5633,6 +6198,138 @@ namespace ST4Yardimci
             lt.Add(rec);
             tr.AddNewlyCreatedDBObject(rec, true);
             return name;
+        }
+
+        private static bool BoundaryLayerOn(string name)
+        {
+            if (IsMesnetLayer(name, null)) return true;
+            int bar = string.IsNullOrEmpty(name) ? -1 : name.LastIndexOf('|');
+            return bar >= 0 && bar + 1 < name.Length && IsMesnetLayer(name.Substring(bar + 1), null);
+        }
+
+        /// <summary>Mesnet dışı katmanları kapatır. Regen yok; TraceBoundary katman tablosunu okur.</summary>
+        private static List<ObjectId> HideNonMesnetForBoundary(Transaction tr, Database db, out ObjectId prevClayer)
+        {
+            prevClayer = db.Clayer;
+            var hidden = new List<ObjectId>();
+            var lt = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
+            bool currentOk = false;
+            try
+            {
+                var cur = (LayerTableRecord)tr.GetObject(db.Clayer, OpenMode.ForRead);
+                currentOk = BoundaryLayerOn(cur.Name) && !cur.IsOff && !cur.IsFrozen;
+            }
+            catch { currentOk = false; }
+            if (!currentOk)
+            {
+                foreach (ObjectId id in lt)
+                {
+                    var rec = (LayerTableRecord)tr.GetObject(id, OpenMode.ForRead);
+                    if (!BoundaryLayerOn(rec.Name) || rec.IsOff || rec.IsFrozen) continue;
+                    db.Clayer = id;
+                    break;
+                }
+            }
+            foreach (ObjectId id in lt)
+            {
+                if (id == db.Clayer) continue;
+                LayerTableRecord rec;
+                try { rec = (LayerTableRecord)tr.GetObject(id, OpenMode.ForRead); }
+                catch { continue; }
+                if (BoundaryLayerOn(rec.Name) || rec.IsOff || rec.IsFrozen) continue;
+                try
+                {
+                    rec.UpgradeOpen();
+                    rec.IsOff = true;
+                    hidden.Add(id);
+                }
+                catch { }
+            }
+            return hidden;
+        }
+
+        private static void RestoreBoundaryLayers(Transaction tr, Database db, List<ObjectId> hidden, ObjectId prevClayer)
+        {
+            if (hidden != null)
+            {
+                foreach (ObjectId id in hidden)
+                {
+                    try
+                    {
+                        var rec = (LayerTableRecord)tr.GetObject(id, OpenMode.ForWrite);
+                        rec.IsOff = false;
+                    }
+                    catch { }
+                }
+            }
+            if (!prevClayer.IsNull && prevClayer.IsValid)
+            {
+                try { db.Clayer = prevClayer; }
+                catch { }
+            }
+        }
+
+        /// <summary>
+        /// BOUNDARY (ada kapalı). Ada açıkken kolon/kiriş kapalıları
+        /// "Error analyzing internal islands" diyaloğu üretebiliyor; sonuç yine de gelebilir.
+        /// </summary>
+        private static Polyline TraceSlabBoundary(Editor ed, Point3d seed, Vector3d n)
+        {
+            Polyline pl = TraceSmallestBoundary(ed, seed);
+            if (pl != null) return pl;
+            if (n.Length < 1e-9) return null;
+            Vector3d nn = n.GetNormal();
+            for (double s = 8.0; s <= 40.0; s += 8.0)
+            {
+                pl = TraceSmallestBoundary(ed, seed + nn * s);
+                if (pl != null) return pl;
+                pl = TraceSmallestBoundary(ed, seed - nn * s);
+                if (pl != null) return pl;
+            }
+            return null;
+        }
+
+        private static Polyline TraceSmallestBoundary(Editor ed, Point3d seed)
+        {
+            // detectIslands=false: iç ada analizi yok → diyalog yok; tohumun hücre sınırı alınır.
+            DBObjectCollection col;
+            try { col = ed.TraceBoundary(seed, false); }
+            catch { return null; }
+            if (col == null || col.Count == 0) return null;
+            Polyline best = null;
+            double bestArea = double.MaxValue;
+            foreach (DBObject obj in col)
+            {
+                if (!(obj is Polyline pl) || pl.NumberOfVertices < 3)
+                {
+                    obj?.Dispose();
+                    continue;
+                }
+                pl.Closed = true;
+                bool inside = PolyContains(pl, seed) || DistToPolyline(pl, seed) <= 1.0;
+                double area = RingArea(pl);
+                if (!inside || area < 20.0 || area >= bestArea)
+                {
+                    pl.Dispose();
+                    continue;
+                }
+                if (best != null) best.Dispose();
+                best = pl;
+                bestArea = area;
+            }
+            return best;
+        }
+
+        private static void ForceLayerVisible(Transaction tr, Database db, string name)
+        {
+            if (string.IsNullOrEmpty(name)) return;
+            var lt = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
+            if (!lt.Has(name)) return;
+            var rec = (LayerTableRecord)tr.GetObject(lt[name], OpenMode.ForRead);
+            if (!rec.IsOff && !rec.IsFrozen) return;
+            rec.UpgradeOpen();
+            rec.IsOff = false;
+            rec.IsFrozen = false;
         }
     }
 }

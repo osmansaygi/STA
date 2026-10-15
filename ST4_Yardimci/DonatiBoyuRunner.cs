@@ -18,6 +18,7 @@ namespace ST4Yardimci
     {
         const double MaxGap = 120;
         const double ParallelRad = 25.0 * Math.PI / 180.0;
+        const string MetrajPozApp = "ST4METRAJPOZ";
 
         private static readonly Regex LRx = new Regex(
             @"(?<prefix>[Ll]\s*=\s*)(?<val>\d+(?:[.,]\d+)?)",
@@ -90,6 +91,7 @@ namespace ST4Yardimci
                     }
                     else if (ent is Line || ent is Polyline || ent is Polyline2d)
                     {
+                        if (IsMetrajBalloon(ent)) continue;
                         if (ent is Curve c)
                             bars.Add(c);
                     }
@@ -290,6 +292,7 @@ namespace ST4Yardimci
             {
                 var ent = tr.GetObject(id, OpenMode.ForRead) as Entity;
                 if (ent == null || ent.IsErased) continue;
+                if (IsMetrajBalloon(ent)) continue;
                 if (ent is Line || ent is Polyline || ent is Polyline2d)
                 {
                     if (ent is Curve c)
@@ -297,6 +300,30 @@ namespace ST4Yardimci
                 }
             }
             return list;
+        }
+
+        /// <summary>Metraj poz balonu donatı çizgisi değildir; boyu ölçülmez.</summary>
+        private static bool IsMetrajBalloon(Entity ent)
+        {
+            if (ent == null) return false;
+            string layer = ent.Layer ?? "";
+            if (layer.IndexOf("POZ BALON", StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+            if (layer.IndexOf("HPOZ BALON", StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+            if (layer.IndexOf("POZ TARAMA", StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+            try
+            {
+                ResultBuffer rb = ent.GetXDataForApplication(MetrajPozApp);
+                if (rb == null) return false;
+                rb.Dispose();
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private static bool LabelLayerOk(string layer)
@@ -553,7 +580,7 @@ namespace ST4Yardimci
         /// <summary>
         /// Tam sayı. 5 cm tikliyse alt 5'li kata göre artık ≤ 1 cm ise alta, fazlası üste.
         /// </summary>
-        private static double RoundLen(double cm, DonatiBoyuYuvarlama y)
+        internal static double RoundLen(double cm, DonatiBoyuYuvarlama y)
         {
             if (cm < 0) cm = 0;
             if (y != DonatiBoyuYuvarlama.BesCm)

@@ -9,7 +9,8 @@ Debug damga: `ST4_Yardimci_20261016_012852` (`NETLOAD\`).
 ## Son düzeltme
 
 - **KURANGLEZ**: form Adet (metraj); L’li etiketlere çarpan önek (`3x2x14ø… L=…`).
-- **BAPANEL simgeler** (onaylı): 64 px, kalem 0.45 / 0.50 / 0.40. Sonraki simge değişikliğinde bu kalınlık kalsın.
+- **HASIRDONATI**: form + runner + gömülü HASIR/HASIRMETRAJ.
+- **BAPANEL simgeler** (onaylı): 64 px, kalem 0.45 / 0.50 / 0.40.
 
 ## Önceki
 
@@ -21,11 +22,13 @@ Debug damga: `ST4_Yardimci_20261016_012852` (`NETLOAD\`).
 ## Açık / test et
 
 - [ ] KURANGLEZ: plan/kesit etiket, bindirme ölçü, adet çarpanı
+- [ ] HASIRDONATI: alan seçimi, kenar kesim, bindirme
 - [ ] X/Y düz-pilye doğru; ilave komşu mesnetinden; çalma yok
 - [ ] DONATI ADET / DONATI OKU görsel
 
 ## Ana dosyalar
 
 - `ST4_Yardimci/KuranglezForm.cs` / `KuranglezRunner.cs`
+- `ST4_Yardimci/HasirDonatiForm.cs` / `HasirDonatiRunner.cs` / `HasirDonatiSettings.cs`
 - `ST4_Yardimci/DosemeDonatiRunner.cs`
 - `ST4_Yardimci/DosemeKonsolSettings.cs`

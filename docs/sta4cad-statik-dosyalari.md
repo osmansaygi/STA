@@ -42,14 +42,19 @@ Kayıt 16 = S1-01, kayıt 0 ile aynı donatı (3+2 Ø14, Ø10/15/8); kat yüksek
 
 | Ofset | KZ-01 | KZ-03 (kayıt 2) | Alan |
 |---|---|---|---|
-| 108 | 2, 12 | 2, 12 | montaj |
-| 112 | 3, 12 | 3, 14 | düz |
+| 108 | 2, 12 | 2, 12 | montaj (sürekli üst) |
+| 112 | 3, 12 | 3, 14 | düz (açıklık altı) |
+| 116, 120 | 0 | 0 | pilye — bu projede 61 kaydın hepsi 0 |
 | 124 | 0, 12 | 2, 12 | gövde |
 | 128 | 2, 12 | 0, 0 | sol üst ilave |
+| 132 | | | sol alt ilave |
 | 136 | 2, 12 | 1, 12 | sağ üst ilave |
-| 146 | 8 | 8 | etriye çapı |
-| 148 | 20 | 20 | etriye aralığı |
-| 150 | 9 | 9 | etriye üçüncü sayı (`Ø8/20/9`) |
+| 140 | | | sağ alt ilave |
+| 146 | 8 | 8 | etriye çapı mm |
+| 148 | 20 | 20 | etriye orta aralık cm |
+| 150 | 9 | 9 | sarılma aralığı cm. 0 ise tek aralık (`Ø8/20`). Bu projede 59 kayıtta sarılma var, 2 kayıtta 150=0 |
+
+Bu projedeki doluluk (61 kayıt): montaj 61, düz 61, pilye 0, gövde 17, sol üst 35, sağ üst 36, sol alt 1, sağ alt 0.
 
 Aynı kayıtta `float`: +8…+28 momentler, +40…+56 fcd=166.67, +60…+76 As (cm²), +100 Asw.
 
@@ -251,7 +256,7 @@ Kesişen bir sayı üç yerde durabiliyor. Örnek kiriş KZ-01 momenti 6.15 tm:
 | Aks, kolon/kiriş/perde/döşeme geometrisi | `.st4` | Zaten okunuyor |
 | Aks adı | `.AKS` | 1–5, A–G |
 | Kolon boyuna + etriye | **`.SMX`** ofset 161, metin kopyası `.GPR` | KOLONDATA bugün GPR metnini okuyor |
-| Kiriş donatısı | `.GPR` → KİRİŞ BETONARME | |
+| Kiriş donatısı | **`.KMX`** ofset 108, sıra = `.st4` `/Beams Data/` | GPR kiriş betonarme metin ikizidir; satır sırası kayabilir |
 | Döşeme donatısı | `.GPR` → DÖŞEME BETONARME | donatı planı (sağ kopya) |
 | Sürekli temel donatısı | `.GPR` → TEMEL BETONARME | |
 | Çap büyütme menüsü | `.BAR` | 8, 10, 12, 14 |
@@ -261,4 +266,48 @@ Kesişen bir sayı üç yerde durabiliyor. Örnek kiriş KZ-01 momenti 6.15 tm:
 | Çubuk kesit koordinatı | yok | GPR metninden üretilir |
 | Güncel FEA ağı | `*-K1.FEA` `*-K2.FEA` `.RAD` | tarih 24.08; 22.09 modeliyle birebir sayma |
 
-Okunmayan görünen dosyaların çoğu bozuk değil: STA4CAD’in tek duyarlıklı (float32) analiz çöplüğü. Metin kapısı `.st4` + `.GPR` + `.BAR` + `.AKS` + `.OPS`. Donatı seçimini taşıyan kapı `.GPR`.
+Okunmayan görünen dosyaların çoğu bozuk değil: STA4CAD’in tek duyarlıklı (float32) analiz çöplüğü. Metin kapısı `.st4` + `.GPR` + `.BAR` + `.AKS` + `.OPS`. Seçilen donatının kaydı `.KMX` `.SMX` `.DMX` `.TMX`; GPR bunların metin kopyasıdır.
+
+## Kiriş dosyaları (ayrı)
+
+Çerçeve kirişi. Eşleştirme isimle değil: **ST4 kiriş satır sırası = KMX kayıt numarası = BEA kayıt numarası**. GPR’de aynı kiriş `KZ-` (zemin) veya `K1-` (1. normal). 61 geometri = 61 KMX = 61 GPR `Mduz` satırı. 54 farklı isim; aynı numara iki açıklıkta iki kayıt olur.
+
+| Dosya | Kirişte ne işe yarar |
+|---|---|
+| `.st4` `/Beams Data/` | Kesit, aks, kaçıklık. Zemin 37 (101–137), 1. normal 24. Perde bayrağı yok. Donatı yok. |
+| `.KMX` | Seçilen donatı ve moment. Ofset tablosu yukarıda. Pilye yok. |
+| `.BEA` | 61 × 900 bayt kuvvet kaydı. Donatı cümlesi değil. Ofset **0** ve **8** (`int16`): sol / sağ düğüm no; **0** = o uç kolon düğümü değil. Ofset **36** (`int16`): uç tipi. Açıklık ortasına saplanan kirişin adı veya “var/yok” bayrağı yok. |
+| `.GPR` | KİRİŞ YÜK, STATİK, BETONARME, SEHİM, KESME GÜVENLİĞİ, ASKI DONATISI, KİRİŞ BETONARME OPSİYONLARI |
+| `.OPS` | Paspayı 5,5 cm, min çap 12/12/12/8, sehim L/360 ve L/240. Çap yeniden seçilmez. |
+| `.BAR` | Kullanılabilecek çaplar 8, 10, 12, 14 |
+| `.LOA` | Kirişe aktarılan çizgisel yükün ham hali |
+
+Çerçeve kirişi olmayanlar: `.THE` + `.TMX` sürekli temel kirişi; `/Walls/` + `.PDE` perde (donatı `.SMX`); `/Tie beams/` boş; `.FEA` döşeme ağı, kiriş donatısı tutmaz, tarihi 24.08.
+
+### Uç tipi (konsol / basit / sabit)
+
+GPR kiriş statik tablosunda, deprem satırının sol hücresindeki kutu sembolü. Sayısal karşılığı yalnız **`.BEA` ofset 36** (`int16`). `.st4` ve `.KMX` içinde bu alan yok. Kayıt sırası ST4 kiriş sırasıdır.
+
+Sembol iki ucu ayrı çizer: `├`/`┤` sabit, `┌`/`┐` basit, çizginin açık kalması konsol (serbest uç).
+
+| Kod | Sembol | Anlam | Bu projede |
+|---|---|---|---|
+| 0 | `├────┤` | iki uç sabit | 51 kiriş (KZ-01 dahil) |
+| 5 | `┌────┐` | iki uç basit | KZ-03, KZ-04, KZ-13, KZ-14 |
+| 1 | `┌────┤` | sol basit, sağ sabit | KZ-07 |
+| 2 | `├────┐` | sol sabit, sağ basit | KZ-08 |
+| 4 | `├─────` | sağ uç konsol | KZ-17, KZ-29 |
+| 3 | `─────┤` | sol uç konsol | KZ-19, KZ-31 |
+
+Açıklık ortasına kiriş saplanması bu ofsette yok. Tali kirişin kendi kaydında ilgili uç düğümü 0’dır (KZ-03, KZ-04, KZ-13, KZ-14 iki uç da 0). Ana kiriş saplama noktasında iki kayda bölünür; ortak uç yine düğüm 0’dır (KZ-22, KZ-20, KZ-21, KZ-26, KZ-27, KZ-28, K1-19). Konsol uç da düğüm 0 kullanır; ayrım ofset 36’dadır (3 veya 4). “Kim kime saplandı” listesi GPR **KİRİŞ ASKI DONATISI** tablosundadır (ör. KZ-22 ← KZ-03). Yeri santimetre olarak `.st4` kesişiminden çıkar.
+
+## Sehim tablosu (istendiğinde bu çizilecek)
+
+Kod henüz yok. Referans: `d:\projeler\projeler2026\ali_babaoglu\vakiflar\statik\VKF_01_ka1.dwg` — başlık **BODRUM KAT UZUN SÜRELİ TERS SEHİM TABLOSU mm**. Düzen: 4 sütun çifti `No | Sehim`. Önce o katın kirişleri, sonra döşemeleri. Değer mm, 1 ondalık.
+
+| Eleman | Dosya | Hangi sayı |
+|---|---|---|
+| Döşeme | `.GPR` → DÖŞEME STATİK HESAP SONUÇLARI | X ve Y sehiminden **büyük olan** (VKF bodrumda hep Y). X satırındaki `sehim < fmax` hücresi değil. 26/26 uydu. Örnek DB-01: çizim 0.8 = Y 0.80; X 0.39 < 9.58. |
+| Kiriş | `.BEA` | Kayıt 900 bayt, ofset **760**, float32, **metre × 1000**, 1 ondalık. Kayıt sırası = GPR kiriş listesi. Çok açıklıkta çizim tek sayı basar (KB-17: 11.135 / 11.135 / −0.155 → **11.1**). |
+
+VKF bodrum kirişinde 15/23 uydu (KB-01…11, KB-14, KB-17, KB-20, KB-22). Uymayanlar: KB-12 (çizim 8.6, BEA 1.035), KB-13, KB-15, KB-16, KB-18, KB-19, KB-21, KB-23. KB-12’nin 8.6 değeri bodrum BEA kayıtlarında yok. `.IDX` kiriş sehim başlığını listeler; bu GPR gövdesinde o sayfa yok. `.OPS` yalnız L/360 ve L/240 sınırıdır.

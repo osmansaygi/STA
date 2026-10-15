@@ -179,6 +179,7 @@ namespace ST4Yardimci
                 case "DOSEMEDONATI": return "Döşeme Donatı";
                 case "OTODONATI": return "Oto Donatı";
                 case "SEHPADONATI": return "Sehpa Donatısı";
+                case "HASIRDONATI": return "Hasır Donatı";
                 case "RADYEILAVE": return "Radye İlave";
                 case "TEMELHATILI": return "Temel Hatılı";
                 case "TEMELCEKURU": return "Temel Çukuru";

@@ -655,6 +655,12 @@ namespace ST4PlanIdCiz
             {
                 double z0 = baseCm + cf.BottomKotBinaGoreCm;
                 double z1 = z0 + (cf.HeightCm > 0 ? cf.HeightCm : 40.0);
+                if (cf.AmpatmanWidthCm > 0 && Math.Abs(cf.AmpatmanWidthCm - cf.WidthCm) > 1e-6 &&
+                    cf.AmpatmanHeightCm > 0 && cf.AmpatmanHeightCm < (z1 - z0) - 1e-6)
+                {
+                    var amp = AmpatmanFootprintPoly(cf);
+                    if (amp != null && !amp.IsEmpty) AddBinaGorunusPlan(faces, bakis, amp, z0, z0 + cf.AmpatmanHeightCm);
+                }
                 AddBinaGorunusPlan(faces, bakis, ContinuousFootprintPoly(cf), z0, z1);
                 var hat = HatilStripOnContinuousPoly(cf);
                 if (hat != null && cf.HatilLabelHeightCm > 0)
@@ -691,12 +697,7 @@ namespace ST4PlanIdCiz
             }
             if (z1 - z0 < 0.5) return;
 
-            Geometry solid = plan;
-            if (!solid.IsValid)
-            {
-                try { solid = solid.Buffer(0); }
-                catch { return; }
-            }
+            Geometry solid = PrepareForOverlay(plan);
             if (solid == null || solid.IsEmpty) return;
 
             for (int i = 0; i < solid.NumGeometries; i++)
@@ -766,18 +767,37 @@ namespace ST4PlanIdCiz
             }
         }
 
+        /// <summary>
+        /// Geçersiz poligonda Buffer(0) OverlayNG yığınını taşırıp AutoCAD'i kapatır.
+        /// Önce 0,01 cm ızgara, o da yetmezse GeometryFixer. Geçerli girdi aynen kalır.
+        /// </summary>
+        private static Geometry PrepareForOverlay(Geometry g)
+        {
+            if (g == null || g.IsEmpty) return g;
+            try
+            {
+                if (g.IsValid) return g;
+            }
+            catch { }
+            var reduced = ReducePrecisionSafe(g, 100.0);
+            if (reduced != null && !reduced.IsEmpty)
+            {
+                try { if (reduced.IsValid) return reduced; } catch { }
+                g = reduced;
+            }
+            try
+            {
+                var fixedG = NetTopologySuite.Geometries.Utilities.GeometryFixer.Fix(g);
+                if (fixedG != null && !fixedG.IsEmpty) return fixedG;
+            }
+            catch { }
+            return g;
+        }
+
         private static Geometry BinaGorunusPolygonal(Geometry g)
         {
             if (g == null || g.IsEmpty) return null;
-            try
-            {
-                if (!g.IsValid)
-                    g = g.Buffer(0);
-            }
-            catch
-            {
-                return null;
-            }
+            g = PrepareForOverlay(g);
             if (g == null || g.IsEmpty) return null;
             if (g is Polygon || g is MultiPolygon) return g;
 
@@ -796,6 +816,14 @@ namespace ST4PlanIdCiz
         {
             if (a == null || a.IsEmpty) return b;
             if (b == null || b.IsEmpty) return a;
+            a = PrepareForOverlay(a);
+            b = PrepareForOverlay(b);
+            // Büyük siluetlerde ham Union yığın taşırır. 0,1 cm ızgara çizimde görünmez.
+            if (a != null && b != null && a.NumPoints + b.NumPoints > 80)
+            {
+                a = ReducePrecisionSafe(a, 10.0) ?? a;
+                b = ReducePrecisionSafe(b, 10.0) ?? b;
+            }
             try { return a.Union(b); }
             catch
             {
@@ -810,6 +838,13 @@ namespace ST4PlanIdCiz
         {
             if (a == null || a.IsEmpty) return null;
             if (b == null || b.IsEmpty) return a;
+            a = PrepareForOverlay(a);
+            b = PrepareForOverlay(b);
+            if (a != null && b != null && a.NumPoints + b.NumPoints > 80)
+            {
+                a = ReducePrecisionSafe(a, 10.0) ?? a;
+                b = ReducePrecisionSafe(b, 10.0) ?? b;
+            }
             try { return a.Difference(b); }
             catch
             {

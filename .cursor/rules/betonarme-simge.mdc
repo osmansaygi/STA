@@ -1,0 +1,15 @@
+---
+description: Betonarme Tool simge çizgisi — kullanıcı 15.10.2026 ince çizgiyi onayladı
+alwaysApply: true
+---
+
+# Betonarme Tool simgeleri
+
+Kullanıcı bu çizgi kalınlığını onayladı («güzel»). Simge değişince kalınlığa geri dönme.
+
+- Üretim: `tools/GenPanelIcons/Program.cs`, yalnız BA: `dotnet run -c Release -- BA`
+- Tuval **64×64**, `ScaleTransform(2)`. Koordinatlar 32’lik uzayda kalır.
+- Kalem (32 uzayında): beyaz **0.45**, yeşil **0.50**, soluk **0.40**. Düz uç, gönye birleşim.
+- Palet `PictureBox` **Zoom** (CenterImage 64 px’i keser).
+- PNG: `ST4_Yardimci/Icons/ba_*.png`. Değişince `ST4_Yardimci` derle; gömülü simge DLL ile gelir.
+- STA simgelerine dokunma; kullanıcı yalnız Betonarme Tool dedi.

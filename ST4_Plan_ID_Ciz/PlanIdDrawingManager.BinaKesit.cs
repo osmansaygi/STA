@@ -28,6 +28,8 @@ namespace ST4PlanIdCiz
         private const string BinaKesitTitle = "KESIT (1:200)";
         /// <summary>Kesit şeridi: bu tolerans içinde kalan eleman kesilmiş sayılır.</summary>
         private const double BinaKesitCutHalfWidthCm = 8.0;
+        /// <summary>Kat döşemesi kesilmiş sayılsın diye gereken en kısa dolu kesişme (cm).</summary>
+        private const double BinaKesitStoryHitMinCm = 120.0;
         /// <summary>Kesitin arkasında sayılmak için minimum derinlik payı (cm).</summary>
         private const double BinaKesitBehindEpsCm = 12.0;
 
@@ -184,11 +186,23 @@ namespace ST4PlanIdCiz
             Geometry cutUnion = null;
             if (cutPolys.Count > 0)
             {
+                if (cutPolys.Count > 60)
+                {
+                    var snapped = new List<Geometry>(cutPolys.Count);
+                    foreach (var p in cutPolys)
+                    {
+                        var r = ReducePrecisionSafe(p, 10.0) ?? p;
+                        if (r != null && !r.IsEmpty) snapped.Add(r);
+                    }
+                    cutPolys = snapped;
+                }
                 try
                 {
                     cutUnion = cutPolys.Count == 1
                         ? BinaGorunusPolygonal(cutPolys[0])
-                        : BinaGorunusPolygonal(CascadedPolygonUnion.Union(cutPolys));
+                        : BinaGorunusPolygonal(cutPolys.Count > 60
+                            ? TryCascadedPolygonUnionSafe(cutPolys)
+                            : CascadedPolygonUnion.Union(cutPolys));
                 }
                 catch
                 {
@@ -382,7 +396,7 @@ namespace ST4PlanIdCiz
             }
         }
 
-        /// <summary>Tüm katlarda merdiven cezası + doluluk ile X veya Y kesit konumu.</summary>
+        /// <summary>Tüm katlarda en çok döşemeyi kesen hat; merdiven, paralel kiriş ve kolon cezaları durur.</summary>
         private bool TryFindBinaKesitCut(
             BinaKesitYon yon,
             out double cutPos,
@@ -415,11 +429,12 @@ namespace ST4PlanIdCiz
             double e = SectionLineExtendCm;
             var stairsAll = BuildStairAvoidZonesAllFloors();
             var refFloor = _model.Floors[0];
+            var storySlabs = BuildBinaKesitStorySlabFootprints();
 
             // alongOrig (0,cut)/(cut,0): A = X veya Y — arka plan U ile aynı mutlak eksen.
             if (yon == BinaKesitYon.X)
             {
-                cutPos = FindBestBinaKesitHorizontalY(refFloor, xmin, xmax, ymin, ymax, e, occ ?? cutSearchUnion, cutSearchUnion, stairsAll);
+                cutPos = FindBestBinaKesitHorizontalY(refFloor, xmin, xmax, ymin, ymax, e, occ ?? cutSearchUnion, cutSearchUnion, stairsAll, storySlabs);
                 cutA = new Point2d(xmin - e, cutPos);
                 cutB = new Point2d(xmax + e, cutPos);
                 alongOrig = new Point2d(0, cutPos);
@@ -429,7 +444,7 @@ namespace ST4PlanIdCiz
             }
             else
             {
-                cutPos = FindBestBinaKesitVerticalX(refFloor, xmin, xmax, ymin, ymax, e, occ ?? cutSearchUnion, cutSearchUnion, stairsAll);
+                cutPos = FindBestBinaKesitVerticalX(refFloor, xmin, xmax, ymin, ymax, e, occ ?? cutSearchUnion, cutSearchUnion, stairsAll, storySlabs);
                 cutA = new Point2d(cutPos, ymin - e);
                 cutB = new Point2d(cutPos, ymax + e);
                 alongOrig = new Point2d(cutPos, 0);
@@ -452,10 +467,112 @@ namespace ST4PlanIdCiz
             return list;
         }
 
+        /// <summary>
+        /// Her katın döşeme ayak izi (merdiven ve bitişik ara sahanlık hariç) ve varsa subasman.
+        /// Kesit hattı bunların mümkün olduğunca çoğunu keser; bodrum / zemin çatısı gibi dar izler birleşik alana yenilmez.
+        /// </summary>
+        private List<Geometry> BuildBinaKesitStorySlabFootprints()
+        {
+            var stories = new List<Geometry>();
+            if (_model?.Floors == null || _model.Slabs == null) return stories;
+
+            bool hasFloorZero = false;
+            foreach (var floor in _model.Floors)
+            {
+                if (floor != null && floor.FloorNo == 0) hasFloorZero = true;
+                var parts = new List<Geometry>();
+                int floorNo = floor?.FloorNo ?? int.MinValue;
+                foreach (var slab in _model.Slabs)
+                {
+                    if (slab == null || GetSlabFloorNo(slab.SlabId) != floorNo) continue;
+                    if (ShouldOmitSlabFromBinaView(slab)) continue;
+                    try
+                    {
+                        var p = SlabFootprintPoly(slab);
+                        if (p != null && !p.IsEmpty) parts.Add(p);
+                    }
+                    catch { }
+                }
+                var u = TryMergeGeometryList(parts);
+                if (u != null && !u.IsEmpty) stories.Add(u);
+            }
+
+            if (!hasFloorZero)
+            {
+                int step = _model.SlabFloorKeyStep > 0 ? _model.SlabFloorKeyStep : 100;
+                var sub = new List<Geometry>();
+                foreach (var slab in _model.Slabs)
+                {
+                    if (slab == null || slab.SlabId <= 0 || slab.SlabId >= step) continue;
+                    if (GetSlabFloorNo(slab.SlabId) != 0) continue;
+                    if (ShouldOmitSlabFromBinaView(slab)) continue;
+                    try
+                    {
+                        var p = SlabFootprintPoly(slab);
+                        if (p != null && !p.IsEmpty) sub.Add(p);
+                    }
+                    catch { }
+                }
+                var su = TryMergeGeometryList(sub);
+                if (su != null && !su.IsEmpty) stories.Add(su);
+            }
+            return stories;
+        }
+
+        private static int CountBinaKesitStoriesCut(IList<Geometry> stories, bool horizontal, double coord, double lo, double hi)
+        {
+            if (stories == null || stories.Count == 0) return 0;
+            double span = hi - lo;
+            if (span < 1.0) return 0;
+            int n = 0;
+            foreach (var g in stories)
+            {
+                if (g == null || g.IsEmpty) continue;
+                var (frac, lng) = horizontal
+                    ? SampleHorizontalOnOccupancy(g, coord, lo, hi)
+                    : SampleVerticalOnOccupancy(g, coord, lo, hi);
+                double longestCm = lng * span;
+                double totalCm = frac * span;
+                if (longestCm >= BinaKesitStoryHitMinCm || totalCm >= BinaKesitStoryHitMinCm * 1.5)
+                    n++;
+            }
+            return n;
+        }
+
+        /// <summary>Önce daha çok kat döşemesi; aynı sayıda merdiven, paralel kiriş ve kolon cezası.</summary>
+        private static bool BinaKesitCutCandidateWins(
+            int hits, double key, double pos,
+            int bestHits, double bestKey, double bestPos, double prefer)
+        {
+            if (hits > bestHits) return true;
+            if (hits < bestHits) return false;
+            if (key > bestKey + 1e-6) return true;
+            if (Math.Abs(key - bestKey) < 1e-6 && Math.Abs(pos - prefer) < Math.Abs(bestPos - prefer)) return true;
+            return false;
+        }
+
+        private static void AddBinaKesitStoryMidCandidates(List<double> coords, IList<Geometry> stories, bool horizontal, double lo, double hi)
+        {
+            if (stories == null || coords == null || hi <= lo) return;
+            foreach (var g in stories)
+            {
+                if (g == null || g.IsEmpty) continue;
+                var env = g.EnvelopeInternal;
+                double mid = horizontal ? (env.MinY + env.MaxY) * 0.5 : (env.MinX + env.MaxX) * 0.5;
+                if (mid < lo - 1e-6 || mid > hi + 1e-6) continue;
+                bool near = false;
+                for (int i = 0; i < coords.Count; i++)
+                {
+                    if (Math.Abs(coords[i] - mid) < 15.0) { near = true; break; }
+                }
+                if (!near) coords.Add(mid);
+            }
+        }
+
         private double FindBestBinaKesitHorizontalY(
             FloorInfo floor,
             double xmin, double xmax, double ymin, double ymax, double e,
-            Geometry occ, Geometry structuralUnion, List<Geometry> stairsAll)
+            Geometry occ, Geometry structuralUnion, List<Geometry> stairsAll, List<Geometry> storySlabs)
         {
             var gf = _ntsDrawFactory;
             double halfW = Math.Max(60.0, SectionStripHalfWidthCm * 1.2);
@@ -465,10 +582,14 @@ namespace ST4PlanIdCiz
 
             double step = Math.Max(40.0, (yHi - yLo) / 48.0);
             var tanH = new Vector2d(1, 0);
+            var candidates = new List<double>();
+            for (double y = yLo; y <= yHi + 1e-6; y += step) candidates.Add(y);
+            AddBinaKesitStoryMidCandidates(candidates, storySlabs, horizontal: true, yLo, yHi);
             double bestY = cyPrefer;
+            int bestHits = -1;
             double bestKey = double.NegativeInfinity;
 
-            for (double y = yLo; y <= yHi + 1e-6; y += step)
+            foreach (double y in candidates)
             {
                 var (frac, lng) = SampleHorizontalOnOccupancy(occ, y, xmin, xmax);
                 Geometry strip = HorizontalCutStripPoly(gf, y, xmin, xmax, e, halfW);
@@ -478,9 +599,11 @@ namespace ST4PlanIdCiz
                 try { colLong = SlenderColumnLongAxisCutPenaltyHorizontal(y, xmin, xmax, e, floor, false); } catch { }
                 double axisClr = 0;
                 try { axisClr = ParallelColumnAxisClearancePenaltyHorizontal(y); } catch { }
+                int hits = CountBinaKesitStoriesCut(storySlabs, horizontal: true, y, xmin, xmax);
                 double key = frac * 900.0 + lng * 320.0 - stair - par - colLong - axisClr - Math.Abs(y - cyPrefer) * 0.02;
-                if (key > bestKey + 1e-6 || (Math.Abs(key - bestKey) < 1e-6 && Math.Abs(y - cyPrefer) < Math.Abs(bestY - cyPrefer)))
+                if (BinaKesitCutCandidateWins(hits, key, y, bestHits, bestKey, bestY, cyPrefer))
                 {
+                    bestHits = hits;
                     bestKey = key;
                     bestY = y;
                 }
@@ -491,7 +614,7 @@ namespace ST4PlanIdCiz
         private double FindBestBinaKesitVerticalX(
             FloorInfo floor,
             double xmin, double xmax, double ymin, double ymax, double e,
-            Geometry occ, Geometry structuralUnion, List<Geometry> stairsAll)
+            Geometry occ, Geometry structuralUnion, List<Geometry> stairsAll, List<Geometry> storySlabs)
         {
             var gf = _ntsDrawFactory;
             double halfW = Math.Max(60.0, SectionStripHalfWidthCm * 1.2);
@@ -501,10 +624,14 @@ namespace ST4PlanIdCiz
 
             double step = Math.Max(40.0, (xHi - xLo) / 48.0);
             var tanV = new Vector2d(0, 1);
+            var candidates = new List<double>();
+            for (double x = xLo; x <= xHi + 1e-6; x += step) candidates.Add(x);
+            AddBinaKesitStoryMidCandidates(candidates, storySlabs, horizontal: false, xLo, xHi);
             double bestX = cxPrefer;
+            int bestHits = -1;
             double bestKey = double.NegativeInfinity;
 
-            for (double x = xLo; x <= xHi + 1e-6; x += step)
+            foreach (double x in candidates)
             {
                 var (frac, lng) = SampleVerticalOnOccupancy(occ, x, ymin, ymax);
                 Geometry strip = VerticalCutStripPoly(gf, x, ymin, ymax, e, halfW);
@@ -514,9 +641,11 @@ namespace ST4PlanIdCiz
                 try { colLong = SlenderColumnLongAxisCutPenaltyVertical(x, ymin, ymax, e, floor, false); } catch { }
                 double axisClr = 0;
                 try { axisClr = ParallelColumnAxisClearancePenaltyVertical(x); } catch { }
+                int hits = CountBinaKesitStoriesCut(storySlabs, horizontal: false, x, ymin, ymax);
                 double key = frac * 900.0 + lng * 320.0 - stair - par - colLong - axisClr - Math.Abs(x - cxPrefer) * 0.02;
-                if (key > bestKey + 1e-6 || (Math.Abs(key - bestKey) < 1e-6 && Math.Abs(x - cxPrefer) < Math.Abs(bestX - cxPrefer)))
+                if (BinaKesitCutCandidateWins(hits, key, x, bestHits, bestKey, bestX, cxPrefer))
                 {
+                    bestHits = hits;
                     bestKey = key;
                     bestX = x;
                 }
@@ -625,12 +754,7 @@ namespace ST4PlanIdCiz
                 if (z1 < z0) { double t = z0; z0 = z1; z1 = t; }
                 if (z1 - z0 < 0.5) return;
 
-                Geometry solid = plan;
-                if (!solid.IsValid)
-                {
-                    try { solid = solid.Buffer(0); }
-                    catch { return; }
-                }
+                Geometry solid = PrepareForOverlay(plan);
                 if (solid == null || solid.IsEmpty) return;
 
                 for (int i = 0; i < solid.NumGeometries; i++)
@@ -695,6 +819,12 @@ namespace ST4PlanIdCiz
             {
                 double z0 = baseCm + cf.BottomKotBinaGoreCm;
                 double z1 = z0 + (cf.HeightCm > 0 ? cf.HeightCm : 40.0);
+                if (cf.AmpatmanWidthCm > 0 && Math.Abs(cf.AmpatmanWidthCm - cf.WidthCm) > 1e-6 &&
+                    cf.AmpatmanHeightCm > 0 && cf.AmpatmanHeightCm < (z1 - z0) - 1e-6)
+                {
+                    var amp = AmpatmanFootprintPoly(cf);
+                    if (amp != null && !amp.IsEmpty) addPlan(amp, z0, z0 + cf.AmpatmanHeightCm);
+                }
                 addPlan(ContinuousFootprintPoly(cf), z0, z1);
                 var hat = HatilStripOnContinuousPoly(cf);
                 if (hat != null && cf.HatilLabelHeightCm > 0)

@@ -1,19 +1,24 @@
 BETONARME TOOL — ofis kurulumu (yalnız BEYKENT-2)
 
-1. Kur.cmd'e çift tıklayın. Açık AutoCAD otomatik kapatılır.
-2. Eski ST4_Yardimci.bundle silinir; kilitliyse __eski_ tarihli klasöre taşınır.
-3. Yeni sürüm yalnızca şuraya kurulur:
+Bu klasörün tamamını (Kur.cmd, Kur.ps1, PackageContents.xml, payload, OKU.txt)
+ofis bilgisayarına kopyalayın. Masaüstü veya İndirilenler olur; kurulum kendi
+klasöründeki DLL’ye dokunmaz.
 
-%AppData%\Autodesk\ApplicationPlugins\ST4_Yardimci.bundle\
+1. Kur.cmd’e çift tıklayın.
+2. Açık AutoCAD kapanır. Kayıtlı olmayan çizim varsa önce kendiniz kaydedin.
+3. Eski bundle, NETLOAD kopyası, APPLOAD başlangıç kaydı ve acad.rx / acad.lsp
+   içindeki eski satır silinir.
+4. Yeni sürüm yalnız şuraya kurulur:
 
-Bu klasörün tamamını (Kur.cmd + PackageContents.xml + payload\) ofis PC'ye kopyalayın.
-Kurulum başka bilgisayarda durur.
+   %AppData%\Autodesk\ApplicationPlugins\ST4_Yardimci.bundle\
 
-payload içinde ST4_Yardimci.dll + NetTopologySuite ve System.* olmalı.
+Kurulum başka bilgisayarda durur (yalnız BEYKENT-2).
 
-ÖNEMLİ:
-- APPLOAD Startup Suite içinde ST4_Yardimci / NETLOAD kalmasın.
-- Ayrı NETLOAD yapmayın.
+AutoCAD’in düşmemesi için:
+- Eski ve yeni DLL aynı anda yüklenmez. İkinci kopya kalırsa kurulum hata verir;
+  AutoCAD’i açmayın, uyarıdaki dosyayı silip Kur.cmd’i tekrar çalıştırın.
+- Ayrı NETLOAD yapmayın. APPLOAD Startup Suite’te ST4_Yardimci kalmamalı.
+- NTS ve System.* bundle’ın içindedir. Eksikse kurulum yapılmaz (eksik NTS açılışta düşürür).
+- Eski yazısız şerit (BAUST) açılışta kurulmaz. COM ile şerit silinmez.
 
-AutoCAD açılınca “BETONARME TOOL yuklendi” yazmalı.
-Eski yazısız şerit durursa paleti kapatın; COM silme artık yapılmaz (göçme).
+AutoCAD açılınca komut satırında “BETONARME TOOL yuklendi” yazmalı.

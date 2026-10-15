@@ -17,8 +17,10 @@ static class Program
     static readonly Color Dim = Color.FromArgb(168, 174, 184);
     static readonly Color Sheet = Color.FromArgb(0x2D, 0x33, 0x3C);
 
-    static int Main()
+    static int Main(string[] args)
     {
+        bool baOnly = args != null && args.Length > 0 &&
+                      args[0].Equals("BA", StringComparison.OrdinalIgnoreCase);
         string root = FindRoot();
         string baDir = Path.Combine(root, "ST4_Yardimci", "Icons");
         string staDir = Path.Combine(root, "ST4_Plan_ID_Ciz", "Icons");
@@ -51,6 +53,19 @@ static class Program
         Add("BA", "DONATIADET", "Donatı Adet", "ba_donatiadet.png", DonatiAdet);
         Add("BA", "DONATIOKU", "Donatı Oku", "ba_donatioku.png", DonatiOku);
         Add("BA", "KATMANYUKLE", "Katman Yükle", "ba_katmanyukle.png", KatmanYukle);
+        Add("BA", "HASIRDONATI", "Hasır Donatı", "ba_hasirdonati.png", HasirDonati);
+        Add("BA", "TEMELCEKURU", "Temel Çukuru", "ba_temelcekuru.png", TemelCekuru);
+        Add("BA", "KURANGLEZ", "Kuranglez", "ba_kuranglez.png", Kuranglez);
+        Add("BA", "KOTDEGISTIR", "Kot Değiştir", "ba_kotdegistir.png", KotDegistir);
+
+        if (baOnly)
+        {
+            string sheetBa = Path.Combine(root, "lisp", "ikon-ornek", "panel-yeni-simgeler.png");
+            Directory.CreateDirectory(Path.GetDirectoryName(sheetBa));
+            SaveSheet(sheetBa, items);
+            Console.WriteLine("simge=" + items.Count + " pafta=" + sheetBa);
+            return 0;
+        }
 
         Add("STA", "KALIP50ST4", "Kalıp 1:50", "sta_kalip50st4.png", Kalip50);
         Add("STA", "KOLON50ST4", "Kolon aplikasyon 1:50", "sta_kolon50st4.png", Kolon50);
@@ -108,23 +123,24 @@ static class Program
         readonly Pen _w, _g, _d;
         public Ico()
         {
-            Bmp = new Bitmap(32, 32, PixelFormat.Format32bppArgb);
+            Bmp = new Bitmap(64, 64, PixelFormat.Format32bppArgb);
             G = Graphics.FromImage(Bmp);
             G.Clear(Color.Transparent);
+            G.ScaleTransform(2f, 2f);
             G.SmoothingMode = SmoothingMode.AntiAlias;
-            G.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            G.PixelOffsetMode = PixelOffsetMode.Half;
             G.CompositingQuality = CompositingQuality.HighQuality;
-            _w = Pen(White, 1.45f);
-            _g = Pen(Green, 1.65f);
-            _d = Pen(Dim, 1.15f);
+            _w = Pen(White, 0.45f);
+            _g = Pen(Green, 0.5f);
+            _d = Pen(Dim, 0.4f);
         }
         static Pen Pen(Color c, float w)
         {
             return new Pen(c, w)
             {
-                StartCap = LineCap.Round,
-                EndCap = LineCap.Round,
-                LineJoin = LineJoin.Round
+                StartCap = LineCap.Flat,
+                EndCap = LineCap.Flat,
+                LineJoin = LineJoin.Miter
             };
         }
         public void W(float x1, float y1, float x2, float y2) => G.DrawLine(_w, x1, y1, x2, y2);
@@ -136,7 +152,7 @@ static class Program
         public void Dot(float x, float y)
         {
             using (var b = new SolidBrush(Green))
-                G.FillEllipse(b, x - 1.35f, y - 1.35f, 2.7f, 2.7f);
+                G.FillEllipse(b, x - 0.7f, y - 0.7f, 1.4f, 1.4f);
         }
         public void Tick(float x, float y)
         {
@@ -150,16 +166,16 @@ static class Program
             if (len < 0.1f) return;
             dx /= len; dy /= len;
             float px = -dy, py = dx;
-            float ax = x2 - dx * 4.2f, ay = y2 - dy * 4.2f;
+            float ax = x2 - dx * 3.2f, ay = y2 - dy * 3.2f;
             if (green)
             {
-                Gr(x2, y2, ax + px * 2.1f, ay + py * 2.1f);
-                Gr(x2, y2, ax - px * 2.1f, ay - py * 2.1f);
+                Gr(x2, y2, ax + px * 1.55f, ay + py * 1.55f);
+                Gr(x2, y2, ax - px * 1.55f, ay - py * 1.55f);
             }
             else
             {
-                W(x2, y2, ax + px * 2.1f, ay + py * 2.1f);
-                W(x2, y2, ax - px * 2.1f, ay - py * 2.1f);
+                W(x2, y2, ax + px * 1.55f, ay + py * 1.55f);
+                W(x2, y2, ax - px * 1.55f, ay - py * 1.55f);
             }
         }
         public void Badge(string text)
@@ -316,7 +332,7 @@ static class Program
 
     static void Ring(Ico c, float x, float y)
     {
-        using (var pen = new Pen(Green, 1.35f))
+        using (var pen = new Pen(Green, 0.5f) { StartCap = LineCap.Flat, EndCap = LineCap.Flat })
             c.G.DrawEllipse(pen, x - 2.15f, y - 2.15f, 4.3f, 4.3f);
     }
 
@@ -479,6 +495,51 @@ static class Program
         c.Rg(5, 21, 18, 5);
         c.Gr(24, 6, 29, 11);
         c.Gr(29, 6, 24, 11);
+    }
+
+    static void HasirDonati(Ico c)
+    {
+        c.Rw(5, 5, 22, 22);
+        for (int i = 1; i <= 3; i++)
+        {
+            float p = 5f + i * 5.5f;
+            c.Gr(5, p, 27, p);
+            c.Gr(p, 5, p, 27);
+        }
+    }
+
+    static void TemelCekuru(Ico c)
+    {
+        c.W(6, 7, 26, 7);
+        c.Gr(7, 10, 7, 25);
+        c.Gr(7, 25, 25, 25);
+        c.Gr(25, 25, 25, 10);
+        c.W(11, 13, 11, 21);
+        c.W(11, 21, 21, 21);
+        c.W(21, 21, 21, 13);
+    }
+
+    static void Kuranglez(Ico c)
+    {
+        c.W(5, 6, 5, 26);
+        c.W(11, 8, 11, 20);
+        c.W(5, 26, 27, 26);
+        c.W(11, 20, 21, 20);
+        c.W(21, 14, 21, 20);
+        c.W(21, 14, 24, 14);
+        c.W(24, 8, 24, 14);
+        c.W(27, 6, 27, 26);
+        c.Gr(8, 9, 8, 23);
+        c.Gr(18, 16, 18, 23);
+        c.Gr(13, 23, 20, 23);
+    }
+
+    static void KotDegistir(Ico c)
+    {
+        c.W(7, 13, 16, 5);
+        c.W(16, 5, 25, 13);
+        c.Gr(7, 19, 16, 27);
+        c.Gr(16, 27, 25, 19);
     }
 
     static void KatmanYukle(Ico c)

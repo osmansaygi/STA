@@ -257,7 +257,7 @@ namespace ST4Yardimci
                 var pic = new PictureBox
                 {
                     Size = new Size(32, 32),
-                    SizeMode = PictureBoxSizeMode.CenterImage,
+                    SizeMode = PictureBoxSizeMode.Zoom,
                     BackColor = Color.Transparent,
                     Image = img,
                     Cursor = Cursors.Hand,

@@ -42,6 +42,8 @@
     <!-- Eski 1:50 kalip kot isareti (Desktop\kot.dwg); ReadDwgFile ile acilir. -->
     <EmbeddedResource Include="..\YATAY_KOT.dwg" LogicalName="ST4PlanIdCiz.KotSymbol.YATAY_KOT.dwg" Condition="Exists('$(MSBuildProjectDirectory)\..\YATAY_KOT.dwg')" />
     <EmbeddedResource Include="..\dosyalar\YATAY_KOT.dwg" LogicalName="ST4PlanIdCiz.KotSymbol.YATAY_KOT.dwg" Condition="!Exists('$(MSBuildProjectDirectory)\..\YATAY_KOT.dwg') and Exists('$(MSBuildProjectDirectory)\..\dosyalar\YATAY_KOT.dwg')" />
+    <!-- Temel kesiti yan detayları (Drawing2.dwg: iki takım temel detayı — sol drenaj / sağ ampatman). -->
+    <EmbeddedResource Include="..\Drawing2.dwg" LogicalName="ST4PlanIdCiz.TemelDetay.Drawing2.dwg" Condition="Exists('$(MSBuildProjectDirectory)\..\Drawing2.dwg')" />
   </ItemGroup>
 
   <!-- ISKELEKESIT: şablonlar DLL içinde; diskte silinse bile çizim devam eder. Üstünlük: DLL yanındaki dosya. -->

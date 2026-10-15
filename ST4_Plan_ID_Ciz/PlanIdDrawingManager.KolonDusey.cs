@@ -1085,9 +1085,33 @@ namespace ST4PlanIdCiz
             }
         }
 
+        /// <summary>
+        /// Kolon altı temel/temel hatılı durumu imzası (cm): F=temel yüksekliği, H=radye temel temel
+        /// hatılı yüksekliği (0 = yok). Temel hatılı olan/olmayan kolonlar (veya perde başlıkları)
+        /// çizimde farklıdır (TEMEL / TEMEL HATILI etiketi, kotlar, ölçü zinciri) — benzer gruba
+        /// girmesinler diye imzaya girer. "Bağ kirişi" (Tie beams dışı) buraya girmez.
+        /// </summary>
+        private string KolonDuseyTemelHatilImza(int colNo)
+        {
+            if (_model?.Floors == null || _model.Floors.Count == 0) return "";
+            var fond = GetColumnFoundationHeights(_model.Floors[0]);
+            if (fond == null || !fond.TryGetValue(colNo, out var fh)) return "";
+            double t = fh.temelCm.HasValue ? fh.temelCm.Value : 0.0;
+            double h = 0.0;
+            var radyeHatil = GetColumnRadyeTemelHatiliHeights(_model.Floors[0]);
+            if (radyeHatil != null && radyeHatil.TryGetValue(colNo, out var hh) && hh.HasValue)
+                h = hh.Value;
+            return string.Format(CultureInfo.InvariantCulture, "F{0:0}H{1:0}",
+                Math.Round(t), Math.Round(h));
+        }
+
         private string BuildKolonDuseyGroupSignature(ColumnAxisInfo col)
         {
             var sb = new StringBuilder();
+            // Temel hatılı: çizimi değiştirdiği için imzanın başına eklenir (kolon bazında).
+            string temelHatil = KolonDuseyTemelHatilImza(col.ColumnNo);
+            if (!string.IsNullOrEmpty(temelHatil))
+                sb.Append(temelHatil).Append(';');
             bool any = false;
             var chain = BuildKolonDuseyFloorChain(col);
             var colNoByFi = new Dictionary<int, int>();
@@ -1256,8 +1280,17 @@ namespace ST4PlanIdCiz
                 if (Math.Abs(pe.Width - pe.Height) < 3.0 && kUzun < kKisa) { int t = kUzun; kUzun = kKisa; kKisa = t; }
                 kolImza = "K" + kUzun.ToString(CultureInfo.InvariantCulture) + "/" + kKisa.ToString(CultureInfo.InvariantCulture);
             }
+            // Temel hatılı yalnız en alt kat görünüşünde çizilir; orada olan/olmayan kolonlar
+            // (veya perde başlıkları) benzer gruba girmesin diye imzaya girer.
+            string temelHatilImza = "";
+            {
+                var katZinciriT = ListKolonDuseyFloorIndexes(col);
+                if (katZinciriT.Count > 0 && katZinciriT[0] == floorIndex)
+                    temelHatilImza = KolonDuseyTemelHatilImza(effCol.ColumnNo);
+            }
             string withAll(string core)
             {
+                if (!string.IsNullOrEmpty(temelHatilImza)) core += ":" + temelHatilImza;
                 if (!string.IsNullOrEmpty(kolImza)) core += ":" + kolImza;
                 if (!string.IsNullOrEmpty(kirisH)) core += ":" + kirisH;
                 if (!string.IsNullOrEmpty(kotImza)) core += ":" + kotImza;
@@ -2290,13 +2323,14 @@ namespace ST4PlanIdCiz
             }
             if (hatilSpans.Count == 0)
             {
-                var fondH = GetColumnFoundationHeights(_model.Floors[0]);
-                if (fondH.TryGetValue(col.ColumnNo, out var fhH) && fhH.hatilCm.HasValue && fhH.hatilCm.Value > 1.0)
+                // Yalnız "radye temel temel hatılı" (bağ kirişi değil) görünüşe hatıl olarak düşer.
+                var fondH = GetColumnRadyeTemelHatiliHeights(_model.Floors[0]);
+                if (fondH.TryGetValue(col.ColumnNo, out var fhH) && fhH.HasValue && fhH.Value > 1.0)
                 {
                     double zHatBot = temelSpans.Count > 0
                         ? temelSpans.Max(t => t.z1)
-                        : stories[0].zBot - fhH.hatilCm.Value;
-                    double zHatTop = zHatBot + fhH.hatilCm.Value;
+                        : stories[0].zBot - fhH.Value;
+                    double zHatTop = zHatBot + fhH.Value;
                     hatilSpans.Add((colLo - KolonDuseyKenarKesitSolCm, colHi + KolonDuseyKenarKesitSagCm, zHatBot, zHatTop));
                 }
             }

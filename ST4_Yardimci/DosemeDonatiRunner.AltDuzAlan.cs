@@ -14,6 +14,8 @@ namespace ST4Yardimci
         private const string LayerAltDuzAlan = "ALT DUZ ALAN (BEYKENT)";
         /// <summary>Kiriş çizgisi kolon köşesine bu kadar yakınsa aynı nokta sayılır (cm).</summary>
         private const double AltDuzAlanJointTolCm = 3.0;
+        /// <summary>Boundary öncesi kapatılan kaçak. Bundan uzun aralık uzatılmaz.</summary>
+        private const double BoundaryGapCloseCm = 2.0;
         /// <summary>Uç, başka bir mesnet kenarına bu kadar yakınsa arayı kapat (T birleşim, cm).</summary>
         private const double AltDuzAlanBridgeCm = 6.0;
 
@@ -28,6 +30,10 @@ namespace ST4Yardimci
             public List<Polygon> Faces;
             public Geometry Mesnet;
             public List<RawSeg> SupportSegs;
+            /// <summary>Formdaki mesnet katmanları; döşeme boundary bunlarla kapanır.</summary>
+            public List<RawSeg> MesnetOnlySegs;
+            public List<RawSeg> NodedEdges;
+            public List<Polygon> BoundFaces;
             public List<Geometry> Drawn = new List<Geometry>();
             public int DrawnCount;
         }
@@ -40,14 +46,19 @@ namespace ST4Yardimci
         {
             var gf = new GeometryFactory();
             var raw = new List<RawSeg>();
+            var mesnetOnly = new List<RawSeg>();
             var bodies = new List<Polygon>();
             foreach (ObjectId id in btr)
             {
                 var ent = tr.GetObject(id, OpenMode.ForRead) as Entity;
                 if (ent == null || !ent.Visible) continue;
                 string lyr = ent.Layer ?? "";
-                if (!IsMesnetLayer(lyr, null) && !IsBoslukLayer(lyr)) continue;
+                bool mesnet = IsMesnetLayer(lyr, null);
+                bool bos = IsBoslukLayer(lyr);
+                if (!mesnet && !bos) continue;
                 CollectBoundarySegs(ent, raw);
+                // Poligon: LINE kadar eski polyline, yay, mline ve kolon bloğu da sınırdır.
+                if (mesnet) CollectMesnetGeometry(tr, ent, mesnetOnly, Matrix3d.Identity, 0);
                 TryAddClosedMesnetBody(ent, gf, bodies);
             }
             raw = KeepSegsNearLine(raw, lineA, lineB, AltDuzAlanCorridorCm);
@@ -75,7 +86,55 @@ namespace ST4Yardimci
             var faces = PolygonizeLinesSafe(lines);
             if (mesnetBody != null)
                 faces = ClipFacesOutsideMesnet(faces, mesnetBody);
-            return new AltDuzAlanModel { Gf = gf, Faces = faces, Mesnet = mesnetBody, SupportSegs = snapped };
+            List<RawSeg> mesnetNear = KeepSegsNearLine(mesnetOnly, lineA, lineB, AltDuzAlanCorridorCm);
+            List<RawSeg> forBound = SnapSegJoints(mesnetNear, BoundaryGapCloseCm);
+            CloseLeaksUnder(forBound, BoundaryGapCloseCm);
+            return new AltDuzAlanModel
+            {
+                Gf = gf,
+                Faces = faces,
+                Mesnet = mesnetBody,
+                SupportSegs = snapped,
+                MesnetOnlySegs = mesnetNear,
+                NodedEdges = forBound,
+                BoundFaces = PolygonizeReady(forBound, gf)
+            };
+        }
+
+        /// <summary>
+        /// Yalnız çizilmiş mesnet çizgileri. Kesişen yerde bölünür.
+        /// Yeni çizgi eklenmez; boundary açıklığın içindeki en küçük kapalı yüzdür.
+        /// </summary>
+        private static List<Polygon> PolygonizeMesnetBoundary(List<RawSeg> segs, GeometryFactory gf)
+        {
+            var faces = new List<Polygon>();
+            if (segs == null || segs.Count == 0 || gf == null) return faces;
+            List<RawSeg> snapped = SnapSegJoints(segs, AltDuzAlanJointTolCm);
+            var lines = new List<Geometry>();
+            foreach (RawSeg s in snapped)
+            {
+                if (Dist(s.X0, s.Y0, s.X1, s.Y1) < 0.4) continue;
+                lines.Add(gf.CreateLineString(new[]
+                {
+                    new Coordinate(s.X0, s.Y0),
+                    new Coordinate(s.X1, s.Y1)
+                }));
+            }
+            if (lines.Count == 0) return faces;
+            try
+            {
+                Geometry noded = UnaryUnionOp.Union(lines);
+                if (noded == null || noded.IsEmpty) return faces;
+                var polygonizer = new Polygonizer();
+                polygonizer.Add(noded);
+                foreach (object obj in polygonizer.GetPolygons())
+                {
+                    if (obj is Polygon p && !p.IsEmpty && p.Area >= 20.0)
+                        faces.Add(p);
+                }
+            }
+            catch { }
+            return faces;
         }
 
         /// <summary>
@@ -572,10 +631,681 @@ namespace ST4Yardimci
             for (int i = 0; i < spans.Count; i++)
             {
                 SpanRec sp = spans[i];
-                if (!sp.InPick || PointInsideAltMesnet(model, sp.Mid)) continue;
-                result[i] = FacePolylineForSpan(model, sp, origin, u, n);
+                if (!sp.InPick) continue;
+                Point3d seed = AltDuzBarMid(sp, n, model);
+                result[i] = MesnetBoundaryPolyline(model, seed, n, sp.Mid);
             }
             return result;
+        }
+
+        /// <summary>Alt düz çubuğun orta noktası. Kiriş gövdesindeyse dik yönde açıklığa çıkar.</summary>
+        private static Point3d AltDuzBarMid(SpanRec sp, Vector3d n, AltDuzAlanModel model)
+        {
+            int idx = sp.SupportLeft >= 0 ? sp.SupportLeft : 0;
+            Vector3d off = n * ((idx % 2) * StaggerCm - DuzBelowPilyeCm);
+            Point3d mid = sp.BarL.DistanceTo(sp.BarR) >= 1.0
+                ? Mid(sp.BarL, sp.BarR) + off
+                : sp.Mid + off;
+            if (!PointInsideAltMesnet(model, mid)) return mid;
+            for (double s = 4.0; s <= 80.0; s += 4.0)
+            {
+                Point3d q = mid + n * s;
+                if (!PointInsideAltMesnet(model, q)) return q;
+                q = mid - n * s;
+                if (!PointInsideAltMesnet(model, q)) return q;
+            }
+            return mid;
+        }
+
+        /// <summary>
+        /// 2 cm altı kaçak kapatıldıktan sonra alt düz ortasını içeren en küçük kapalı yüz.
+        /// </summary>
+        private static Polyline BoundaryAtSeed(AltDuzAlanModel model, Point3d seed)
+        {
+            return SmallestMesnetFace(model, seed);
+        }
+
+        /// <summary>Poligonizer yüzü. Kiriş içi diye elenmez; noktayı içeren en küçük halka.</summary>
+        private static Polyline SmallestMesnetFace(AltDuzAlanModel model, Point3d seed)
+        {
+            if (model?.BoundFaces == null || model.Gf == null) return null;
+            Polygon best = null;
+            foreach (Polygon face in model.BoundFaces)
+            {
+                if (!FaceCoversPoint(face, model.Gf, seed)) continue;
+                if (best == null || face.Area < best.Area)
+                    best = face;
+            }
+            return MemoryPolylineFromPolygon(best);
+        }
+
+        /// <summary>Uç, 2 cm içinde değdiği mesnet çizgisine oturur. Daha uzağa uzamaz.</summary>
+        private static void CloseLeaksUnder(List<RawSeg> segs, double tolCm)
+        {
+            if (segs == null || segs.Count == 0 || tolCm <= 0) return;
+            for (int pass = 0; pass < 3; pass++)
+            {
+                bool changed = false;
+                for (int i = 0; i < segs.Count; i++)
+                {
+                    RawSeg s = segs[i];
+                    if (MoveEndToLeak(segs, i, ref s, true, tolCm)) changed = true;
+                    if (MoveEndToLeak(segs, i, ref s, false, tolCm)) changed = true;
+                    segs[i] = s;
+                }
+                if (!changed) break;
+            }
+        }
+
+        private static bool MoveEndToLeak(List<RawSeg> segs, int self, ref RawSeg s, bool atStart, double tolCm)
+        {
+            double px = atStart ? s.X0 : s.X1;
+            double py = atStart ? s.Y0 : s.Y1;
+            double ox = atStart ? s.X1 : s.X0;
+            double oy = atStart ? s.Y1 : s.Y0;
+            double dx = px - ox, dy = py - oy;
+            double len = Math.Sqrt(dx * dx + dy * dy);
+            if (len < 1.0) return false;
+            dx /= len;
+            dy /= len;
+            double best = tolCm + 1e-6;
+            double hx = 0, hy = 0;
+            int bestJ = -1;
+            for (int j = 0; j < segs.Count; j++)
+            {
+                if (j == self) continue;
+                RawSeg o = segs[j];
+                double minX = Math.Min(o.X0, o.X1) - tolCm, maxX = Math.Max(o.X0, o.X1) + tolCm;
+                double minY = Math.Min(o.Y0, o.Y1) - tolCm, maxY = Math.Max(o.Y0, o.Y1) + tolCm;
+                if (px < minX || px > maxX || py < minY || py > maxY) continue;
+                ClosestOnSeg(px, py, o, out double cx, out double cy, out double d2);
+                double d = Math.Sqrt(d2);
+                if (d <= 0.05) return false;
+                if (d <= tolCm)
+                {
+                    double along = (cx - px) * dx + (cy - py) * dy;
+                    if (along >= -0.2 && d < best)
+                    {
+                        best = d;
+                        hx = cx;
+                        hy = cy;
+                        bestJ = j;
+                    }
+                }
+                if (RaySeg(px, py, dx, dy, new Point2d(o.X0, o.Y0), new Point2d(o.X1, o.Y1), out double t, out double u)
+                    && t > 0.05 && t <= tolCm && u >= -0.001 && u <= 1.001 && t < best)
+                {
+                    best = t;
+                    hx = px + dx * t;
+                    hy = py + dy * t;
+                    bestJ = j;
+                }
+            }
+            if (bestJ < 0) return false;
+            RawSeg hit = segs[bestJ];
+            if (Dist(hit.X0, hit.Y0, hx, hy) <= 0.05)
+            {
+                hx = hit.X0;
+                hy = hit.Y0;
+            }
+            else if (Dist(hit.X1, hit.Y1, hx, hy) <= 0.05)
+            {
+                hx = hit.X1;
+                hy = hit.Y1;
+            }
+            else
+            {
+                segs[bestJ] = new RawSeg { X0 = hit.X0, Y0 = hit.Y0, X1 = hx, Y1 = hy };
+                segs.Add(new RawSeg { X0 = hx, Y0 = hy, X1 = hit.X1, Y1 = hit.Y1 });
+            }
+            if (atStart) { s.X0 = hx; s.Y0 = hy; }
+            else { s.X1 = hx; s.Y1 = hy; }
+            return true;
+        }
+
+        private static List<Polygon> PolygonizeReady(List<RawSeg> segs, GeometryFactory gf)
+        {
+            var faces = new List<Polygon>();
+            if (segs == null || segs.Count == 0 || gf == null) return faces;
+            var lines = new List<Geometry>();
+            foreach (RawSeg s in segs)
+            {
+                if (Dist(s.X0, s.Y0, s.X1, s.Y1) < 0.4) continue;
+                lines.Add(gf.CreateLineString(new[]
+                {
+                    new Coordinate(s.X0, s.Y0),
+                    new Coordinate(s.X1, s.Y1)
+                }));
+            }
+            if (lines.Count == 0) return faces;
+            try
+            {
+                Geometry noded = UnaryUnionOp.Union(lines);
+                if (noded == null || noded.IsEmpty) return faces;
+                var polygonizer = new Polygonizer();
+                polygonizer.Add(noded);
+                foreach (object obj in polygonizer.GetPolygons())
+                {
+                    if (obj is Polygon p && !p.IsEmpty && p.Area >= 20.0)
+                        faces.Add(p);
+                }
+            }
+            catch { }
+            return faces;
+        }
+
+        private static void PullEndsOntoNearest(List<RawSeg> segs, double tolCm)
+        {
+            if (segs == null || segs.Count == 0) return;
+            double tol2 = tolCm * tolCm;
+            for (int i = 0; i < segs.Count; i++)
+            {
+                RawSeg s = segs[i];
+                if (TryPullEnd(segs, i, s.X0, s.Y0, tol2, out double x, out double y))
+                {
+                    s.X0 = x;
+                    s.Y0 = y;
+                }
+                if (TryPullEnd(segs, i, s.X1, s.Y1, tol2, out x, out y))
+                {
+                    s.X1 = x;
+                    s.Y1 = y;
+                }
+                segs[i] = s;
+            }
+        }
+
+        private static bool TryPullEnd(
+            List<RawSeg> segs, int self, double px, double py, double tol2,
+            out double x, out double y)
+        {
+            x = px;
+            y = py;
+            double best = tol2;
+            bool hit = false;
+            for (int j = 0; j < segs.Count; j++)
+            {
+                if (j == self) continue;
+                ClosestOnSeg(px, py, segs[j], out double cx, out double cy, out double d2);
+                if (d2 < 0.0025 || d2 >= best) continue;
+                best = d2;
+                x = cx;
+                y = cy;
+                hit = true;
+            }
+            return hit;
+        }
+
+        private static List<RawSeg> ExplodeNodedLines(List<RawSeg> segs, GeometryFactory gf)
+        {
+            var lines = new List<Geometry>();
+            foreach (RawSeg s in segs)
+            {
+                if (Dist(s.X0, s.Y0, s.X1, s.Y1) < 0.2) continue;
+                lines.Add(gf.CreateLineString(new[]
+                {
+                    new Coordinate(s.X0, s.Y0),
+                    new Coordinate(s.X1, s.Y1)
+                }));
+            }
+            if (lines.Count == 0) return segs;
+            Geometry noded;
+            try { noded = UnaryUnionOp.Union(lines); }
+            catch { return segs; }
+            var edges = new List<RawSeg>();
+            CollectLinePieces(noded, edges);
+            return edges.Count == 0 ? segs : edges;
+        }
+
+        private static void CollectLinePieces(Geometry g, List<RawSeg> dest)
+        {
+            if (g == null || g.IsEmpty) return;
+            if (g is LineString ls && ls.NumPoints >= 2)
+            {
+                Coordinate[] cs = ls.Coordinates;
+                for (int i = 0; i < cs.Length - 1; i++)
+                {
+                    if (cs[i].Distance(cs[i + 1]) < 0.2) continue;
+                    dest.Add(new RawSeg
+                    {
+                        X0 = cs[i].X,
+                        Y0 = cs[i].Y,
+                        X1 = cs[i + 1].X,
+                        Y1 = cs[i + 1].Y
+                    });
+                }
+                return;
+            }
+            for (int i = 0; i < g.NumGeometries; i++)
+                CollectLinePieces(g.GetGeometryN(i), dest);
+        }
+
+        private struct VKey : IEquatable<VKey>
+        {
+            public long X, Y;
+            public VKey(double x, double y)
+            {
+                X = (long)Math.Round(x * 100.0);
+                Y = (long)Math.Round(y * 100.0);
+            }
+            public bool Equals(VKey other) => X == other.X && Y == other.Y;
+            public override bool Equals(object obj) => obj is VKey other && Equals(other);
+            public override int GetHashCode() => unchecked(((int)X * 397) ^ (int)Y);
+        }
+
+        private struct RayHitRec
+        {
+            public double T;
+            public int A, B;
+            public double X, Y;
+        }
+
+        /// <summary>Mesnet kenarlarının düzlemsel grafı. Köşe anahtarı işaretli koordinatı da tutar.</summary>
+        private sealed class FaceGraph
+        {
+            public readonly List<Point2d> V = new List<Point2d>();
+            public readonly List<List<int>> Adj = new List<List<int>>();
+            public readonly Dictionary<VKey, int> Index = new Dictionary<VKey, int>();
+
+            public int Vert(double x, double y)
+            {
+                var k = new VKey(x, y);
+                if (!Index.TryGetValue(k, out int id))
+                {
+                    id = V.Count;
+                    V.Add(new Point2d(x, y));
+                    Index[k] = id;
+                    Adj.Add(new List<int>());
+                }
+                return id;
+            }
+
+            public void Link(int a, int b)
+            {
+                if (a == b || a < 0 || b < 0) return;
+                if (!Adj[a].Contains(b)) Adj[a].Add(b);
+                if (!Adj[b].Contains(a)) Adj[b].Add(a);
+            }
+
+            public void Unlink(int a, int b)
+            {
+                if (a < 0 || b < 0 || a >= Adj.Count || b >= Adj.Count) return;
+                Adj[a].Remove(b);
+                Adj[b].Remove(a);
+            }
+
+            public FaceGraph Clone()
+            {
+                var g = new FaceGraph();
+                g.V.AddRange(V);
+                foreach (KeyValuePair<VKey, int> kv in Index)
+                    g.Index[kv.Key] = kv.Value;
+                for (int i = 0; i < Adj.Count; i++)
+                    g.Adj.Add(new List<int>(Adj[i]));
+                return g;
+            }
+        }
+
+        /// <summary>
+        /// İç noktadan dört yöne ilk mesnet kenarları. En küçük, noktayı içeren yüz.
+        /// Kapalı yüz yoksa açık uç kendi doğrultusunda, ışının gördüğü kutunun içinde ilk kesişene bağlanır.
+        /// </summary>
+        private static Polyline WalkContainingFace(List<RawSeg> edges, double sx, double sy)
+        {
+            if (edges == null || edges.Count == 0) return null;
+            FaceGraph graph = BuildFaceGraph(edges);
+            if (graph.V.Count < 2) return null;
+            var hits = new List<RayHitRec>();
+            double rx = 0, ry = 0;
+            CollectDirHits(graph, sx, sy, 1, 0, hits, ref rx);
+            CollectDirHits(graph, sx, sy, -1, 0, hits, ref rx);
+            CollectDirHits(graph, sx, sy, 0, 1, hits, ref ry);
+            CollectDirHits(graph, sx, sy, 0, -1, hits, ref ry);
+            if (hits.Count == 0) return null;
+            if (rx < 1) rx = ry;
+            if (ry < 1) ry = rx;
+            double maxR = Math.Sqrt(rx * rx + ry * ry) * 1.9;
+            hits.Sort((p, q) => p.T.CompareTo(q.T));
+
+            Polyline best = null;
+            double bestArea = double.MaxValue;
+            void Keep(Polyline pl)
+            {
+                if (pl == null) return;
+                double area = RingArea(pl);
+                if (area < 1.0 || area >= bestArea)
+                {
+                    pl.Dispose();
+                    return;
+                }
+                best?.Dispose();
+                best = pl;
+                bestArea = area;
+            }
+
+            int nTry = Math.Min(hits.Count, 8);
+            for (int i = 0; i < nTry; i++)
+            {
+                Keep(WalkOneHit(graph, sx, sy, hits[i], seedLeft: true, allowExtend: false, maxR));
+                Keep(WalkOneHit(graph, sx, sy, hits[i], seedLeft: false, allowExtend: false, maxR));
+            }
+            if (best != null) return best;
+            for (int i = 0; i < nTry; i++)
+            {
+                Keep(WalkOneHit(graph, sx, sy, hits[i], seedLeft: true, allowExtend: true, maxR));
+                Keep(WalkOneHit(graph, sx, sy, hits[i], seedLeft: false, allowExtend: true, maxR));
+            }
+            return best;
+        }
+
+        private static FaceGraph BuildFaceGraph(List<RawSeg> edges)
+        {
+            var g = new FaceGraph();
+            for (int i = 0; i < edges.Count; i++)
+            {
+                RawSeg s = edges[i];
+                if (Dist(s.X0, s.Y0, s.X1, s.Y1) < 0.2) continue;
+                g.Link(g.Vert(s.X0, s.Y0), g.Vert(s.X1, s.Y1));
+            }
+            return g;
+        }
+
+        private static void CollectDirHits(
+            FaceGraph g, double sx, double sy, double dx, double dy,
+            List<RayHitRec> dest, ref double far)
+        {
+            double best = double.MaxValue;
+            RayHitRec pick = default;
+            bool any = false;
+            var seen = new HashSet<long>();
+            for (int i = 0; i < g.Adj.Count; i++)
+            {
+                foreach (int j in g.Adj[i])
+                {
+                    if (j <= i) continue;
+                    long key = ((long)i << 32) ^ (uint)j;
+                    if (!seen.Add(key)) continue;
+                    if (!RaySeg(sx, sy, dx, dy, g.V[i], g.V[j], out double t, out double u))
+                        continue;
+                    if (t <= 0.05 || u < -0.001 || u > 1.001 || t >= best) continue;
+                    best = t;
+                    any = true;
+                    pick = new RayHitRec { T = t, A = i, B = j, X = sx + t * dx, Y = sy + t * dy };
+                }
+            }
+            if (!any) return;
+            if (pick.T > far) far = pick.T;
+            dest.Add(pick);
+            int skipA = pick.A, skipB = pick.B;
+            double firstT = pick.T;
+            // Aynı yöndeki ikinci kenar yalnızca yürüme adayı. Kutuyu büyütmez; yoksa komşu açıklığa taşar.
+            best = double.MaxValue;
+            any = false;
+            RayHitRec second = default;
+            seen.Clear();
+            for (int i = 0; i < g.Adj.Count; i++)
+            {
+                foreach (int j in g.Adj[i])
+                {
+                    if (j <= i) continue;
+                    long key = ((long)i << 32) ^ (uint)j;
+                    if (!seen.Add(key)) continue;
+                    if (i == skipA && j == skipB) continue;
+                    if (!RaySeg(sx, sy, dx, dy, g.V[i], g.V[j], out double t, out double u))
+                        continue;
+                    if (t <= firstT + 0.5 || u < -0.001 || u > 1.001 || t >= best) continue;
+                    best = t;
+                    any = true;
+                    second = new RayHitRec { T = t, A = i, B = j, X = sx + t * dx, Y = sy + t * dy };
+                }
+            }
+            if (any) dest.Add(second);
+        }
+
+        private static bool RaySeg(
+            double sx, double sy, double dx, double dy, Point2d a, Point2d b,
+            out double t, out double u)
+        {
+            t = u = 0;
+            double ex = b.X - a.X, ey = b.Y - a.Y;
+            double den = dx * ey - dy * ex;
+            if (Math.Abs(den) < 1e-8) return false;
+            double qx = a.X - sx, qy = a.Y - sy;
+            t = (qx * ey - qy * ex) / den;
+            u = (qx * dy - qy * dx) / den;
+            return true;
+        }
+
+        private static Polyline WalkOneHit(
+            FaceGraph src, double sx, double sy, RayHitRec hit, bool seedLeft, bool allowExtend, double maxR)
+        {
+            FaceGraph g = src.Clone();
+            int a = hit.A, b = hit.B;
+            if (a < 0 || b < 0 || a >= g.V.Count || b >= g.V.Count) return null;
+            int p = g.Vert(hit.X, hit.Y);
+            if (p != a && p != b)
+            {
+                g.Unlink(a, b);
+                g.Link(a, p);
+                g.Link(b, p);
+            }
+            double cross = (g.V[b].X - g.V[a].X) * (sy - hit.Y) - (g.V[b].Y - g.V[a].Y) * (sx - hit.X);
+            bool towardB = seedLeft ? cross >= 0 : cross < 0;
+            int from = p;
+            int to = towardB ? b : a;
+            if (from == to) to = towardB ? a : b;
+            if (from == to || g.Adj[from].Count == 0) return null;
+
+            var loop = new List<int> { from };
+            int curFrom = from, curTo = to;
+            int guard = 0;
+            int ext = 0;
+            int limit = g.V.Count + 12;
+            do
+            {
+                if (Dist(g.V[curTo].X, g.V[curTo].Y, sx, sy) > maxR)
+                    return null;
+                loop.Add(curTo);
+                int next = NextCcw(g.V, g.Adj, curFrom, curTo);
+                if (next < 0)
+                {
+                    if (!allowExtend || ext >= 8) return null;
+                    next = ExtendForward(g, curFrom, curTo, sx, sy, maxR);
+                    if (next < 0) return null;
+                    ext++;
+                    limit = g.V.Count + 12;
+                }
+                curFrom = curTo;
+                curTo = next;
+                if (++guard > limit) return null;
+            }
+            while (!(curFrom == from && curTo == to));
+
+            if (loop.Count >= 2 && loop[0] == loop[loop.Count - 1])
+                loop.RemoveAt(loop.Count - 1);
+            if (loop.Count < 3) return null;
+            var pl = new Polyline();
+            for (int i = 0; i < loop.Count; i++)
+                pl.AddVertexAt(i, g.V[loop[i]], 0, 0, 0);
+            pl.Closed = true;
+            DropCollinearVertices(pl);
+            if (pl.NumberOfVertices < 3 || !PolyContains(pl, new Point3d(sx, sy, 0)))
+            {
+                pl.Dispose();
+                return null;
+            }
+            for (int i = 0; i < pl.NumberOfVertices; i++)
+            {
+                Point2d q = pl.GetPoint2dAt(i);
+                if (Dist(q.X, q.Y, sx, sy) > maxR)
+                {
+                    pl.Dispose();
+                    return null;
+                }
+            }
+            return pl;
+        }
+
+        /// <summary>Açık uç, geldiği doğrultuda ilk mesnet kenarına. Yeni parça o doğrunun üstündedir.</summary>
+        private static int ExtendForward(FaceGraph g, int prev, int cur, double sx, double sy, double maxR)
+        {
+            double dx = g.V[cur].X - g.V[prev].X;
+            double dy = g.V[cur].Y - g.V[prev].Y;
+            double len = Math.Sqrt(dx * dx + dy * dy);
+            if (len < 1e-6) return -1;
+            dx /= len;
+            dy /= len;
+            double ox = g.V[cur].X, oy = g.V[cur].Y;
+            double best = double.MaxValue;
+            int ha = -1, hb = -1;
+            double hx = 0, hy = 0;
+            var seen = new HashSet<long>();
+            for (int i = 0; i < g.Adj.Count; i++)
+            {
+                foreach (int j in g.Adj[i])
+                {
+                    if (j <= i) continue;
+                    if (i == cur || j == cur) continue;
+                    long key = ((long)i << 32) ^ (uint)j;
+                    if (!seen.Add(key)) continue;
+                    if (!RaySeg(ox, oy, dx, dy, g.V[i], g.V[j], out double t, out double u))
+                        continue;
+                    if (t <= 0.4 || u < -0.001 || u > 1.001 || t >= best) continue;
+                    best = t;
+                    ha = i;
+                    hb = j;
+                    hx = ox + t * dx;
+                    hy = oy + t * dy;
+                }
+            }
+            if (ha < 0) return -1;
+            if (Dist(hx, hy, sx, sy) > maxR) return -1;
+            int p = g.Vert(hx, hy);
+            if (p != ha && p != hb)
+            {
+                g.Unlink(ha, hb);
+                g.Link(ha, p);
+                g.Link(hb, p);
+            }
+            g.Link(cur, p);
+            return p;
+        }
+
+        private static int NextCcw(List<Point2d> verts, List<List<int>> adj, int prev, int cur)
+        {
+            if (cur < 0 || cur >= adj.Count || prev < 0) return -1;
+            double inx = verts[cur].X - verts[prev].X;
+            double iny = verts[cur].Y - verts[prev].Y;
+            double baseAng = Math.Atan2(-iny, -inx);
+            int best = -1;
+            double bestDelta = double.MaxValue;
+            foreach (int nb in adj[cur])
+            {
+                if (nb == prev) continue;
+                double ang = Math.Atan2(verts[nb].Y - verts[cur].Y, verts[nb].X - verts[cur].X);
+                double delta = ang - baseAng;
+                while (delta <= 1e-8) delta += Math.PI * 2.0;
+                if (delta < bestDelta)
+                {
+                    bestDelta = delta;
+                    best = nb;
+                }
+            }
+            return best;
+        }
+
+        private static double RingArea(Polyline pl)
+        {
+            if (pl == null) return 0;
+            int n = pl.NumberOfVertices;
+            double a = 0;
+            for (int i = 0; i < n; i++)
+            {
+                Point2d p = pl.GetPoint2dAt(i);
+                Point2d q = pl.GetPoint2dAt((i + 1) % n);
+                a += p.X * q.Y - q.X * p.Y;
+            }
+            return Math.Abs(a) * 0.5;
+        }
+
+        /// <summary>Mesnet çizgilerinin kapattığı, alt düz ortasını içeren yüz. Kiriş gövdesi alınmaz.</summary>
+        private static Polyline MesnetBoundaryPolyline(
+            AltDuzAlanModel model, Point3d seed, Vector3d n, Point3d toward)
+        {
+            if (model == null) return null;
+            if (TrySlabFace(model, seed, n, toward, out Polygon face))
+                return MemoryPolylineFromPolygon(face);
+            if (model.MesnetOnlySegs == null || model.MesnetOnlySegs.Count == 0 || model.Gf == null)
+                return null;
+            var near = new List<RawSeg>();
+            foreach (RawSeg s in model.MesnetOnlySegs)
+            {
+                if (DistPointToSeg(seed.X, seed.Y, s.X0, s.Y0, s.X1, s.Y1) <= 1800.0
+                    || DistPointToSeg(toward.X, toward.Y, s.X0, s.Y0, s.X1, s.Y1) <= 1800.0)
+                    near.Add(s);
+            }
+            List<Polygon> local = PolygonizeMesnetBoundary(near, model.Gf);
+            face = SmallestCovering(local, model, seed, n, toward);
+            return MemoryPolylineFromPolygon(face);
+        }
+
+        private static bool TrySlabFace(
+            AltDuzAlanModel model, Point3d seed, Vector3d n, Point3d toward, out Polygon face)
+        {
+            face = SmallestCovering(model?.BoundFaces, model, seed, n, toward);
+            return face != null;
+        }
+
+        /// <summary>Alt düz ortası, olmazsa açıklık ortasına doğru. Kiriş içindeki nokta döşeme sayılmaz.</summary>
+        private static Polygon SmallestCovering(
+            List<Polygon> faces, AltDuzAlanModel model, Point3d seed, Vector3d n, Point3d toward)
+        {
+            if (faces == null || model?.Gf == null) return null;
+            Polygon best = null;
+            void Consider(Point3d q)
+            {
+                if (PointInsideAltMesnet(model, q)) return;
+                foreach (Polygon face in faces)
+                {
+                    if (!FaceCoversPoint(face, model.Gf, q)) continue;
+                    if (best == null || face.Area < best.Area)
+                        best = face;
+                }
+            }
+            Consider(seed);
+            if (best != null) return best;
+            if (n.Length > 1e-9)
+            {
+                Vector3d nn = n.GetNormal();
+                for (double s = 8.0; s <= 40.0 && best == null; s += 8.0)
+                {
+                    Consider(seed + nn * s);
+                    Consider(seed - nn * s);
+                }
+            }
+            if (best != null) return best;
+            Vector3d d = toward - seed;
+            double len = d.Length;
+            if (len > 1.0)
+            {
+                Vector3d dir = d / len;
+                double max = Math.Min(len, 80.0);
+                for (double s = 10.0; s <= max && best == null; s += 10.0)
+                    Consider(seed + dir * s);
+                if (best == null) Consider(toward);
+            }
+            return best;
+        }
+
+        private static bool FaceCoversPoint(Polygon face, GeometryFactory gf, Point3d seed)
+        {
+            if (face == null || gf == null || face.IsEmpty) return false;
+            try
+            {
+                var pt = gf.CreatePoint(new Coordinate(seed.X, seed.Y));
+                return face.Covers(pt) || face.Contains(pt);
+            }
+            catch { return false; }
         }
 
         /// <summary>Ortadan, olmazsa 15 cm yukarı/aşağıdan bu açıklığa uyan hücre.</summary>
@@ -702,8 +1432,52 @@ namespace ST4Yardimci
                 pl.Dispose();
                 return null;
             }
+            DropCollinearVertices(pl);
+            if (pl.NumberOfVertices < 3)
+            {
+                pl.Dispose();
+                return null;
+            }
             pl.Closed = true;
             return pl;
+        }
+
+        /// <summary>Aynı doğru üstündeki ara nokta silinir. Köşe kalır.</summary>
+        private static void DropCollinearVertices(Polyline pl)
+        {
+            if (pl == null) return;
+            const double sinTol = 0.0175; // 1°
+            bool changed = true;
+            while (changed && pl.NumberOfVertices > 3)
+            {
+                changed = false;
+                int n = pl.NumberOfVertices;
+                for (int i = 0; i < n && pl.NumberOfVertices > 3; i++)
+                {
+                    int n2 = pl.NumberOfVertices;
+                    Point2d prev = pl.GetPoint2dAt((i + n2 - 1) % n2);
+                    Point2d p = pl.GetPoint2dAt(i % n2);
+                    Point2d next = pl.GetPoint2dAt((i + 1) % n2);
+                    double ax = p.X - prev.X, ay = p.Y - prev.Y;
+                    double bx = next.X - p.X, by = next.Y - p.Y;
+                    double la = Math.Sqrt(ax * ax + ay * ay);
+                    double lb = Math.Sqrt(bx * bx + by * by);
+                    if (la < 0.05 || lb < 0.05)
+                    {
+                        pl.RemoveVertexAt(i % n2);
+                        changed = true;
+                        break;
+                    }
+                    double cross = ax * by - ay * bx;
+                    double dot = ax * bx + ay * by;
+                    if (dot > 0 && Math.Abs(cross) <= sinTol * la * lb)
+                    {
+                        pl.RemoveVertexAt(i % n2);
+                        changed = true;
+                        break;
+                    }
+                }
+            }
         }
 
         /// <summary>Boundary bu açıklığın boyunu aşmasın; komşu açıklığa veya tüm kata taşmasın.</summary>
@@ -1245,6 +2019,143 @@ namespace ST4Yardimci
             t.AdjustAlignment(db);
             btr.AppendEntity(t);
             tr.AddNewlyCreatedDBObject(t, true);
+        }
+
+        /// <summary>Mesnet sınırına giren her eğri: düz çizgi, eski polyline, yay, mline, kolon bloğu.</summary>
+        private static void CollectMesnetGeometry(
+            Transaction tr, Entity ent, List<RawSeg> dest, Matrix3d xf, int depth)
+        {
+            if (ent == null || dest == null || depth > 8) return;
+            try
+            {
+                if (ent is BlockReference br)
+                {
+                    CollectBlockMesnet(tr, br, dest, xf, depth);
+                    return;
+                }
+                if (ent is Mline ml && depth == 0)
+                {
+                    var objs = new DBObjectCollection();
+                    ml.Explode(objs);
+                    foreach (DBObject o in objs)
+                    {
+                        try
+                        {
+                            if (o is Entity e)
+                                CollectMesnetGeometry(tr, e, dest, xf, depth + 1);
+                        }
+                        finally { o.Dispose(); }
+                    }
+                    return;
+                }
+                var local = new List<RawSeg>();
+                if (ent is Polyline2d p2)
+                    AddOldPolylineSegs(tr, p2, local);
+                else if (ent is Arc arc)
+                    AddArcSegs(arc, local);
+                else
+                    CollectBoundarySegs(ent, local);
+                AppendTransformed(dest, local, xf);
+            }
+            catch { }
+        }
+
+        private static void CollectBlockMesnet(
+            Transaction tr, BlockReference br, List<RawSeg> dest, Matrix3d xf, int depth)
+        {
+            if (depth > 8) return;
+            BlockTableRecord def;
+            try { def = tr.GetObject(br.BlockTableRecord, OpenMode.ForRead) as BlockTableRecord; }
+            catch { return; }
+            if (def == null) return;
+            Matrix3d nxf = xf * br.BlockTransform;
+            foreach (ObjectId id in def)
+            {
+                Entity nested;
+                try { nested = tr.GetObject(id, OpenMode.ForRead) as Entity; }
+                catch { continue; }
+                if (nested == null) continue;
+                if (nested is DBText || nested is MText || nested is Hatch
+                    || nested is Autodesk.AutoCAD.DatabaseServices.Dimension
+                    || nested is AttributeDefinition || nested is Leader || nested is MLeader
+                    || nested is DBPoint || nested is ProxyEntity || nested is RasterImage)
+                    continue;
+                string layer = nested.Layer ?? "";
+                bool layer0 = string.Equals(layer, "0", StringComparison.OrdinalIgnoreCase);
+                if (!layer0 && !IsMesnetLayer(layer, null)) continue;
+                CollectMesnetGeometry(tr, nested, dest, nxf, depth + 1);
+            }
+        }
+
+        private static void AddOldPolylineSegs(Transaction tr, Polyline2d p2, List<RawSeg> dest)
+        {
+            var verts = new List<Point2d>();
+            var bulges = new List<double>();
+            foreach (ObjectId vid in p2)
+            {
+                try
+                {
+                    if (tr.GetObject(vid, OpenMode.ForRead) is Vertex2d v)
+                    {
+                        verts.Add(new Point2d(v.Position.X, v.Position.Y));
+                        bulges.Add(v.Bulge);
+                    }
+                }
+                catch { }
+            }
+            int n = verts.Count;
+            if (n < 2) return;
+            int segs = p2.Closed ? n : n - 1;
+            for (int i = 0; i < segs; i++)
+            {
+                Point2d a = verts[i];
+                Point2d b = verts[(i + 1) % n];
+                double bulge = i < bulges.Count ? bulges[i] : 0;
+                AddBulgeSegs(dest, a.X, a.Y, b.X, b.Y, bulge);
+            }
+        }
+
+        private static void AddArcSegs(Arc arc, List<RawSeg> dest)
+        {
+            if (arc == null || arc.Radius < 0.5) return;
+            double a0 = arc.StartAngle;
+            double sweep = arc.EndAngle - a0;
+            while (sweep < 1e-9) sweep += Math.PI * 2.0;
+            int steps = Math.Max(2, (int)Math.Ceiling(sweep / (Math.PI / 12.0)));
+            double px = arc.Center.X + arc.Radius * Math.Cos(a0);
+            double py = arc.Center.Y + arc.Radius * Math.Sin(a0);
+            for (int s = 1; s <= steps; s++)
+            {
+                double a = a0 + sweep * s / steps;
+                double qx = arc.Center.X + arc.Radius * Math.Cos(a);
+                double qy = arc.Center.Y + arc.Radius * Math.Sin(a);
+                if (s == steps)
+                {
+                    qx = arc.EndPoint.X;
+                    qy = arc.EndPoint.Y;
+                }
+                AddSeg(dest, px, py, qx, qy);
+                px = qx;
+                py = qy;
+            }
+        }
+
+        private static void AppendTransformed(List<RawSeg> dest, List<RawSeg> local, Matrix3d xf)
+        {
+            if (local == null || local.Count == 0) return;
+            bool plain = xf.IsEqualTo(Matrix3d.Identity);
+            for (int i = 0; i < local.Count; i++)
+            {
+                RawSeg s = local[i];
+                if (plain)
+                {
+                    dest.Add(s);
+                    continue;
+                }
+                Point3d a = new Point3d(s.X0, s.Y0, 0).TransformBy(xf);
+                Point3d b = new Point3d(s.X1, s.Y1, 0).TransformBy(xf);
+                AddSeg(dest, a.X, a.Y, b.X, b.Y);
+            }
         }
 
         private static void CollectBoundarySegs(Entity ent, List<RawSeg> segs)

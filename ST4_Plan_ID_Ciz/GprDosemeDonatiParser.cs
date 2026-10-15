@@ -50,10 +50,15 @@ namespace ST4PlanIdCiz
         /// Birden fazla kodlama dener; <b>en çok döşeme anahtarı</b> üreten sonucu seçer (ilk geçerli değil).
         /// UTF-8 BOM varsa UTF-8 denemesi öne alınır.
         /// </summary>
-        public static bool TryParse(string gprFilePath, out Dictionary<string, GprDosemeDonatiXy> slabIdToDonatiXy, out string error)
+        public static bool TryParse(
+            string gprFilePath,
+            out Dictionary<string, GprDosemeDonatiXy> slabIdToDonatiXy,
+            out string error,
+            out bool keysCollapsed)
         {
             slabIdToDonatiXy = null;
             error = null;
+            keysCollapsed = false;
             if (string.IsNullOrWhiteSpace(gprFilePath) || !File.Exists(gprFilePath))
             {
                 error = "GPR dosyasi yok.";
@@ -87,6 +92,7 @@ namespace ST4PlanIdCiz
 
             Dictionary<string, GprDosemeDonatiXy> best = null;
             int bestCount = 0;
+            bool bestCollapsed = false;
             byte[] fileBytes = null;
             try { fileBytes = File.ReadAllBytes(gprFilePath); }
             catch { fileBytes = null; }
@@ -96,10 +102,12 @@ namespace ST4PlanIdCiz
                 string[] linesSafe = fileBytes != null
                     ? WindowsAnsiEncodings.SplitLines(WindowsAnsiEncodings.DecodeFileBytes(fileBytes))
                     : WindowsAnsiEncodings.ReadAllLines(gprFilePath);
-                if (TryParseLines(linesSafe, out Dictionary<string, GprDosemeDonatiXy> dictSafe) && dictSafe != null && dictSafe.Count > 0)
+                if (TryParseLines(linesSafe, out Dictionary<string, GprDosemeDonatiXy> dictSafe, out bool collapsedSafe)
+                    && dictSafe != null && dictSafe.Count > 0)
                 {
                     best = dictSafe;
                     bestCount = dictSafe.Count;
+                    bestCollapsed = collapsedSafe;
                 }
             }
             catch
@@ -109,6 +117,7 @@ namespace ST4PlanIdCiz
             if (bestCount >= 20)
             {
                 slabIdToDonatiXy = best;
+                keysCollapsed = bestCollapsed;
                 return true;
             }
             foreach (Encoding enc in encodings)
@@ -126,18 +135,20 @@ namespace ST4PlanIdCiz
                     continue;
                 }
 
-                if (!TryParseLines(lines, out Dictionary<string, GprDosemeDonatiXy> dict) || dict == null || dict.Count == 0)
+                if (!TryParseLines(lines, out Dictionary<string, GprDosemeDonatiXy> dict, out bool collapsed) || dict == null || dict.Count == 0)
                     continue;
                 if (dict.Count > bestCount)
                 {
                     bestCount = dict.Count;
                     best = dict;
+                    bestCollapsed = collapsed;
                 }
             }
 
             if (best != null)
             {
                 slabIdToDonatiXy = best;
+                keysCollapsed = bestCollapsed;
                 return true;
             }
 
@@ -145,9 +156,10 @@ namespace ST4PlanIdCiz
             return false;
         }
 
-        private static bool TryParseLines(string[] lines, out Dictionary<string, GprDosemeDonatiXy> dict)
+        private static bool TryParseLines(string[] lines, out Dictionary<string, GprDosemeDonatiXy> dict, out bool keysCollapsed)
         {
             dict = null;
+            keysCollapsed = false;
             int start = FindDosemeBetonarmeStartLine(lines);
             if (start < 0)
                 return false;
@@ -169,17 +181,17 @@ namespace ST4PlanIdCiz
                 {
                     if (i + 1 < end)
                     {
-                        ProcessContentLine(lines[i + 1], d, ref pendingKey, ref pendingXDon);
+                        ProcessContentLine(lines[i + 1], d, ref pendingKey, ref pendingXDon, ref keysCollapsed);
                         i++;
                     }
                     continue;
                 }
 
-                ProcessContentLine(raw, d, ref pendingKey, ref pendingXDon);
+                ProcessContentLine(raw, d, ref pendingKey, ref pendingXDon, ref keysCollapsed);
             }
 
             if (pendingKey != null)
-                d[pendingKey] = ToXy(pendingXDon, null);
+                PutSlab(d, pendingKey, ToXy(pendingXDon, null), ref keysCollapsed);
 
             if (d.Count == 0)
                 return false;
@@ -233,11 +245,24 @@ namespace ST4PlanIdCiz
             return sb.ToString();
         }
 
+        /// <summary>Aynı anahtar ikinci kez gelirse tablo sütunu numarayı kesmiştir (D3B-001 → D3B-00).</summary>
+        private static void PutSlab(
+            Dictionary<string, GprDosemeDonatiXy> dict,
+            string key,
+            GprDosemeDonatiXy xy,
+            ref bool keysCollapsed)
+        {
+            if (dict.ContainsKey(key))
+                keysCollapsed = true;
+            dict[key] = xy;
+        }
+
         private static void ProcessContentLine(
             string raw,
             Dictionary<string, GprDosemeDonatiXy> dict,
             ref string pendingKey,
-            ref string pendingXDon)
+            ref string pendingXDon,
+            ref bool keysCollapsed)
         {
             string line = raw ?? string.Empty;
             line = line.Replace("\u00C2\u00A1", "\u00A1");
@@ -256,7 +281,7 @@ namespace ST4PlanIdCiz
                 if (string.IsNullOrWhiteSpace(don))
                     don = ExtractDonatiCellFromGprLineFallback(line);
                 if (pendingKey != null)
-                    dict[pendingKey] = ToXy(pendingXDon, null);
+                    PutSlab(dict, pendingKey, ToXy(pendingXDon, null), ref keysCollapsed);
                 pendingKey = key;
                 pendingXDon = string.IsNullOrWhiteSpace(don) ? string.Empty : don.Trim();
                 return;
@@ -270,7 +295,7 @@ namespace ST4PlanIdCiz
                 string yDon = KolonDonatiTableDrawer.ExtractGprDonatiCellFromLine(line);
                 if (string.IsNullOrWhiteSpace(yDon))
                     yDon = ExtractDonatiCellFromGprLineFallback(line);
-                dict[pendingKey] = ToXy(pendingXDon, yDon);
+                PutSlab(dict, pendingKey, ToXy(pendingXDon, yDon), ref keysCollapsed);
                 pendingKey = null;
                 pendingXDon = null;
                 return;

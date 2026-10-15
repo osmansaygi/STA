@@ -41,8 +41,8 @@ namespace ST4PlanIdCiz
         private const double KirisAcilimKutupCm = 20.0;
         /// <summary>Kolon aralığı düğüme bu kadar yakınsa mesnet sayılır.</summary>
         private const double KirisAcilimKolonYakinCm = 20.0;
-        /// <summary>Montaj donatısı net paspayı (cm). Çubuk merkezi = paspayı (dış sıra) ve paspayı + çap.</summary>
-        private const double KirisAcilimMontajPaspayiCm = 4.0;
+        /// <summary>Boyuna donatı net paspayı (cm). Montaj, alt düz, ilave ve gövde dağılımı buna göre.</summary>
+        private const double KirisAcilimMontajPaspayiCm = 5.5;
         /// <summary>Montaj donatısı etiketinin kiriş üst çizgisinden aşağı mesafesi (cm).</summary>
         private const double KirisAcilimMontajEtiketUsttenCm = 12.0;
         /// <summary>Yüzdeki iki çubuk sırası arası (cm). TBDY: boyuna çubuklar arası ≥ 2.5 cm.</summary>
@@ -50,7 +50,7 @@ namespace ST4PlanIdCiz
         /// <summary>Üst ve alt donatı seviyeleri arasında kalan gövdeye bu kadar pay bırakılır (cm).</summary>
         private const double KirisAcilimGovdeKenarPayiCm = 2.0;
         /// <summary>Alt düz donatı net paspayı (cm).</summary>
-        private const double KirisAcilimDuzPaspayiCm = 4.0;
+        private const double KirisAcilimDuzPaspayiCm = 5.5;
         /// <summary>Alt düz donatı etiketi merkezinin kiriş alt çizgisinden yukarı mesafesi (cm).</summary>
         private const double KirisAcilimDuzEtiketAlttanCm = 12.0;
         /// <summary>Montaj donatısı çizgi katmanı (EnsureLayers'ta tanımlı).</summary>
@@ -64,11 +64,18 @@ namespace ST4PlanIdCiz
         private const short KirisAcilimRenkDuz = 3;
         /// <summary>Gövde donatısı etiket/çizgi rengi (ACI 6, magenta).</summary>
         private const short KirisAcilimRenkGovde = 6;
-        /// <summary>İlave donatı rengi. Üst: 1 sol üst ACI 5, 3 sağ üst ACI 2. Alt: 2 sol alt ACI 30, 4 sağ alt ACI 1.</summary>
-        private const short KirisAcilimRenkIlaveSolUst = 5;
-        private const short KirisAcilimRenkIlaveSagUst = 2;
-        private const short KirisAcilimRenkIlaveSolAlt = 30;
-        private const short KirisAcilimRenkIlaveSagAlt = 1;
+        /// <summary>Üst ilave rengi (ACI 40). ACI 5 mavi zeminde silik kalıyordu. Sol ve sağ aynı.</summary>
+        private const short KirisAcilimRenkIlaveUst = 40;
+        /// <summary>Alt ilave rengi (ACI 1). Sol ve sağ aynı.</summary>
+        private const short KirisAcilimRenkIlaveAlt = 1;
+        /// <summary>Üst ilave montajın bu kadar altında, alt ilave düz donatının bu kadar üstünde (cm). Yalnız çizim; boy hesabına girmez.</summary>
+        private const double KirisAcilimIlaveAyirCm = 3.0;
+        /// <summary>Gönye köşe yayı (cm). Çizim yarıçapı.</summary>
+        private const double KirisAcilimGonyeYaricapCm = 3.0;
+        /// <summary>Birinci gönye düşey bacağı en az bu kadar (cm). Kiriş yüksekliğinin yarısı daha büyükse o geçerli.</summary>
+        private const double KirisAcilimGonyeMinCm = 20.0;
+        /// <summary>Konsol serbest uç gönyesi en az bu kadar (cm). lb ve 12φ bu uçta aranmaz.</summary>
+        private const double KirisAcilimKonsolGonyeMinCm = 30.0;
 
         /// <summary>
         /// Kenetlenme: lb/φ, C30 + B420C (TS 500 9.1.2.1, STA çizimiyle aynı).
@@ -76,14 +83,10 @@ namespace ST4PlanIdCiz
         /// </summary>
         private const double KirisAcilimLbPhiKonumI = 48.44;
         private const double KirisAcilimLbPhiKonumII = 34.60;
-        /// <summary>TS 500 7.3: nervürlü ilave kesimden aşım max(d, 20φ).</summary>
-        private const double KirisAcilimKesimAsimPhi = 20.0;
-        /// <summary>TBDY 7.4.3.1(a): mesnet üst donatısının en az 1/4'ü açıklık boyunca sürekli devam eder (montaj).</summary>
+        /// <summary>TBDY 7.4.3.1(a): mesnetten sonra açıklığa Ln/4.</summary>
         private const double KirisAcilimUstSurekliOran = 0.25;
-        /// <summary>STA OPS "Lk = 50Ø, Ln/4": üst ilave uzatma tabanı. TBDY 7.4.3.1(b)/(c) ile uyumlu.</summary>
+        /// <summary>hk + c ≥ 50φ. φ çarpanı; yüzden itibaren tek başına uygulanmaz.</summary>
         private const double KirisAcilimUstIlavePhi = 50.0;
-        /// <summary>TBDY 7.4.3.1(c): alt donatı açıklığa max(lb, 50φ).</summary>
-        private const double KirisAcilimAltIlavePhi = 50.0;
         /// <summary>TBDY 7.4.3.1(b): kenar mesnette kanca yatay ≥ 0.4·lb, düşey ≥ 12φ.</summary>
         private const double KirisAcilimKenarYatayOran = 0.4;
         private const double KirisAcilimKenarDuseyPhi = 12.0;
@@ -91,11 +94,22 @@ namespace ST4PlanIdCiz
         private const double KirisAcilimKonumIIUsttenCm = 30.0;
         /// <summary>Ölçü yazılarını 5 cm'ye yuvarla (STA çizim alışkanlığı).</summary>
         private const double KirisAcilimYuvarlamaCm = 5.0;
-
-        private double KirisAcilimEfektifYukseklikCm(double h, double capCm)
-        {
-            return h - KirisAcilimMontajPaspayiCm - 0.8 - capCm * 0.5;
-        }
+        /// <summary>Montaj çubuğu bu boyu geçmez (cm). Gönye boyu dahildir, köşe yayı düşülmez.</summary>
+        private const double KirisAcilimMontajMaxBoyCm = 1200.0;
+        /// <summary>1200 cm'ye tamamlarken bindirme Ln/2 dışına en fazla bu kadar (cm) taşabilir.</summary>
+        private const double KirisAcilimMontajLnToleransCm = 20.0;
+        /// <summary>Montaj açılımı, en alttaki kolon kesiminin bu kadar altında (cm).</summary>
+        private const double KirisAcilimMontajAcilimCm = 45.0;
+        /// <summary>İlave açılımı, en alttaki kolon kesiminin bu kadar altında (cm).</summary>
+        private const double KirisAcilimIlaveAcilimCm = 30.0;
+        /// <summary>Gövde açılımı, en alttaki kolon kesiminin bu kadar altında (cm).</summary>
+        private const double KirisAcilimGovdeAcilimCm = 60.0;
+        /// <summary>Yan yana açılımlar bu kadar şaşırtılır (cm).</summary>
+        private const double KirisAcilimMontajSasirtmaCm = 5.0;
+        private double _kirisAcilimKesimY;
+        private int _kirisAcilimIlaveSira;
+        private int _kirisAcilimMontajSira;
+        private int _kirisAcilimGovdeSira;
 
         /// <summary>5 cm katına yuvarlar.</summary>
         private static double KirisAcilimYuvarla(double x)
@@ -105,31 +119,21 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>
-        /// Üst mesnet ilave kesim mesafesi (cm). TBDY 7.4.3.1(a) Şekil 7.7 + STA OPS "Lk = 50Ø, Ln/4":
-        /// L = max(ln_net/4, 50φ, lb_I, d+20φ). <paramref name="lnNetCm"/> NET açıklıktır (kolon/perde
-        /// yüzleri arası); ln/4 TBDY Şekil 7.7 üst donatı uzatması; 50φ STA OPS ve TBDY 7.4.3.1(b)/(c)
-        /// pratiği; lb_I TS 500 9.1.2.1 konum I; d+20φ TS 500 7.3 kesim aşımı.
-        /// Mesnet payı burada DÜŞÜLMEZ: boy zaten net açıklığa göre hesaplanır (eski hatalı davranış:
-        /// ln/4 alıp sonra mesnet genişliğinin tamamını çıkarmak, perde/duvar mesnetlerde boyu sebepsiz kısaltıyordu).
+        /// Mesnet yüzünden açıklığa giren ilave boyu (cm), üst ve alt.
+        /// c = Ln/4. 50φ ve lb yüzden itibaren değil, mesnet genişliği ile birlikte aranır:
+        /// hk + c ≥ max(50φ, lb). Mesnet genişliği yetiyorsa çubuk yüzden yalnız Ln/4 gider;
+        /// yetmiyorsa eksik kadar uzar. hk = 0 ise (serbest uç) taban max(50φ, lb) olur.
         /// </summary>
-        private double KirisAcilimUstIlaveKesimCm(double lnNetCm, double h, double capCm, double capMm)
+        private double KirisAcilimIlaveYuzdenCm(double lnNetCm, double hkCm, double capMm, bool ust)
         {
-            double lb = KirisAcilimLbPhiKonumI * capMm / 10.0;
-            double asim = KirisAcilimEfektifYukseklikCm(h, capCm) + KirisAcilimKesimAsimPhi * capMm / 10.0;
+            if (capMm <= 0 || lnNetCm <= 0) return 0;
+            double c = KirisAcilimUstSurekliOran * lnNetCm;
             double phi50 = KirisAcilimUstIlavePhi * capMm / 10.0;
-            double vals = KirisAcilimUstSurekliOran * lnNetCm;
-            if (phi50 > vals) vals = phi50;
-            if (lb > vals) vals = lb;
-            if (asim > vals) vals = asim;
-            return KirisAcilimYuvarla(vals);
-        }
-
-        /// <summary>Alt ilave kesim mesafesi (cm): max(lb_II, 50φ) — TBDY 7.4.3.1(c).</summary>
-        private double KirisAcilimAltIlaveKesimCm(double capMm)
-        {
-            double lb = KirisAcilimLbPhiKonumII * capMm / 10.0;
-            double phi50 = KirisAcilimAltIlavePhi * capMm / 10.0;
-            return KirisAcilimYuvarla(lb > phi50 ? lb : phi50);
+            double lb = (ust ? KirisAcilimLbPhiKonumI : KirisAcilimLbPhiKonumII) * capMm / 10.0;
+            double taban = (phi50 > lb ? phi50 : lb) - (hkCm > 0 ? hkCm : 0);
+            if (taban > c) c = taban;
+            if (c < 0) c = 0;
+            return KirisAcilimYuvarla(c);
         }
 
         /// <summary>Çubuk konum sınıfı: serbest üst yüzden 30 cm'den fazla aşağıda veya eğimli ise II, değilse I.</summary>
@@ -208,7 +212,7 @@ namespace ST4PlanIdCiz
             public short JointEnd;
         }
 
-        /// <summary>KMX ofset 108 montaj, 124 gövde, 128 sol üst ilave, 132 sağ alt, 136 sağ üst, 140 sol alt: adet + çap (mm).</summary>
+        /// <summary>KMX ofset 108 montaj, 124 gövde, 128 sol üst, 132 sol alt, 136 sağ üst, 140 sağ alt: adet + çap (mm).</summary>
         private struct KirisAcilimMontajBilgi
         {
             public int Adet;
@@ -396,9 +400,32 @@ namespace ST4PlanIdCiz
             for (int i = 0; i < n; i++)
             {
                 if (used[i]) continue;
-                int entryEnd = linkSeg[i, 0] < 0 ? 0 : (linkSeg[i, 1] < 0 ? 1 : 0);
+                // İki ucu da bağlı parça ortaya denk gelir. Serbest uçtan başlanmazsa yürüyüş tek yöne gider
+                // ve diğer komşu (KB-99 ← KB-100 → KB-104) ayrı açılımda kalır.
+                int start = i;
+                if (linkSeg[start, 0] >= 0 && linkSeg[start, 1] >= 0)
+                {
+                    int at = start;
+                    int leave = 0;
+                    var walked = new HashSet<int> { start };
+                    for (int g = 0; g < n; g++)
+                    {
+                        int nxt = linkSeg[at, leave];
+                        if (nxt < 0 || !walked.Add(nxt)) break;
+                        int arrive = linkEnd[at, leave];
+                        int nxtLeave = arrive == 0 ? 1 : 0;
+                        if (linkSeg[nxt, nxtLeave] < 0)
+                        {
+                            start = nxt;
+                            break;
+                        }
+                        at = nxt;
+                        leave = nxtLeave;
+                    }
+                }
+                int entryEnd = linkSeg[start, 0] < 0 ? 0 : (linkSeg[start, 1] < 0 ? 1 : 0);
                 var chain = new List<KirisAcilimSpan>();
-                int cur = i;
+                int cur = start;
                 int enter = entryEnd;
                 while (cur >= 0 && !used[cur])
                 {
@@ -617,6 +644,10 @@ namespace ST4PlanIdCiz
 
             double yShift = cursorY - minY;
             double chainTop = yShift + maxY;
+            _kirisAcilimKesimY = KirisAcilimKolonKesimY(chain, sup, yShift);
+            _kirisAcilimIlaveSira = 0;
+            _kirisAcilimMontajSira = 0;
+            _kirisAcilimGovdeSira = 0;
             KirisAcilimSerbestUcUzatma(chain, gorunus, out double extStart, out double extEnd);
             var kolonGrow0 = new double[m];
             var kolonGrow1 = new double[m];
@@ -641,15 +672,18 @@ namespace ST4PlanIdCiz
 
             var gf = NetTopologySuite.NtsGeometryServices.Instance.CreateGeometryFactory();
             var concrete = new List<Geometry>();
+            var govdeYutulan = new HashSet<int>();
             int run = 0;
             while (run < m)
             {
                 int runEnd = run;
                 while (runEnd + 1 < m && chain[runEnd + 1].Beam.BeamId == chain[run].Beam.BeamId)
                     runEnd++;
-                KirisAcilimDrawRun(tr, ms, db, chain, run, runEnd, x0, yShift, pad, gf, concrete, sup, ucTipi, extStart, extEnd, kolonGrow0, kolonGrow1, montaj);
+                KirisAcilimDrawRun(tr, ms, db, chain, run, runEnd, x0, yShift, pad, gf, concrete, sup, ucTipi, extStart, extEnd, kolonGrow0, kolonGrow1, montaj, gorunus, govdeYutulan);
                 run = runEnd + 1;
             }
+
+            KirisAcilimMontajBirlesik(tr, ms, db, chain, x0, yShift, sup, montaj, gorunus, ucTipi);
 
             for (int i = 0; i <= m; i++)
             {
@@ -788,6 +822,58 @@ namespace ST4PlanIdCiz
             if (chainTop > cursorY) cursorY = chainTop;
         }
 
+        /// <summary>En alttaki kolon kesim çizgisi. Aşağı uzayan kolon yoksa en alt kiriş altı.</summary>
+        private static double KirisAcilimKolonKesimY(
+            List<KirisAcilimSpan> chain, KirisAcilimSupport[] sup, double yShift)
+        {
+            double en = double.MaxValue;
+            double alt = double.MaxValue;
+            int m = chain == null ? 0 : chain.Count;
+            for (int i = 0; i <= m; i++)
+            {
+                KirisAcilimSpanAt(chain, i, out KirisAcilimSpan left, out KirisAcilimSpan right);
+                double kot = KirisAcilimJointTop(left, right);
+                double soffit = KirisAcilimJointSoffit(left, right, kot);
+                double yBot = yShift + soffit;
+                if (yBot < alt) alt = yBot;
+                if (sup == null || i >= sup.Length) continue;
+                if (sup[i].X1 - sup[i].X0 <= 2.0 || !sup[i].ExtendDown) continue;
+                double yCut = yBot - KirisAcilimKutupCm;
+                if (yCut < en) en = yCut;
+            }
+            return en < 1e8 ? en : alt;
+        }
+
+        /// <summary>Tek çubuğun açılımı. Eksen, kolon kesiminin altında; yan yana olanlar 5 cm şaşar. Boy yazılır.</summary>
+        private void KirisAcilimAcilimCiz(
+            Transaction tr, BlockTableRecord ms, Database db,
+            List<Point2d> pts, short renk, int adet, int cap, double boy,
+            double asagiCm, ref int sira)
+        {
+            if (pts == null || pts.Count < 2 || adet <= 0 || cap <= 0 || boy < 1.0) return;
+            if (_kirisAcilimKesimY > 1e8) return;
+            int a = 0;
+            int b = pts.Count - 1;
+            if (pts.Count >= 3 && Math.Abs(pts[1].X - pts[0].X) < 1.0 && Math.Abs(pts[1].Y - pts[0].Y) > 1.0)
+                a = 1;
+            if (b - a >= 1 && Math.Abs(pts[b].X - pts[b - 1].X) < 1.0 && Math.Abs(pts[b].Y - pts[b - 1].Y) > 1.0)
+                b--;
+            double yEksen = 0.5 * (pts[a].Y + pts[b].Y);
+            double xEt = 0.5 * (pts[a].X + pts[b].X);
+            double yHedef = _kirisAcilimKesimY - asagiCm - (sira % 2) * KirisAcilimMontajSasirtmaCm;
+            sira++;
+            double dy = yHedef - yEksen;
+            var ac = new List<Point2d>(pts.Count);
+            for (int i = 0; i < pts.Count; i++)
+                ac.Add(new Point2d(pts[i].X, pts[i].Y + dy));
+            KirisAcilimDonatiPl(tr, ms, renk, ac);
+            if (db == null) return;
+            string lbl = adet.ToString(CultureInfo.InvariantCulture) + "\u00F8" + cap.ToString(CultureInfo.InvariantCulture)
+                + " L=" + Math.Round(boy).ToString("0", CultureInfo.InvariantCulture);
+            DrawBeamLabel(tr, ms, db, new Point3d(xEt, yHedef, 0), lbl, 8.0, 0.0, KirisAcilimDonatiYaziLayer, useMiddleCenter: true);
+            KirisAcilimYaziKutusuUstune(tr, yHedef + 3.0);
+        }
+
         private static void KirisAcilimSpanAt(List<KirisAcilimSpan> chain, int i, out KirisAcilimSpan left, out KirisAcilimSpan right)
         {
             left = i > 0 ? chain[i - 1] : null;
@@ -911,7 +997,8 @@ namespace ST4PlanIdCiz
             GeometryFactory gf, List<Geometry> concrete, KirisAcilimSupport[] sup,
             Dictionary<BeamInfo, KirisAcilimUcBilgi> ucTipi,
             double extStartCm, double extEndCm, double[] kolonGrow0, double[] kolonGrow1,
-            Dictionary<BeamInfo, KirisAcilimMontajBilgi> montaj)
+            Dictionary<BeamInfo, KirisAcilimMontajBilgi> montaj,
+            List<KirisAcilimSaplama> gorunus, HashSet<int> govdeYutulan)
         {
             int part = i0;
             while (part <= i1)
@@ -942,16 +1029,41 @@ namespace ST4PlanIdCiz
                     pts.Add(new Point2d(x, yShift + s.Kot1));
                 }
                 pts.Add(new Point2d(xBas, yShift + first.Kot0));
+                KirisAcilimDuzNoktaSil(pts, true);
                 Polygon beamPoly = KirisAcilimPolygon(gf, pts);
                 if (beamPoly != null) concrete.Add(beamPoly);
                 part = j + 1;
             }
 
-            double net0 = chain[i0].X0;
-            double net1 = chain[i1].X1;
-            // Kolon, sağdaki açıklığın başlangıcına (yoksa bu açıklığın bitişine) çizilir.
-            // İki açıklık aksı arasında boşluk varsa X1 ile sonraki X0 aynı nokta değildir;
-            // numara ve donatı bu boşluğu değil, çizilen kolon yüzünü kullanır.
+            double net0;
+            double net1;
+            KirisAcilimKolonYuzu(chain, i0, i1, sup, out net0, out net1);
+            double xMid = 0.5 * (net0 + net1);
+            double yLine = yShift + KirisAcilimKotAt(chain, i0, i1, xMid);
+            DrawBeamLabel(tr, ms, db,
+                new Point3d(x0 + xMid, yLine, 0),
+                KirisAcilimEtiket(chain[i0].Beam, pad),
+                KirisAcilimBaslikYukseklikCm, 0.0, LayerKirisYazisi, useMiddleCenter: true);
+            KirisAcilimYaziKutusuUstune(tr, yLine + 3.0);
+            KirisAcilimUcNoktalari(tr, ms, db, chain, i0, i1, sup, ucTipi, x0, yShift, net0, net1);
+            // Donatı, çizilen 1-2 ve 3-4 numaralarının hizasından başlar (kolon yüzü veya saplama kesitinin iç yüzü).
+            KirisAcilimNumaraAraligi(chain, i0, i1, net0, net1, gorunus, out double don0, out double don1);
+            KirisAcilimDuzDonatiYedek(tr, ms, db, chain, i0, i1, x0, yShift, don0, don1, montaj, sup, gorunus, ucTipi);
+            KirisAcilimGovdeDonati(tr, ms, db, chain, i0, i1, x0, yShift, don0, don1, montaj, sup, gorunus, govdeYutulan);
+            KirisAcilimIlaveDonati(tr, ms, db, chain, i0, i1, x0, yShift, don0, don1, montaj, sup, gorunus, ucTipi);
+        }
+
+        /// <summary>
+        /// Kolon, sağdaki açıklığın başlangıcına (yoksa bu açıklığın bitişine) çizilir.
+        /// İki açıklık aksı arasında boşluk varsa X1 ile sonraki X0 aynı nokta değildir;
+        /// numara ve donatı bu boşluğu değil, çizilen kolon yüzünü kullanır.
+        /// </summary>
+        private static void KirisAcilimKolonYuzu(
+            List<KirisAcilimSpan> chain, int i0, int i1, KirisAcilimSupport[] sup,
+            out double net0, out double net1)
+        {
+            net0 = chain[i0].X0;
+            net1 = chain[i1].X1;
             if (sup != null && i0 < sup.Length && sup[i0].X1 - sup[i0].X0 > 2.0)
             {
                 double face = chain[i0].X0 + sup[i0].X1;
@@ -963,57 +1075,298 @@ namespace ST4PlanIdCiz
                 double face = station + sup[i1 + 1].X0;
                 if (face > net0 + 5.0) net1 = face;
             }
-            double xMid = 0.5 * (net0 + net1);
-            double yLine = yShift + KirisAcilimKotAt(chain, i0, i1, xMid);
-            DrawBeamLabel(tr, ms, db,
-                new Point3d(x0 + xMid, yLine, 0),
-                KirisAcilimEtiket(chain[i0].Beam, pad),
-                KirisAcilimBaslikYukseklikCm, 0.0, LayerKirisYazisi, useMiddleCenter: true);
-            KirisAcilimYaziKutusuUstune(tr, yLine + 3.0);
-            KirisAcilimUcNoktalari(tr, ms, db, chain, i0, i1, sup, ucTipi, x0, yShift, net0, net1);
-            KirisAcilimMontajDonatiYedek(tr, ms, db, chain, i0, i1, x0, yShift, net0, net1, montaj);
-            KirisAcilimDuzDonatiYedek(tr, ms, db, chain, i0, i1, x0, yShift, net0, net1, montaj);
-            KirisAcilimGovdeDonati(tr, ms, db, chain, i0, i1, x0, yShift, net0, net1, montaj);
-            KirisAcilimIlaveDonati(tr, ms, db, chain, i0, i1, x0, yShift, net0, net1, montaj);
         }
 
-        /// <summary>Gövde donatısı: 1 ve 2 ile 3 ve 4 arasında, montaj ile alt düz arasını eşit böler.</summary>
+        /// <summary>
+        /// Sol uç 1-2, sağ uç 3-4. Kolon mesnette iç yüz; saplama/basit uçta numaralanan kesitin kirişe bakan kenarı.
+        /// </summary>
+        private static void KirisAcilimNumaraAraligi(
+            List<KirisAcilimSpan> chain, int i0, int i1,
+            double net0, double net1, List<KirisAcilimSaplama> gorunus,
+            out double don0, out double don1)
+        {
+            don0 = net0;
+            don1 = net1;
+            if (gorunus == null || chain == null || i0 > i1) return;
+            double leftStation = chain[i0].X0;
+            double rightStation = chain[i1].X1;
+            double bestSol = double.MaxValue;
+            double bestSag = double.MaxValue;
+            foreach (KirisAcilimSaplama spm in gorunus)
+            {
+                if (!spm.IzdusumVar) continue;
+                double mid = 0.5 * (spm.X0 + spm.X1);
+                double tol = 0.5 * (spm.X1 - spm.X0) + 40.0;
+                if (spm.SolUc)
+                {
+                    double d = Math.Abs(mid - leftStation);
+                    if (d <= tol && d < bestSol)
+                    {
+                        bestSol = d;
+                        don0 = spm.X1;
+                    }
+                }
+                if (spm.SagUc)
+                {
+                    double d = Math.Abs(mid - rightStation);
+                    if (d <= tol && d < bestSag)
+                    {
+                        bestSag = d;
+                        don1 = spm.X0;
+                    }
+                }
+            }
+            if (don1 - don0 < 1.0)
+            {
+                don0 = net0;
+                don1 = net1;
+            }
+        }
+
+        /// <summary>
+        /// Gövde donatısı: montaj ile alt düz arasında eşit sıra.
+        /// Aynı çap, adet, kesit ve kottaki yan yana kirişler, toplam 1200 cm'yi geçmiyorsa bindirmesiz tek çubuktur.
+        /// Kenar mesnette max(50φ, lb) kadar içeri girer; sığmazsa 12φ gönye. Düzen değişince bindirme durur.
+        /// </summary>
         private void KirisAcilimGovdeDonati(
             Transaction tr, BlockTableRecord ms, Database db,
             List<KirisAcilimSpan> chain, int i0, int i1,
             double x0, double yShift, double net0, double net1,
-            Dictionary<BeamInfo, KirisAcilimMontajBilgi> montaj)
+            Dictionary<BeamInfo, KirisAcilimMontajBilgi> montaj,
+            KirisAcilimSupport[] sup, List<KirisAcilimSaplama> gorunus,
+            HashSet<int> govdeYutulan)
         {
             BeamInfo beam = chain[i0].Beam;
             if (beam == null || montaj == null || !montaj.TryGetValue(beam, out KirisAcilimMontajBilgi m)) return;
             if (m.GovdeAdet <= 0 || m.GovdeCap <= 0) return;
 
-            double xA = x0 + net0;
-            double xB = x0 + net1;
-            if (xB - xA < 1.0) return;
-
             double h = beam.HeightCm;
-            double ust = KirisAcilimMontajPaspayiCm;
+            double p = KirisAcilimMontajPaspayiCm;
+            double ust = p;
             double alt = h - KirisAcilimDuzPaspayiCm;
             int gorunen = (m.GovdeAdet + 1) / 2;
             if (gorunen < 1) gorunen = 1;
-            double n = gorunen + 1.0;
-            for (int k = 1; k <= gorunen; k++)
+            bool yutuldu = govdeYutulan != null && govdeYutulan.Contains(beam.BeamId);
+            if (!yutuldu)
             {
-                double ofs = ust + (alt - ust) * k / n;
-                double yA = yShift + KirisAcilimKotAt(chain, i0, i1, net0) - ofs;
-                double yB = yShift + KirisAcilimKotAt(chain, i0, i1, net1) - ofs;
-                KirisAcilimCizgi(tr, ms, xA, yA, xB, yB, KirisAcilimDonatiLayer, KirisAcilimRenkGovde);
+                int son0 = i0;
+                int son1 = i1;
+                double kotRef = chain[i0].Kot0;
+                for (int guard = 0; guard < 40; guard++)
+                {
+                    if (!KirisAcilimKomsuAralik(chain, son0, son1, false, out int j0, out int j1)) break;
+                    if (chain[j0]?.Beam == null || !montaj.TryGetValue(chain[j0].Beam, out KirisAcilimMontajBilgi karsi)) break;
+                    if (!KirisAcilimGovdeAyniDuzen(beam, m, chain[j0].Beam, karsi, kotRef, chain[j0].Kot0, chain[j1].Kot1, chain[son1].Kot1))
+                        break;
+                    bool sigar = true;
+                    double nSatir = gorunen + 1.0;
+                    double phiCm = m.GovdeCap / 10.0;
+                    for (int k = 1; k <= gorunen; k++)
+                    {
+                        double ofs = ust + (alt - ust) * k / nSatir;
+                        double boy = KirisAcilimGovdeGrupBoy(
+                            chain, i0, i1, j0, j1, sup, gorunus, montaj, x0, yShift, m, h, ofs, phiCm);
+                        if (boy > KirisAcilimMontajMaxBoyCm + 0.49)
+                        {
+                            sigar = false;
+                            break;
+                        }
+                    }
+                    if (!sigar) break;
+                    if (govdeYutulan != null) govdeYutulan.Add(chain[j0].Beam.BeamId);
+                    son0 = j0;
+                    son1 = j1;
+                }
+
+                double n = gorunen + 1.0;
+                double phi = m.GovdeCap / 10.0;
+                for (int k = 1; k <= gorunen; k++)
+                {
+                    double ofs = ust + (alt - ust) * k / n;
+                    KirisAcilimGovdeCubuk(
+                        tr, ms, db, chain, i0, i1, son0, son1, sup, gorunus, montaj, x0, yShift, m, h, ofs, phi, k == 1);
+                }
             }
 
-            int sag = gorunen;
-            int sol = m.GovdeAdet - gorunen;
-            if (sol < 1) sol = sag;
-            string lbl = sag.ToString(CultureInfo.InvariantCulture) + "\u00F8" + m.GovdeCap.ToString(CultureInfo.InvariantCulture)
-                + " / " + sol.ToString(CultureInfo.InvariantCulture) + "\u00F8" + m.GovdeCap.ToString(CultureInfo.InvariantCulture);
+            string lbl = m.GovdeAdet.ToString(CultureInfo.InvariantCulture) + "\u00F8" + m.GovdeCap.ToString(CultureInfo.InvariantCulture);
             double chainMid = 0.5 * (net0 + net1);
             double yMid = yShift + KirisAcilimKotAt(chain, i0, i1, chainMid) - h * 0.5;
             DrawBeamLabel(tr, ms, db, new Point3d(x0 + chainMid, yMid, 0), lbl, 8.0, 0.0, KirisAcilimDonatiYaziLayer, useMiddleCenter: true);
+        }
+
+        /// <summary>Aynı gövde düzeni: çap, adet, kesit ve kot.</summary>
+        private static bool KirisAcilimGovdeAyniDuzen(
+            BeamInfo kendi, KirisAcilimMontajBilgi mk, BeamInfo karsi, KirisAcilimMontajBilgi mc,
+            double kotRef, double kotSol, double kotSag, double kotOnce)
+        {
+            if (kendi == null || karsi == null) return false;
+            if (mk.GovdeAdet <= 0 || mc.GovdeAdet != mk.GovdeAdet || mc.GovdeCap != mk.GovdeCap) return false;
+            if (Math.Abs(kendi.WidthCm - karsi.WidthCm) > 0.5) return false;
+            if (Math.Abs(kendi.HeightCm - karsi.HeightCm) > 0.5) return false;
+            if (Math.Abs(kotSol - kotRef) > 2.0 || Math.Abs(kotSag - kotRef) > 2.0) return false;
+            if (Math.Abs(kotOnce - kotRef) > 2.0) return false;
+            return true;
+        }
+
+        /// <summary>Soldaki kirişten sağdaki kirişin ucuna kadar gövde boyu. Gönye dahildir.</summary>
+        private double KirisAcilimGovdeGrupBoy(
+            List<KirisAcilimSpan> chain, int i0, int i1, int son0, int son1,
+            KirisAcilimSupport[] sup, List<KirisAcilimSaplama> gorunus,
+            Dictionary<BeamInfo, KirisAcilimMontajBilgi> montaj,
+            double x0, double yShift, KirisAcilimMontajBilgi m, double h, double ofs, double phiCm)
+        {
+            var pts = new List<Point2d>();
+            KirisAcilimGovdeNokta(chain, i0, i1, son0, son1, sup, gorunus, montaj, x0, yShift, m, h, ofs, phiCm, pts);
+            double boy = 0;
+            for (int i = 1; i < pts.Count; i++)
+            {
+                double dx = pts[i].X - pts[i - 1].X;
+                double dy = pts[i].Y - pts[i - 1].Y;
+                boy += Math.Sqrt(dx * dx + dy * dy);
+            }
+            return boy;
+        }
+
+        private void KirisAcilimGovdeCubuk(
+            Transaction tr, BlockTableRecord ms, Database db,
+            List<KirisAcilimSpan> chain, int i0, int i1, int son0, int son1,
+            KirisAcilimSupport[] sup, List<KirisAcilimSaplama> gorunus,
+            Dictionary<BeamInfo, KirisAcilimMontajBilgi> montaj,
+            double x0, double yShift, KirisAcilimMontajBilgi m, double h, double ofs, double phiCm, bool acil)
+        {
+            var pts = new List<Point2d>();
+            KirisAcilimGovdeNokta(chain, i0, i1, son0, son1, sup, gorunus, montaj, x0, yShift, m, h, ofs, phiCm, pts);
+            if (pts.Count < 2) return;
+            KirisAcilimDonatiPl(tr, ms, KirisAcilimRenkGovde, pts);
+            if (!acil) return;
+            double boy = 0;
+            for (int i = 1; i < pts.Count; i++)
+            {
+                double dx = pts[i].X - pts[i - 1].X;
+                double dy = pts[i].Y - pts[i - 1].Y;
+                boy += Math.Sqrt(dx * dx + dy * dy);
+            }
+            KirisAcilimAcilimCiz(tr, ms, db, pts, KirisAcilimRenkGovde, m.GovdeAdet, m.GovdeCap, boy, KirisAcilimGovdeAcilimCm, ref _kirisAcilimGovdeSira);
+        }
+
+        private void KirisAcilimGovdeNokta(
+            List<KirisAcilimSpan> chain, int i0, int i1, int son0, int son1,
+            KirisAcilimSupport[] sup, List<KirisAcilimSaplama> gorunus,
+            Dictionary<BeamInfo, KirisAcilimMontajBilgi> montaj,
+            double x0, double yShift, KirisAcilimMontajBilgi m, double h, double ofs, double phiCm,
+            List<Point2d> pts)
+        {
+            KirisAcilimKolonYuzu(chain, i0, i1, sup, out double net0, out double net1);
+            KirisAcilimNumaraAraligi(chain, i0, i1, net0, net1, gorunus, out double don0, out _);
+            KirisAcilimKolonYuzu(chain, son0, son1, sup, out double sonNet0, out double sonNet1);
+            KirisAcilimNumaraAraligi(chain, son0, son1, sonNet0, sonNet1, gorunus, out _, out double don1);
+            double xA = x0 + don0;
+            double xB = x0 + don1;
+            double yA = yShift + KirisAcilimKotAt(chain, i0, i1, don0) - ofs;
+            double yB = yShift + KirisAcilimKotAt(chain, son0, son1, don1) - ofs;
+            double boy = KirisAcilimGovdeBoy(phiCm, ofs);
+            bool gonyeSol = KirisAcilimGovdeUc(
+                chain, i0, i1, sup, gorunus, montaj, x0, yShift, true, xA, yA, m, boy, out double x1);
+            bool gonyeSag = KirisAcilimGovdeUc(
+                chain, son0, son1, sup, gorunus, montaj, x0, yShift, false, xB, yB, m, boy, out double x2);
+            if (x2 - x1 < 1.0) return;
+            if (gonyeSol) KirisAcilimGovdeGonye(pts, true, x1, yA, h, ofs, phiCm);
+            pts.Add(new Point2d(x1, yA));
+            pts.Add(new Point2d(x2, yB));
+            if (gonyeSag) KirisAcilimGovdeGonye(pts, false, x2, yB, h, ofs, phiCm);
+        }
+
+        /// <summary>Gövde kenetlenmesi: 50φ ve lb'den büyük olan.</summary>
+        private static double KirisAcilimGovdeBoy(double phiCm, double usttenCm)
+        {
+            if (phiCm <= 0) return 0;
+            bool konumI = usttenCm <= KirisAcilimKonumIIUsttenCm;
+            double lb = (konumI ? KirisAcilimLbPhiKonumI : KirisAcilimLbPhiKonumII) * phiCm;
+            double phi50 = KirisAcilimUstIlavePhi * phiCm;
+            return phi50 > lb ? phi50 : lb;
+        }
+
+        /// <summary>
+        /// Gövde ucunun X'i. Ara ve aynı düzende bindirme mesnet ortasında.
+        /// Ara ve farklı düzende kendi yüzünden boy kadar diğer tarafa. Kenarda paspayına kadar, yetmezse gönye.
+        /// </summary>
+        private bool KirisAcilimGovdeUc(
+            List<KirisAcilimSpan> chain, int i0, int i1,
+            KirisAcilimSupport[] sup, List<KirisAcilimSaplama> gorunus,
+            Dictionary<BeamInfo, KirisAcilimMontajBilgi> montaj,
+            double x0, double yShift, bool sola, double xYuz, double yBar, KirisAcilimMontajBilgi kendi, double boy,
+            out double xUc)
+        {
+            xUc = xYuz;
+            double p = KirisAcilimMontajPaspayiCm;
+            if (KirisAcilimKomsuAralik(chain, i0, i1, sola, out int j0, out int j1))
+            {
+                if (chain[j0]?.Beam != null)
+                {
+                    double xN = sola ? chain[j1].X1 : chain[j0].X0;
+                    double nTop = yShift + KirisAcilimKotAt(chain, j0, j1, xN);
+                    double nBot = nTop - chain[j0].Beam.HeightCm;
+                    if (yBar > nTop - p || yBar < nBot + p)
+                    {
+                        // Komşu kesite sığmaz; yine de mesnete girer, boy yetmezse gönye mesnet içindedir.
+                        double hkDis = KirisAcilimMesnetHk(chain, i0, i1, sup, gorunus, sola);
+                        double sigarDis = hkDis - p;
+                        if (sigarDis < 0) sigarDis = 0;
+                        double girDis = boy < sigarDis ? boy : sigarDis;
+                        if (girDis < 0.5)
+                            xUc = sola ? xYuz + p : xYuz - p;
+                        else
+                            xUc = sola ? xYuz - girDis : xYuz + girDis;
+                        return girDis + 0.5 < boy;
+                    }
+                }
+                KirisAcilimSpan yakin = sola ? chain[j1] : chain[j0];
+                bool ayni = yakin?.Beam != null && montaj != null
+                    && montaj.TryGetValue(yakin.Beam, out KirisAcilimMontajBilgi karsi)
+                    && karsi.GovdeAdet == kendi.GovdeAdet && karsi.GovdeCap == kendi.GovdeCap
+                    && karsi.GovdeAdet > 0;
+                KirisAcilimKolonYuzu(chain, j0, j1, sup, out double n0, out double n1);
+                KirisAcilimNumaraAraligi(chain, j0, j1, n0, n1, gorunus, out double d0, out double d1);
+                double yuzKarsi = x0 + (sola ? d1 : d0);
+                double ucKarsi = x0 + (sola ? d0 : d1);
+                double orta = 0.5 * (xYuz + yuzKarsi);
+                if (ayni)
+                    xUc = sola ? orta - boy * 0.5 : orta + boy * 0.5;
+                else
+                    xUc = sola ? xYuz - boy : xYuz + boy;
+                if (sola && xUc < ucKarsi + p) xUc = ucKarsi + p;
+                if (!sola && xUc > ucKarsi - p) xUc = ucKarsi - p;
+                return false;
+            }
+
+            double hk = KirisAcilimMesnetHk(chain, i0, i1, sup, gorunus, sola);
+            double sigar = hk - p;
+            if (sigar < 0) sigar = 0;
+            double gir = boy < sigar ? boy : sigar;
+            if (gir < 0.5)
+                xUc = sola ? xYuz + p : xYuz - p;
+            else
+                xUc = sola ? xYuz - gir : xYuz + gir;
+            return gir + 0.5 < boy;
+        }
+
+        /// <summary>Gövde gönyesi 12φ. Üst yarı aşağı, alt yarı yukarı kıvrılır; paspayını geçmez.</summary>
+        private static void KirisAcilimGovdeGonye(
+            List<Point2d> pts, bool sola, double x, double y, double h, double usttenCm, double phiCm)
+        {
+            if (pts == null || phiCm <= 0) return;
+            double b = KirisAcilimKenarDuseyPhi * phiCm;
+            double p = KirisAcilimMontajPaspayiCm;
+            bool asagi = usttenCm <= h * 0.5;
+            double yHook = asagi ? y - b : y + b;
+            double yTop = y + usttenCm - p;
+            double yBot = yTop - h + 2.0 * p;
+            if (yHook > yTop) yHook = yTop;
+            if (yHook < yBot) yHook = yBot;
+            if (Math.Abs(yHook - y) < 1.0) return;
+            var hook = new Point2d(x, yHook);
+            if (sola) pts.Insert(0, hook);
+            else pts.Add(hook);
         }
 
         /// <summary>
@@ -1064,7 +1417,7 @@ namespace ST4PlanIdCiz
             }
         }
 
-        /// <summary>İlave donatı seviyeleri. Üst ilaveler kiriş üstünden, alt ilaveler altından 4 cm içeride; çift sıra 1 çap aralıkla.</summary>
+        /// <summary>İlave donatı seviyeleri. Üst ilaveler kiriş üstünden, alt ilaveler altından 5,5 cm içeride; çift sıra 1 çap aralıkla.</summary>
         private static double[] KirisAcilimIlaveSeviye(double h, bool ust)
         {
             double y = ust ? KirisAcilimMontajPaspayiCm : h - KirisAcilimDuzPaspayiCm;
@@ -1073,9 +1426,10 @@ namespace ST4PlanIdCiz
 
         /// <summary>
         /// İlave donatı: düğüm noktasından kiriş içine, yönetmelik boyunda.
-        /// Üst ilave: max(ln/4, 50φ, lb_I, d+20φ) — TBDY 7.4.3.1(a) Şekil 7.7, STA OPS, TS 500 7.3/9.1.2.1.
-        /// Alt ilave: max(lb_II, 50φ) — TBDY 7.4.3.1(c). Kenar mesnette yatay ≤ 0.4·lb ise 12φ kanca payı düşülür.
-        /// Renk köşe numarasına göredir: 1 sol üst ACI 5, 3 sağ üst ACI 2, 2 sol alt ACI 30, 4 sağ alt ACI 1.
+        /// Üst ve alt ilave: mesnet yüzünden Ln/4. 50φ, mesnet genişliği hk ile birlikte aranır (hk+c ≥ 50φ).
+        /// Komşu kiriş varsa aynı kural komşu açıklıkta da uygulanır; çubuk gövdede paspayı kadar içeride kalamıyorsa uzamaz.
+        /// Renk: üst ilavelerin hepsi aynı, alt ilavelerin hepsi aynı. Tek çizgi;
+        /// üst ilave montajın 3 cm altında, alt ilave düz donatının 3 cm üstünde.
         /// KMX solu kirişin ST4 başlangıç (StartAxisId), sağı bitiş ucudur. Bakış açısı (yatayda soldan sağa,
         /// düşeyde alttan üste) uçları çevirdiği için sabit "sol=sağ ilave" eşlemesi yapılmaz; çizimin sol ucu
         /// hangi uca (başlangıç/bitiş) denk geliyorsa ilave ona göre yerleştirilir.
@@ -1084,7 +1438,9 @@ namespace ST4PlanIdCiz
             Transaction tr, BlockTableRecord ms, Database db,
             List<KirisAcilimSpan> chain, int i0, int i1,
             double x0, double yShift, double net0, double net1,
-            Dictionary<BeamInfo, KirisAcilimMontajBilgi> ilave)
+            Dictionary<BeamInfo, KirisAcilimMontajBilgi> ilave,
+            KirisAcilimSupport[] sup, List<KirisAcilimSaplama> gorunus,
+            Dictionary<BeamInfo, KirisAcilimUcBilgi> ucTipi)
         {
             BeamInfo beam = chain[i0].Beam;
             if (beam == null || ilave == null || !ilave.TryGetValue(beam, out KirisAcilimMontajBilgi m)) return;
@@ -1105,56 +1461,539 @@ namespace ST4PlanIdCiz
             double lnNet = L - destekSol - destekSag;
             if (lnNet < 1.0) lnNet = L;   // mesnetler açıklığı yutmuşsa eksen-eksen açıklığa dön
 
-            // Çizimin sol ucu ST4 başlangıcı mı? KMX solu başlangıç, sağı bitiş ucu verir.
-            // Kirişin plandaki yönü/açısı bakış açısını çevirdiğinden uçlar kirişe göre değişir.
-            bool solUcBaslangic = chain[i0].Cross0 == beam.StartAxisId;
+            // Parçalı kirişte sol uç ilk kaydın, sağ uç son kaydın KMX'indedir (KB-008 sağ 2Ø12 ikinci parçada).
+            KirisAcilimMontajBilgi mSol = m;
+            KirisAcilimMontajBilgi mSag = m;
+            if (chain[i0].Beam != null && ilave.TryGetValue(chain[i0].Beam, out KirisAcilimMontajBilgi mIlk)) mSol = mIlk;
+            if (chain[i1].Beam != null && ilave.TryGetValue(chain[i1].Beam, out KirisAcilimMontajBilgi mSon)) mSag = mSon;
+            bool solBas = chain[i0].Cross0 == chain[i0].Beam.StartAxisId;
+            bool sagBas = chain[i1].Beam != null && chain[i1].Cross1 == chain[i1].Beam.StartAxisId;
 
             int luAdet, luCap, laAdet, laCap, ruAdet, ruCap, raAdet, raCap;
-            if (solUcBaslangic)
+            if (solBas)
             {
-                luAdet = m.SolUstAdet; luCap = m.SolUstCap;
-                laAdet = m.SolAltAdet; laCap = m.SolAltCap;
-                ruAdet = m.SagUstAdet; ruCap = m.SagUstCap;
-                raAdet = m.SagAltAdet; raCap = m.SagAltCap;
+                luAdet = mSol.SolUstAdet; luCap = mSol.SolUstCap;
+                laAdet = mSol.SolAltAdet; laCap = mSol.SolAltCap;
             }
             else
             {
-                luAdet = m.SagUstAdet; luCap = m.SagUstCap;
-                laAdet = m.SagAltAdet; laCap = m.SagAltCap;
-                ruAdet = m.SolUstAdet; ruCap = m.SolUstCap;
-                raAdet = m.SolAltAdet; raCap = m.SolAltCap;
+                luAdet = mSol.SagUstAdet; luCap = mSol.SagUstCap;
+                laAdet = mSol.SagAltAdet; laCap = mSol.SagAltCap;
+            }
+            if (sagBas)
+            {
+                ruAdet = mSag.SolUstAdet; ruCap = mSag.SolUstCap;
+                raAdet = mSag.SolAltAdet; raCap = mSag.SolAltCap;
+            }
+            else
+            {
+                ruAdet = mSag.SagUstAdet; ruCap = mSag.SagUstCap;
+                raAdet = mSag.SagAltAdet; raCap = mSag.SagAltCap;
             }
 
-            double luU = KirisAcilimUstIlaveKesimCm(lnNet, h, luCap / 10.0, luCap);
-            double laU = KirisAcilimAltIlaveKesimCm(laCap);
-            double ruU = KirisAcilimUstIlaveKesimCm(lnNet, h, ruCap / 10.0, ruCap);
-            double raU = KirisAcilimAltIlaveKesimCm(raCap);
+            double hkSol = KirisAcilimMesnetHk(chain, i0, i1, sup, gorunus, true);
+            double hkSag = KirisAcilimMesnetHk(chain, i0, i1, sup, gorunus, false);
+            double luU = KirisAcilimIlaveYuzdenCm(lnNet, hkSol, luCap, true);
+            double laU = KirisAcilimIlaveYuzdenCm(lnNet, hkSol, laCap, false);
+            double ruU = KirisAcilimIlaveYuzdenCm(lnNet, hkSag, ruCap, true);
+            double raU = KirisAcilimIlaveYuzdenCm(lnNet, hkSag, raCap, false);
 
-            KirisAcilimIlaveParca(tr, ms, db, topA, topA - h, xA, xA + luU, luAdet, luCap, true, KirisAcilimRenkIlaveSolUst);
-            KirisAcilimIlaveParca(tr, ms, db, topA, topA - h, xA, xA + laU, laAdet, laCap, false, KirisAcilimRenkIlaveSolAlt);
-            KirisAcilimIlaveParca(tr, ms, db, topB, topB - h, xB - ruU, xB, ruAdet, ruCap, true, KirisAcilimRenkIlaveSagUst);
-            KirisAcilimIlaveParca(tr, ms, db, topB, topB - h, xB - raU, xB, raAdet, raCap, false, KirisAcilimRenkIlaveSagAlt);
+            double UstY(double x)
+            {
+                double span = xB - xA;
+                double u = span < 1.0 ? 0.0 : (x - xA) / span;
+                if (u < 0) u = 0;
+                if (u > 1) u = 1;
+                double top = topA + (topB - topA) * u;
+                return top - KirisAcilimMontajPaspayiCm - KirisAcilimIlaveAyirCm;
+            }
+            double AltY(double x)
+            {
+                double span = xB - xA;
+                double u = span < 1.0 ? 0.0 : (x - xA) / span;
+                if (u < 0) u = 0;
+                if (u > 1) u = 1;
+                double top = topA + (topB - topA) * u;
+                return top - h + KirisAcilimDuzPaspayiCm + KirisAcilimIlaveAyirCm;
+            }
+
+            KirisAcilimKonsolUclari(chain, i0, i1, ucTipi, gorunus, x0, out bool solSerbest, out bool sagSerbest, out double xSolGonye, out double xSagGonye);
+            bool tekBasina = KirisAcilimKonsolTekBasina(chain, i0, i1, solSerbest, sagSerbest);
+            if (tekBasina)
+            {
+                luAdet = 0; laAdet = 0; ruAdet = 0; raAdet = 0;
+            }
+            double xLu = sagSerbest ? xSagGonye : xA + luU;
+            double xLa = sagSerbest ? xSagGonye : xA + laU;
+            double xRu = solSerbest ? xSolGonye : xB - ruU;
+            double xRa = solSerbest ? xSolGonye : xB - raU;
+            double xYuzSol = solSerbest ? xSolGonye : xA;
+            double xYuzSag = sagSerbest ? xSagGonye : xB;
+            double xSolUst = KirisAcilimIlaveKomsuX(chain, i0, i1, sup, gorunus, x0, yShift, true, UstY(xA), xA, luCap, true);
+            double xSolAlt = KirisAcilimIlaveKomsuX(chain, i0, i1, sup, gorunus, x0, yShift, true, AltY(xA), xA, laCap, false);
+            double xSagUst = KirisAcilimIlaveKomsuX(chain, i0, i1, sup, gorunus, x0, yShift, false, UstY(xB), xB, ruCap, true);
+            double xSagAlt = KirisAcilimIlaveKomsuX(chain, i0, i1, sup, gorunus, x0, yShift, false, AltY(xB), xB, raCap, false);
+            bool solUstKonsol = KirisAcilimKonsolKomsuGonye(chain, i0, i1, ucTipi, gorunus, sup, x0, yShift, true, UstY(xA), out double xSolUstKonsol, out double hSolUstKonsol);
+            bool solAltKonsol = KirisAcilimKonsolKomsuGonye(chain, i0, i1, ucTipi, gorunus, sup, x0, yShift, true, AltY(xA), out double xSolAltKonsol, out double hSolAltKonsol);
+            bool sagUstKonsol = KirisAcilimKonsolKomsuGonye(chain, i0, i1, ucTipi, gorunus, sup, x0, yShift, false, UstY(xB), out double xSagUstKonsol, out double hSagUstKonsol);
+            bool sagAltKonsol = KirisAcilimKonsolKomsuGonye(chain, i0, i1, ucTipi, gorunus, sup, x0, yShift, false, AltY(xB), out double xSagAltKonsol, out double hSagAltKonsol);
+            if (solUstKonsol) xSolUst = xSolUstKonsol;
+            if (solAltKonsol) xSolAlt = xSolAltKonsol;
+            if (sagUstKonsol) xSagUst = xSagUstKonsol;
+            if (sagAltKonsol) xSagAlt = xSagAltKonsol;
+            double odaSolUst = KirisAcilimGonyeRoom(chain, i0, i1, yShift, true, true, true, UstY(xA), h, out double hSolUst);
+            double odaSolAlt = KirisAcilimGonyeRoom(chain, i0, i1, yShift, true, false, true, AltY(xA), h, out double hSolAlt);
+            double odaSagUst = KirisAcilimGonyeRoom(chain, i0, i1, yShift, false, true, true, UstY(xB), h, out double hSagUst);
+            double odaSagAlt = KirisAcilimGonyeRoom(chain, i0, i1, yShift, false, false, true, AltY(xB), h, out double hSagAlt);
+            KirisAcilimIlaveCubuk(tr, ms, db, xSolUst, xYuzSol, xLu, UstY, true, true, hkSol, h, luAdet, luCap, KirisAcilimRenkIlaveUst, odaSolUst, hSolUst, solSerbest, sagSerbest, odaSagUst, h, solUstKonsol, hSolUstKonsol);
+            KirisAcilimIlaveCubuk(tr, ms, db, xSolAlt, xYuzSol, xLa, AltY, true, false, hkSol, h, laAdet, laCap, KirisAcilimRenkIlaveAlt, odaSolAlt, hSolAlt, solSerbest, sagSerbest, odaSagAlt, h, solAltKonsol, hSolAltKonsol);
+            KirisAcilimIlaveCubuk(tr, ms, db, xSagUst, xYuzSag, xRu, UstY, false, true, hkSag, h, ruAdet, ruCap, KirisAcilimRenkIlaveUst, odaSagUst, hSagUst, sagSerbest, solSerbest, odaSolUst, h, sagUstKonsol, hSagUstKonsol);
+            KirisAcilimIlaveCubuk(tr, ms, db, xSagAlt, xYuzSag, xRa, AltY, false, false, hkSag, h, raAdet, raCap, KirisAcilimRenkIlaveAlt, odaSagAlt, hSagAlt, sagSerbest, solSerbest, odaSolAlt, h, sagAltKonsol, hSagAltKonsol);
         }
 
-        private void KirisAcilimIlaveParca(
-            Transaction tr, BlockTableRecord ms, Database db,
-            double topY, double botY, double xA, double xB,
-            int adet, int cap, bool ust, short renk)
+        /// <summary>Tek başına konsol: bir uç serbest, sabit uçta devam eden kiriş yok.</summary>
+        private static bool KirisAcilimKonsolTekBasina(
+            List<KirisAcilimSpan> chain, int i0, int i1, bool solSerbest, bool sagSerbest)
         {
-            if (adet <= 0 || cap <= 0) return;
-            if (xB - xA < 1.0) return;
-            double capCm = cap / 10.0;
-            double p = ust ? KirisAcilimMontajPaspayiCm : KirisAcilimDuzPaspayiCm;
-            double yUst = ust ? topY - p : botY + p;
-            double yIc = ust ? topY - (p + capCm) : botY + (p + capCm);
-            KirisAcilimCizgi(tr, ms, xA, yUst, xB, yUst, KirisAcilimDonatiLayer, renk);
-            KirisAcilimCizgi(tr, ms, xA, yIc, xB, yIc, KirisAcilimDonatiLayer, renk);
-            double uzunluk = Math.Abs(xB - xA);
-            string lbl = adet.ToString(CultureInfo.InvariantCulture) + "\u00F8" + cap.ToString(CultureInfo.InvariantCulture)
-                + " L=" + uzunluk.ToString("0", CultureInfo.InvariantCulture);
-            double xm = 0.5 * (xA + xB);
-            double ym = ust ? yUst - 4.0 : yUst + 4.0;
-            DrawBeamLabel(tr, ms, db, new Point3d(xm, ym, 0), lbl, 8.0, 0.0, KirisAcilimDonatiYaziLayer, useMiddleCenter: true);
+            if (solSerbest == sagSerbest) return false;
+            bool sabitSola = sagSerbest;
+            return !KirisAcilimKomsuAralik(chain, i0, i1, sabitSola, out _, out _);
+        }
+
+        /// <summary>
+        /// Komşu açıklık konsolsa ve çubuk gövdesine sığıyorsa serbest uç gönyesinin X'i.
+        /// İlave, komşu kirişin datasında olsa da konsolun içinden serbest uca gider.
+        /// </summary>
+        private bool KirisAcilimKonsolKomsuGonye(
+            List<KirisAcilimSpan> chain, int i0, int i1,
+            Dictionary<BeamInfo, KirisAcilimUcBilgi> ucTipi, List<KirisAcilimSaplama> gorunus,
+            KirisAcilimSupport[] sup, double x0, double yShift, bool sola, double yBar,
+            out double xGonye, out double hKomsu)
+        {
+            xGonye = 0;
+            hKomsu = 0;
+            if (!KirisAcilimKomsuAralik(chain, i0, i1, sola, out int j0, out int j1)) return false;
+            KirisAcilimKonsolUclari(chain, j0, j1, ucTipi, gorunus, x0, out bool solS, out bool sagS, out double xSolG, out double xSagG);
+            if (sola ? !solS : !sagS) return false;
+            if (chain[j0]?.Beam == null) return false;
+            hKomsu = chain[j0].Beam.HeightCm;
+            xGonye = sola ? xSolG : xSagG;
+            KirisAcilimKolonYuzu(chain, j0, j1, sup, out double n0, out double n1);
+            KirisAcilimNumaraAraligi(chain, j0, j1, n0, n1, gorunus, out double d0, out double d1);
+            double yuz = sola ? d1 : d0;
+            if (!KirisAcilimIlaveSigar(chain, j0, j1, yShift, yuz, yBar)) return false;
+            if (!KirisAcilimIlaveSigar(chain, j0, j1, yShift, xGonye - x0, yBar)) return false;
+            return true;
+        }
+
+        /// <summary>Montaj veya alt düz ile o kirişin ilavelerinin alanı, büyük çapta yeniden adet.</summary>
+        private static void KirisAcilimAsBirlestir(
+            int nGovde, int cGovde, int nSol, int cSol, int nSag, int cSag,
+            out int adet, out int cap)
+        {
+            long alan = 0;
+            int buyuk = 0;
+            void Ekle(int n, int c)
+            {
+                if (n <= 0 || c <= 0) return;
+                alan += (long)n * c * c;
+                if (c > buyuk) buyuk = c;
+            }
+            Ekle(nGovde, cGovde);
+            Ekle(nSol, cSol);
+            Ekle(nSag, cSag);
+            adet = 0;
+            cap = 0;
+            if (buyuk <= 0 || alan <= 0) return;
+            cap = buyuk;
+            adet = (int)Math.Ceiling(alan / (double)(buyuk * buyuk));
+        }
+
+        /// <summary>
+        /// BEA kod 3 sol (ST4 başlangıç) konsol, kod 4 sağ konsol. Çizim yönü uçları çevirebilir.
+        /// Serbest uç gönyesi beton yüzünden paspayı kadar içeride.
+        /// </summary>
+        private static void KirisAcilimKonsolUclari(
+            List<KirisAcilimSpan> chain, int i0, int i1,
+            Dictionary<BeamInfo, KirisAcilimUcBilgi> ucTipi, List<KirisAcilimSaplama> gorunus, double x0,
+            out bool solSerbest, out bool sagSerbest, out double xSolGonye, out double xSagGonye)
+        {
+            solSerbest = false;
+            sagSerbest = false;
+            xSolGonye = 0;
+            xSagGonye = 0;
+            if (chain == null || ucTipi == null) return;
+            BeamInfo beam = chain[i0]?.Beam;
+            if (beam == null || !ucTipi.TryGetValue(beam, out KirisAcilimUcBilgi uc)) return;
+            bool solBaslangic = chain[i0].Cross0 == beam.StartAxisId;
+            bool startSerbest = uc.Code == 3;
+            bool endSerbest = uc.Code == 4;
+            solSerbest = solBaslangic ? startSerbest : endSerbest;
+            sagSerbest = solBaslangic ? endSerbest : startSerbest;
+            KirisAcilimSerbestUcUzatma(chain, gorunus, out double extS, out double extE);
+            double p = KirisAcilimMontajPaspayiCm;
+            double tipSol = x0 + chain[i0].X0 - (i0 == 0 ? extS : 0);
+            double tipSag = x0 + chain[i1].X1 + (i1 == chain.Count - 1 ? extE : 0);
+            xSolGonye = tipSol + p;
+            xSagGonye = tipSag - p;
+            if (xSagGonye - xSolGonye < 10.0)
+            {
+                solSerbest = false;
+                sagSerbest = false;
+            }
+        }
+
+        /// <summary>Uçtaki kolon veya saplama kesitinin kiriş ekseni boyunca genişliği (cm).</summary>
+        private static double KirisAcilimMesnetHk(
+            List<KirisAcilimSpan> chain, int i0, int i1,
+            KirisAcilimSupport[] sup, List<KirisAcilimSaplama> gorunus, bool sola)
+        {
+            double hk = 0;
+            if (sola)
+            {
+                if (sup != null && i0 < sup.Length)
+                {
+                    double w = sup[i0].X1 - sup[i0].X0;
+                    if (w > hk) hk = w;
+                }
+            }
+            else if (sup != null && i1 + 1 < sup.Length)
+            {
+                double w = sup[i1 + 1].X1 - sup[i1 + 1].X0;
+                if (w > hk) hk = w;
+            }
+            if (gorunus == null || chain == null) return hk;
+            double station = sola ? chain[i0].X0 : chain[i1].X1;
+            foreach (KirisAcilimSaplama spm in gorunus)
+            {
+                double w = spm.X1 - spm.X0;
+                if (w < 2.0) continue;
+                double mid = 0.5 * (spm.X0 + spm.X1);
+                if (Math.Abs(mid - station) <= 0.5 * w + 40.0 && w > hk) hk = w;
+            }
+            return hk;
+        }
+
+        /// <summary>
+        /// İlave çubuğun komşu açıklığa taşan ucu. Mesnet yüzünden sonra komşu net açıklığın 1/4'ü;
+        /// hk + bu boy max(50φ, lb) altında kalıyorsa o tabana çekilir.
+        /// Çubuk komşu gövdede paspayı kadar içeride kalamıyorsa uzatılmaz.
+        /// </summary>
+        private double KirisAcilimIlaveKomsuX(
+            List<KirisAcilimSpan> chain, int i0, int i1,
+            KirisAcilimSupport[] sup, List<KirisAcilimSaplama> gorunus,
+            double x0, double yShift, bool sola, double yBar, double xYuz, int capMm, bool ust)
+        {
+            if (!KirisAcilimKomsuAralik(chain, i0, i1, sola, out int j0, out int j1)) return xYuz;
+
+            KirisAcilimKolonYuzu(chain, j0, j1, sup, out double n0, out double n1);
+            KirisAcilimNumaraAraligi(chain, j0, j1, n0, n1, gorunus, out double d0, out double d1);
+            double ln = d1 - d0;
+            if (ln < 1.0) return xYuz;
+            double hk = KirisAcilimMesnetHk(chain, j0, j1, sup, gorunus, !sola);
+            double ext = KirisAcilimIlaveYuzdenCm(ln, hk, capMm, ust);
+            if (ext < 1.0) return xYuz;
+
+            double yakin = sola ? d1 : d0;
+            double uzak = sola ? d0 : d1;
+            double hedef = sola ? yakin - ext : yakin + ext;
+            if (sola)
+            {
+                if (hedef < uzak) hedef = uzak;
+            }
+            else if (hedef > uzak) hedef = uzak;
+
+            if (!KirisAcilimIlaveSigar(chain, j0, j1, yShift, yakin, yBar)) return xYuz;
+            if (!KirisAcilimIlaveSigar(chain, j0, j1, yShift, hedef, yBar)) return xYuz;
+
+            double xHedef = x0 + hedef;
+            if (sola) return xHedef < xYuz ? xHedef : xYuz;
+            return xHedef > xYuz ? xHedef : xYuz;
+        }
+
+        /// <summary>Çubuk kotu komşu kirişin içinde, her iki yüzden paspayı kadar içeride mi.</summary>
+        private static bool KirisAcilimIlaveSigar(
+            List<KirisAcilimSpan> chain, int j0, int j1, double yShift, double xChain, double yBar)
+        {
+            if (chain[j0]?.Beam == null) return false;
+            double top = yShift + KirisAcilimKotAt(chain, j0, j1, xChain);
+            double h = chain[j0].Beam.HeightCm;
+            if (h < 1.0) return false;
+            double bot = top - h;
+            double p = KirisAcilimMontajPaspayiCm;
+            return yBar <= top - p + 0.5 && yBar >= bot + p - 0.5;
+        }
+
+        /// <summary>Komşu açıklık aynı zincirde ve aradaki boşluk 200 cm'den kısaysa o run'ın aralığı.</summary>
+        private static bool KirisAcilimKomsuAralik(
+            List<KirisAcilimSpan> chain, int i0, int i1, bool sola, out int j0, out int j1)
+        {
+            j0 = -1;
+            j1 = -1;
+            if (chain == null) return false;
+            if (sola)
+            {
+                if (i0 <= 0 || chain[i0 - 1]?.Beam == null) return false;
+                j1 = i0 - 1;
+                j0 = j1;
+                while (j0 > 0 && chain[j0 - 1]?.Beam != null && chain[j0].Beam != null
+                    && chain[j0 - 1].Beam.BeamId == chain[j0].Beam.BeamId)
+                    j0--;
+                return chain[i0].X0 - chain[j1].X1 <= 200.0;
+            }
+            if (i1 + 1 >= chain.Count || chain[i1 + 1]?.Beam == null) return false;
+            j0 = i1 + 1;
+            j1 = j0;
+            while (j1 + 1 < chain.Count && chain[j1 + 1]?.Beam != null && chain[j0].Beam != null
+                && chain[j1 + 1].Beam.BeamId == chain[j0].Beam.BeamId)
+                j1++;
+            return chain[j0].X0 - chain[i1].X1 <= 200.0;
+        }
+
+        /// <summary>
+        /// Çubuk komşu gövdeye paspayı içinde girebiliyorsa komşunun bu mesnete bakan yüzü (zincir X).
+        /// </summary>
+        private static bool KirisAcilimDevamYuzu(
+            List<KirisAcilimSpan> chain, int i0, int i1,
+            KirisAcilimSupport[] sup, List<KirisAcilimSaplama> gorunus,
+            double yShift, bool sola, double yBar, out double yuzChain)
+        {
+            yuzChain = 0;
+            if (!KirisAcilimKomsuAralik(chain, i0, i1, sola, out int j0, out int j1)) return false;
+            KirisAcilimKolonYuzu(chain, j0, j1, sup, out double n0, out double n1);
+            KirisAcilimNumaraAraligi(chain, j0, j1, n0, n1, gorunus, out double d0, out double d1);
+            yuzChain = sola ? d1 : d0;
+            return KirisAcilimIlaveSigar(chain, j0, j1, yShift, yuzChain, yBar);
+        }
+
+        /// <summary>
+        /// Gönye düşey boşluğu. Yan kirişin kotu veya yüksekliği farklıysa iki kesitin
+        /// birlikte kapladığı yükseklik kullanılır. İlave 3 cm'si hesaba katılmaz.
+        /// </summary>
+        private static double KirisAcilimGonyeRoom(
+            List<KirisAcilimSpan> chain, int i0, int i1, double yShift,
+            bool sola, bool ust, bool ilave, double yBar, double ownH, out double birlesikH)
+        {
+            double p = KirisAcilimMontajPaspayiCm;
+            double kay = ilave ? KirisAcilimIlaveAyirCm : 0;
+            double yHesap = ust ? yBar + kay : yBar - kay;
+            double ownTop = ust ? yHesap + p : yHesap + ownH - p;
+            double top = ownTop;
+            double bot = ownTop - ownH;
+            if (KirisAcilimKomsuAralik(chain, i0, i1, sola, out int j0, out int j1) && chain[j0]?.Beam != null)
+            {
+                double xN = sola ? chain[j1].X1 : chain[j0].X0;
+                double nTop = yShift + KirisAcilimKotAt(chain, j0, j1, xN);
+                double nBot = nTop - chain[j0].Beam.HeightCm;
+                if (nTop > top) top = nTop;
+                if (nBot < bot) bot = nBot;
+            }
+            birlesikH = top - bot;
+            if (birlesikH < ownH) birlesikH = ownH;
+            double room = ust ? yHesap - (bot + p) : (top - p) - yHesap;
+            return room > 1.0 ? room : 1.0;
+        }
+
+        /// <summary>
+        /// Kenar gönyesi. a mesnet dış yüzünden paspayı kadar içeride biter.
+        /// Birinci gönye (b) en az 20 cm ve birleşik yüksekliğin yarısıdır; 12φ ve lb de alt sınır.
+        /// İkinci gönye yalnız a+b, lb'yi tutmuyorsa eklenir; 50φ ikinci gönyeyi uzatmaz.
+        /// </summary>
+        private void KirisAcilimGonyeHesap(
+            double phiCm, bool ust, double hkCm, double roomCm, double yukseklikCm, bool serbest, bool duzGiris,
+            out double a, out double b, out double c)
+        {
+            a = 0;
+            b = 0;
+            c = 0;
+            if (phiCm <= 0 && !serbest) return;
+            if (roomCm < 1.0) roomCm = 1.0;
+            if (!serbest && duzGiris)
+            {
+                double lbDuz = (ust ? KirisAcilimLbPhiKonumI : KirisAcilimLbPhiKonumII) * phiCm;
+                double ihtiyac = KirisAcilimUstIlavePhi * phiCm;
+                if (lbDuz > ihtiyac) ihtiyac = lbDuz;
+                double sigar = hkCm - KirisAcilimMontajPaspayiCm;
+                if (sigar + 0.5 >= ihtiyac && ihtiyac > 1.0)
+                {
+                    a = ihtiyac;
+                    double aR = KirisAcilimYuvarlaYukari(a);
+                    if (aR <= sigar + 0.05) a = aR;
+                    return;
+                }
+            }
+            if (serbest)
+            {
+                double bSerbest = KirisAcilimKonsolGonyeMinCm;
+                double hYariSerbest = yukseklikCm * 0.5;
+                if (hYariSerbest > bSerbest) bSerbest = hYariSerbest;
+                b = bSerbest < roomCm ? bSerbest : roomCm;
+                double bSerbestR = KirisAcilimYuvarlaYukari(b);
+                if (bSerbestR <= roomCm + 0.05) b = bSerbestR;
+                return;
+            }
+            double lb = (ust ? KirisAcilimLbPhiKonumI : KirisAcilimLbPhiKonumII) * phiCm;
+            double phiMin = KirisAcilimKenarDuseyPhi * phiCm;
+            double bMin = phiMin;
+            if (KirisAcilimGonyeMinCm > bMin) bMin = KirisAcilimGonyeMinCm;
+            double hYari = yukseklikCm * 0.5;
+            if (hYari > bMin) bMin = hYari;
+            double aMax = hkCm - KirisAcilimMontajPaspayiCm;
+            if (aMax < 0) aMax = 0;
+            a = aMax;
+            if (roomCm < 1.0) roomCm = 1.0;
+            double bWant = bMin > lb - a ? bMin : lb - a;
+            b = bWant < roomCm ? bWant : roomCm;
+            if (b < 1.0) b = roomCm < bMin ? roomCm : bMin;
+            double bR = KirisAcilimYuvarlaYukari(b);
+            if (bR <= roomCm + 0.05) b = bR;
+            if (a + b + 0.5 < lb)
+            {
+                c = lb - a - b;
+                if (c < phiMin) c = phiMin;
+                c = KirisAcilimYuvarlaYukari(c);
+            }
+        }
+
+        private static double KirisAcilimYuvarlaYukari(double x)
+        {
+            if (x <= 0) return 0;
+            return Math.Ceiling(x / KirisAcilimYuvarlamaCm - 1e-6) * KirisAcilimYuvarlamaCm;
+        }
+
+        /// <summary>
+        /// Gönye noktalarını çubuk polyline'ına ekler. sola ise yüzden önce (uca doğru), değilse yüze sonra.
+        /// İkinci gönye kiriş içine döner ve xSinir'i geçmez.
+        /// </summary>
+        private double KirisAcilimGonyeEkle(
+            List<Point2d> pts, bool sola, double xYuz, double y, bool ust,
+            double hk, double h, int capMm, bool ilave, double xSinir, double roomCm, double yukseklikCm, bool serbest, bool duzGiris, out double eksik)
+        {
+            eksik = 0;
+            if (pts == null || capMm <= 0) return 0;
+            double oda = roomCm > 1.0 ? roomCm : h - KirisAcilimMontajPaspayiCm - KirisAcilimDuzPaspayiCm;
+            double yuk = yukseklikCm > 1.0 ? yukseklikCm : h;
+            if (serbest) hk = 0;
+            KirisAcilimGonyeHesap(capMm / 10.0, ust, hk, oda, yuk, serbest, duzGiris, out double a, out double b, out double c);
+            if (a < 1.0 && b < 1.0) return 0;
+            // İlave yalnız çizimde 3 cm içeride. a ve b kısalır; açılım boyuna geri yazılır.
+            double kay = ilave ? KirisAcilimIlaveAyirCm : 0.0;
+            double aCiz = a - kay;
+            if (aCiz < 0) aCiz = 0;
+            double bCiz = b - 2.0 * kay;
+            if (bCiz < 1.0) bCiz = b > 1.0 ? 1.0 : 0;
+            double xBend = sola ? xYuz - aCiz : xYuz + aCiz;
+            double yHook = ust ? y - bCiz : y + bCiz;
+            double xTip = xBend;
+            if (c >= 1.0)
+            {
+                xTip = sola ? xBend + c : xBend - c;
+                if (sola && xTip > xSinir - 2.0) xTip = xSinir - 2.0;
+                if (!sola && xTip < xSinir + 2.0) xTip = xSinir + 2.0;
+                c = Math.Abs(xTip - xBend);
+            }
+            var hook = new List<Point2d>();
+            if (sola)
+            {
+                if (c >= 1.0) hook.Add(new Point2d(xTip, yHook));
+                if (bCiz >= 1.0) hook.Add(new Point2d(xBend, yHook));
+                if (a >= 1.0 || bCiz >= 1.0) hook.Add(new Point2d(xBend, y));
+                pts.InsertRange(0, hook);
+            }
+            else
+            {
+                if (a >= 1.0 || bCiz >= 1.0) pts.Add(new Point2d(xBend, y));
+                if (bCiz >= 1.0) pts.Add(new Point2d(xBend, yHook));
+                if (c >= 1.0) pts.Add(new Point2d(xTip, yHook));
+            }
+            eksik = (a - aCiz) + (b - bCiz);
+            if (eksik < 0) eksik = 0;
+            return a + b + c;
+        }
+
+        /// <summary>Montaj ve alt düz ucu: komşuya geçebiliyorsa aynı polyline'da düz devam, değilse gönye.</summary>
+        private void KirisAcilimUcNokta(
+            List<Point2d> pts,
+            List<KirisAcilimSpan> chain, int i0, int i1,
+            KirisAcilimSupport[] sup, List<KirisAcilimSaplama> gorunus,
+            double x0, double yShift, bool sola, double xYuz, double y, bool ust,
+            double hk, double h, int capMm, bool ilave, double xSinir, bool serbest)
+        {
+            if (pts == null || capMm <= 0) return;
+            // Ara mesnette devam eden kiriş: montaj ve alt düz kendi yüzünde biter. Komşu açıklığa taşmaz, gönye olmaz.
+            if (!serbest && KirisAcilimKomsuAralik(chain, i0, i1, sola, out _, out _))
+                return;
+            double oda = KirisAcilimGonyeRoom(chain, i0, i1, yShift, sola, ust, ilave, y, h, out double birlesikH);
+            if (serbest) hk = 0;
+            KirisAcilimGonyeEkle(pts, sola, xYuz, y, ust, hk, h, capMm, ilave, xSinir, oda, serbest ? h : birlesikH, serbest, !serbest, out double _);
+        }
+
+        /// <summary>
+        /// İlave çubuk tek polyline: komşuya uzayan uç düz, uzayamayan uç gönyeli.
+        /// xDis komşu uzamasının ucu, xYuz bu kirişin mesnet yüzü, xIc açıklık içindeki kesim.
+        /// </summary>
+        private void KirisAcilimIlaveCubuk(
+            Transaction tr, BlockTableRecord ms, Database db,
+            double xDis, double xYuz, double xIc, Func<double, double> yAt,
+            bool sola, bool ust, double hk, double h, int adet, int cap, short renk, double roomCm, double yukseklikCm,
+            bool serbestYuz, bool serbestIc, double odaSerbest, double hSerbest, bool serbestDis, double hDis)
+        {
+            if (adet <= 0 || cap <= 0 || yAt == null) return;
+            if (Math.Abs(xIc - xYuz) < 1.0 && Math.Abs(xDis - xYuz) < 1.0 && !serbestDis) return;
+            var pts = new List<Point2d>();
+            bool uzadi = serbestDis || (!serbestYuz && (sola ? xDis < xYuz - 1.0 : xDis > xYuz + 1.0));
+            double eksik = 0;
+            double eksikSerbest = 0;
+            double eksikDis = 0;
+            double odaDis = hDis - KirisAcilimMontajPaspayiCm - KirisAcilimDuzPaspayiCm;
+            if (odaDis < 1.0) odaDis = hDis > 1.0 ? hDis : 1.0;
+            if (sola)
+            {
+                if (uzadi && serbestDis)
+                    KirisAcilimGonyeEkle(pts, true, xDis, yAt(xDis), ust, 0, hDis > 1.0 ? hDis : h, cap, true, xYuz, odaDis, hDis, true, false, out eksikDis);
+                if (uzadi) pts.Add(new Point2d(xDis, yAt(xDis)));
+                else KirisAcilimGonyeEkle(pts, true, xYuz, yAt(xYuz), ust, hk, h, cap, true, xIc, roomCm, yukseklikCm, serbestYuz, !serbestYuz, out eksik);
+                pts.Add(new Point2d(xYuz, yAt(xYuz)));
+                pts.Add(new Point2d(xIc, yAt(xIc)));
+                if (serbestIc)
+                    KirisAcilimGonyeEkle(pts, false, xIc, yAt(xIc), ust, 0, h, cap, true, xYuz, odaSerbest, hSerbest, true, false, out eksikSerbest);
+            }
+            else
+            {
+                if (serbestIc)
+                    KirisAcilimGonyeEkle(pts, true, xIc, yAt(xIc), ust, 0, h, cap, true, xYuz, odaSerbest, hSerbest, true, false, out eksikSerbest);
+                pts.Add(new Point2d(xIc, yAt(xIc)));
+                pts.Add(new Point2d(xYuz, yAt(xYuz)));
+                if (!uzadi)
+                    KirisAcilimGonyeEkle(pts, false, xYuz, yAt(xYuz), ust, hk, h, cap, true, xIc, roomCm, yukseklikCm, serbestYuz, !serbestYuz, out eksik);
+                else
+                {
+                    pts.Add(new Point2d(xDis, yAt(xDis)));
+                    if (serbestDis)
+                        KirisAcilimGonyeEkle(pts, false, xDis, yAt(xDis), ust, 0, hDis > 1.0 ? hDis : h, cap, true, xYuz, odaDis, hDis, true, false, out eksikDis);
+                }
+            }
+            eksik += eksikSerbest + eksikDis;
+            double uzunluk = KirisAcilimDonatiPl(tr, ms, renk, pts) + eksik;
+            if (uzunluk < 1.0) return;
+            KirisAcilimAcilimCiz(tr, ms, db, pts, renk, adet, cap, uzunluk, KirisAcilimIlaveAcilimCm, ref _kirisAcilimIlaveSira);
+            string lbl = adet.ToString(CultureInfo.InvariantCulture) + "\u00F8" + cap.ToString(CultureInfo.InvariantCulture);
+            double yA = yAt(xYuz);
+            double yB = yAt(xIc);
+            double xm = 0.5 * (xYuz + xIc);
+            double midY = 0.5 * (yA + yB);
+            DrawBeamLabel(tr, ms, db, new Point3d(xm, midY, 0), lbl, 8.0, 0.0, KirisAcilimDonatiYaziLayer, useMiddleCenter: true);
+            if (tr == null || _lastBeamLabelId.IsNull) return;
+            var txt = tr.GetObject(_lastBeamLabelId, OpenMode.ForWrite) as DBText;
+            if (txt == null) return;
+            Extents3d ext;
+            try { ext = txt.GeometricExtents; }
+            catch { return; }
+            double hedef = ust ? midY - 4.0 : midY + 4.0;
+            double yRef = ust ? ext.MaxPoint.Y : ext.MinPoint.Y;
+            double dy = hedef - yRef;
+            if (Math.Abs(dy) < 0.05) return;
+            txt.TransformBy(Matrix3d.Displacement(new Vector3d(0, dy, 0)));
         }
         private void KirisAcilimNoktaNo(
             Transaction tr, BlockTableRecord ms, Database db, double x, double y, string no, bool saga, bool ust)
@@ -1172,7 +2011,7 @@ namespace ST4PlanIdCiz
             txt.TransformBy(Matrix3d.Displacement(new Vector3d(dx, dy, 0)));
         }
 
-        /// <summary>Basit dikdörtgen çubuk: 4 cm paspayı içeride, kendi renginde.</summary>
+        /// <summary>Basit dikdörtgen çubuk: 5,5 cm paspayı içeride, kendi renginde.</summary>
         private static void KirisAcilimCubuk(
             Transaction tr, BlockTableRecord ms, double topY, double botY,
             double xA, double xB, bool ust, short renk)
@@ -1186,14 +2025,1105 @@ namespace ST4PlanIdCiz
         /// Montaj donatısı (sürekli üst çubuk): 1 (sol üst) ile 3 (sağ üst) arasına,
         /// kiriş üstünden net paspayı + yarıçap içeride tek çizgi. Etiket "nøφ" çizginin altında.
         /// </summary>
+        private struct KirisAcilimMontajRun
+        {
+            public int I0;
+            public int I1;
+            public double XL;
+            public double XR;
+            public double YL;
+            public double YR;
+            public double ZoneL;
+            public double ZoneR;
+            public int Adet;
+            public int Cap;
+            public double H;
+            public double HkSol;
+            public double HkSag;
+            public bool SolSerbest;
+            public bool SagSerbest;
+        }
+
+        /// <summary>
+        /// Aynı hizadaki montajlar tek çubuk dizisi. Boy, gönye dahil 1200 cm'yi geçmez.
+        /// Bindirme lb, 5 cm katı, kiriş ortasındaki Ln/2 şeridinin içinde.
+        /// Ek yeri, 12 m çubuktan en az fire verecek boya konur.
+        /// As büyük olan, küçük As'li kirişin Ln/2 bölgesine uzar; lb'den sonra küçük As devam eder.
+        /// </summary>
+        private void KirisAcilimMontajBirlesik(
+            Transaction tr, BlockTableRecord ms, Database db,
+            List<KirisAcilimSpan> chain, double x0, double yShift,
+            KirisAcilimSupport[] sup, Dictionary<BeamInfo, KirisAcilimMontajBilgi> montaj,
+            List<KirisAcilimSaplama> gorunus, Dictionary<BeamInfo, KirisAcilimUcBilgi> ucTipi)
+        {
+            if (chain == null || chain.Count == 0 || montaj == null) return;
+            var runs = new List<KirisAcilimMontajRun>();
+            int i = 0;
+            while (i < chain.Count)
+            {
+                int j = i;
+                while (j + 1 < chain.Count && chain[j + 1].Beam != null && chain[i].Beam != null
+                    && chain[j + 1].Beam.BeamId == chain[i].Beam.BeamId)
+                    j++;
+                if (KirisAcilimMontajRunOku(chain, i, j, x0, yShift, sup, montaj, gorunus, ucTipi, out KirisAcilimMontajRun run))
+                    runs.Add(run);
+                i = j + 1;
+            }
+            if (runs.Count == 0) return;
+
+            int g0 = 0;
+            while (g0 < runs.Count)
+            {
+                int g1 = g0;
+                while (g1 + 1 < runs.Count && KirisAcilimMontajAyniHiza(runs[g1], runs[g1 + 1]))
+                    g1++;
+                KirisAcilimMontajGrupCiz(tr, ms, db, chain, x0, yShift, sup, gorunus, runs, g0, g1);
+                for (int r = g0; r <= g1; r++)
+                    KirisAcilimMontajEtiket(tr, ms, db, runs[r]);
+                g0 = g1 + 1;
+            }
+        }
+
+        private bool KirisAcilimMontajRunOku(
+            List<KirisAcilimSpan> chain, int i0, int i1, double x0, double yShift,
+            KirisAcilimSupport[] sup, Dictionary<BeamInfo, KirisAcilimMontajBilgi> montaj,
+            List<KirisAcilimSaplama> gorunus, Dictionary<BeamInfo, KirisAcilimUcBilgi> ucTipi,
+            out KirisAcilimMontajRun run)
+        {
+            run = default(KirisAcilimMontajRun);
+            BeamInfo beam = chain[i0].Beam;
+            if (beam == null || !montaj.TryGetValue(beam, out KirisAcilimMontajBilgi m)) return false;
+            KirisAcilimKonsolUclari(chain, i0, i1, ucTipi, gorunus, x0, out bool solSerbest, out bool sagSerbest, out double xSolGonye, out double xSagGonye);
+            if (KirisAcilimKonsolTekBasina(chain, i0, i1, solSerbest, sagSerbest))
+            {
+                KirisAcilimMontajBilgi mSag = m;
+                if (chain[i1].Beam != null && montaj.TryGetValue(chain[i1].Beam, out KirisAcilimMontajBilgi mSon)) mSag = mSon;
+                bool solBas = chain[i0].Cross0 == beam.StartAxisId;
+                bool sagBas = chain[i1].Beam != null && chain[i1].Cross1 == chain[i1].Beam.StartAxisId;
+                int nSol = solBas ? m.SolUstAdet : m.SagUstAdet;
+                int cSol = solBas ? m.SolUstCap : m.SagUstCap;
+                int nSag = sagBas ? mSag.SolUstAdet : mSag.SagUstAdet;
+                int cSag = sagBas ? mSag.SolUstCap : mSag.SagUstCap;
+                KirisAcilimAsBirlestir(m.Adet, m.Cap, nSol, cSol, nSag, cSag, out int adetB, out int capB);
+                if (adetB > 0 && capB > 0) { m.Adet = adetB; m.Cap = capB; }
+            }
+            if (m.Adet <= 0 || m.Cap <= 0) return false;
+
+            KirisAcilimKolonYuzu(chain, i0, i1, sup, out double net0, out double net1);
+            KirisAcilimNumaraAraligi(chain, i0, i1, net0, net1, gorunus, out double don0, out double don1);
+            double xFaceL = x0 + don0;
+            double xFaceR = x0 + don1;
+            if (xFaceR - xFaceL < 1.0) return false;
+            double yL = yShift + KirisAcilimKotAt(chain, i0, i1, don0) - KirisAcilimMontajPaspayiCm;
+            double yR = yShift + KirisAcilimKotAt(chain, i0, i1, don1) - KirisAcilimMontajPaspayiCm;
+            double ln = xFaceR - xFaceL;
+            run = new KirisAcilimMontajRun
+            {
+                I0 = i0,
+                I1 = i1,
+                XL = solSerbest ? xSolGonye : xFaceL,
+                XR = sagSerbest ? xSagGonye : xFaceR,
+                YL = yL,
+                YR = yR,
+                ZoneL = xFaceL + 0.25 * ln,
+                ZoneR = xFaceR - 0.25 * ln,
+                Adet = m.Adet,
+                Cap = m.Cap,
+                H = beam.HeightCm,
+                HkSol = KirisAcilimMesnetHk(chain, i0, i1, sup, gorunus, true),
+                HkSag = KirisAcilimMesnetHk(chain, i0, i1, sup, gorunus, false),
+                SolSerbest = solSerbest,
+                SagSerbest = sagSerbest
+            };
+            KirisAcilimMontajSiganaUzat(chain, sup, gorunus, x0, yShift, ref run, true);
+            KirisAcilimMontajSiganaUzat(chain, sup, gorunus, x0, yShift, ref run, false);
+            return true;
+        }
+
+        /// <summary>
+        /// Kot veya kesit farklı olsa da montaj komşu kirişin paspayı içine sığıyorsa gönyelenmez;
+        /// kendi yüzünden max(50φ, lb) kadar komşuya girer.
+        /// </summary>
+        private void KirisAcilimMontajSiganaUzat(
+            List<KirisAcilimSpan> chain, KirisAcilimSupport[] sup, List<KirisAcilimSaplama> gorunus,
+            double x0, double yShift, ref KirisAcilimMontajRun run, bool sola)
+        {
+            if (sola ? run.SolSerbest : run.SagSerbest) return;
+            if (!KirisAcilimKomsuAralik(chain, run.I0, run.I1, sola, out int j0, out int j1)) return;
+            if (chain[j0]?.Beam == null) return;
+            double p = KirisAcilimMontajPaspayiCm;
+            double xN = sola ? chain[j1].X1 : chain[j0].X0;
+            double nTop = yShift + KirisAcilimKotAt(chain, j0, j1, xN);
+            double nBot = nTop - chain[j0].Beam.HeightCm;
+            double yBar = sola ? run.YL : run.YR;
+            // Aynı hiza grupta zaten tek çubuk olarak devam eder. Uzatma yalnız kesiti farklı komşuya sığınca yapılır;
+            // aksi halde uçlar üst üste biner, çizgi geri döner ve boy 1200'ü aşar.
+            double yKarsi = nTop - p;
+            if (Math.Abs(yBar - yKarsi) <= 2.0 && Math.Abs(run.H - chain[j0].Beam.HeightCm) <= 2.0) return;
+            if (yBar > nTop - p || yBar < nBot + p) return;
+
+            double phi = run.Cap / 10.0;
+            double boy = Math.Max(KirisAcilimUstIlavePhi * phi, KirisAcilimLbPhiKonumI * phi);
+            KirisAcilimKolonYuzu(chain, j0, j1, sup, out double n0, out double n1);
+            KirisAcilimNumaraAraligi(chain, j0, j1, n0, n1, gorunus, out double d0, out double d1);
+            double ucKarsi = x0 + (sola ? d0 : d1);
+            if (sola)
+            {
+                double xHedef = run.XL - boy;
+                if (xHedef < ucKarsi + p) xHedef = ucKarsi + p;
+                if (xHedef < run.XL) run.XL = xHedef;
+            }
+            else
+            {
+                double xHedef = run.XR + boy;
+                if (xHedef > ucKarsi - p) xHedef = ucKarsi - p;
+                if (xHedef > run.XR) run.XR = xHedef;
+            }
+        }
+
+        private static bool KirisAcilimMontajAyniHiza(KirisAcilimMontajRun a, KirisAcilimMontajRun b)
+        {
+            if (b.XL - a.XR > 200.0) return false;
+            if (Math.Abs(a.H - b.H) > 2.0) return false;
+            return Math.Abs(a.YR - b.YL) <= 2.0;
+        }
+
+        /// <summary>Montaj bindirmesi: konum I lb, yukarı 5 cm katı.</summary>
+        private static double KirisAcilimMontajBindirme(int capMm)
+        {
+            if (capMm <= 0) return KirisAcilimYuvarlamaCm;
+            double lb = KirisAcilimLbPhiKonumI * (capMm / 10.0);
+            double r = KirisAcilimYuvarlaYukari(lb);
+            return r >= KirisAcilimYuvarlamaCm ? r : KirisAcilimYuvarlamaCm;
+        }
+
+        /// <summary>Bindirme bütünüyle Ln/2 içindedir. fromLeft: büyük çubuk soldan girer, bindirme şeridin solundan başlar.</summary>
+        private static void KirisAcilimMontajBindirmeYer(
+            double zoneL, double zoneR, bool fromLeft, double lb, out double lap0, out double lap1)
+        {
+            double gen = zoneR - zoneL;
+            if (gen < lb + 0.05)
+            {
+                lap0 = zoneL;
+                lap1 = zoneR;
+                return;
+            }
+            if (fromLeft)
+            {
+                lap0 = zoneL;
+                lap1 = zoneL + lb;
+            }
+            else
+            {
+                lap1 = zoneR;
+                lap0 = zoneR - lb;
+            }
+        }
+
+        /// <summary>Çap değişiminde ek: büyük As, küçük kirişin Ln/2 kenarına lb girer. Kiriş doluysa diğerine kayar.</summary>
+        private static void KirisAcilimMontajAsEk(
+            List<KirisAcilimMontajRun> runs, bool[] birlesen, int i,
+            out int hedef, out double lb, out double lap0, out double lap1)
+        {
+            KirisAcilimMontajRun a = runs[i];
+            KirisAcilimMontajRun b = runs[i + 1];
+            double asA = (double)a.Adet * a.Cap * a.Cap;
+            double asB = (double)b.Adet * b.Cap * b.Cap;
+            bool aBuyuk = asA > asB + 0.5 || (Math.Abs(asA - asB) <= 0.5 && a.Cap >= b.Cap);
+            lb = KirisAcilimMontajBindirme(a.Cap > b.Cap ? a.Cap : b.Cap);
+            hedef = aBuyuk ? i + 1 : i;
+            int diger = hedef == i ? i + 1 : i;
+            if (birlesen[hedef] && !birlesen[diger]) hedef = diger;
+            bool hedefSigar = runs[hedef].ZoneR - runs[hedef].ZoneL >= lb - 0.2;
+            bool digerSigar = runs[diger].ZoneR - runs[diger].ZoneL >= lb - 0.2;
+            if (!hedefSigar && digerSigar && !birlesen[diger]) hedef = diger;
+            KirisAcilimMontajBindirmeYer(runs[hedef].ZoneL, runs[hedef].ZoneR, hedef == i + 1, lb, out lap0, out lap1);
+        }
+
+        private void KirisAcilimMontajGrupCiz(
+            Transaction tr, BlockTableRecord ms, Database db,
+            List<KirisAcilimSpan> chain, double x0, double yShift,
+            KirisAcilimSupport[] sup, List<KirisAcilimSaplama> gorunus,
+            List<KirisAcilimMontajRun> runs, int g0, int g1)
+        {
+            double segX = runs[g0].XL;
+            int segAdet = runs[g0].Adet;
+            int segCap = runs[g0].Cap;
+            bool hookL = true;
+            int sira = 0;
+            var birlesen = new bool[runs.Count];
+
+            double Gonye(bool sola, int cap, KirisAcilimMontajRun run, double xUc)
+            {
+                if (cap <= 0 || run.H < 1.0) return 0;
+                double y = KirisAcilimMontajY(runs, g0, g1, xUc);
+                return KirisAcilimMontajGonyeBoy(chain, run, sup, gorunus, x0, yShift, sola, cap, xUc, y);
+            }
+
+            for (int i = g0; i < g1; i++)
+            {
+                KirisAcilimMontajRun a = runs[i];
+                KirisAcilimMontajRun b = runs[i + 1];
+                if (a.Adet == b.Adet && a.Cap == b.Cap) continue;
+                KirisAcilimMontajAsEk(runs, birlesen, i, out int hedef, out double lb, out double lap0, out double lap1);
+
+                int sagSon = i + 1;
+                while (sagSon < g1 && runs[sagSon].Adet == b.Adet && runs[sagSon].Cap == b.Cap)
+                    sagSon++;
+                bool sagGrup = sagSon == g1;
+                double parcaBit = runs[sagSon].XR;
+                if (!sagGrup)
+                {
+                    KirisAcilimMontajAsEk(runs, birlesen, sagSon, out _, out _, out _, out double sonrakiLap1);
+                    if (sonrakiLap1 > lap1 + 1.0) parcaBit = sonrakiLap1;
+                }
+
+                double gSol = hookL ? Gonye(true, segCap, runs[g0], segX) : 0;
+                double gSag = sagGrup ? Gonye(false, b.Cap, runs[g1], runs[g1].XR) : 0;
+                double boySol = KirisAcilimMontajBoy(runs, g0, g1, segX, lap1) + gSol;
+                double boySag = KirisAcilimMontajBoy(runs, g0, g1, lap0, parcaBit) + gSag;
+                double wSol = (double)segAdet * segCap * segCap;
+                double wSag = (double)b.Adet * b.Cap * b.Cap;
+                bool sagAgir = wSag > wSol + 0.5 || (Math.Abs(wSag - wSol) <= 0.5 && b.Cap >= segCap);
+                int adetAgir = sagAgir ? b.Adet : segAdet;
+                int capAgir = sagAgir ? b.Cap : segCap;
+                double gSolAgir = hookL ? Gonye(true, capAgir, runs[g0], segX) : 0;
+                double gSagAgir = sagGrup ? Gonye(false, capAgir, runs[g1], runs[g1].XR) : 0;
+                double boyBir = KirisAcilimMontajBoy(runs, g0, g1, segX, parcaBit) + gSolAgir + gSagAgir;
+                double wEk = boySol * wSol + boySag * wSag;
+                double wTek = boyBir * (double)adetAgir * capAgir * capAgir;
+                // lb iki çubukta da durur. Ağır çubuk hafif alanı da kaplayınca çelik azalıyor ve tek parça 1200'ü geçmiyorsa ek yok.
+                if (wTek < wEk - 0.5 && boyBir <= KirisAcilimMontajMaxBoyCm + 0.49 && boyBir > 1.0)
+                {
+                    segAdet = adetAgir;
+                    segCap = capAgir;
+                    continue;
+                }
+
+                KirisAcilimMontajLapYuvarla(runs, g0, g1, segX, parcaBit, gSol, gSag, lb, boySol, boySag, ref lap0, ref lap1);
+                int ekIx = KirisAcilimMontajEkKiris(runs, g0, g1, lap0, lap1);
+                birlesen[ekIx >= 0 ? g0 + ekIx : hedef] = true;
+                KirisAcilimMontajParcaCiz(tr, ms, db, chain, x0, yShift, sup, gorunus, runs, g0, g1, segX, lap1, segAdet, segCap, hookL, false, ref sira);
+                segX = lap0;
+                segAdet = b.Adet;
+                segCap = b.Cap;
+                hookL = false;
+            }
+            KirisAcilimMontajParcaCiz(tr, ms, db, chain, x0, yShift, sup, gorunus, runs, g0, g1, segX, runs[g1].XR, segAdet, segCap, hookL, true, ref sira);
+        }
+
+        /// <summary>
+        /// 1200 cm'nin altındaki uzun parçayı 1200'e tamamlar. Kayma Ln/2 içinde kalır.
+        /// Eksik 20 cm'yi geçmiyorsa bindirme Ln/2 dışına o kadar taşabilir. Karşı parça 240 cm'nin altına düşmez.
+        /// </summary>
+        private static void KirisAcilimMontajLapYuvarla(
+            List<KirisAcilimMontajRun> runs, int g0, int g1,
+            double segX, double parcaBit, double gSol, double gSag, double lb,
+            double boySol, double boySag, ref double lap0, ref double lap1)
+        {
+            bool solAlt = boySol < KirisAcilimMontajMaxBoyCm - 0.49;
+            bool sagAlt = boySag < KirisAcilimMontajMaxBoyCm - 0.49;
+            if (!solAlt && !sagAlt) return;
+            bool solaBuyut = solAlt && (!sagAlt || boySol >= boySag);
+            double eksik = KirisAcilimMontajMaxBoyCm - (solaBuyut ? boySol : boySag);
+            if (eksik <= 0.5) return;
+            double digerOnce = solaBuyut ? boySag : boySol;
+            if (digerOnce - eksik < 240.0 - 0.5 && digerOnce >= 240.0 - 0.5) return;
+
+            double nLap0;
+            double nLap1;
+            if (solaBuyut)
+            {
+                nLap1 = KirisAcilimMontajIleri(runs, g0, g1, lap1, eksik);
+                nLap0 = KirisAcilimMontajGeri(runs, g0, g1, nLap1, lb);
+            }
+            else
+            {
+                nLap0 = KirisAcilimMontajGeri(runs, g0, g1, lap0, eksik);
+                nLap1 = KirisAcilimMontajIleri(runs, g0, g1, nLap0, lb);
+            }
+            if (nLap1 <= nLap0 + 1.0 || nLap0 < segX - 0.2 || nLap1 > parcaBit + 0.2) return;
+            double tol = eksik <= KirisAcilimMontajLnToleransCm + 0.01 ? KirisAcilimMontajLnToleransCm : 0.2;
+            if (!KirisAcilimMontajEkBolge(runs, g0, g1, nLap0, nLap1, tol)) return;
+            double yeni = solaBuyut
+                ? KirisAcilimMontajBoy(runs, g0, g1, segX, nLap1) + gSol
+                : KirisAcilimMontajBoy(runs, g0, g1, nLap0, parcaBit) + gSag;
+            if (Math.Abs(yeni - KirisAcilimMontajMaxBoyCm) > 1.5) return;
+            lap0 = nLap0;
+            lap1 = nLap1;
+        }
+
+        private struct KirisAcilimMontajKesim
+        {
+            public double Xa;
+            public double Xb;
+            public bool HookL;
+            public bool HookR;
+            public double Boy;
+        }
+
+        private sealed class KirisAcilimMontajCozum
+        {
+            public List<KirisAcilimMontajKesim> Parca;
+        }
+
+        /// <summary>Parça, gönye dahil 1200 cm'yi aşıyorsa Ln/2 içinde firesi en az olan bindirmeyi koyar.</summary>
+        private void KirisAcilimMontajParcaCiz(
+            Transaction tr, BlockTableRecord ms, Database db,
+            List<KirisAcilimSpan> chain, double x0, double yShift,
+            KirisAcilimSupport[] sup, List<KirisAcilimSaplama> gorunus,
+            List<KirisAcilimMontajRun> runs, int g0, int g1,
+            double xa, double xb, int adet, int cap, bool hookL, bool hookR, ref int sira)
+        {
+            if (xb - xa < 1.0 || adet <= 0 || cap <= 0) return;
+            KirisAcilimMontajCozum cozum = KirisAcilimMontajCoz(
+                chain, x0, yShift, sup, gorunus, runs, g0, g1, xa, xb, cap, hookL, hookR);
+            if (cozum == null || cozum.Parca == null || cozum.Parca.Count == 0)
+            {
+                KirisAcilimMontajCubuk(tr, ms, db, chain, x0, yShift, sup, gorunus, runs, g0, g1, xa, xb, adet, cap, hookL, hookR, sira);
+                sira++;
+                return;
+            }
+            for (int i = 0; i < cozum.Parca.Count; i++)
+            {
+                KirisAcilimMontajKesim p = cozum.Parca[i];
+                KirisAcilimMontajCubuk(tr, ms, db, chain, x0, yShift, sup, gorunus, runs, g0, g1, p.Xa, p.Xb, adet, cap, p.HookL, p.HookR, sira);
+                sira++;
+            }
+        }
+
+        /// <summary>
+        /// Gönye boyu (yaysız) dahil her çubuk 1200 cm'yi geçmez. Ek tam lb'dir.
+        /// Parça boyu sırası: 1200, sonra 600/400/300/240, 240 altı olmasın, sonra 100'ün katı, en son küsürat.
+        /// </summary>
+        private KirisAcilimMontajCozum KirisAcilimMontajCoz(
+            List<KirisAcilimSpan> chain, double x0, double yShift,
+            KirisAcilimSupport[] sup, List<KirisAcilimSaplama> gorunus,
+            List<KirisAcilimMontajRun> runs, int g0, int g1,
+            double xa, double xb, int cap, bool hookL, bool hookR)
+        {
+            double ySol = KirisAcilimMontajY(runs, g0, g1, xa);
+            double ySag = KirisAcilimMontajY(runs, g0, g1, xb);
+            double gSol = hookL
+                ? KirisAcilimMontajGonyeBoy(chain, runs[g0], sup, gorunus, x0, yShift, true, cap, xa, ySol)
+                : 0;
+            double gSag = hookR
+                ? KirisAcilimMontajGonyeBoy(chain, runs[g1], sup, gorunus, x0, yShift, false, cap, xb, ySag)
+                : 0;
+            double lb = KirisAcilimMontajBindirme(cap);
+            List<KirisAcilimMontajKesim> plan = KirisAcilimMontajPlanla(
+                runs, g0, g1, xa, xb, gSol, gSag, lb, hookL, hookR);
+            if (plan != null && plan.Count > 0)
+                return new KirisAcilimMontajCozum { Parca = plan };
+
+            var parca = new List<KirisAcilimMontajKesim>();
+            double x = xa;
+            bool ilk = true;
+            for (int guard = 0; guard < 80; guard++)
+            {
+                double hL = ilk ? gSol : 0;
+                double tum = KirisAcilimMontajBoy(runs, g0, g1, x, xb) + hL + gSag;
+                if (tum <= KirisAcilimMontajMaxBoyCm + 0.49)
+                {
+                    parca.Add(new KirisAcilimMontajKesim { Xa = x, Xb = xb, HookL = ilk && hookL, HookR = hookR, Boy = tum });
+                    break;
+                }
+                if (!KirisAcilimMontajZorunluKes(runs, g0, g1, x, xb, hL, gSag, lb, out double lap0, out double lap1, out double solBoy))
+                {
+                    parca.Add(new KirisAcilimMontajKesim { Xa = x, Xb = xb, HookL = ilk && hookL, HookR = hookR, Boy = tum });
+                    break;
+                }
+                parca.Add(new KirisAcilimMontajKesim { Xa = x, Xb = lap1, HookL = ilk && hookL, HookR = false, Boy = solBoy });
+                double once = x;
+                double xYeni = lap0 < once ? once : lap0;
+                if (xYeni <= once + 0.5) xYeni = lap1;
+                if (xYeni <= once + 0.5 || xYeni >= xb - 0.5)
+                {
+                    double kalanX = lap1 > once ? lap1 : once;
+                    if (kalanX >= xb - 0.5) break;
+                    double kalan = KirisAcilimMontajBoy(runs, g0, g1, kalanX, xb) + gSag;
+                    if (kalan <= KirisAcilimMontajMaxBoyCm + 0.49)
+                    {
+                        parca.Add(new KirisAcilimMontajKesim { Xa = kalanX, Xb = xb, HookL = false, HookR = hookR, Boy = kalan });
+                        break;
+                    }
+                    x = kalanX;
+                }
+                else
+                    x = xYeni;
+                ilk = false;
+            }
+            return new KirisAcilimMontajCozum { Parca = parca };
+        }
+
+        private struct KirisAcilimMontajSkor
+        {
+            public bool Dolu;
+            public int Parca;
+            public double Cm1200;
+            public double CmBolen;
+            public double CmKisa;
+            public double CmYuz;
+            public double CmSerbest;
+            public double Ilk;
+
+            public bool Iyi(KirisAcilimMontajSkor o)
+            {
+                if (!o.Dolu) return true;
+                if (Parca != o.Parca) return Parca < o.Parca;
+                if (Cm1200 != o.Cm1200) return Cm1200 > o.Cm1200;
+                if (CmKisa != o.CmKisa) return CmKisa < o.CmKisa;
+                if (CmBolen != o.CmBolen) return CmBolen > o.CmBolen;
+                if (CmYuz != o.CmYuz) return CmYuz > o.CmYuz;
+                if (CmSerbest != o.CmSerbest) return CmSerbest < o.CmSerbest;
+                return Ilk > o.Ilk;
+            }
+        }
+
+        /// <summary>Etikete yazılacak tam sayıya göre boy sınıfı. Az parça daha az çelik; sonra 1200, bölen, 240 altı, 100 katı.</summary>
+        private static void KirisAcilimMontajBoySinif(double boy, ref KirisAcilimMontajSkor s)
+        {
+            s.Parca++;
+            int g = (int)Math.Round(boy);
+            if (g == 1200) { s.Cm1200 += boy; return; }
+            if (g == 600 || g == 400 || g == 300 || g == 240) { s.CmBolen += boy; return; }
+            if (g < 240) { s.CmKisa += boy; return; }
+            if (g % 100 == 0) { s.CmYuz += boy; return; }
+            s.CmSerbest += boy;
+        }
+
+        private static bool KirisAcilimMontajEkBolge(
+            List<KirisAcilimMontajRun> runs, int g0, int g1, double lap0, double lap1, double tolerans = 0.2)
+        {
+            for (int i = g0; i <= g1; i++)
+            {
+                if (lap0 >= runs[i].ZoneL - tolerans && lap1 <= runs[i].ZoneR + tolerans)
+                    return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Tüm parçaları birlikte tarar. Bindirme yalnız kiriş ortasındaki Ln/2 içindedir.
+        /// Bu koşulla önce 1200 cm, sonra bölen boylar. Aynı kirişe iki bindirme konmaz.
+        /// 1200'ü aşmayan tek parça bölünmez.
+        /// </summary>
+        private static List<KirisAcilimMontajKesim> KirisAcilimMontajPlanla(
+            List<KirisAcilimMontajRun> runs, int g0, int g1,
+            double xa, double xb, double gSol, double gSag, double lb,
+            bool hookL, bool hookR)
+        {
+            double duz = KirisAcilimMontajBoy(runs, g0, g1, xa, xb);
+            if (duz < 1.0) return null;
+            if (duz + gSol + gSag <= KirisAcilimMontajMaxBoyCm + 0.49)
+            {
+                return new List<KirisAcilimMontajKesim>
+                {
+                    new KirisAcilimMontajKesim { Xa = xa, Xb = xb, HookL = hookL, HookR = hookR, Boy = duz + gSol + gSag }
+                };
+            }
+            int n = (int)Math.Ceiling(duz) + 3;
+            if (n < 4) n = 4;
+            if (n > 40000) return null;
+            List<KirisAcilimMontajKesim> tek = KirisAcilimMontajPlanAra(
+                runs, g0, g1, xa, xb, gSol, gSag, lb, hookL, hookR, duz, n, true);
+            if (tek != null) return tek;
+            return KirisAcilimMontajPlanAra(
+                runs, g0, g1, xa, xb, gSol, gSag, lb, hookL, hookR, duz, n, false);
+        }
+
+        /// <summary>Bindirmenin orta noktası hangi kirişteyse o kiriş. Aralıkta ise en çok çakışan.</summary>
+        private static int KirisAcilimMontajEkKiris(
+            List<KirisAcilimMontajRun> runs, int g0, int g1, double lap0, double lap1)
+        {
+            double orta = 0.5 * (lap0 + lap1);
+            int en = -1;
+            double enPay = 0;
+            for (int i = g0; i <= g1; i++)
+            {
+                if (orta >= runs[i].XL - 0.5 && orta <= runs[i].XR + 0.5)
+                    return i - g0;
+                double pay = Math.Min(lap1, runs[i].XR) - Math.Max(lap0, runs[i].XL);
+                if (pay > enPay)
+                {
+                    enPay = pay;
+                    en = i - g0;
+                }
+            }
+            return enPay > 1.0 ? en : -1;
+        }
+
+        /// <summary>Parça ucu kirişin dış ucu değilse bu kirişte zaten bir birleşim vardır.</summary>
+        private static int KirisAcilimMontajUcKiris(
+            List<KirisAcilimMontajRun> runs, int g0, int g1, double x, bool sol)
+        {
+            for (int i = g0; i <= g1; i++)
+            {
+                if (x < runs[i].XL - 1.0 || x > runs[i].XR + 1.0) continue;
+                bool dis = sol
+                    ? i == g0 && x <= runs[i].XL + 2.0
+                    : i == g1 && x >= runs[i].XR - 2.0;
+                if (dis) return -1;
+                return i - g0;
+            }
+            return -1;
+        }
+
+        private struct KirisAcilimMontajDurum
+        {
+            public double Arc;
+            public long Mask;
+            public KirisAcilimMontajSkor Skor;
+            public int Prev;
+            public double UsedL;
+        }
+
+        /// <summary>tekBirlesim: aynı kirişe ikinci bindirme konmaz. Sığmazsa çağıran serbest dener.</summary>
+        private static List<KirisAcilimMontajKesim> KirisAcilimMontajPlanAra(
+            List<KirisAcilimMontajRun> runs, int g0, int g1,
+            double xa, double xb, double gSol, double gSag, double lb,
+            bool hookL, bool hookR, double duz, int n, bool tekBirlesim)
+        {
+            long bas = 0;
+            if (tekBirlesim)
+            {
+                int ka = KirisAcilimMontajUcKiris(runs, g0, g1, xa, true);
+                int kb = KirisAcilimMontajUcKiris(runs, g0, g1, xb, false);
+                if (ka >= 0 && ka < 62) bas |= 1L << ka;
+                if (kb >= 0 && kb < 62) bas |= 1L << kb;
+            }
+            double[] hedefler = { 1200, 1100, 1000, 900, 800, 700, 600, 500, 400, 300, 240 };
+            var tum = new List<KirisAcilimMontajDurum>();
+            var kova = new List<KirisAcilimMontajDurum>[n];
+            bool bul = false;
+            KirisAcilimMontajSkor enIyi = default(KirisAcilimMontajSkor);
+            int enIx = -1;
+            double enKalan = 0;
+
+            void Ekle(int j, KirisAcilimMontajDurum d)
+            {
+                if (j <= 0 || j >= n) return;
+                if (kova[j] == null) kova[j] = new List<KirisAcilimMontajDurum>();
+                kova[j].Add(d);
+            }
+
+            void Isle(KirisAcilimMontajDurum d, int self)
+            {
+                double arc = d.Arc;
+                double hook = self == 0 ? gSol : 0;
+                double kalan = duz - arc + hook + gSag;
+                if (kalan > 0.5 && kalan <= KirisAcilimMontajMaxBoyCm + 0.49)
+                {
+                    KirisAcilimMontajSkor s = d.Skor;
+                    KirisAcilimMontajBoySinif(kalan, ref s);
+                    if (self == 0) s.Ilk = kalan;
+                    if (!bul || s.Iyi(enIyi))
+                    {
+                        bul = true;
+                        enIyi = s;
+                        enIx = self;
+                        enKalan = kalan;
+                    }
+                    return;
+                }
+                if (arc >= duz - 2.0) return;
+                double xBas = arc <= 0.01 ? xa : KirisAcilimMontajIleri(runs, g0, g1, xa, arc);
+                void Dene(double endArc, double nextArc, double L)
+                {
+                    if (endArc >= duz - 2.0 || nextArc <= arc + 1.0) return;
+                    int j = (int)Math.Round(nextArc);
+                    if (j <= 0 || j >= n) return;
+                    double xLap1 = KirisAcilimMontajIleri(runs, g0, g1, xa, endArc);
+                    double xLap0 = KirisAcilimMontajIleri(runs, g0, g1, xa, nextArc);
+                    double tolEk = Math.Abs(L - KirisAcilimMontajMaxBoyCm) <= 0.49
+                        ? KirisAcilimMontajLnToleransCm : 0.2;
+                    if (!KirisAcilimMontajEkBolge(runs, g0, g1, xLap0, xLap1, tolEk)) return;
+                    long mask = d.Mask;
+                    if (tekBirlesim)
+                    {
+                        int k = KirisAcilimMontajEkKiris(runs, g0, g1, xLap0, xLap1);
+                        if (k >= 0 && k < 62 && (mask & (1L << k)) != 0) return;
+                        if (k >= 0 && k < 62) mask |= 1L << k;
+                    }
+                    KirisAcilimMontajSkor s = d.Skor;
+                    KirisAcilimMontajBoySinif(L, ref s);
+                    if (self == 0) s.Ilk = L;
+                    Ekle(j, new KirisAcilimMontajDurum
+                    {
+                        Arc = nextArc,
+                        Mask = mask,
+                        Skor = s,
+                        Prev = self,
+                        UsedL = L
+                    });
+                }
+                for (int h = 0; h < hedefler.Length; h++)
+                {
+                    double L = hedefler[h];
+                    double straight = L - hook;
+                    if (straight <= lb + 1.0) continue;
+                    Dene(arc + straight, arc + straight - lb, L);
+                }
+                for (int r = g0; r <= g1; r++)
+                {
+                    double zL = runs[r].ZoneL;
+                    double zR = runs[r].ZoneR;
+                    if (zR - zL < lb - 0.2) continue;
+                    if (tekBirlesim && r - g0 < 62 && (d.Mask & (1L << (r - g0))) != 0) continue;
+                    double solU = KirisAcilimMontajIleri(runs, g0, g1, zL, lb);
+                    if (solU > zR + 0.2) continue;
+                    void DeneX(double x1)
+                    {
+                        if (x1 <= xBas + 1.0 || x1 > zR + 0.2) return;
+                        double x0 = KirisAcilimMontajGeri(runs, g0, g1, x1, lb);
+                        if (x0 < zL - 0.2) return;
+                        double straightX = KirisAcilimMontajBoy(runs, g0, g1, xBas, x1);
+                        double lx = straightX + hook;
+                        if (lx > KirisAcilimMontajMaxBoyCm + 0.49 || straightX <= lb + 1.0) return;
+                        Dene(arc + straightX, arc + straightX - lb, lx);
+                    }
+                    DeneX(solU);
+                    DeneX(zR);
+                    for (int h = 0; h < hedefler.Length; h++)
+                    {
+                        double straightH = hedefler[h] - hook;
+                        if (straightH <= lb + 1.0) continue;
+                        double ideal = KirisAcilimMontajIleri(runs, g0, g1, xa, arc + straightH);
+                        if (ideal < solU) ideal = solU;
+                        if (ideal > zR) ideal = zR;
+                        DeneX(ideal);
+                    }
+                }
+            }
+
+            tum.Add(new KirisAcilimMontajDurum
+            {
+                Arc = 0,
+                Mask = bas,
+                Skor = new KirisAcilimMontajSkor { Dolu = true },
+                Prev = -1
+            });
+            Isle(tum[0], 0);
+            for (int cm = 1; cm < n; cm++)
+            {
+                if (kova[cm] == null) continue;
+                var sec = new Dictionary<long, KirisAcilimMontajDurum>();
+                for (int t = 0; t < kova[cm].Count; t++)
+                {
+                    KirisAcilimMontajDurum d = kova[cm][t];
+                    if (!sec.TryGetValue(d.Mask, out KirisAcilimMontajDurum eski) || d.Skor.Iyi(eski.Skor))
+                        sec[d.Mask] = d;
+                }
+                foreach (KirisAcilimMontajDurum d in sec.Values)
+                {
+                    int ix = tum.Count;
+                    tum.Add(d);
+                    Isle(tum[ix], ix);
+                }
+            }
+            if (!bul || enIx < 0) return null;
+
+            var boylar = new List<double>();
+            int c = enIx;
+            int guard = 0;
+            while (c > 0 && guard++ < 80)
+            {
+                boylar.Add(tum[c].UsedL);
+                c = tum[c].Prev;
+            }
+            boylar.Reverse();
+            boylar.Add(enKalan);
+
+            var parca = new List<KirisAcilimMontajKesim>();
+            double yurur = 0;
+            for (int k = 0; k < boylar.Count; k++)
+            {
+                bool ilkP = k == 0;
+                bool sonP = k == boylar.Count - 1;
+                double x0 = yurur <= 0.01 ? xa : KirisAcilimMontajIleri(runs, g0, g1, xa, yurur);
+                double x1 = xb;
+                if (!sonP)
+                {
+                    double bit = yurur + boylar[k] - (ilkP ? gSol : 0);
+                    x1 = KirisAcilimMontajIleri(runs, g0, g1, xa, bit);
+                    yurur = bit - lb;
+                }
+                if (x1 < x0 + 0.5) return null;
+                parca.Add(new KirisAcilimMontajKesim
+                {
+                    Xa = x0,
+                    Xb = x1,
+                    HookL = ilkP && hookL,
+                    HookR = sonP && hookR,
+                    Boy = boylar[k]
+                });
+            }
+            return parca;
+        }
+
+        /// <summary>1200 cm aşılıyorsa keser. Bindirme Ln/2 dışına çıkarsa kesim yok.</summary>
+        private static bool KirisAcilimMontajZorunluKes(
+            List<KirisAcilimMontajRun> runs, int g0, int g1,
+            double x, double xb, double hL, double gSag, double lb,
+            out double lap0, out double lap1, out double solBoy)
+        {
+            lap0 = lap1 = solBoy = 0;
+            double duzTum = KirisAcilimMontajBoy(runs, g0, g1, x, xb);
+            if (duzTum + hL + gSag <= KirisAcilimMontajMaxBoyCm + 0.5) return false;
+            double duzHedef = KirisAcilimMontajMaxBoyCm - hL;
+            if (duzHedef < 10.0) duzHedef = 10.0;
+            double aday = KirisAcilimMontajIleri(runs, g0, g1, x, duzHedef);
+            bool sona = aday >= xb - 2.0 || KirisAcilimMontajBoy(runs, g0, g1, x, aday) >= duzTum - 1.0;
+            if (!sona)
+            {
+                lap1 = aday;
+                lap0 = KirisAcilimMontajGeri(runs, g0, g1, lap1, lb);
+            }
+            else
+            {
+                double sagDuz = KirisAcilimMontajMaxBoyCm - gSag;
+                if (sagDuz < 10.0) sagDuz = 10.0;
+                if (sagDuz > duzTum - 10.0) sagDuz = Math.Max(10.0, duzTum * 0.5);
+                lap0 = KirisAcilimMontajGeri(runs, g0, g1, xb, sagDuz);
+                double bin = lb;
+                if (bin > sagDuz - 5.0) bin = Math.Max(5.0, sagDuz * 0.5);
+                lap1 = KirisAcilimMontajIleri(runs, g0, g1, lap0, bin);
+            }
+            if (lap0 < x) lap0 = x;
+            if (lap1 <= x + 1.0) return false;
+            if (lap1 >= xb - 0.5) lap1 = xb - Math.Max(5.0, Math.Min(lb, (xb - x) * 0.25));
+            if (lap1 <= x + 1.0 || lap1 >= xb - 0.5) return false;
+            if (lap0 > lap1) lap0 = x;
+            solBoy = KirisAcilimMontajBoy(runs, g0, g1, x, lap1) + hL;
+            if (solBoy > KirisAcilimMontajMaxBoyCm + 0.5)
+            {
+                lap1 = KirisAcilimMontajGeri(runs, g0, g1, lap1, solBoy - KirisAcilimMontajMaxBoyCm);
+                if (lap1 <= x + 1.0 || lap1 >= xb - 0.5) return false;
+                lap0 = KirisAcilimMontajGeri(runs, g0, g1, lap1, lb);
+                if (lap0 < x) lap0 = x;
+                if (lap0 > lap1) lap0 = x;
+                solBoy = KirisAcilimMontajBoy(runs, g0, g1, x, lap1) + hL;
+            }
+            if (!(solBoy <= KirisAcilimMontajMaxBoyCm + 0.5 && lap1 > x + 1.0 && lap1 < xb - 0.5))
+                return false;
+            if (KirisAcilimMontajEkBolge(runs, g0, g1, lap0, lap1)) return true;
+            return solBoy >= KirisAcilimMontajMaxBoyCm - KirisAcilimMontajLnToleransCm
+                && KirisAcilimMontajEkBolge(runs, g0, g1, lap0, lap1, KirisAcilimMontajLnToleransCm);
+        }
+
+        /// <summary>Gönye boyu: a+b+c. Köşe yayı boydan düşülmez. Komşu kiriş varsa gönye yok, bindirme düzdür.</summary>
+        private double KirisAcilimMontajGonyeBoy(
+            List<KirisAcilimSpan> chain, KirisAcilimMontajRun run,
+            KirisAcilimSupport[] sup, List<KirisAcilimSaplama> gorunus,
+            double x0, double yShift, bool sola, int cap, double xYuz, double y)
+        {
+            if (cap <= 0 || run.H < 1.0) return 0;
+            bool serbest = sola ? run.SolSerbest : run.SagSerbest;
+            bool komsu = KirisAcilimKomsuAralik(chain, run.I0, run.I1, sola, out _, out _);
+            bool kot = KirisAcilimMontajKotKesit(chain, run, yShift, sola);
+            if (komsu && !kot) return 0;
+            double hk = sola ? run.HkSol : run.HkSag;
+            double oda = KirisAcilimGonyeRoom(chain, run.I0, run.I1, yShift, sola, true, false, y, run.H, out double birlesikH);
+            if (serbest) hk = 0;
+            bool duz = !serbest && !kot;
+            KirisAcilimGonyeHesap(cap / 10.0, true, hk, oda, serbest ? run.H : birlesikH, serbest, duz, out double a, out double b, out double c);
+            return a + b + c;
+        }
+
+        /// <summary>Montaj bu kotta komşu kesitin paspayı içine sığmıyorsa kenara uzayıp gönyelenir.</summary>
+        private bool KirisAcilimMontajKotKesit(
+            List<KirisAcilimSpan> chain, KirisAcilimMontajRun run, double yShift, bool sola)
+        {
+            if (!KirisAcilimKomsuAralik(chain, run.I0, run.I1, sola, out int j0, out int j1)) return false;
+            if (chain[j0]?.Beam == null) return false;
+            double p = KirisAcilimMontajPaspayiCm;
+            double xN = sola ? chain[j1].X1 : chain[j0].X0;
+            double nTop = yShift + KirisAcilimKotAt(chain, j0, j1, xN);
+            double nBot = nTop - chain[j0].Beam.HeightCm;
+            double yBar = sola ? run.YL : run.YR;
+            return yBar > nTop - p || yBar < nBot + p;
+        }
+
+        private static double KirisAcilimMontajY(List<KirisAcilimMontajRun> runs, int g0, int g1, double x)
+        {
+            if (x <= runs[g0].XL) return runs[g0].YL;
+            for (int i = g0; i <= g1; i++)
+            {
+                KirisAcilimMontajRun r = runs[i];
+                if (x <= r.XR + 0.05)
+                {
+                    double den = r.XR - r.XL;
+                    double u = den < 1.0 ? 0.0 : (x - r.XL) / den;
+                    if (u < 0) u = 0;
+                    if (u > 1) u = 1;
+                    return r.YL + (r.YR - r.YL) * u;
+                }
+                if (i < g1 && x < runs[i + 1].XL)
+                {
+                    double den = runs[i + 1].XL - r.XR;
+                    double u = den < 1.0 ? 0.0 : (x - r.XR) / den;
+                    if (u < 0) u = 0;
+                    if (u > 1) u = 1;
+                    return r.YR + (runs[i + 1].YL - r.YR) * u;
+                }
+            }
+            return runs[g1].YR;
+        }
+
+        private static void KirisAcilimMontajKnot(
+            List<KirisAcilimMontajRun> runs, int g0, int g1, double xa, double xb, List<double> xs)
+        {
+            xs.Clear();
+            if (xb < xa) { double t = xa; xa = xb; xb = t; }
+            xs.Add(xa);
+            xs.Add(xb);
+            for (int i = g0; i <= g1; i++)
+            {
+                if (runs[i].XL > xa + 0.01 && runs[i].XL < xb - 0.01) xs.Add(runs[i].XL);
+                if (runs[i].XR > xa + 0.01 && runs[i].XR < xb - 0.01) xs.Add(runs[i].XR);
+            }
+            xs.Sort();
+            int w = 1;
+            for (int i = 1; i < xs.Count; i++)
+            {
+                if (xs[i] - xs[w - 1] > 0.01) xs[w++] = xs[i];
+            }
+            if (w < xs.Count) xs.RemoveRange(w, xs.Count - w);
+        }
+
+        private static double KirisAcilimMontajSeg(List<KirisAcilimMontajRun> runs, int g0, int g1, double x0, double x1)
+        {
+            double dx = x1 - x0;
+            double dy = KirisAcilimMontajY(runs, g0, g1, x1) - KirisAcilimMontajY(runs, g0, g1, x0);
+            return Math.Sqrt(dx * dx + dy * dy);
+        }
+
+        private static double KirisAcilimMontajBoy(List<KirisAcilimMontajRun> runs, int g0, int g1, double xa, double xb)
+        {
+            var xs = new List<double>();
+            KirisAcilimMontajKnot(runs, g0, g1, xa, xb, xs);
+            double boy = 0;
+            for (int i = 1; i < xs.Count; i++)
+                boy += KirisAcilimMontajSeg(runs, g0, g1, xs[i - 1], xs[i]);
+            return boy;
+        }
+
+        private static double KirisAcilimMontajIleri(List<KirisAcilimMontajRun> runs, int g0, int g1, double xFrom, double dist)
+        {
+            if (dist <= 0.01) return xFrom;
+            var xs = new List<double>();
+            KirisAcilimMontajKnot(runs, g0, g1, xFrom, runs[g1].XR, xs);
+            double kalan = dist;
+            for (int i = 0; i < xs.Count - 1; i++)
+            {
+                double seg = KirisAcilimMontajSeg(runs, g0, g1, xs[i], xs[i + 1]);
+                if (seg >= kalan - 1e-6)
+                {
+                    double t = seg < 1e-6 ? 0 : kalan / seg;
+                    return xs[i] + (xs[i + 1] - xs[i]) * t;
+                }
+                kalan -= seg;
+            }
+            return xs.Count > 0 ? xs[xs.Count - 1] : xFrom;
+        }
+
+        private static double KirisAcilimMontajGeri(List<KirisAcilimMontajRun> runs, int g0, int g1, double xTo, double dist)
+        {
+            if (dist <= 0.01) return xTo;
+            var xs = new List<double>();
+            KirisAcilimMontajKnot(runs, g0, g1, runs[g0].XL, xTo, xs);
+            double kalan = dist;
+            for (int i = xs.Count - 1; i > 0; i--)
+            {
+                double seg = KirisAcilimMontajSeg(runs, g0, g1, xs[i - 1], xs[i]);
+                if (seg >= kalan - 1e-6)
+                {
+                    double t = seg < 1e-6 ? 0 : kalan / seg;
+                    return xs[i] - (xs[i] - xs[i - 1]) * t;
+                }
+                kalan -= seg;
+            }
+            return xs.Count > 0 ? xs[0] : xTo;
+        }
+
+        /// <summary>
+        /// Etiket 5 cm katı değilse eksik santim, bindirme olmayan uçtaki gönyeye eklenir.
+        /// lb kıpırdamaz. Gönye kesitin içinde kalmıyorsa boy değiştirilmez.
+        /// </summary>
+        private static void KirisAcilimMontajBesTamamla(
+            List<Point2d> pts, ref double boy, bool hookL, bool hookR,
+            double xa, double xb, double odaL, double odaR, double hkL, double hkR)
+        {
+            int g = (int)Math.Round(boy);
+            if (g <= 0 || g >= (int)KirisAcilimMontajMaxBoyCm || g % (int)KirisAcilimYuvarlamaCm == 0) return;
+            int hedef = g + (int)KirisAcilimYuvarlamaCm - g % (int)KirisAcilimYuvarlamaCm;
+            if (hedef > (int)KirisAcilimMontajMaxBoyCm) hedef = (int)KirisAcilimMontajMaxBoyCm;
+            double eksik = hedef - boy;
+            if (eksik < 0.05) return;
+            if (hookR && KirisAcilimMontajUcUzat(pts, false, xa, xb, eksik, odaR, hkR))
+            {
+                boy += eksik;
+                return;
+            }
+            if (hookL && KirisAcilimMontajUcUzat(pts, true, xa, xb, eksik, odaL, hkL))
+                boy += eksik;
+        }
+
+        /// <summary>Gönye kuyruğunu eksik kadar uzatır. Düşey bacak kesitte, yatay kuyruk kirişin içinde kalır.</summary>
+        private static bool KirisAcilimMontajUcUzat(
+            List<Point2d> pts, bool sol, double xa, double xb, double ek, double oda, double hk)
+        {
+            if (pts == null || pts.Count < 2 || ek < 0.05) return false;
+            int iTip = sol ? 0 : pts.Count - 1;
+            int iYan = sol ? 1 : pts.Count - 2;
+            double dx = pts[iTip].X - pts[iYan].X;
+            double dy = pts[iTip].Y - pts[iYan].Y;
+            double len = Math.Sqrt(dx * dx + dy * dy);
+            if (len < 0.2) return false;
+            double slack;
+            if (Math.Abs(dy) >= Math.Abs(dx))
+                slack = oda - len;
+            else
+            {
+                double ortaya = 0.5 * (xa + xb) - pts[iTip].X;
+                bool ice = dx * ortaya > 0;
+                if (ice)
+                {
+                    double diger = sol ? pts[pts.Count - 1].X : pts[0].X;
+                    slack = Math.Abs(diger - pts[iTip].X) - 5.0;
+                }
+                else
+                {
+                    double sigar = hk - KirisAcilimMontajPaspayiCm;
+                    slack = sigar - len;
+                }
+            }
+            if (slack < ek - 0.05) return false;
+            double ux = dx / len;
+            double uy = dy / len;
+            pts[iTip] = new Point2d(pts[iTip].X + ek * ux, pts[iTip].Y + ek * uy);
+            return true;
+        }
+
+        private void KirisAcilimMontajCubuk(
+            Transaction tr, BlockTableRecord ms, Database db,
+            List<KirisAcilimSpan> chain, double x0, double yShift,
+            KirisAcilimSupport[] sup, List<KirisAcilimSaplama> gorunus,
+            List<KirisAcilimMontajRun> runs, int g0, int g1,
+            double xa, double xb, int adet, int cap, bool hookL, bool hookR, int sira)
+        {
+            // Çapı farklı kirişe uzanan uç, o kirişin kotuna kırılmaz; kendi hizasında düz lb bindirmesi kalır.
+            double Y(double x)
+            {
+                for (int i = g0; i <= g1; i++)
+                {
+                    KirisAcilimMontajRun r = runs[i];
+                    if (x < r.XL - 0.05 || x > r.XR + 0.05) continue;
+                    if (r.Cap == cap && r.Adet == adet) return KirisAcilimMontajY(runs, g0, g1, x);
+                    for (int j = i - 1; j >= g0; j--)
+                    {
+                        if (runs[j].Cap == cap && runs[j].Adet == adet) return runs[j].YR;
+                    }
+                    for (int j = i + 1; j <= g1; j++)
+                    {
+                        if (runs[j].Cap == cap && runs[j].Adet == adet) return runs[j].YL;
+                    }
+                }
+                return KirisAcilimMontajY(runs, g0, g1, x);
+            }
+
+            var pts = new List<Point2d>();
+            KirisAcilimMontajRun sol = runs[g0];
+            KirisAcilimMontajRun sag = runs[g1];
+            bool solKomsu = KirisAcilimKomsuAralik(chain, sol.I0, sol.I1, true, out _, out _);
+            bool sagKomsu = KirisAcilimKomsuAralik(chain, sag.I0, sag.I1, false, out _, out _);
+            bool solKot = hookL && KirisAcilimMontajKotKesit(chain, sol, yShift, true);
+            bool sagKot = hookR && KirisAcilimMontajKotKesit(chain, sag, yShift, false);
+            if (hookL && solKot)
+            {
+                double odaL = KirisAcilimGonyeRoom(chain, sol.I0, sol.I1, yShift, true, true, false, Y(xa), sol.H, out double birL);
+                KirisAcilimGonyeEkle(pts, true, xa, Y(xa), true, sol.HkSol, sol.H, cap, false, xb, odaL, birL, false, false, out double _);
+            }
+            else if (hookL && !solKomsu)
+                KirisAcilimUcNokta(pts, chain, sol.I0, sol.I1, sup, gorunus, x0, yShift, true, xa, Y(xa), true, sol.HkSol, sol.H, cap, false, xb, sol.SolSerbest);
+            pts.Add(new Point2d(xa, Y(xa)));
+            var orta = new List<Point2d>();
+            for (int i = g0; i <= g1; i++)
+            {
+                if (runs[i].XL > xa + 0.5 && runs[i].XL < xb - 0.5)
+                    orta.Add(new Point2d(runs[i].XL, Y(runs[i].XL)));
+                if (runs[i].XR > xa + 0.5 && runs[i].XR < xb - 0.5)
+                    orta.Add(new Point2d(runs[i].XR, Y(runs[i].XR)));
+            }
+            orta.Sort((a, b) => a.X.CompareTo(b.X));
+            double sonX = xa;
+            for (int i = 0; i < orta.Count; i++)
+            {
+                if (orta[i].X <= sonX + 0.01) continue;
+                pts.Add(orta[i]);
+                sonX = orta[i].X;
+            }
+            if (xb > sonX + 0.01) pts.Add(new Point2d(xb, Y(xb)));
+            if (hookR && sagKot)
+            {
+                double odaR = KirisAcilimGonyeRoom(chain, sag.I0, sag.I1, yShift, false, true, false, Y(xb), sag.H, out double birR);
+                KirisAcilimGonyeEkle(pts, false, xb, Y(xb), true, sag.HkSag, sag.H, cap, false, xa, odaR, birR, false, false, out double _);
+            }
+            else if (hookR && !sagKomsu)
+                KirisAcilimUcNokta(pts, chain, sag.I0, sag.I1, sup, gorunus, x0, yShift, false, xb, Y(xb), true, sag.HkSag, sag.H, cap, false, xa, sag.SagSerbest);
+            double boy = 0;
+            for (int k = 1; k < pts.Count; k++)
+            {
+                double dx = pts[k].X - pts[k - 1].X;
+                double dy = pts[k].Y - pts[k - 1].Y;
+                boy += Math.Sqrt(dx * dx + dy * dy);
+            }
+            double odaSol = hookL
+                ? KirisAcilimGonyeRoom(chain, sol.I0, sol.I1, yShift, true, true, false, Y(xa), sol.H, out _)
+                : 0;
+            double odaSag = hookR
+                ? KirisAcilimGonyeRoom(chain, sag.I0, sag.I1, yShift, false, true, false, Y(xb), sag.H, out _)
+                : 0;
+            KirisAcilimMontajBesTamamla(pts, ref boy, hookL, hookR, xa, xb, odaSol, odaSag, sol.HkSol, sag.HkSag);
+            KirisAcilimDonatiPl(tr, ms, KirisAcilimRenkMontaj, pts);
+            KirisAcilimAcilimCiz(tr, ms, db, pts, KirisAcilimRenkMontaj, adet, cap, boy, KirisAcilimMontajAcilimCm, ref _kirisAcilimMontajSira);
+        }
+
+        private void KirisAcilimMontajEtiket(
+            Transaction tr, BlockTableRecord ms, Database db, KirisAcilimMontajRun run)
+        {
+            if (run.Adet <= 0 || run.Cap <= 0) return;
+            string lbl = run.Adet.ToString(CultureInfo.InvariantCulture) + "\u00F8" + run.Cap.ToString(CultureInfo.InvariantCulture);
+            double xm = 0.5 * (run.XL + run.XR);
+            double yUst = 0.5 * (run.YL + run.YR) + KirisAcilimMontajPaspayiCm;
+            DrawBeamLabel(tr, ms, db, new Point3d(xm, yUst - KirisAcilimMontajEtiketUsttenCm, 0), lbl, 8.0, 0.0, KirisAcilimDonatiYaziLayer, useMiddleCenter: true);
+            KirisAcilimYaziKutusuKenar(tr, yUst - KirisAcilimMontajEtiketUsttenCm, ustKenar: true);
+        }
+
         private void KirisAcilimMontajDonatiYedek(
             Transaction tr, BlockTableRecord ms, Database db,
             List<KirisAcilimSpan> chain, int i0, int i1,
             double x0, double yShift, double net0, double net1,
-            Dictionary<BeamInfo, KirisAcilimMontajBilgi> montaj)
+            Dictionary<BeamInfo, KirisAcilimMontajBilgi> montaj,
+            KirisAcilimSupport[] sup, List<KirisAcilimSaplama> gorunus,
+            Dictionary<BeamInfo, KirisAcilimUcBilgi> ucTipi)
         {
             BeamInfo beam = chain[i0].Beam;
             if (beam == null || montaj == null || !montaj.TryGetValue(beam, out KirisAcilimMontajBilgi m)) return;
+            KirisAcilimKonsolUclari(chain, i0, i1, ucTipi, gorunus, x0, out bool solSerbestOn, out bool sagSerbestOn, out _, out _);
+            if (KirisAcilimKonsolTekBasina(chain, i0, i1, solSerbestOn, sagSerbestOn))
+            {
+                KirisAcilimMontajBilgi mSagB = m;
+                if (chain[i1].Beam != null && montaj.TryGetValue(chain[i1].Beam, out KirisAcilimMontajBilgi mSonB)) mSagB = mSonB;
+                bool solBasB = chain[i0].Cross0 == beam.StartAxisId;
+                bool sagBasB = chain[i1].Beam != null && chain[i1].Cross1 == chain[i1].Beam.StartAxisId;
+                int nSol = solBasB ? m.SolUstAdet : m.SagUstAdet;
+                int cSol = solBasB ? m.SolUstCap : m.SagUstCap;
+                int nSag = sagBasB ? mSagB.SolUstAdet : mSagB.SagUstAdet;
+                int cSag = sagBasB ? mSagB.SolUstCap : mSagB.SagUstCap;
+                KirisAcilimAsBirlestir(m.Adet, m.Cap, nSol, cSol, nSag, cSag, out int adetB, out int capB);
+                if (adetB > 0 && capB > 0) { m.Adet = adetB; m.Cap = capB; }
+            }
             if (m.Adet <= 0 || m.Cap <= 0) return;
 
             double xA = x0 + net0;
@@ -1204,7 +3134,22 @@ namespace ST4PlanIdCiz
             double top1 = yShift + KirisAcilimKotAt(chain, i0, i1, net1);
             double yA = top0 - KirisAcilimMontajPaspayiCm;
             double yB = top1 - KirisAcilimMontajPaspayiCm;
-            KirisAcilimCizgi(tr, ms, xA, yA, xB, yB, KirisAcilimDonatiLayer, KirisAcilimRenkMontaj);
+            double hkSol = KirisAcilimMesnetHk(chain, i0, i1, sup, gorunus, true);
+            double hkSag = KirisAcilimMesnetHk(chain, i0, i1, sup, gorunus, false);
+            KirisAcilimKonsolUclari(chain, i0, i1, ucTipi, gorunus, x0, out bool solSerbest, out bool sagSerbest, out double xSolGonye, out double xSagGonye);
+            double xSol = solSerbest ? xSolGonye : xA;
+            double xSag = sagSerbest ? xSagGonye : xB;
+            var pts = new List<Point2d>();
+            KirisAcilimUcNokta(pts, chain, i0, i1, sup, gorunus, x0, yShift, true, xSol, yA, true, hkSol, beam.HeightCm, m.Cap, false, xSag, solSerbest);
+            pts.Add(new Point2d(xSol, yA));
+            pts.Add(new Point2d(xSag, yB));
+            KirisAcilimUcNokta(pts, chain, i0, i1, sup, gorunus, x0, yShift, false, xSag, yB, true, hkSag, beam.HeightCm, m.Cap, false, xSol, sagSerbest);
+            KirisAcilimDonatiPl(tr, ms, KirisAcilimRenkMontaj, pts);
+            string lbl = m.Adet.ToString(CultureInfo.InvariantCulture) + "\u00F8" + m.Cap.ToString(CultureInfo.InvariantCulture);
+            double xm = 0.5 * (xA + xB);
+            double yUst = 0.5 * (top0 + top1);
+            DrawBeamLabel(tr, ms, db, new Point3d(xm, yUst - KirisAcilimMontajEtiketUsttenCm, 0), lbl, 8.0, 0.0, KirisAcilimDonatiYaziLayer, useMiddleCenter: true);
+            KirisAcilimYaziKutusuKenar(tr, yUst - KirisAcilimMontajEtiketUsttenCm, ustKenar: true);
         }
 
         /// <summary>
@@ -1214,10 +3159,26 @@ namespace ST4PlanIdCiz
             Transaction tr, BlockTableRecord ms, Database db,
             List<KirisAcilimSpan> chain, int i0, int i1,
             double x0, double yShift, double net0, double net1,
-            Dictionary<BeamInfo, KirisAcilimMontajBilgi> montaj)
+            Dictionary<BeamInfo, KirisAcilimMontajBilgi> montaj,
+            KirisAcilimSupport[] sup, List<KirisAcilimSaplama> gorunus,
+            Dictionary<BeamInfo, KirisAcilimUcBilgi> ucTipi)
         {
             BeamInfo beam = chain[i0].Beam;
             if (beam == null || montaj == null || !montaj.TryGetValue(beam, out KirisAcilimMontajBilgi m)) return;
+            KirisAcilimKonsolUclari(chain, i0, i1, ucTipi, gorunus, x0, out bool solSerbestOn, out bool sagSerbestOn, out _, out _);
+            if (KirisAcilimKonsolTekBasina(chain, i0, i1, solSerbestOn, sagSerbestOn))
+            {
+                KirisAcilimMontajBilgi mSagB = m;
+                if (chain[i1].Beam != null && montaj.TryGetValue(chain[i1].Beam, out KirisAcilimMontajBilgi mSonB)) mSagB = mSonB;
+                bool solBasB = chain[i0].Cross0 == beam.StartAxisId;
+                bool sagBasB = chain[i1].Beam != null && chain[i1].Cross1 == chain[i1].Beam.StartAxisId;
+                int nSol = solBasB ? m.SolAltAdet : m.SagAltAdet;
+                int cSol = solBasB ? m.SolAltCap : m.SagAltCap;
+                int nSag = sagBasB ? mSagB.SolAltAdet : mSagB.SagAltAdet;
+                int cSag = sagBasB ? mSagB.SolAltCap : mSagB.SagAltCap;
+                KirisAcilimAsBirlestir(m.DuzAdet, m.DuzCap, nSol, cSol, nSag, cSag, out int adetB, out int capB);
+                if (adetB > 0 && capB > 0) { m.DuzAdet = adetB; m.DuzCap = capB; }
+            }
             if (m.DuzAdet <= 0 || m.DuzCap <= 0) return;
 
             double xA = x0 + net0;
@@ -1227,7 +3188,24 @@ namespace ST4PlanIdCiz
             double h = beam.HeightCm;
             double bot0 = yShift + KirisAcilimKotAt(chain, i0, i1, net0) - h;
             double bot1 = yShift + KirisAcilimKotAt(chain, i0, i1, net1) - h;
-            KirisAcilimCizgi(tr, ms, xA, bot0 + KirisAcilimDuzPaspayiCm, xB, bot1 + KirisAcilimDuzPaspayiCm, KirisAcilimDonatiLayer, KirisAcilimRenkDuz);
+            double yA = bot0 + KirisAcilimDuzPaspayiCm;
+            double yB = bot1 + KirisAcilimDuzPaspayiCm;
+            double hkSol = KirisAcilimMesnetHk(chain, i0, i1, sup, gorunus, true);
+            double hkSag = KirisAcilimMesnetHk(chain, i0, i1, sup, gorunus, false);
+            KirisAcilimKonsolUclari(chain, i0, i1, ucTipi, gorunus, x0, out bool solSerbest, out bool sagSerbest, out double xSolGonye, out double xSagGonye);
+            double xSol = solSerbest ? xSolGonye : xA;
+            double xSag = sagSerbest ? xSagGonye : xB;
+            var pts = new List<Point2d>();
+            KirisAcilimUcNokta(pts, chain, i0, i1, sup, gorunus, x0, yShift, true, xSol, yA, false, hkSol, h, m.DuzCap, false, xSag, solSerbest);
+            pts.Add(new Point2d(xSol, yA));
+            pts.Add(new Point2d(xSag, yB));
+            KirisAcilimUcNokta(pts, chain, i0, i1, sup, gorunus, x0, yShift, false, xSag, yB, false, hkSag, h, m.DuzCap, false, xSol, sagSerbest);
+            KirisAcilimDonatiPl(tr, ms, KirisAcilimRenkDuz, pts);
+            string lbl = m.DuzAdet.ToString(CultureInfo.InvariantCulture) + "\u00F8" + m.DuzCap.ToString(CultureInfo.InvariantCulture);
+            double xm = 0.5 * (xA + xB);
+            double yAlt = 0.5 * (bot0 + bot1);
+            DrawBeamLabel(tr, ms, db, new Point3d(xm, yAlt + KirisAcilimDuzEtiketAlttanCm, 0), lbl, 8.0, 0.0, KirisAcilimDonatiYaziLayer, useMiddleCenter: true);
+            KirisAcilimYaziKutusuKenar(tr, yAlt + KirisAcilimDuzEtiketAlttanCm, ustKenar: false);
         }
 
         private static double KirisAcilimKotAt(List<KirisAcilimSpan> chain, int i0, int i1, double x)
@@ -1278,6 +3256,21 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>Yazı kutusunun alt kenarını kiriş üst çizgisinin hemen üzerine alır.</summary>
+        /// <summary>Yazı kutusu: üst kenar (ustKenar) veya düşey orta hedef kota oturur.</summary>
+        private void KirisAcilimYaziKutusuKenar(Transaction tr, double hedefY, bool ustKenar)
+        {
+            if (tr == null || _lastBeamLabelId.IsNull) return;
+            var txt = tr.GetObject(_lastBeamLabelId, OpenMode.ForWrite) as DBText;
+            if (txt == null) return;
+            Extents3d ext;
+            try { ext = txt.GeometricExtents; }
+            catch { return; }
+            double yRef = ustKenar ? ext.MaxPoint.Y : 0.5 * (ext.MinPoint.Y + ext.MaxPoint.Y);
+            double dy = hedefY - yRef;
+            if (Math.Abs(dy) < 0.05) return;
+            txt.TransformBy(Matrix3d.Displacement(new Vector3d(0, dy, 0)));
+        }
+
         private void KirisAcilimYaziKutusuUstune(Transaction tr, double yAlt)
         {
             if (tr == null || _lastBeamLabelId.IsNull) return;
@@ -1414,6 +3407,143 @@ namespace ST4PlanIdCiz
                 new Point2d(xa, yEnd),
                 new Point2d(xb, yEnd),
                 new Point2d(xb, yBeam));
+        }
+
+        /// <summary>Aynı doğru üzerindeki ara noktaları siler. Kapalı poligonda ilk/son da bakılır.</summary>
+        private static void KirisAcilimDuzNoktaSil(List<Point2d> pts, bool kapali)
+        {
+            if (pts == null || pts.Count < 3) return;
+            bool degisti = true;
+            while (degisti && pts.Count >= 3)
+            {
+                degisti = false;
+                int n = pts.Count;
+                for (int i = 0; i < n; i++)
+                {
+                    if (!kapali && (i == 0 || i == n - 1)) continue;
+                    int ip = kapali ? (i - 1 + n) % n : i - 1;
+                    int inx = kapali ? (i + 1) % n : i + 1;
+                    if (ip < 0 || inx >= n || ip == inx) continue;
+                    if (!KirisAcilimNoktaDuz(pts[ip], pts[i], pts[inx])) continue;
+                    pts.RemoveAt(i);
+                    degisti = true;
+                    break;
+                }
+            }
+        }
+
+        private static bool KirisAcilimNoktaDuz(Point2d a, Point2d b, Point2d c)
+        {
+            double abx = b.X - a.X;
+            double aby = b.Y - a.Y;
+            double bcx = c.X - b.X;
+            double bcy = c.Y - b.Y;
+            double lab = Math.Sqrt(abx * abx + aby * aby);
+            double lbc = Math.Sqrt(bcx * bcx + bcy * bcy);
+            if (lab < 0.2 || lbc < 0.2) return true;
+            double cross = abx * bcy - aby * bcx;
+            return Math.Abs(cross) <= 0.02 * lab * lbc;
+        }
+
+        private static double KirisAcilimYayBoy(Point2d a, Point2d b, double bulge)
+        {
+            double dx = b.X - a.X;
+            double dy = b.Y - a.Y;
+            double chord = Math.Sqrt(dx * dx + dy * dy);
+            if (Math.Abs(bulge) < 1e-8) return chord;
+            double theta = 4.0 * Math.Atan(bulge);
+            double sin = Math.Sin(theta * 0.5);
+            if (Math.Abs(sin) < 1e-8) return chord;
+            double radius = chord / (2.0 * Math.Abs(sin));
+            return radius * Math.Abs(theta);
+        }
+
+        /// <summary>Gönye köşesine 3 cm yay koyar. Düz giden ara nokta yay olmaz.</summary>
+        private static List<Point2d> KirisAcilimGonyeYayNokta(List<Point2d> src, out double[] bulge)
+        {
+            var clean = new List<Point2d>(src);
+            KirisAcilimDuzNoktaSil(clean, false);
+            var dst = new List<Point2d>();
+            var bul = new List<double>();
+            int n = clean.Count;
+            double R = KirisAcilimGonyeYaricapCm;
+            for (int i = 0; i < n; i++)
+            {
+                if (i == 0 || i == n - 1)
+                {
+                    dst.Add(clean[i]);
+                    bul.Add(0);
+                    continue;
+                }
+                double v1x = clean[i].X - clean[i - 1].X;
+                double v1y = clean[i].Y - clean[i - 1].Y;
+                double v2x = clean[i + 1].X - clean[i].X;
+                double v2y = clean[i + 1].Y - clean[i].Y;
+                double l1 = Math.Sqrt(v1x * v1x + v1y * v1y);
+                double l2 = Math.Sqrt(v2x * v2x + v2y * v2y);
+                double cross = v1x * v2y - v1y * v2x;
+                double dot = v1x * v2x + v1y * v2y;
+                double ang = Math.Atan2(cross, dot);
+                bool doksan = Math.Abs(Math.Abs(ang) - Math.PI * 0.5) < 0.35;
+                double r = R;
+                if (!doksan || l1 < 1.0 || l2 < 1.0 || r > l1 * 0.45 || r > l2 * 0.45)
+                {
+                    if (doksan && l1 >= 1.0 && l2 >= 1.0)
+                    {
+                        r = l1 * 0.45 < l2 * 0.45 ? l1 * 0.45 : l2 * 0.45;
+                        if (r < 0.4) r = 0;
+                    }
+                    else r = 0;
+                }
+                if (r < 0.4)
+                {
+                    dst.Add(clean[i]);
+                    bul.Add(0);
+                    continue;
+                }
+                double u1x = v1x / l1;
+                double u1y = v1y / l1;
+                double u2x = v2x / l2;
+                double u2y = v2y / l2;
+                dst.Add(new Point2d(clean[i].X - u1x * r, clean[i].Y - u1y * r));
+                bul.Add(Math.Tan(ang * 0.25));
+                dst.Add(new Point2d(clean[i].X + u2x * r, clean[i].Y + u2y * r));
+                bul.Add(0);
+            }
+            bulge = bul.ToArray();
+            return dst;
+        }
+
+        private static double KirisAcilimDonatiPl(Transaction tr, BlockTableRecord ms, short aci, List<Point2d> pts)
+        {
+            if (pts == null || pts.Count < 2) return 0;
+            double[] bulge;
+            List<Point2d> yay = KirisAcilimGonyeYayNokta(pts, out bulge);
+            if (yay.Count < 2) return 0;
+            var pl = new Polyline();
+            int n = 0;
+            double len = 0;
+            Point2d prev = default(Point2d);
+            double prevBulge = 0;
+            bool any = false;
+            for (int i = 0; i < yay.Count; i++)
+            {
+                Point2d p = yay[i];
+                if (any && Math.Abs(p.X - prev.X) < 0.2 && Math.Abs(p.Y - prev.Y) < 0.2) continue;
+                if (any) len += KirisAcilimYayBoy(prev, p, prevBulge);
+                pl.AddVertexAt(n, p, i < bulge.Length ? bulge[i] : 0, 0, 0);
+                prevBulge = i < bulge.Length ? bulge[i] : 0;
+                prev = p;
+                any = true;
+                n++;
+            }
+            if (n < 2) return 0;
+            pl.Closed = false;
+            pl.Layer = KirisAcilimDonatiLayer;
+            if (aci > 0)
+                pl.Color = Autodesk.AutoCAD.Colors.Color.FromColorIndex(Autodesk.AutoCAD.Colors.ColorMethod.ByAci, aci);
+            AppendEntity(tr, ms, pl);
+            return len;
         }
 
         private static void KirisAcilimCizgi(Transaction tr, BlockTableRecord ms, double x0, double y0, double x1, double y1, string layer)
@@ -1940,12 +4070,12 @@ namespace ST4PlanIdCiz
                     GovdeCap = BitConverter.ToInt16(data, i * rec + 126),
                     SolUstAdet = BitConverter.ToInt16(data, i * rec + 128),
                     SolUstCap = BitConverter.ToInt16(data, i * rec + 130),
-                    SagAltAdet = BitConverter.ToInt16(data, i * rec + 132),
-                    SagAltCap = BitConverter.ToInt16(data, i * rec + 134),
+                    SolAltAdet = BitConverter.ToInt16(data, i * rec + 132),
+                    SolAltCap = BitConverter.ToInt16(data, i * rec + 134),
                     SagUstAdet = BitConverter.ToInt16(data, i * rec + 136),
                     SagUstCap = BitConverter.ToInt16(data, i * rec + 138),
-                    SolAltAdet = BitConverter.ToInt16(data, i * rec + 140),
-                    SolAltCap = BitConverter.ToInt16(data, i * rec + 142)
+                    SagAltAdet = BitConverter.ToInt16(data, i * rec + 140),
+                    SagAltCap = BitConverter.ToInt16(data, i * rec + 142)
                 };
             }
             return map;

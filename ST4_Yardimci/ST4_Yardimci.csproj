@@ -69,6 +69,8 @@
     <EmbeddedResource Include="kesit_sembol.dwg" LogicalName="ST4Yardimci.KesitSembol.kesit_sembol.dwg" Condition="Exists('$(MSBuildProjectDirectory)\kesit_sembol.dwg')" />
     <EmbeddedResource Include="DEMIR_TABLOSU.dwg" LogicalName="ST4Yardimci.DemirTablosu.DEMIR_TABLOSU.dwg" Condition="Exists('$(MSBuildProjectDirectory)\DEMIR_TABLOSU.dwg')" />
     <EmbeddedResource Include="TEMEL_CUKURU.dwg" LogicalName="ST4Yardimci.TemelCekuru.TEMEL_CUKURU.dwg" Condition="Exists('$(MSBuildProjectDirectory)\TEMEL_CUKURU.dwg')" />
+    <EmbeddedResource Include="HASIR.dwg" LogicalName="ST4Yardimci.Hasir.HASIR.dwg" Condition="Exists('$(MSBuildProjectDirectory)\HASIR.dwg')" />
+    <EmbeddedResource Include="HASIRMETRAJ.dwg" LogicalName="ST4Yardimci.HasirMetraj.HASIRMETRAJ.dwg" Condition="Exists('$(MSBuildProjectDirectory)\HASIRMETRAJ.dwg')" />
   </ItemGroup>
 
   <ItemGroup Condition="Exists('$(AutoCADInstallDir)\acdbmgd.dll') and Exists('$(AutoCADInstallDir)\acmgd.dll')">
