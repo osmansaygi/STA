@@ -142,6 +142,7 @@ namespace ST4Yardimci
             try { SehpaDonatiForm.Shutdown(); } catch { }
             try { RadyeTemelDonatiForm.Shutdown(); } catch { }
             try { TemelHatiliForm.Shutdown(); } catch { }
+            try { KuranglezForm.Shutdown(); } catch { }
             try { DonatiBoyuForm.Shutdown(); } catch { }
             try { DonatiMetrajForm.Shutdown(); } catch { }
             try { KotDegistirForm.Shutdown(); } catch { }
@@ -444,6 +445,21 @@ namespace ST4Yardimci
         {
             if (!Gate("TEMELCEKURU")) return;
             TemelCekuruRunner.RunFromPlan();
+        }
+
+        /// <summary>Kuranglez donatı detayı — plan + A-A kesit, ölçek 1/25.</summary>
+        [CommandMethod("KURANGLEZ")]
+        public void Kuranglez()
+        {
+            if (!Gate("KURANGLEZ")) return;
+            KuranglezForm.ShowOrActivate();
+        }
+
+        [CommandMethod("KURANGLEZCIZ", CommandFlags.Modal)]
+        public void KuranglezCiz()
+        {
+            if (!Gate("KURANGLEZ")) return;
+            KuranglezRunner.RunInteractive();
         }
 
         [CommandMethod("DONATIBOYU")]

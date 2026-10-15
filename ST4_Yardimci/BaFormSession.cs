@@ -182,6 +182,7 @@ namespace ST4Yardimci
                 case "RADYEILAVE": return "Radye İlave";
                 case "TEMELHATILI": return "Temel Hatılı";
                 case "TEMELCEKURU": return "Temel Çukuru";
+                case "KURANGLEZ": return "Kuranglez";
                 case "DONATIBOYU": return "Donatı Boyu";
                 case "DONATIMETRAJ": return "Donatı Metraj";
                 case "KOTDEGISTIR": return "Kot Değiştir";
