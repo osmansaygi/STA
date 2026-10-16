@@ -62,6 +62,16 @@ namespace ST4Yardimci
         private const string TextStyleYazi = "YAZI (BEYKENT)";
         private const string DimStylePlanOlcuDonati = "PLAN_OLCU_DONATI";
 
+        private static string KatmanOzeti()
+        {
+            bool alt = OtoDonatiSettings.AltDonatiCiz;
+            bool ust = OtoDonatiSettings.UstDonatiCiz;
+            if (alt && ust) return "alt+üst";
+            if (alt) return "yalnız alt";
+            if (ust) return "yalnız üst";
+            return "kapalı";
+        }
+
         public static void RunInteractive()
         {
             OtoDonatiSettings.EnsureLoaded();
@@ -83,8 +93,9 @@ namespace ST4Yardimci
                 int minAlt = MinAdetFromEsik(OtoDonatiSettings.AnalizEsigiCm, OtoDonatiSettings.AltAralikCm);
                 int minUst = MinAdetFromEsik(OtoDonatiSettings.AnalizEsigiCm, OtoDonatiSettings.UstAralikCm);
                 ed.WriteMessage(
-                    "\nOTODONATICIZ ({0}): eşik={1:0.##}→minAdet alt≥{2} üst≥{3} | alt Φ{4}/{5} üst Φ{6}/{7}  Esc/sağ tık=bitir.",
+                    "\nOTODONATICIZ ({0}, {1}): eşik={2:0.##}→minAdet alt≥{3} üst≥{4} | alt Φ{5}/{6} üst Φ{7}/{8}  Esc/sağ tık=bitir.",
                     tip,
+                    KatmanOzeti(),
                     OtoDonatiSettings.AnalizEsigiCm,
                     minAlt,
                     minUst,
@@ -143,8 +154,9 @@ namespace ST4Yardimci
                     ? "Mantar döşeme"
                     : "Radye temel";
                 ed.WriteMessage(
-                    "\nOTODONATIMANUEL ({0}): sanal çizgi boyunca alt Φ{1}/{2} üst Φ{3}/{4} (adetsiz). Esc=bitir.",
+                    "\nOTODONATIMANUEL ({0}, {1}): sanal çizgi boyunca alt Φ{2}/{3} üst Φ{4}/{5} (adetsiz). Esc=bitir.",
                     tip,
+                    KatmanOzeti(),
                     OtoDonatiSettings.AltDonatiCapMm,
                     OtoDonatiSettings.AltAralikCm.ToString("0.##", CultureInfo.InvariantCulture),
                     OtoDonatiSettings.UstDonatiCapMm,
@@ -218,14 +230,20 @@ namespace ST4Yardimci
 
             double gap = Math.Max(1.0, OtoDonatiSettings.GonyeBoyuMaxCm) + AltUstExtraGapCm;
             var bars = new List<BarPath>();
-            AddManualBarsAlongRay(
-                bars, origin, along, up, s0, s1, 0,
-                OtoDonatiSettings.AltGonyeSol, OtoDonatiSettings.AltGonyeSag,
-                gonye, OtoDonatiSettings.AltDonatiCapMm, OtoDonatiSettings.AltAralikCm, isUst: false);
-            AddManualBarsAlongRay(
-                bars, origin, along, up, s0, s1, gap,
-                OtoDonatiSettings.UstGonyeSol, OtoDonatiSettings.UstGonyeSag,
-                gonye, OtoDonatiSettings.UstDonatiCapMm, OtoDonatiSettings.UstAralikCm, isUst: true);
+            if (OtoDonatiSettings.AltDonatiCiz)
+            {
+                AddManualBarsAlongRay(
+                    bars, origin, along, up, s0, s1, 0,
+                    OtoDonatiSettings.AltGonyeSol, OtoDonatiSettings.AltGonyeSag,
+                    gonye, OtoDonatiSettings.AltDonatiCapMm, OtoDonatiSettings.AltAralikCm, isUst: false);
+            }
+            if (OtoDonatiSettings.UstDonatiCiz)
+            {
+                AddManualBarsAlongRay(
+                    bars, origin, along, up, s0, s1, gap,
+                    OtoDonatiSettings.UstGonyeSol, OtoDonatiSettings.UstGonyeSag,
+                    gonye, OtoDonatiSettings.UstDonatiCapMm, OtoDonatiSettings.UstAralikCm, isUst: true);
+            }
 
             if (bars.Count == 0) return 0;
 
@@ -572,8 +590,9 @@ namespace ST4Yardimci
                 var chords = EffectiveHorizontalChords(ring, voids, midAlt);
                 if (chords == null || chords.Count == 0) continue;
 
-                bool hasAlt = z.AdetAlt > 0;
-                bool hasUst = z.AdetUst > 0;
+                bool hasAlt = OtoDonatiSettings.AltDonatiCiz && z.AdetAlt > 0;
+                bool hasUst = OtoDonatiSettings.UstDonatiCiz && z.AdetUst > 0;
+                if (!hasAlt && !hasUst) continue;
                 if (hasAlt)
                 {
                     AddBarsFromChords(
@@ -635,8 +654,9 @@ namespace ST4Yardimci
                 var chords = EffectiveVerticalChords(ring, voids, midAlt);
                 if (chords == null || chords.Count == 0) continue;
 
-                bool hasAlt = z.AdetAlt > 0;
-                bool hasUst = z.AdetUst > 0;
+                bool hasAlt = OtoDonatiSettings.AltDonatiCiz && z.AdetAlt > 0;
+                bool hasUst = OtoDonatiSettings.UstDonatiCiz && z.AdetUst > 0;
+                if (!hasAlt && !hasUst) continue;
                 if (hasAlt)
                 {
                     AddBarsFromChords(
@@ -2243,52 +2263,7 @@ namespace ST4Yardimci
         /// <summary>Bindirme ölçüleri her zaman PLAN_OLCU_DONATI; yoksa PLAN_OLCU'dan kopyalanarak oluşturulur.</summary>
         private static ObjectId ResolveDimStyleId(Transaction tr, Database db)
         {
-            try
-            {
-                var dst = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
-                if (dst.Has(DimStylePlanOlcuDonati))
-                    return dst[DimStylePlanOlcuDonati];
-
-                DimStyleTableRecord src = null;
-                foreach (string tryName in new[] { "PLAN_OLCU", "Standard" })
-                {
-                    if (!dst.Has(tryName)) continue;
-                    src = tr.GetObject(dst[tryName], OpenMode.ForRead) as DimStyleTableRecord;
-                    if (src != null) break;
-                }
-
-                ObjectId yaziId = ObjectId.Null;
-                try { yaziId = GetOrCreateYaziBeykentTextStyle(tr, db); } catch { }
-
-                dst.UpgradeOpen();
-                var rec = new DimStyleTableRecord { Name = DimStylePlanOlcuDonati };
-                if (src != null)
-                {
-                    try { rec.CopyFrom(src); } catch { }
-                    try { rec.Name = DimStylePlanOlcuDonati; } catch { }
-                }
-                try { if (!yaziId.IsNull) rec.Dimtxsty = yaziId; } catch { }
-                try { rec.Dimscale = 1.0; } catch { }
-                try { rec.Dimlfac = 1.0; } catch { }
-                try { rec.Dimtxt = 10.0; } catch { }
-                try { rec.Dimasz = 3.0; } catch { }
-                try { rec.Dimtsz = 3.0; } catch { }
-                try { rec.Dimexo = 3.0; } catch { }
-                try { rec.Dimgap = 2.0; } catch { }
-                try { rec.Dimtad = 1; } catch { }
-                try { rec.Dimtih = false; } catch { }
-                try { rec.Dimtoh = false; } catch { }
-                try { rec.Dimtofl = true; } catch { }
-                try { rec.Dimtix = true; } catch { }
-                try { rec.Dimdec = 0; } catch { }
-                try { rec.Dimtdec = 0; } catch { }
-                ObjectId id = dst.Add(rec);
-                tr.AddNewlyCreatedDBObject(rec, true);
-                dst.DowngradeOpen();
-                return id;
-            }
-            catch { }
-            return db.Dimstyle;
+            return BaDimensionStyles.Ensure(tr, db, DimStylePlanOlcuDonati);
         }
 
         private static ObjectId GetOrCreateYaziBeykentTextStyle(Transaction tr, Database db)

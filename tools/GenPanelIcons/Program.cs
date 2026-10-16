@@ -40,6 +40,11 @@ static class Program
             items.Add(new Item { Group = group, Cmd = cmd, Title = title, Path = path });
         }
 
+        if (args != null && args.Length > 0 && args[0].Equals("PARAPET", StringComparison.OrdinalIgnoreCase))
+        {
+            Add("BA", "PARAPET", "Parapet Detayı", "ba_parapet.png", Parapet);
+            return 0;
+        }
         Add("BA", "OTOOLCU", "Oto Ölçü", "ba_otoolcu.png", OtoOlcu);
         Add("BA", "PLANOLCU", "Plan Ölçü", "ba_planolcu.png", PlanOlcu);
         Add("BA", "MERDIVEN", "Merdiven", "ba_merdiven.png", Merdiven);
@@ -48,6 +53,7 @@ static class Program
         Add("BA", "SEHPADONATI", "Sehpa Donatısı", "ba_sehpa.png", Sehpa);
         Add("BA", "RADYEILAVE", "Radye İlave", "ba_radyeilave.png", RadyeIlave);
         Add("BA", "TEMELHATILI", "Temel Hatılı", "ba_temelhatili.png", TemelHatili);
+        Add("BA", "PARAPET", "Parapet Detayı", "ba_parapet.png", Parapet);
         Add("BA", "DONATIBOYU", "Donatı Boyu", "ba_donatiboyu.png", DonatiBoyu);
         Add("BA", "DONATIMETRAJ", "Donatı Metraj", "ba_donatimetraj.png", DonatiMetraj);
         Add("BA", "DONATIADET", "Donatı Adet", "ba_donatiadet.png", DonatiAdet);
@@ -55,6 +61,7 @@ static class Program
         Add("BA", "KATMANYUKLE", "Katman Yükle", "ba_katmanyukle.png", KatmanYukle);
         Add("BA", "HASIRDONATI", "Hasır Donatı", "ba_hasirdonati.png", HasirDonati);
         Add("BA", "TEMELCEKURU", "Temel Çukuru", "ba_temelcekuru.png", TemelCekuru);
+        Add("BA", "TEMELDETAY", "Temel Detayı", "ba_temeldetay.png", TemelDetay);
         Add("BA", "KURANGLEZ", "Kuranglez", "ba_kuranglez.png", Kuranglez);
         Add("BA", "KOTDEGISTIR", "Kot Değiştir", "ba_kotdegistir.png", KotDegistir);
 
@@ -275,6 +282,19 @@ static class Program
         c.Rw(21, 4, 7, 12);
         c.Rw(4, 16, 24, 9);
         c.Gr(7, 20.5f, 25, 20.5f);
+    }
+
+    static void Parapet(Ico c)
+    {
+        c.W(3, 22, 21, 22);
+        c.W(21, 22, 21, 5);
+        c.W(21, 5, 28, 5);
+        c.W(28, 5, 28, 27);
+        c.W(28, 27, 3, 27);
+        c.Gr(6, 25, 25, 25);
+        c.Gr(25, 25, 25, 8);
+        c.Gr(25, 8, 23, 8);
+        c.D(2, 20, 2, 29);
     }
 
     static void DonatiBoyu(Ico c)
@@ -517,6 +537,21 @@ static class Program
         c.W(11, 13, 11, 21);
         c.W(11, 21, 21, 21);
         c.W(21, 21, 21, 13);
+    }
+
+    static void TemelDetay(Ico c)
+    {
+        c.W(5, 6, 27, 6);
+        c.Gr(6, 9, 6, 16);
+        c.Gr(6, 16, 10, 16);
+        c.Gr(10, 16, 10, 24);
+        c.Gr(10, 24, 22, 24);
+        c.Gr(22, 24, 22, 12);
+        c.Gr(22, 12, 26, 12);
+        c.Gr(26, 9, 26, 12);
+        c.W(12, 10, 12, 20);
+        c.W(12, 20, 20, 20);
+        c.W(20, 14, 20, 20);
     }
 
     static void Kuranglez(Ico c)

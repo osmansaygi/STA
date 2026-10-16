@@ -24,7 +24,7 @@ namespace ST4Yardimci
             bool enforceMinExtension = true)
         {
             var dim = new RotatedDimension();
-            dim.SetDatabaseDefaults();
+            dim.SetDatabaseDefaults(btr.Database);
             Vector3d v = x2 - x1;
             dim.Rotation = Math.Atan2(v.Y, v.X);
             dim.XLine1Point = x1;
@@ -33,6 +33,7 @@ namespace ST4Yardimci
             if (!dimStyleId.IsNull)
                 dim.DimensionStyle = dimStyleId;
             dim.Layer = layer;
+            BaDimensionStyles.Apply(tr, btr.Database, dim, dimStyleId);
 
             afterStyle?.Invoke(dim);
             if (enforceMinExtension)
@@ -51,7 +52,7 @@ namespace ST4Yardimci
             if (dim == null) return;
             try { dim.Dimse1 = false; } catch { }
             try { dim.Dimse2 = false; } catch { }
-            try { dim.DimfxlenOn = false; } catch { }
+            if (dim.DimfxlenOn) return; // Sabit 1/25 uzatma boyunu koru.
 
             double minExe = GetEffectiveTextHeight(dim) * 0.5;
             if (minExe < 1e-9) minExe = 1.25;

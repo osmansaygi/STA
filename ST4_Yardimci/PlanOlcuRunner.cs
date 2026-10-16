@@ -127,7 +127,7 @@ namespace ST4Yardimci
 
                 ObjectId dimStyleId = ResolveDimStyleId(tr, db, PlanOlcuSettings.DimStyleName);
                 if (dimStyleId.IsNull)
-                    ed.WriteMessage("\nPLANOLCU: '{0}' stili yok; aktif ölçü stili kullanılacak.", PlanOlcuSettings.DimStyleName);
+                    ed.WriteMessage("\nPLANOLCU: '{0}' stili yok; PLAN_OLCU ayarları kullanılacak.", PlanOlcuSettings.DimStyleName);
                 string dimLayer = EnsureOlcuLayer(tr, db);
 
                 bool ccw = SignedArea(ring) > 0;
@@ -2661,10 +2661,8 @@ namespace ST4Yardimci
 
         private static ObjectId ResolveDimStyleId(Transaction tr, Database db, string name)
         {
-            if (string.IsNullOrWhiteSpace(name)) return ObjectId.Null;
-            var dst = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
-            if (dst.Has(name)) return dst[name];
-            return ObjectId.Null;
+            ObjectId id = BaDimensionStyles.Ensure(tr, db, name);
+            return id.IsNull ? BaDimensionStyles.Ensure(tr, db, "PLAN_OLCU") : id;
         }
 
         private static Point3d To3(Point2d p) => new Point3d(p.X, p.Y, 0);

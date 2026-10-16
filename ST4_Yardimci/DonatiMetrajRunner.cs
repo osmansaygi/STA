@@ -2657,6 +2657,7 @@ namespace ST4Yardimci
                 return;
             var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
             var ms = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
+            var quantityCells = BaMetrajPozCell.Collect(tr, ms);
             EnsureLayer(tr, db, LayerPozNo, 2);
             EnsureLayer(tr, db, LayerPozBalon, 4);
             EnsureRegApp(tr, db);
@@ -2732,14 +2733,21 @@ namespace ST4Yardimci
 
                 try
                 {
-                    ProjRange(ent.GeometricExtents, dir, out lmin, out _);
-                    ProjRange(pl.GeometricExtents, dir, out _, out double bmax);
-                    double shift = (lmin - PozGap) - bmax;
-                    if (Math.Abs(shift) > 0.05)
+                    if (BaMetrajPozCell.TryFind(ent, quantityCells, out Extents3d cell))
                     {
-                        var move = Matrix3d.Displacement(dir * shift);
-                        pl.TransformBy(move);
-                        tx.TransformBy(move);
+                        BaMetrajPozCell.Center(pl, tx, cell);
+                    }
+                    else
+                    {
+                        ProjRange(ent.GeometricExtents, dir, out lmin, out _);
+                        ProjRange(pl.GeometricExtents, dir, out _, out double bmax);
+                        double shift = (lmin - PozGap) - bmax;
+                        if (Math.Abs(shift) > 0.05)
+                        {
+                            var move = Matrix3d.Displacement(dir * shift);
+                            pl.TransformBy(move);
+                            tx.TransformBy(move);
+                        }
                     }
                 }
                 catch { }

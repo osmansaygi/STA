@@ -203,7 +203,7 @@ namespace ST4Yardimci
                     {
                         try { ent.TransformBy(move); } catch { }
                         if (ent is Dimension dim)
-                            FinishDimension(dim, dimStyle);
+                            FinishDimension(tr, dim, dimStyle);
                     }
                 }
                 return cloned.Count;
@@ -586,27 +586,14 @@ namespace ST4Yardimci
                 pl.SetPointAt(i, next[i]);
         }
 
-        private static void FinishDimension(Dimension dim, ObjectId dimStyle)
+        private static void FinishDimension(Transaction tr, Dimension dim, ObjectId dimStyle)
         {
-            try
-            {
-                if (!dimStyle.IsNull)
-                    dim.DimensionStyle = dimStyle;
-            }
-            catch { }
-            try { dim.RecomputeDimensionBlock(true); } catch { }
+            BaDimensionStyles.Apply(tr, dim.Database, dim, dimStyle, DimStyleName);
         }
 
         private static ObjectId LookUpDimStyle(Transaction tr, Database db)
         {
-            try
-            {
-                var dst = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
-                if (dst.Has(DimStyleName))
-                    return dst[DimStyleName];
-            }
-            catch { }
-            return ObjectId.Null;
+            return BaDimensionStyles.Ensure(tr, db, DimStyleName);
         }
 
         private enum Zone { Section, Bar, Plan }

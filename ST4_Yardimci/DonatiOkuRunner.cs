@@ -199,19 +199,7 @@ namespace ST4Yardimci
             if (!dimStyleId.IsNull)
                 dim.DimensionStyle = dimStyleId;
             dim.Layer = okuLyr;
-
-            try { dim.Dimse1 = true; } catch { }
-            try { dim.Dimse2 = true; } catch { }
-            try { dim.Dimasz = 10.0; } catch { }
-            try { dim.Dimtxt = 10.0; } catch { }
-            try { dim.Dimgap = 2.0; } catch { }
-            try { dim.Dimtad = 0; } catch { }
-            try { dim.Dimtih = false; } catch { }
-            try { dim.Dimtoh = false; } catch { }
-            try { dim.Dimdec = 0; } catch { }
-            try { dim.Dimlfac = 1.0; } catch { }
-            try { dim.Dimscale = 1.0; } catch { }
-            try { dim.Dimtofl = true; } catch { }
+            BaDimensionStyles.Apply(tr, db, dim, dimStyleId, DimStyleDonatiOku);
 
             btr.AppendEntity(dim);
             tr.AddNewlyCreatedDBObject(dim, true);
@@ -518,59 +506,7 @@ namespace ST4Yardimci
         /// </summary>
         private static ObjectId EnsureDonatiOkuDimStyle(Transaction tr, Database db, ObjectId yaziStyleId)
         {
-            var dst = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
-            if (dst.Has(DimStyleDonatiOku))
-                return dst[DimStyleDonatiOku];
-
-            var rec = new DimStyleTableRecord { Name = DimStyleDonatiOku };
-            try
-            {
-                if (dst.Has("Standard"))
-                {
-                    var std = tr.GetObject(dst["Standard"], OpenMode.ForRead) as DimStyleTableRecord;
-                    if (std != null)
-                    {
-                        rec.CopyFrom(std);
-                        rec.Name = DimStyleDonatiOku;
-                    }
-                }
-            }
-            catch { }
-
-            try { rec.Dimscale = 1.0; } catch { }
-            try { rec.Dimlfac = 1.0; } catch { }
-            try { rec.Dimtxt = 10.0; } catch { }
-            try { rec.Dimasz = 10.0; } catch { }
-            try { rec.Dimtsz = 0.0; } catch { }
-            try { rec.Dimgap = 2.0; } catch { }
-            try { rec.Dimexe = 5.0; } catch { }
-            try { rec.Dimexo = 5.0; } catch { }
-            try { rec.Dimse1 = true; } catch { }
-            try { rec.Dimse2 = true; } catch { }
-            try { rec.Dimsd1 = false; } catch { }
-            try { rec.Dimsd2 = false; } catch { }
-            try { rec.Dimtad = 0; } catch { }
-            try { rec.Dimjust = 0; } catch { }
-            try { rec.Dimtih = false; } catch { }
-            try { rec.Dimtoh = false; } catch { }
-            try { rec.Dimtofl = true; } catch { }
-            try { rec.Dimdec = 0; } catch { }
-            try { rec.Dimtdec = 0; } catch { }
-            try { rec.Dimlunit = 2; } catch { }
-            try { rec.Dimcen = 0.0; } catch { }
-            try { rec.Dimblk = ObjectId.Null; } catch { }
-            try { rec.Dimblk1 = ObjectId.Null; } catch { }
-            try { rec.Dimblk2 = ObjectId.Null; } catch { }
-            try { rec.Dimldrblk = ObjectId.Null; } catch { }
-            if (!yaziStyleId.IsNull)
-            {
-                try { rec.Dimtxsty = yaziStyleId; } catch { }
-            }
-
-            dst.UpgradeOpen();
-            ObjectId id = dst.Add(rec);
-            tr.AddNewlyCreatedDBObject(rec, true);
-            return id;
+            return BaDimensionStyles.Ensure(tr, db, DimStyleDonatiOku);
         }
 
         private static bool ExtentsOverlap(Entity ent, double minX, double minY, double maxX, double maxY)

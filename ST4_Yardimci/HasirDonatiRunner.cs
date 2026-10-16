@@ -431,6 +431,8 @@ namespace ST4Yardimci
                     }
 
                     AssignLayers(ent);
+                    if (ent is Dimension importedDimension)
+                        BaDimensionStyles.Apply(tr, destDb, importedDimension, BaDimensionStyles.Ensure(tr, destDb, DimStylePlanOlcu));
                     count++;
 
                     if (ent is Line ln && IsDiagonalLine(ln, out double llen) && llen > diagLen)
@@ -705,7 +707,7 @@ namespace ST4Yardimci
                     Point3d x2 = origin + u * uLap1 + v * vMid;
                     Point3d dimPt = origin + u * ((uLap0 + uLap1) * 0.5) + v * (vMid + off);
                     OtoOlcuDimFactory.PlaceRotated(tr, ms, x1, x2, dimPt, dimStyle, olcuLyr,
-                        dim => ApplyPlanOlcuEntity(dim, textStyle));
+                        null);
                 }
             }
 
@@ -736,84 +738,15 @@ namespace ST4Yardimci
                     Point3d x2 = origin + u * uMid + v * vLap1;
                     Point3d dimPt = origin + u * (uMid + off) + v * ((vLap0 + vLap1) * 0.5);
                     OtoOlcuDimFactory.PlaceRotated(tr, ms, x1, x2, dimPt, dimStyle, olcuLyr,
-                        dim => ApplyPlanOlcuEntity(dim, textStyle));
+                        null);
                 }
             }
         }
-
-        /// <summary>ST4 Plan ID PLAN_OLCU: yazı 12, eğik tik 3, Dimscale 1, 0.5 yuvarlama.</summary>
-        private static void ApplyPlanOlcuEntity(Dimension dim, ObjectId textStyle)
-        {
-            if (dim == null) return;
-            try { dim.Dimscale = 1.0; } catch { }
-            try { dim.Dimlfac = 1.0; } catch { }
-            try { dim.Dimtxt = 12.0; } catch { }
-            try { dim.Dimblk = ObjectId.Null; } catch { }
-            try { dim.Dimblk1 = ObjectId.Null; } catch { }
-            try { dim.Dimblk2 = ObjectId.Null; } catch { }
-            try { dim.Dimldrblk = ObjectId.Null; } catch { }
-            try { dim.Dimasz = 3.0; } catch { }
-            try { dim.Dimtsz = 3.0; } catch { }
-            try { dim.Dimexo = 3.0; } catch { }
-            try { dim.Dimgap = 2.0; } catch { }
-            try { dim.Dimtad = 1; } catch { }
-            try { dim.Dimtih = false; } catch { }
-            try { dim.Dimtoh = false; } catch { }
-            try { dim.Dimtofl = true; } catch { }
-            try { dim.Dimtix = true; } catch { }
-            try { dim.Dimrnd = 0.5; } catch { }
-            try { dim.Dimdec = 1; } catch { }
-            try { dim.Dimtdec = 1; } catch { }
-            try { dim.Dimzin = 12; } catch { }
-            try { dim.Dimlunit = 2; } catch { }
-            try { dim.Dimclrt = Color.FromColorIndex(ColorMethod.ByAci, 7); } catch { }
-            if (!textStyle.IsNull)
-            {
-                try { dim.TextStyleId = textStyle; } catch { }
-            }
-            try { dim.RecomputeDimensionBlock(true); } catch { }
-        }
+        
 
         private static ObjectId EnsurePlanOlcuDimStyle(Transaction tr, Database db, ObjectId textStyle)
         {
-            try
-            {
-                var dst = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
-                if (dst.Has(DimStylePlanOlcu))
-                    return dst[DimStylePlanOlcu];
-
-                var rec = new DimStyleTableRecord { Name = DimStylePlanOlcu };
-                if (!textStyle.IsNull)
-                {
-                    try { rec.Dimtxsty = textStyle; } catch { }
-                }
-                try { rec.Dimclrt = Color.FromColorIndex(ColorMethod.ByAci, 7); } catch { }
-                try { rec.Dimtad = 1; } catch { }
-                try { rec.Dimtih = false; } catch { }
-                try { rec.Dimtoh = false; } catch { }
-                try { rec.Dimlfac = 1.0; } catch { }
-                try { rec.Dimtofl = true; } catch { }
-                try { rec.Dimscale = 1.0; } catch { }
-                try { rec.Dimtxt = 12.0; } catch { }
-                try { rec.Dimasz = 3.0; } catch { }
-                try { rec.Dimtsz = 3.0; } catch { }
-                try { rec.Dimexo = 3.0; } catch { }
-                try { rec.Dimgap = 2.0; } catch { }
-                try { rec.Dimtix = true; } catch { }
-                try { rec.Dimrnd = 0.5; } catch { }
-                try { rec.Dimdec = 1; } catch { }
-                try { rec.Dimtdec = 1; } catch { }
-                try { rec.Dimzin = 12; } catch { }
-                try { rec.Dimlunit = 2; } catch { }
-                dst.UpgradeOpen();
-                ObjectId id = dst.Add(rec);
-                tr.AddNewlyCreatedDBObject(rec, true);
-                return id;
-            }
-            catch
-            {
-                return ObjectId.Null;
-            }
+            return BaDimensionStyles.Ensure(tr, db, DimStylePlanOlcu);
         }
 
         private static bool TryGetTemplateExtents(

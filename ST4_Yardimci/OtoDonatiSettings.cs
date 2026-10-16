@@ -28,6 +28,8 @@ namespace ST4Yardimci
         public bool AltGonyeSag;
         public bool UstGonyeSol;
         public bool UstGonyeSag;
+        public bool AltDonatiCiz;
+        public bool UstDonatiCiz;
         public bool SehpaDonatisi;
 
         public static OtoDonatiProfile CreateRadyeDefault() => new OtoDonatiProfile
@@ -45,6 +47,8 @@ namespace ST4Yardimci
             AltGonyeSag = true,
             UstGonyeSol = true,
             UstGonyeSag = true,
+            AltDonatiCiz = true,
+            UstDonatiCiz = true,
             SehpaDonatisi = false
         };
 
@@ -63,6 +67,8 @@ namespace ST4Yardimci
             AltGonyeSag = true,
             UstGonyeSol = true,
             UstGonyeSag = true,
+            AltDonatiCiz = true,
+            UstDonatiCiz = true,
             SehpaDonatisi = false
         };
 
@@ -82,6 +88,8 @@ namespace ST4Yardimci
             AltGonyeSag = src.AltGonyeSag;
             UstGonyeSol = src.UstGonyeSol;
             UstGonyeSag = src.UstGonyeSag;
+            AltDonatiCiz = src.AltDonatiCiz;
+            UstDonatiCiz = src.UstDonatiCiz;
             SehpaDonatisi = src.SehpaDonatisi;
         }
     }
@@ -143,6 +151,11 @@ namespace ST4Yardimci
         public static bool AltGonyeSag { get => Active.AltGonyeSag; set => Active.AltGonyeSag = value; }
         public static bool UstGonyeSol { get => Active.UstGonyeSol; set => Active.UstGonyeSol = value; }
         public static bool UstGonyeSag { get => Active.UstGonyeSag; set => Active.UstGonyeSag = value; }
+
+        /// <summary>Kapalıysa alt donatı çizilmez (konum şeması değişmez).</summary>
+        public static bool AltDonatiCiz { get => Active.AltDonatiCiz; set => Active.AltDonatiCiz = value; }
+        /// <summary>Kapalıysa üst donatı çizilmez (konum şeması değişmez).</summary>
+        public static bool UstDonatiCiz { get => Active.UstDonatiCiz; set => Active.UstDonatiCiz = value; }
 
         /// <summary>Sehpa donatısı (mantar/radyede ayrı; çizim sonra).</summary>
         public static bool SehpaDonatisi { get => Active.SehpaDonatisi; set => Active.SehpaDonatisi = value; }
@@ -208,6 +221,8 @@ namespace ST4Yardimci
             Write(sb, prefix + "_AltGonyeSag", p.AltGonyeSag);
             Write(sb, prefix + "_UstGonyeSol", p.UstGonyeSol);
             Write(sb, prefix + "_UstGonyeSag", p.UstGonyeSag);
+            Write(sb, prefix + "_AltDonatiCiz", p.AltDonatiCiz);
+            Write(sb, prefix + "_UstDonatiCiz", p.UstDonatiCiz);
             Write(sb, prefix + "_SehpaDonatisi", p.SehpaDonatisi);
         }
 
@@ -331,6 +346,10 @@ namespace ST4Yardimci
             { p.UstGonyeSol = IsTrue(val); return true; }
             if (key.Equals("UstGonyeSag", StringComparison.OrdinalIgnoreCase))
             { p.UstGonyeSag = IsTrue(val); return true; }
+            if (key.Equals("AltDonatiCiz", StringComparison.OrdinalIgnoreCase))
+            { p.AltDonatiCiz = IsTrue(val); return true; }
+            if (key.Equals("UstDonatiCiz", StringComparison.OrdinalIgnoreCase))
+            { p.UstDonatiCiz = IsTrue(val); return true; }
             if (key.Equals("SehpaDonatisi", StringComparison.OrdinalIgnoreCase))
             { p.SehpaDonatisi = IsTrue(val); return true; }
             return false;

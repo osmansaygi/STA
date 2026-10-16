@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.AutoCAD.ApplicationServices;
@@ -515,11 +515,8 @@ namespace ST4Yardimci
 
         private static ObjectId ResolveDimStyleId(Transaction tr, Database db, string name)
         {
-            if (string.IsNullOrWhiteSpace(name)) return ObjectId.Null;
-            var dst = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
-            if (dst.Has(name))
-                return dst[name];
-            return ObjectId.Null;
+            ObjectId id = BaDimensionStyles.Ensure(tr, db, name);
+            return id.IsNull ? BaDimensionStyles.Ensure(tr, db, "PLAN_OLCU") : id;
         }
 
         private static string EnsureLayer(Transaction tr, Database db, string name)

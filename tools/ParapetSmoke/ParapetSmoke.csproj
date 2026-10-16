@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AcadDir>C:\Program Files\Autodesk\AutoCAD 2027</AcadDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Smoke.cs" />
+    <Compile Include="../../ST4_Yardimci/ParapetSettings.cs" Link="ParapetSettings.cs" />
+    <Compile Include="../../ST4_Yardimci/ParapetRunner.cs" Link="ParapetRunner.cs" />
+    <Compile Include="../../ST4_Yardimci/BaDimensionStyles.cs" Link="BaDimensionStyles.cs" />
+    <Compile Include="../../ST4_Yardimci/BaIni.cs" Link="BaIni.cs" />
+    <Compile Include="../../ST4_Yardimci/BaMetrajPozCell.cs" Link="BaMetrajPozCell.cs" />
+    <Reference Include="AcDbMgd"><HintPath>$(AcadDir)/acdbmgd.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="AcMgd"><HintPath>$(AcadDir)/acmgd.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="AcCoreMgd"><HintPath>$(AcadDir)/accoremgd.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+</Project>

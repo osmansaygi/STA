@@ -1446,7 +1446,7 @@ namespace ST4Yardimci
         {
             if (x1.DistanceTo(x2) < 1e-6) return;
             var dim = new RotatedDimension();
-            dim.SetDatabaseDefaults();
+            dim.SetDatabaseDefaults(ms.Database);
             dim.Rotation = rotation;
             dim.XLine1Point = x1;
             dim.XLine2Point = x2;
@@ -1454,15 +1454,11 @@ namespace ST4Yardimci
             if (!dimStyleId.IsNull)
                 dim.DimensionStyle = dimStyleId;
             dim.Layer = layer;
+            BaDimensionStyles.Apply(tr, ms.Database, dim, dimStyleId, DimStylePlanOlcu25);
             ms.AppendEntity(dim);
             tr.AddNewlyCreatedDBObject(dim, true);
             try
             {
-                dim.DimfxlenOn = true;
-                dim.Dimfxlen = PlanOlcuDimExeCm;
-                dim.Dimexe = PlanOlcuDimExeCm;
-                dim.Dimse1 = false;
-                dim.Dimse2 = false;
                 if (!string.IsNullOrEmpty(olcuMetni))
                     dim.DimensionText = olcuMetni;
             }
@@ -1485,55 +1481,7 @@ namespace ST4Yardimci
 
         private static ObjectId ResolveOrCreatePlanOlcu25(Transaction tr, Database db)
         {
-            var dst = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
-            if (dst.Has(DimStylePlanOlcu25))
-            {
-                try
-                {
-                    var existing = (DimStyleTableRecord)tr.GetObject(dst[DimStylePlanOlcu25], OpenMode.ForWrite);
-                    try { existing.Dimexe = PlanOlcuDimExeCm; } catch { }
-                    try { existing.Dimfxlen = PlanOlcuDimExeCm; } catch { }
-                    try { existing.DimfxlenOn = true; } catch { }
-                }
-                catch { }
-                return dst[DimStylePlanOlcu25];
-            }
-
-            DimStyleTableRecord src = null;
-            foreach (string tryName in new[]
-            {
-                "PLAN_OLCU_25", "PLAN_OLCU",
-                OtoOlcuSettings.DefaultDimStyleName, "Standard"
-            })
-            {
-                if (!dst.Has(tryName)) continue;
-                src = tr.GetObject(dst[tryName], OpenMode.ForRead) as DimStyleTableRecord;
-                if (src != null) break;
-            }
-
-            dst.UpgradeOpen();
-            var rec = new DimStyleTableRecord { Name = DimStylePlanOlcu25 };
-            if (src != null)
-            {
-                try { rec.CopyFrom(src); } catch { }
-                try { rec.Name = DimStylePlanOlcu25; } catch { }
-            }
-            ObjectId yazi = EnsureTextStyle(tr, db);
-            try { if (!yazi.IsNull) rec.Dimtxsty = yazi; } catch { }
-            try { rec.Dimlfac = 1.0 / Scale; } catch { }
-            try { rec.Dimscale = 1.0; } catch { }
-            try { rec.Dimexe = PlanOlcuDimExeCm; } catch { }
-            try { rec.Dimfxlen = PlanOlcuDimExeCm; } catch { }
-            try { rec.DimfxlenOn = true; } catch { }
-            try { rec.Dimdec = 0; } catch { }
-            try { rec.Dimtdec = 0; } catch { }
-            try { rec.Dimtih = false; } catch { }
-            try { rec.Dimtoh = false; } catch { }
-            try { rec.Dimtad = 1; } catch { }
-            ObjectId id = dst.Add(rec);
-            tr.AddNewlyCreatedDBObject(rec, true);
-            dst.DowngradeOpen();
-            return id;
+            return BaDimensionStyles.Ensure(tr, db, DimStylePlanOlcu25);
         }
 
         private static bool TryNumberSelection(

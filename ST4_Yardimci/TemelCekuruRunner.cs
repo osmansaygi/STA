@@ -90,6 +90,22 @@ namespace ST4Yardimci
 
         private static string _tempDwg;
         private static readonly object TempLock = new object();
+        /// <summary>Temel detayı: tek kesit, sol/sağ sapma. Temel çukuru bunu açmaz.</summary>
+        private static bool _detayMode;
+        private static double _detayStemSol;
+        private static double _detayStemSag;
+
+        internal static void BeginDetay(double stemSolCm, double stemSagCm)
+        {
+            _detayMode = true;
+            _detayStemSol = stemSolCm;
+            _detayStemSag = stemSagCm;
+        }
+
+        internal static void EndDetay()
+        {
+            _detayMode = false;
+        }
 
         public static void RunInteractive()
         {
@@ -107,11 +123,6 @@ namespace ST4Yardimci
                 if (TemelCekuruSettings.PaspayiCm * 2.0 + 2.0 > TemelCekuruSettings.AltTemelYuksekligiCm)
                 {
                     ed.WriteMessage("\nTEMELCEKURU: paspayı alt temel yüksekliğine sığmıyor.");
-                    return;
-                }
-                if (TemelCekuruSettings.StemCm + 0.5 < TemelCekuruSettings.UstTemelYuksekligiCm)
-                {
-                    ed.WriteMessage("\nTEMELCEKURU: çukur derinliği, hatıl + üst temelden küçük olamaz.");
                     return;
                 }
 
@@ -173,6 +184,108 @@ namespace ST4Yardimci
             }
         }
 
+        /// <summary>Temel detayı — tek kesit. Sol ve sağ çukur yüksekliği ayrı. Ayarlar çizim bitince geri alınır.</summary>
+        public static void RunDetay()
+        {
+            Document doc = AcApp.DocumentManager.MdiActiveDocument;
+            if (doc == null)
+            {
+                TemelDetayForm.Shutdown();
+                return;
+            }
+
+            Editor ed = doc.Editor;
+            TemelCekuruSettings.Snapshot snap = TemelCekuruSettings.Capture();
+            try
+            {
+                TemelDetaySettings.EnsureLoaded();
+                if (!TemelDetaySettings.SolKademe && !TemelDetaySettings.SagKademe)
+                {
+                    ed.WriteMessage("\nTEMELDETAY: sol veya sağ kademeden en az birini seçin.");
+                    return;
+                }
+                TemelCekuruSettings.GrobetonAcisi = TemelDetaySettings.GrobetonAcisi;
+                TemelCekuruSettings.HatilYuksekligiCm = TemelDetaySettings.HatilYuksekligiCm;
+                TemelCekuruSettings.HatilGenisligiCm = TemelDetaySettings.HatilGenisligiCm;
+                TemelCekuruSettings.SubasmanYuksekligiCm = TemelDetaySettings.SubasmanYuksekligiCm;
+                TemelCekuruSettings.UstTemelYuksekligiCm = TemelDetaySettings.UstTemelYuksekligiCm;
+                TemelCekuruSettings.AltTemelYuksekligiCm = TemelDetaySettings.AltTemelYuksekligiCm;
+                TemelCekuruSettings.TemelGenisligiCm = TemelDetaySettings.TemelGenisligiCm;
+                // Tek kesit: diğer doğrultuda genişlik/adet kullanılmaz.
+                TemelCekuruSettings.PaspayiCm = TemelDetaySettings.PaspayiCm;
+                TemelCekuruSettings.TemelUstKotuCm = TemelDetaySettings.TemelUstKotuCm;
+                TemelCekuruSettings.UstCapMm = TemelDetaySettings.UstCapMm;
+                TemelCekuruSettings.UstAralikCm = TemelDetaySettings.UstAralikCm;
+                TemelCekuruSettings.AltCapMm = TemelDetaySettings.AltCapMm;
+                TemelCekuruSettings.AltAralikCm = TemelDetaySettings.AltAralikCm;
+                double sol = TemelDetaySettings.SolKademe ? TemelDetaySettings.SolCukurCm : 0;
+                double sag = TemelDetaySettings.SagKademe ? TemelDetaySettings.SagCukurCm : 0;
+                double deep = sol > sag ? sol : sag;
+                TemelCekuruSettings.CukurDerinligiCm = deep;
+
+                if (TemelCekuruSettings.PaspayiCm * 2.0 + 2.0 > TemelCekuruSettings.AltTemelYuksekligiCm)
+                {
+                    ed.WriteMessage("\nTEMELDETAY: paspayı alt temel yüksekliğine sığmıyor.");
+                    return;
+                }
+
+                string path = EnsureTempDwg();
+                if (string.IsNullOrEmpty(path))
+                {
+                    ed.WriteMessage("\nTEMELDETAY: gömülü TEMEL_CUKURU.dwg bulunamadı.");
+                    return;
+                }
+
+                var opt = new PromptPointOptions("\nTemel detayı — sol üst köşe: ")
+                {
+                    AllowNone = false
+                };
+                PromptPointResult ppr = ed.GetPoint(opt);
+                if (ppr.Status != PromptStatus.OK)
+                {
+                    ed.WriteMessage("\nTEMELDETAY: iptal.");
+                    return;
+                }
+
+                double stemSol = sol;
+                double stemSag = sag;
+
+
+                int n;
+                BeginDetay(stemSol, stemSag);
+                try
+                {
+                    using (doc.LockDocument())
+                    using (var tr = doc.Database.TransactionManager.StartTransaction())
+                    {
+                        int ust2 = 1, alt2 = 1, yan1 = 1;
+                        double right;
+                        n = Insert(tr, doc.Database, path, ppr.Value, TemelCekuruSettings.TemelGenisligiCm, 1, ust2, alt2, yan1, 0, out right);
+                        tr.Commit();
+                    }
+                }
+                finally
+                {
+                    EndDetay();
+                }
+
+                ed.WriteMessage(
+                    "\nTEMELDETAY: sol çukur {0:0.#} cm, sağ çukur {1:0.#} cm, genişlik {2:0.#} cm ({3} nesne).",
+                    sol, sag, TemelCekuruSettings.TemelGenisligiCm, n);
+            }
+            catch (System.Exception ex)
+            {
+                try { ed.WriteMessage("\nTEMELDETAY hata: {0}", ex.Message); }
+                catch { }
+            }
+            finally
+            {
+                EndDetay();
+                TemelCekuruSettings.Restore(snap);
+                TemelDetayForm.Shutdown();
+            }
+        }
+
         private static int Insert(Transaction tr, Database destDb, string path, Point3d pick, double genislikCm, int kesitNo, int karsiUst, int karsiAlt, int yanAdet, int carpan, out double placedMaxX)
         {
             var bt = (BlockTable)tr.GetObject(destDb.BlockTableId, OpenMode.ForRead);
@@ -190,7 +303,9 @@ namespace ST4Yardimci
                     {
                         var btSrc = (BlockTable)trs.GetObject(src.BlockTableId, OpenMode.ForRead);
                         var ms = (BlockTableRecord)trs.GetObject(btSrc[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
-                        var fit = Fit.FromSettings(genislikCm, kesitNo, karsiUst, karsiAlt, yanAdet, carpan);
+                        var fit = _detayMode
+                            ? Fit.FromDetay(genislikCm, kesitNo, karsiUst, karsiAlt, yanAdet, carpan, _detayStemSol, _detayStemSag)
+                            : Fit.FromSettings(genislikCm, kesitNo, karsiUst, karsiAlt, yanAdet, carpan);
                         fit.Apply(trs, ms);
                         ids = new ObjectIdCollection();
                         foreach (ObjectId id in ms)
@@ -247,7 +362,7 @@ namespace ST4Yardimci
                             try { ent.TransformBy(move); } catch { }
                         }
                         if (ent is Dimension dim)
-                            ApplyPlanOlcuStyle(dim, dimStyle);
+                            ApplyPlanOlcuStyle(tr, dim, dimStyle);
                     }
                     if (any)
                         placedMaxX = pick.X + (maxX - minX);
@@ -257,78 +372,24 @@ namespace ST4Yardimci
         }
 
         /// <summary>Merdiven detayı ile aynı: PLAN_OLCU 25, sabit uzatma 5.</summary>
-        private static void ApplyPlanOlcuStyle(Dimension dim, ObjectId dimStyle)
+        private static void ApplyPlanOlcuStyle(Transaction tr, Dimension dim, ObjectId dimStyle)
         {
-            try
-            {
-                if (!dimStyle.IsNull)
-                    dim.DimensionStyle = dimStyle;
-                dim.Dimlfac = 1.0 / DuPerCm;
-                dim.DimfxlenOn = true;
-                dim.Dimfxlen = PlanOlcuDimExe;
-                dim.Dimexe = PlanOlcuDimExe;
-                dim.Dimse1 = false;
-                dim.Dimse2 = false;
-                dim.Dimtih = false;
-                dim.Dimtoh = false;
-                dim.Dimtad = 1;
-                if (!(dim is LineAngularDimension2))
-                {
-                    dim.Dimdec = 0;
-                    dim.Dimtdec = 0;
-                }
-                dim.RecomputeDimensionBlock(true);
-            }
-            catch { }
+            BaDimensionStyles.Apply(tr, dim.Database, dim, dimStyle, DimStylePlanOlcu25);
         }
 
         private static ObjectId ResolvePlanOlcu25(Transaction tr, Database db)
         {
-            var dst = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
-            if (dst.Has(DimStylePlanOlcu25))
-                return dst[DimStylePlanOlcu25];
-
-            DimStyleTableRecord src = null;
-            foreach (string tryName in new[] { "PLAN_OLCU_25", "PLAN_OLCU", "Standard" })
-            {
-                if (!dst.Has(tryName)) continue;
-                src = tr.GetObject(dst[tryName], OpenMode.ForRead) as DimStyleTableRecord;
-                if (src != null) break;
-            }
-
-            dst.UpgradeOpen();
-            var rec = new DimStyleTableRecord { Name = DimStylePlanOlcu25 };
-            if (src != null)
-            {
-                try { rec.CopyFrom(src); } catch { }
-                try { rec.Name = DimStylePlanOlcu25; } catch { }
-            }
-            try
-            {
-                var tst = (TextStyleTable)tr.GetObject(db.TextStyleTableId, OpenMode.ForRead);
-                if (tst.Has(TextStyleYazi))
-                    rec.Dimtxsty = tst[TextStyleYazi];
-            }
-            catch { }
-            try { rec.Dimlfac = 1.0 / DuPerCm; } catch { }
-            try { rec.Dimscale = 1.0; } catch { }
-            try { rec.Dimexe = PlanOlcuDimExe; } catch { }
-            try { rec.Dimfxlen = PlanOlcuDimExe; } catch { }
-            try { rec.DimfxlenOn = true; } catch { }
-            try { rec.Dimdec = 0; } catch { }
-            try { rec.Dimtdec = 0; } catch { }
-            try { rec.Dimtih = false; } catch { }
-            try { rec.Dimtoh = false; } catch { }
-            try { rec.Dimtad = 1; } catch { }
-            ObjectId id = dst.Add(rec);
-            tr.AddNewlyCreatedDBObject(rec, true);
-            return id;
+            return BaDimensionStyles.Ensure(tr, db, DimStylePlanOlcu25);
         }
 
         /// <summary>Şablon koordinatını form değerlerine taşır.</summary>
-        private sealed class Fit
+        private sealed partial class Fit
         {
             public double Dy1, Dy2, Dy3, Dy4, DRun, DW, DSide;
+            public double Dy2L, Dy2R, Dy3L, Dy3R, DRunL, DRunR;
+            public double StemSolCm, StemSagCm;
+            public bool SplitHeight;
+            public bool DetayBaslik;
             public bool GeometryChanged;
             public int StraightCm, LVert, YatayDuzCm;
             public int UstAdet, AltAdet, DisAdet, IcAdet;
@@ -349,7 +410,7 @@ namespace ST4Yardimci
 
             public static Fit FromSettings(double genislikCm, int kesitNo, int karsiUst, int karsiAlt, int yanAdet, int carpan)
             {
-                double sHatil = (TemelCekuruSettings.HatilYuksekligiCm - TemelCekuruSettings.TemplateHatilYuksekligiCm) * DuPerCm;
+                double sHatil = -TemelCekuruSettings.TemplateHatilYuksekligiCm * DuPerCm;
                 double sUst = (TemelCekuruSettings.UstTemelYuksekligiCm - TemelCekuruSettings.TemplateUstTemelYuksekligiCm) * DuPerCm;
                 double stem = TemelCekuruSettings.StemCm;
                 double sTemel = (stem - TemelCekuruSettings.TemplateTemelYuksekligiCm) * DuPerCm;
@@ -397,6 +458,17 @@ namespace ST4Yardimci
                 };
             }
 
+            /// <summary>
+            /// Tek kesit. Alt temel ortak kotta; sol/sağ üst kotları ve üst temel kalınlıkları bağımsızdır.
+            /// Hatıl, temel geometrisini etkilemeyen ek detaydır.
+            /// </summary>
+            public static Fit FromDetay(double genislikCm, int kesitNo, int karsiUst, int karsiAlt, int yanAdet, int carpan, double stemSol, double stemSag)
+            {
+
+                Fit f = FromSettings(genislikCm, kesitNo, karsiUst, karsiAlt, yanAdet, carpan);
+                f.ConfigureDetail(stemSol, stemSag);
+                return f;
+            }
             public void Apply(Transaction tr, BlockTableRecord ms)
             {
                 SetDonatiAdet();
@@ -410,6 +482,7 @@ namespace ST4Yardimci
                     if (!(tr.GetObject(id, OpenMode.ForWrite, false) is Entity ent) || ent.IsErased)
                         continue;
                     string layer = ent.Layer ?? "";
+                    if (DetayBaslik && OmitDetailEntity(ent)) { ent.Erase(); continue; }
                     if (ent is DBText kesitte && (kesitte.TextString ?? "").TrimStart().StartsWith("KESİTTE", StringComparison.OrdinalIgnoreCase))
                     {
                         ent.Erase();
@@ -447,15 +520,21 @@ namespace ST4Yardimci
                 catch { }
                 try { DropStretchedFillets(tr, ms); }
                 catch { }
+                try { ShortenShallowWalls(tr, ms); }
+                catch { }
                 try { DrawKots(tr, ms); }
                 catch { }
                 try { DrawHatilVeSubasman(tr, ms); }
                 catch { }
-                // Sabit donatı numaraları (1–16) şimdilik yazılmıyor.
+                // Donatı numaraları etiket yerleşiminden sonra eklenir.
                 try { DrawOlculer(tr, ms); }
                 catch { }
                 try { PlacePieceLabels(tr, ms); }
                 catch { }
+                try { EnsureSabitDonatiDots(tr, ms); }
+                catch { }
+                // Donatı numaraları şimdilik kapalı; sabit noktalar ve hesap kimlikleri korunur.
+                if (DetayBaslik) FinishSingleDetail(tr, ms);
                 try { DrawKesitNo(tr, ms); }
                 catch { }
             }
@@ -465,7 +544,7 @@ namespace ST4Yardimci
             {
                 const string layer = "KESIT ISMI (BEYKENT)";
                 EnsureStyledLayer(tr, ms.Database, layer, 6, LineWeight.LineWeight020, null);
-                double x = XKotCenter + DW * 0.5;
+                double x = SingleDetail ? (DetailCutX() + (DetailLeft ? XOutL - DSide - DRunL : XOutR + DW + DSide + DRunR)) / 2 : XKotCenter + DW * 0.5;
                 double yFloor = Y4 + Dy4;
                 double xL = XOutL - 20.0;
                 double xR = XOutR + DW + 20.0;
@@ -492,7 +571,9 @@ namespace ST4Yardimci
                 if (!found) yBot = yFloor - 80.0;
                 double yTop = yBot - 16.0 - 30.0 * DuPerCm;
                 string no = KesitNo.ToString(System.Globalization.CultureInfo.InvariantCulture);
-                string text = no + "-" + no + " KESİTİ 1:25";
+                string text = DetayBaslik
+                    ? "TEMEL DETAYI 1:25"
+                    : no + "-" + no + " KESİTİ 1:25";
                 ObjectId style = EnsureYaziStyle(tr, ms.Database);
                 var t = new DBText
                 {
@@ -519,33 +600,28 @@ namespace ST4Yardimci
                 catch { }
             }
 
-            /// <summary>6–13 dahil üst adet. 7–16 dahil alt adet (15–16 aralığı şablondaki gibi).</summary>
+            /// <summary>Adetler fiziksel sıralardan hesaplanır; görünen numaralar değişse de yerleşim korunur.</summary>
             private void SetDonatiAdet()
             {
-                const double oL = 2017.647170209089;
-                const double iL = 2079.647170209089;
-                const double iR = 2497.647170209089;
-                const double yBot = 1145.388795085607;
-                const double yUp = 1207.388795085607;
                 double ustDu = TemelCekuruSettings.UstAralikCm * DuPerCm;
                 double altDu = TemelCekuruSettings.AltAralikCm * DuPerCm;
                 if (ustDu < DuPerCm) ustDu = DuPerCm;
                 if (altDu < DuPerCm) altDu = DuPerCm;
-                UstAdet = BarCount(CagePt(new Point3d(iL, yUp, 0)), CagePt(new Point3d(iR, yUp, 0)), ustDu);
-                int c78 = BarCount(CagePt(new Point3d(oL, yBot, 0)), CagePt(new Point3d(iL, yBot, 0)), altDu);
-                int c815 = BarCount(CagePt(new Point3d(iL, yBot, 0)), CagePt(new Point3d(iR, yBot, 0)), altDu);
-                AltAdet = c78 + c815 + 1;
+                UstAdet = BarCount(PhysicalDot(6), PhysicalDot(13), ustDu);
+                int c78 = BarCount(PhysicalDot(7), PhysicalDot(8), altDu);
+                int c815 = BarCount(PhysicalDot(8), PhysicalDot(15), altDu);
+                int c1516 = BarCount(PhysicalDot(15), PhysicalDot(16), altDu);
+                AltAdet = c78 + c815 + c1516 - 2;
 
-                const double yStep = 1345.388795085607;
-                const double yTop = 1407.388795085607;
-                int c35 = BarCount(CagePt(new Point3d(oL, yStep, 0)), CagePt(new Point3d(oL, yUp, 0)), altDu);
-                int c57 = BarCount(CagePt(new Point3d(oL, yUp, 0)), CagePt(new Point3d(oL, yBot, 0)), altDu);
+                int c35 = BarCount(NamedDot(3), NamedDot(5), altDu);
+                int c57 = BarCount(NamedDot(5), NamedDot(7), altDu);
                 DisAdet = c35 + c57 - 3;
                 if (DisAdet < 0) DisAdet = 0;
-                int c24 = BarCount(CagePt(new Point3d(iL, yTop, 0)), CagePt(new Point3d(iL, yStep, 0)), ustDu);
-                int c46 = BarCount(CagePt(new Point3d(iL, yStep, 0)), CagePt(new Point3d(iL, yUp, 0)), ustDu);
+                int c24 = BarCount(NamedDot(2), NamedDot(4), ustDu);
+                int c46 = BarCount(NamedDot(4), NamedDot(6), ustDu);
                 IcAdet = c24 + c46 - 4;
                 if (IcAdet < 0) IcAdet = 0;
+                SetRightDetailAdet();
             }
 
             /// <summary>Dış düşey etiket (elips) sol/sağ dış çubuğa daha yakındır.</summary>
@@ -569,50 +645,16 @@ namespace ST4Yardimci
             /// <summary>Açılıma yazılacak adet: çukur + iki yan. Üstte iç (4ø), altta dış (4ø).</summary>
             public static void PeekAdet(double genislikCm, out int ust, out int alt)
             {
-                const double oL = 2017.647170209089;
-                const double iL = 2079.647170209089;
-                const double iR = 2497.647170209089;
-                const double yBot = 1145.388795085607;
-                const double yUp = 1207.388795085607;
-                const double yStep = 1345.388795085607;
-                const double yTop = 1407.388795085607;
-                double dW = (genislikCm - TemelCekuruSettings.TemplateTemelGenisligiCm) * DuPerCm;
-                double ustDu = TemelCekuruSettings.UstAralikCm * DuPerCm;
-                double altDu = TemelCekuruSettings.AltAralikCm * DuPerCm;
-                if (ustDu < DuPerCm) ustDu = DuPerCm;
-                if (altDu < DuPerCm) altDu = DuPerCm;
-                double sHatil = (TemelCekuruSettings.HatilYuksekligiCm - TemelCekuruSettings.TemplateHatilYuksekligiCm) * DuPerCm;
-                double sUst = (TemelCekuruSettings.UstTemelYuksekligiCm - TemelCekuruSettings.TemplateUstTemelYuksekligiCm) * DuPerCm;
-                double sTemel = (TemelCekuruSettings.StemCm - TemelCekuruSettings.TemplateTemelYuksekligiCm) * DuPerCm;
-                double sAlt = (TemelCekuruSettings.AltTemelYuksekligiCm - TemelCekuruSettings.TemplateAltTemelYuksekligiCm) * DuPerCm;
-                double dy1 = -sHatil;
-                double dy2 = -sHatil - sUst;
-                double dy3 = -sHatil - sTemel;
-                double dy4 = -sHatil - sTemel - sAlt;
-                double dPas = (TemelCekuruSettings.PaspayiCm - TemelCekuruSettings.TemplatePaspayiCm) * DuPerCm;
-                double span = (iR + dW) - iL + 2.0 * dPas;
-                double side = (iL - oL) - 2.0 * dPas;
-                if (span < 1) span = 1;
-                if (side < 1) side = 1;
-                int ustPit = BarCountLen(span, ustDu);
-                int altPit = BarCountLen(side, altDu) + BarCountLen(span, altDu) + 1;
-                double vTopStep = Math.Abs((yStep + dy2) - (yTop + dy1)) - 2.0 * dPas;
-                double vStepUp = Math.Abs((yStep + dy2) - (yUp + dy3)) + 2.0 * dPas;
-                double vUpBot = Math.Abs((yUp + dy3) - (yBot + dy4)) - 2.0 * dPas;
-                if (vTopStep < 1) vTopStep = 1;
-                if (vStepUp < 1) vStepUp = 1;
-                if (vUpBot < 1) vUpBot = 1;
-                int ic = BarCountLen(vTopStep, ustDu) + BarCountLen(vStepUp, ustDu) - 4;
-                if (ic < 0) ic = 0;
-                int dis = BarCountLen(vStepUp, altDu) + BarCountLen(vUpBot, altDu) - 3;
-                if (dis < 0) dis = 0;
-                ust = ustPit + ic + ic;
-                alt = altPit + dis + dis;
+                // Kesit ve açılım aynı geometri, paspayı ve yan genişliği hesabını kullanır.
+                Fit fit = FromSettings(genislikCm, 1, 1, 1, 1, 1);
+                fit.SetDonatiAdet();
+                ust = fit.UstAdet + 2 * fit.IcAdet;
+                alt = fit.AltAdet + 2 * fit.DisAdet;
             }
-
             private static int BarCountLen(double len, double maxDu)
             {
-                if (len < 1 || maxDu < 1) return 2;
+                if (len <= NamedDotTolerance) return 1;
+                if (maxDu < 1) maxDu = 1;
                 int spaces = (int)Math.Ceiling(len / maxDu - 1e-6);
                 if (spaces < 1) spaces = 1;
                 return spaces + 1;
@@ -640,35 +682,96 @@ namespace ST4Yardimci
             /// İşaretli 16 donatı. Sol üstten alta 1–8, sağ üstten alta 9–16.
             /// Her sırada önce dıştaki, sonra içteki (sağda önce içteki).
             /// </summary>
+            private const double NamedDotTolerance = 0.01;
+
+            // Yerleşim kimliği şablondaki fiziksel sırayı izler; görünen numaradan bağımsızdır.
+            private Point3d PhysicalDot(int number)
+            {
+                int side = number <= 8 ? 0 : 1;
+                int local = (number - 1) % 8;
+                int row = local / 2;
+                int col = side == 0 ? local % 2 : 2 + local % 2;
+                double[] xs = { RebarOutL, 2079.647170209089, 2497.647170209089, RebarOutR };
+                double[] ys = { 1407.388795085607, 1345.388795085607, 1207.388795085607, 1145.388795085607 };
+                return CagePt(new Point3d(xs[col], ys[row], 0));
+            }
+
+            // Yalnız etiketler üstten alta sıralanır. Donatı yerleşimi PhysicalDot kullanır.
+            private Point3d NamedDot(int number)
+            {
+                int row = ((number - 1) % 8) / 2;
+                if (row != 1 && row != 2) return PhysicalDot(number);
+                int stepNumber = row == 1 ? number : number - 2;
+                Point3d step = PhysicalDot(stepNumber);
+                Point3d up = PhysicalDot(stepNumber + 2);
+                if (row == 1) return step.Y >= up.Y ? step : up;
+                return step.Y >= up.Y ? up : step;
+            }
+            // Numaralı 16 konum, aradaki donatıların aralığından bağımsız korunur.
+            private void EnsureSabitDonatiDots(Transaction tr, BlockTableRecord ms)
+            {
+                var centers = new List<Point3d>();
+                Entity prototype = null;
+                Point3d prototypeCenter = Point3d.Origin;
+                var ids = new List<ObjectId>();
+                foreach (ObjectId id in ms) ids.Add(id);
+                foreach (ObjectId id in ids)
+                {
+                    if (!id.IsValid || id.IsErased) continue;
+                    if (!(tr.GetObject(id, OpenMode.ForRead, false) is Entity ent) || ent.IsErased) continue;
+                    string layer = ent.Layer ?? "";
+                    if (layer.IndexOf("DONATI", StringComparison.OrdinalIgnoreCase) < 0
+                        && layer.IndexOf("CIROZ", StringComparison.OrdinalIgnoreCase) < 0) continue;
+                    if (!TryDotCenter(ent, out Point3d center)) continue;
+                    if (prototype == null) { prototype = ent; prototypeCenter = center; }
+                    if (centers.Exists(c => c.DistanceTo(center) <= NamedDotTolerance))
+                    {
+                        if (!ent.IsWriteEnabled) ent.UpgradeOpen();
+                        ent.Erase();
+                    }
+                    else centers.Add(center);
+                }
+                for (int number = 1; number <= 16; number++)
+                {
+                    Point3d point = NamedDot(number);
+                    if (centers.Exists(c => c.DistanceTo(point) <= NamedDotTolerance)) continue;
+                    Entity dot;
+                    if (prototype != null)
+                    {
+                        dot = (Entity)prototype.Clone();
+                        dot.TransformBy(Matrix3d.Displacement(point - prototypeCenter));
+                    }
+                    else dot = new Circle(point, Vector3d.ZAxis, 1.5);
+                    bool cyan = false;
+                    foreach (int n in new[] { 5, 6, 7, 8, 13, 14, 15, 16 })
+                        if (PhysicalDot(n).DistanceTo(point) <= NamedDotTolerance) cyan = true;
+                    dot.Layer = cyan ? "DONATI (BEYKENT)" : LayerDonatiIzi;
+                    dot.Color = Color.FromColorIndex(ColorMethod.ByLayer, 256);
+                    ms.AppendEntity(dot);
+                    tr.AddNewlyCreatedDBObject(dot, true);
+                    centers.Add(point);
+                }
+            }
             private void DrawSabitDonatiNo(Transaction tr, BlockTableRecord ms)
             {
                 Database db = ms.Database;
                 ObjectId style = EnsureYaziStyle(tr, db);
-                var pts = new[]
+                var points = new List<Point3d>();
+                var labels = new List<string>();
+                for (int number = 1; number <= 16; number++)
                 {
-                    new { N = 1, X = 2017.65, Y = 1407.39 },
-                    new { N = 2, X = 2079.65, Y = 1407.39 },
-                    new { N = 3, X = 2017.65, Y = 1345.39 },
-                    new { N = 4, X = 2079.65, Y = 1345.39 },
-                    new { N = 5, X = 2017.65, Y = 1207.39 },
-                    new { N = 6, X = 2079.65, Y = 1207.39 },
-                    new { N = 7, X = 2017.65, Y = 1145.39 },
-                    new { N = 8, X = 2079.65, Y = 1145.39 },
-                    new { N = 9, X = 2497.65, Y = 1407.39 },
-                    new { N = 10, X = 2559.65, Y = 1407.39 },
-                    new { N = 11, X = 2497.65, Y = 1345.39 },
-                    new { N = 12, X = 2559.65, Y = 1345.39 },
-                    new { N = 13, X = 2497.65, Y = 1207.39 },
-                    new { N = 14, X = 2559.65, Y = 1207.39 },
-                    new { N = 15, X = 2497.65, Y = 1145.39 },
-                    new { N = 16, X = 2559.65, Y = 1145.39 }
-                };
-                foreach (var p in pts)
+                    Point3d point = NamedDot(number);
+                    int index = points.FindIndex(c => c.DistanceTo(point) <= NamedDotTolerance);
+                    string label = number.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    if (index < 0) { points.Add(point); labels.Add(label); }
+                    else labels[index] += "," + label;
+                }
+                for (int index = 0; index < points.Count; index++)
                 {
-                    Point3d c = CagePt(new Point3d(p.X, p.Y, 0));
+                    Point3d c = points[index];
                     var t = new DBText
                     {
-                        TextString = p.N.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                        TextString = labels[index],
                         Height = 10.0,
                         Layer = "DONATI YAZISI (BEYKENT)",
                         Color = Color.FromColorIndex(ColorMethod.ByAci, 5),
@@ -822,8 +925,9 @@ namespace ST4Yardimci
                     outward, toe,
                     arc,
                     "",
-                    ms.Database.Dimstyle);
+                    BaDimensionStyles.Ensure(tr, ms.Database, DimStylePlanOlcu25));
                 dim.Layer = "OLCU (BEYKENT)";
+                BaDimensionStyles.Apply(tr, ms.Database, dim, dim.DimensionStyle, DimStylePlanOlcu25);
                 ms.AppendEntity(dim);
                 tr.AddNewlyCreatedDBObject(dim, true);
             }
@@ -848,9 +952,12 @@ namespace ST4Yardimci
             /// <summary>sign: sol −1 (genişlik dışa, küçük X), sağ +1.</summary>
             private void DrawHatilSide(Transaction tr, BlockTableRecord ms, double xInner, double xOut, double sign, double slabDu, double widthDu)
             {
-                Point3d topIn = MapPt(new Point3d(xInner, Y0, 0));
-                Point3d topOut = MapPt(new Point3d(xOut, Y0, 0));
+                if (DetayBaslik && !DetailEnabled(sign > 0)) return;
                 Point3d botIn = MapPt(new Point3d(xInner, Y1, 0));
+                double hatilTop = botIn.Y + TemelCekuruSettings.HatilYuksekligiCm * DuPerCm;
+                Point3d topIn = new Point3d(botIn.X, hatilTop, 0);
+                Point3d mappedOut = MapPt(new Point3d(xOut, Y1, 0));
+                Point3d topOut = new Point3d(mappedOut.X, hatilTop, 0);
                 double ySlab = topIn.Y - slabDu;
                 if (ySlab < botIn.Y + DuPerCm) ySlab = botIn.Y + DuPerCm;
                 double xHat = topIn.X + sign * widthDu;
@@ -896,21 +1003,33 @@ namespace ST4Yardimci
             /// </summary>
             private void DrawKots(Transaction tr, BlockTableRecord ms)
             {
+                if (DetayBaslik) { DrawDetailKots(tr, ms); return; }
                 Database db = ms.Database;
                 EnsureKotLayer(tr, db, LayerKotCizgi);
                 EnsureKotLayer(tr, db, LayerKotYazi);
                 double k1 = TemelCekuruSettings.TemelUstKotuCm / 100.0;
                 double k0 = k1 + TemelCekuruSettings.HatilYuksekligiCm / 100.0;
                 double k2 = k1 - TemelCekuruSettings.UstTemelYuksekligiCm / 100.0;
-                double k3 = k1 - TemelCekuruSettings.StemCm / 100.0;
+                double k3 = k1 - (Y1 + Dy1 - Y3 - Dy3) / DuPerCm / 100.0;
                 double k4 = k3 - TemelCekuruSettings.AltTemelYuksekligiCm / 100.0;
                 double xRight = (XOutR + DW + DRun + DSide) + KotRightGapDu;
+                double y2 = Y2 + Dy2;
                 if (TemelCekuruSettings.HatilYuksekligiCm >= 0.5)
-                    DrawKotSymbol(tr, db, ms, k0, xRight, Y0, textToRight: true);
+                    DrawKotSymbol(tr, db, ms, k0, xRight, Y1 + Dy1 + TemelCekuruSettings.HatilYuksekligiCm * DuPerCm, textToRight: true);
                 DrawKotSymbol(tr, db, ms, k1, xRight, Y1 + Dy1, textToRight: true);
-                DrawKotSymbol(tr, db, ms, k2, xRight, Y2 + Dy2, textToRight: true);
+                DrawKotSymbol(tr, db, ms, k2, xRight, y2, textToRight: true);
                 DrawKotSymbol(tr, db, ms, k4, xRight, Y4 + Dy4, textToRight: true);
                 DrawKotSymbol(tr, db, ms, k3, XKotCenter + DW * 0.5, Y3 + Dy3, textToRight: true);
+                if (SplitHeight && Math.Abs(Dy3L - Dy3) > 1.0)
+                {
+                    double k3L = k1 - StemSolCm / 100.0;
+                    DrawKotSymbol(tr, db, ms, k3L, XInnerL + 30.0, Y3 + Dy3L, textToRight: false);
+                }
+                if (SplitHeight && Math.Abs(Dy3R - Dy3) > 1.0)
+                {
+                    double k3R = k1 - StemSagCm / 100.0;
+                    DrawKotSymbol(tr, db, ms, k3R, XInnerR + DW - 30.0, Y3 + Dy3R, textToRight: true);
+                }
             }
 
             /// <summary>
@@ -1080,6 +1199,8 @@ namespace ST4Yardimci
                         HoldShortFillets(pl, before, bulges);
                     if (acilim)
                         ScaleAcilim(pl, sideBar, icHook);
+                    if (LayerIs(pl.Layer, LayerTemel))
+                        InsertFloorSteps(pl);
                 }
                 else if (ent is Solid sol)
                 {
@@ -1158,13 +1279,13 @@ namespace ST4Yardimci
                 else if (s.Trim() == "274")
                     next = YatayDuzCm.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 else if (s.Trim() == "134")
-                    next = StraightCm.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    next = StraightForX(x0).ToString(System.Globalization.CultureInfo.InvariantCulture);
                 else if (s.Trim() == "72")
                     next = ElliCapCm(y0 > 1200.0).ToString(System.Globalization.CultureInfo.InvariantCulture);
                 else if (s.StartsWith("3\u00F8", StringComparison.Ordinal))
                 {
                     bool dis = IsDisDonatiEtiket(x0);
-                    next = (dis ? DisAdet : IcAdet).ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    next = SideAdet(dis, x0 > XKotCenter).ToString(System.Globalization.CultureInfo.InvariantCulture)
                         + (dis
                             ? TemelCekuruSettings.CapSlash(TemelCekuruSettings.AltCapMm, TemelCekuruSettings.AltAralikCm)
                             : TemelCekuruSettings.CapSlash(TemelCekuruSettings.UstCapMm, TemelCekuruSettings.UstAralikCm));
@@ -1178,9 +1299,9 @@ namespace ST4Yardimci
                         ? TemelCekuruSettings.CapSlash(TemelCekuruSettings.AltCapMm, TemelCekuruSettings.AltAralikCm)
                         : TemelCekuruSettings.CapSlash(TemelCekuruSettings.UstCapMm, TemelCekuruSettings.UstAralikCm);
                     next = Regex.Replace(next, @"\u00F8\d+/\d+", token);
-                    int lCm = StraightCm + ElliCapCm(!dis) + GonyeCm();
+                    int lCm = StraightForX(x0) + ElliCapCm(!dis) + GonyeCm();
                     next = Regex.Replace(next, @"L=\d+", "L=" + lCm.ToString(System.Globalization.CultureInfo.InvariantCulture));
-                    string yan = YanAdet.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    string yan = (DetayBaslik ? DetailLengthAdet(dis) : YanAdet).ToString(System.Globalization.CultureInfo.InvariantCulture);
                     if (next.Length > 0 && char.IsDigit(next[0]))
                         next = Regex.Replace(next, @"^\d+", yan);
                     else
@@ -1365,7 +1486,7 @@ namespace ST4Yardimci
                 if (iHoriz < 0) { iHoriz = iHorizAny; bestH = bestHAny; }
                 int hookCm = ElliCapCm(icHook);
                 if (side && iVert >= 0 && bestV > 80.0)
-                    target[iVert] = StraightCm * DuPerCm - 6.0;
+                    target[iVert] = StraightForX(pts[0].X) * DuPerCm - 6.0;
                 if (side && iHoriz >= 0 && bestH > 80.0)
                     target[iHoriz] = hookCm * DuPerCm - 3.0;
                 if (!side && iHoriz >= 0 && bestH > 80.0)
@@ -1595,13 +1716,15 @@ namespace ST4Yardimci
                 string horizAlt = AltAdet.ToString(System.Globalization.CultureInfo.InvariantCulture) + altTok;
                 string vertIc = IcAdet.ToString(System.Globalization.CultureInfo.InvariantCulture) + ustTok;
                 string vertDis = DisAdet.ToString(System.Globalization.CultureInfo.InvariantCulture) + altTok;
+                string vertIcR = SideAdet(false, true).ToString(System.Globalization.CultureInfo.InvariantCulture) + ustTok;
+                string vertDisR = SideAdet(true, true).ToString(System.Globalization.CultureInfo.InvariantCulture) + altTok;
                 var bag = new Dictionary<string, List<DBText>>(StringComparer.Ordinal);
                 foreach (ObjectId id in ms)
                 {
                     if (!id.IsValid || id.IsErased) continue;
                     if (!(tr.GetObject(id, OpenMode.ForWrite, false) is DBText tx) || tx.IsErased) continue;
                     string s = (tx.TextString ?? "").Trim();
-                    if (s != horizUst && s != horizAlt && s != vertIc && s != vertDis) continue;
+                    if (s != horizUst && s != horizAlt && s != vertIc && s != vertDis && s != vertIcR && s != vertDisR) continue;
                     if (tx.Position.X < xLo || tx.Position.X > xHi || tx.Position.Y < yCut) continue;
                     if (!bag.TryGetValue(s, out List<DBText> list))
                     {
@@ -1630,9 +1753,9 @@ namespace ST4Yardimci
                 left.Sort((a, b) => VertX(a).CompareTo(VertX(b)));
                 right.Sort((a, b) => VertX(b).CompareTo(VertX(a)));
                 DBText icL = TakeSide(bag, vertIc, cx, true);
-                DBText icR = TakeSide(bag, vertIc, cx, false);
+                DBText icR = TakeSide(bag, vertIcR, cx, false);
                 DBText disL = TakeSide(bag, vertDis, cx, true);
-                DBText disR = TakeSide(bag, vertDis, cx, false);
+                DBText disR = TakeSide(bag, vertDisR, cx, false);
                 Polyline inL = left.Count >= 2 ? left[left.Count - 1] : null;
                 Polyline inR = right.Count >= 2 ? right[right.Count - 1] : null;
                 if (left.Count >= 1 && disL != null)
@@ -2328,7 +2451,7 @@ namespace ST4Yardimci
             /// <summary>Yandaki düşey açılımın düz boyu: perde + alt temel − 2×paspayı.</summary>
             private void AdjustDikeyDuz(Polyline pl)
             {
-                double delta = (StraightCm - 134) * DuPerCm;
+                double delta = (StraightForX(pl.GetPoint2dAt(0).X) - 134) * DuPerCm;
                 if (Math.Abs(delta) < 0.01) return;
                 int n = pl.NumberOfVertices;
                 if (n < 4) return;
@@ -2435,9 +2558,10 @@ namespace ST4Yardimci
                 s.Sort((p, q) => left ? VertX(p).CompareTo(VertX(q)) : VertX(q).CompareTo(VertX(p)));
                 a.Sort((p, q) => left ? CentroidX(q).CompareTo(CentroidX(p)) : CentroidX(p).CompareTo(CentroidX(q)));
                 int n = Math.Min(s.Count, a.Count);
+                double runSide = SplitHeight ? (left ? DRunL : DRunR) : DRun;
                 double cursor = left
-                    ? (XOutL - DRun - DSide) - SideLeftGapDu
-                    : (XOutR + DW + DRun + DSide) + KotRightGapDu + KotTextClearDu;
+                    ? (XOutL - runSide - DSide) - SideLeftGapDu
+                    : (XOutR + DW + runSide + DSide) + KotRightGapDu + KotTextClearDu;
                 const double between = 80.0;
                 for (int i = 0; i < n; i++)
                     PlaceWallBeside(s[i], a[i], left, ref cursor, between);
@@ -2808,16 +2932,19 @@ namespace ST4Yardimci
                 if (IsSideBar(p.X))
                 {
                     double sx = p.X + SideShift(p.X);
-                    return new Point3d(sx, p.Y + DySide(p.Y), p.Z);
+                    return new Point3d(sx, p.Y + (DetayBaslik ? DyDetailSide(p.Y, p.X > XKotCenter) : DySide(p.Y)), p.Z);
                 }
 
-                double dy = DyOf(p.Y);
+                double dy = DyOf(p.Y, p.X);
                 double groLift = (TemplateGrobetonCm - GrobetonKalinlikCm) * DuPerCm;
                 if (Math.Abs(p.Y - YGro) <= 2.0)
                     dy += groLift;
                 bool outside = p.X < XToeL - 1.0 || p.X > XToeR + 1.0;
                 if (outside && Math.Abs(p.Y - YBench) < 8.0)
-                    dy = Dy2 + groLift;
+                {
+                    double dyBench = SplitHeight ? (p.X < XKotCenter ? Dy2L : Dy2R) : Dy2;
+                    dy = dyBench + groLift;
+                }
 
                 double x = p.X;
                 if (x >= XInnerR - 0.5)
@@ -2828,10 +2955,12 @@ namespace ST4Yardimci
                     double t = (x - XInnerL) / span;
                     x = XInnerL + t * (span + DW);
                 }
+                double runL = SplitHeight ? DRunL : DRun;
+                double runR = SplitHeight ? DRunR : DRun;
                 if (Math.Abs(p.X - XOutL) < 2.0 || Math.Abs(p.X - XSlopeL) < 2.0)
-                    x -= DRun;
+                    x -= runL;
                 else if (Math.Abs(p.X - XOutR) < 2.0 || Math.Abs(p.X - XSlopeR) < 2.0)
-                    x += DRun;
+                    x += runR;
                 if (NearX(p.X, XStepL) || NearX(p.X, XToeL) || NearX(p.X, XOutL) || NearX(p.X, XSlopeL)
                     || Math.Abs(p.X - RebarOutL) <= outerRebarTol)
                     x -= DSide;
@@ -2842,7 +2971,7 @@ namespace ST4Yardimci
             }
 
             /// <summary>
-            /// Alt: 7–8, 8–15, 15–16, 16–14, 14–12, 7–5, 5–3, 3–4, 11–12.
+            /// Fiziksel şablon kimlikleri (görünen numaralar değil): alt 7–8, 8–15, 15–16, 16–14, 14–12, 7–5, 5–3, 3–4, 11–12.
             /// Üst: 2–4, 4–6, 6–13, 13–11, 11–9, 1–2, 9–10.
             /// Uçlar sabit. Ara donatı kendi aralığını aşmayacak eşit bölünür.
             /// </summary>
@@ -2853,39 +2982,41 @@ namespace ST4Yardimci
                 if (altDu < DuPerCm) altDu = DuPerCm;
                 if (ustDu < DuPerCm) ustDu = DuPerCm;
 
-                const double oL = 2017.647170209089;
-                const double iL = 2079.647170209089;
-                const double iR = 2497.647170209089;
-                const double oR = 2559.647170209089;
-                const double yBot = 1145.388795085607;
-                const double yUp = 1207.388795085607;
                 const double yStep = 1345.388795085607;
                 const double yTop = 1407.388795085607;
                 const string layerIzi = "DONATI IZI (BEYKENT)";
+                // Düşey aralıklar görünen numaralara, yatay sıralar fiziksel konuma bağlıdır.
                 var fixedSpans = new[]
                 {
-                    new Span(CagePt(new Point3d(oL, yBot, 0)), CagePt(new Point3d(iL, yBot, 0)), altDu, null),
-                    new Span(CagePt(new Point3d(iL, yBot, 0)), CagePt(new Point3d(iR, yBot, 0)), altDu, null),
-                    new Span(CagePt(new Point3d(iR, yBot, 0)), CagePt(new Point3d(oR, yBot, 0)), altDu, null),
-                    new Span(CagePt(new Point3d(oR, yBot, 0)), CagePt(new Point3d(oR, yUp, 0)), altDu, null),
-                    new Span(CagePt(new Point3d(oR, yUp, 0)), CagePt(new Point3d(oR, yStep, 0)), altDu, null),
-                    new Span(CagePt(new Point3d(oL, yBot, 0)), CagePt(new Point3d(oL, yUp, 0)), altDu, null),
-                    new Span(CagePt(new Point3d(oL, yUp, 0)), CagePt(new Point3d(oL, yStep, 0)), altDu, null),
-                    new Span(CagePt(new Point3d(oL, yTop, 0)), CagePt(new Point3d(iL, yTop, 0)), ustDu, layerIzi),
-                    new Span(CagePt(new Point3d(iR, yTop, 0)), CagePt(new Point3d(oR, yTop, 0)), ustDu, layerIzi),
-                    new Span(CagePt(new Point3d(oL, yStep, 0)), CagePt(new Point3d(iL, yStep, 0)), altDu, layerIzi),
-                    new Span(CagePt(new Point3d(iR, yStep, 0)), CagePt(new Point3d(oR, yStep, 0)), altDu, layerIzi),
-                    new Span(CagePt(new Point3d(iL, yTop, 0)), CagePt(new Point3d(iL, yStep, 0)), ustDu, layerIzi),
-                    new Span(CagePt(new Point3d(iL, yStep, 0)), CagePt(new Point3d(iL, yUp, 0)), ustDu, null),
-                    new Span(CagePt(new Point3d(iL, yUp, 0)), CagePt(new Point3d(iR, yUp, 0)), ustDu, null),
-                    new Span(CagePt(new Point3d(iR, yUp, 0)), CagePt(new Point3d(iR, yStep, 0)), ustDu, null),
-                    new Span(CagePt(new Point3d(iR, yStep, 0)), CagePt(new Point3d(iR, yTop, 0)), ustDu, layerIzi)
+                    new Span(PhysicalDot(7), PhysicalDot(8), altDu, null),
+                    new Span(PhysicalDot(8), PhysicalDot(15), altDu, null),
+                    new Span(PhysicalDot(15), PhysicalDot(16), altDu, null),
+                    new Span(NamedDot(16), NamedDot(14), altDu, null),
+                    new Span(NamedDot(14), NamedDot(12), altDu, null),
+                    new Span(NamedDot(7), NamedDot(5), altDu, null),
+                    new Span(NamedDot(5), NamedDot(3), altDu, null),
+                    new Span(PhysicalDot(1), PhysicalDot(2), ustDu, layerIzi),
+                    new Span(PhysicalDot(9), PhysicalDot(10), ustDu, layerIzi),
+                    new Span(PhysicalDot(3), PhysicalDot(4), altDu, layerIzi),
+                    new Span(PhysicalDot(11), PhysicalDot(12), altDu, layerIzi),
+                    new Span(NamedDot(2), NamedDot(4), ustDu, null),
+                    new Span(NamedDot(4), NamedDot(6), ustDu, null),
+                    new Span(PhysicalDot(6), PhysicalDot(13), ustDu, null),
+                    new Span(NamedDot(13), NamedDot(11), ustDu, null),
+                    new Span(NamedDot(11), NamedDot(9), ustDu, null)
                 };
-                Point3d b1 = CagePt(new Point3d(oL, yTop, 0));
-                Point3d b3 = CagePt(new Point3d(oL, yStep, 0));
-                Point3d b10 = CagePt(new Point3d(oR, yTop, 0));
-                Point3d b12 = CagePt(new Point3d(oR, yStep, 0));
+                Point3d b1 = PhysicalDot(1);
+                Point3d b3 = PhysicalDot(3);
+                Point3d b10 = PhysicalDot(10);
+                Point3d b12 = PhysicalDot(12);
                 var spans = new List<Span>(fixedSpans);
+                if (DetayBaslik)
+                {
+                    if (!DetailLeft) spans.RemoveAll(span => span.A.DistanceTo(PhysicalDot(3)) < NamedDotTolerance
+                        && span.B.DistanceTo(PhysicalDot(4)) < NamedDotTolerance);
+                    if (!DetailRight) spans.RemoveAll(span => span.A.DistanceTo(PhysicalDot(11)) < NamedDotTolerance
+                        && span.B.DistanceTo(PhysicalDot(12)) < NamedDotTolerance);
+                }
 
                 double bulge = 1.0;
                 double rad = 1.5;
@@ -2913,6 +3044,24 @@ namespace ST4Yardimci
                         layer = ly;
                         have = true;
                     }
+                    bool onVertical = false;
+                    foreach (int topNumber in new[] { 1, 2, 9, 10 })
+                    {
+                        Point3d top = NamedDot(topNumber);
+                        Point3d bottom = NamedDot(topNumber + 6);
+                        if (Math.Abs(c.X - top.X) <= 1.0
+                            && c.Y <= Math.Max(top.Y, bottom.Y) + 1.0
+                            && c.Y >= Math.Min(top.Y, bottom.Y) - 1.0)
+                        {
+                            onVertical = true;
+                            break;
+                        }
+                    }
+                    if (onVertical)
+                    {
+                        kill.Add(id);
+                        continue;
+                    }
                     for (int s = 0; s < spans.Count; s++)
                     {
                         if (!spans[s].HitsInterior(c)) continue;
@@ -2921,16 +3070,20 @@ namespace ST4Yardimci
                     }
                 }
                 AddOutsideRow(tr, ms, spans, b1, yTop, true, ustDu, layerIzi);
-                AddOutsideRow(tr, ms, spans, b3, yStep, true, altDu, layerIzi);
+                if (!DetayBaslik || DetailLeft) AddOutsideRow(tr, ms, spans, b3, yStep, true, altDu, layerIzi);
                 AddOutsideRow(tr, ms, spans, b10, yTop, false, ustDu, layerIzi);
-                AddOutsideRow(tr, ms, spans, b12, yStep, false, altDu, layerIzi);
+                if (!DetayBaslik || DetailRight) AddOutsideRow(tr, ms, spans, b12, yStep, false, altDu, layerIzi);
                 foreach (ObjectId id in kill)
                 {
                     if (tr.GetObject(id, OpenMode.ForWrite, false) is Entity ent && !ent.IsErased)
                         ent.Erase();
                 }
                 foreach (Span s in spans)
+                {
+                    if (DetayBaslik && !DetailEnabled(s.A.X > XKotCenter + DW / 2)
+                        && Math.Abs(s.A.X - s.B.X) < 1.0) continue;
                     s.DrawDots(tr, ms, string.IsNullOrEmpty(s.Layer) ? layer : s.Layer, rad, bulge, width);
+                }
             }
 
             /// <summary>
@@ -3039,35 +3192,7 @@ namespace ST4Yardimci
             /// <summary>Dikey ölçüler çukur içinde, soldan açıklığın 1/5'i. Aralık 10 cm.</summary>
             private void DrawOlculer(Transaction tr, BlockTableRecord ms)
             {
-                const string layer = "OLCU (BEYKENT)";
-                double gap = 10.0 * DuPerCm;
-                double xInL = XInnerL;
-                double xInR = XInnerR + DW;
-                double xDetail = xInL + (xInR - xInL) / 5.0;
-                double xTotal = xDetail + gap;
-                double y0 = Y0;
-                double y1 = Y1 + Dy1;
-                double y3 = Y3 + Dy3;
-                double y4 = Y4 + Dy4;
-                double yGro = MapPt(new Point3d(XOutL, YGro, 0)).Y;
-                AddVDim(tr, ms, xDetail, y0, y1, xDetail, layer);
-                AddVDim(tr, ms, xDetail, y1, y3, xDetail, layer);
-                AddVDim(tr, ms, xDetail, y3, y4, xDetail, layer);
-                AddVDim(tr, ms, xDetail, y4, yGro, xDetail, layer);
-                AddVDim(tr, ms, xTotal, y0, y3, xTotal, layer);
-
-                double y2 = Y2 + Dy2;
-                double yLine = y2 - gap;
-                double xStepL = XStepL - DSide;
-                double xStepR = XStepR + DW + DSide;
-                AddHDim(tr, ms, xStepL, xInL, y2, yLine, layer);
-                AddHDim(tr, ms, xInL, xInR, y2, yLine, layer);
-                AddHDim(tr, ms, xInR, xStepR, y2, yLine, layer);
-
-                Point3d toeL = MapPt(new Point3d(XToeL, YGro, 0));
-                Point3d toeR = MapPt(new Point3d(XToeR, YGro, 0));
-                AddHDim(tr, ms, toeL.X, xStepL, toeL.Y, toeL.Y - gap, layer);
-                AddHDim(tr, ms, xStepR, toeR.X, toeR.Y, toeR.Y - gap, layer);
+                DrawDetailDimensions(tr, ms); // Temel çukuru ve detayı için ortak ölçü düzeni.
             }
 
             private static void AddVDim(Transaction tr, BlockTableRecord ms, double xMeas, double yA, double yB, double xDim, string layer)
@@ -3081,8 +3206,9 @@ namespace ST4Yardimci
                     new Point3d(xMeas, hi, 0),
                     new Point3d(xDim, (lo + hi) * 0.5, 0),
                     "",
-                    ms.Database.Dimstyle);
+                    BaDimensionStyles.Ensure(tr, ms.Database, DimStylePlanOlcu25));
                 dim.Layer = layer;
+                BaDimensionStyles.Apply(tr, ms.Database, dim, dim.DimensionStyle, DimStylePlanOlcu25);
                 ms.AppendEntity(dim);
                 tr.AddNewlyCreatedDBObject(dim, true);
             }
@@ -3098,8 +3224,9 @@ namespace ST4Yardimci
                     new Point3d(xHi, yMeas, 0),
                     new Point3d((xLo + xHi) * 0.5, yDim, 0),
                     "",
-                    ms.Database.Dimstyle);
+                    BaDimensionStyles.Ensure(tr, ms.Database, DimStylePlanOlcu25));
                 dim.Layer = layer;
+                BaDimensionStyles.Apply(tr, ms.Database, dim, dim.DimensionStyle, DimStylePlanOlcu25);
                 ms.AppendEntity(dim);
                 tr.AddNewlyCreatedDBObject(dim, true);
             }
@@ -3163,13 +3290,15 @@ namespace ST4Yardimci
             /// <summary>Sol açılım keside yaklaşır. Sağ açılım kot yazısının sağına gider.</summary>
             private double SideShift(double x)
             {
+                double runR = SplitHeight ? DRunR : DRun;
+                double runL = SplitHeight ? DRunL : DRun;
                 if (x > XOutR)
                 {
-                    double kotApex = (XOutR + DW + DRun + DSide) + KotRightGapDu;
+                    double kotApex = (XOutR + DW + runR + DSide) + KotRightGapDu;
                     double targetMin = kotApex + KotTextClearDu;
                     return targetMin - SideRightMinX;
                 }
-                double targetMax = (XOutL - DRun - DSide) - SideLeftGapDu;
+                double targetMax = (XOutL - runL - DSide) - SideLeftGapDu;
                 return targetMax - SideLeftMaxX;
             }
 
@@ -3191,6 +3320,189 @@ namespace ST4Yardimci
 
             private double DyOf(double y)
             {
+                return DyOf(y, double.NaN);
+            }
+
+            private double DyOf(double y, double x)
+            {
+                if (DetayBaslik && !double.IsNaN(x)) return DyDetail(y, x > XKotCenter);
+                if (double.IsNaN(x))
+                    return DyUniform(y);
+                return DyUniform(y);
+            }
+
+            /// <summary>
+            /// Sığ tarafın perde dibini yükseltir. Üst temel sehpasına dokunmaz.
+            /// Çukur tabanı derin tarafta kalır; sığ perdede düşey basamak oluşur.
+            /// </summary>
+            private void ShortenShallowWalls(Transaction tr, BlockTableRecord ms)
+            {
+                if (!SplitHeight) return;
+                if (Dy3L > Dy3 + 1.0)
+                    ShortenOneWall(tr, ms, XInnerL, Dy3L - Dy3, false);
+                if (Dy3R > Dy3 + 1.0)
+                    ShortenOneWall(tr, ms, XInnerR + DW, Dy3R - Dy3, true);
+            }
+
+            private void ShortenOneWall(Transaction tr, BlockTableRecord ms, double xWall, double raise, bool right)
+            {
+                double yFloor = Y3 + Dy3;
+                double yLip = Y2 + Dy2;
+                double yNew = yFloor + raise;
+                if (yNew > yLip - DuPerCm) yNew = yLip - DuPerCm;
+                if (yNew - yFloor < 1.0) return;
+
+                var ids = new List<ObjectId>();
+                foreach (ObjectId id in ms)
+                    ids.Add(id);
+                foreach (ObjectId id in ids)
+                {
+                    if (!id.IsValid || id.IsErased) continue;
+                    if (!(tr.GetObject(id, OpenMode.ForWrite, false) is Entity ent) || ent.IsErased)
+                        continue;
+                    if (ent is Polyline pl)
+                    {
+                        if (LayerIs(pl.Layer, LayerTemel))
+                        {
+                            LiftWallBottom(pl, xWall, yFloor, yNew, yLip);
+                            InsertFloorSteps(pl);
+                        }
+                        else if (IsRebarGeom(pl))
+                            LiftVerticalBar(pl, xWall, yFloor, yNew, yLip, right);
+                    }
+                    else if (ent is Hatch hatch && LayerIs(hatch.Layer, LayerBlokaj))
+                        LiftHatchBottom(hatch, xWall, yFloor, yNew, yLip);
+                    else
+                        EraseDotBelow(ent, xWall, yFloor, yNew, right);
+                }
+            }
+
+            private static void LiftWallBottom(Polyline pl, double xWall, double yFloor, double yNew, double yLip)
+            {
+                int n = pl.NumberOfVertices;
+                for (int i = 0; i < n; i++)
+                {
+                    Point2d p = pl.GetPoint2dAt(i);
+                    if (Math.Abs(p.X - xWall) > 35.0) continue;
+                    if (p.Y > yLip - 4.0) continue;
+                    if (p.Y < yFloor - 12.0) continue;
+                    if (p.Y > yFloor + 30.0) continue;
+                    pl.SetPointAt(i, new Point2d(p.X, yNew));
+                    try { pl.SetBulgeAt(i, 0); } catch { }
+                }
+            }
+
+            private static void LiftVerticalBar(Polyline pl, double xWall, double yFloor, double yNew, double yLip, bool right)
+            {
+                int n = pl.NumberOfVertices;
+                if (n < 2) return;
+                int on = 0;
+                double minY = double.MaxValue, maxY = double.MinValue;
+                for (int i = 0; i < n; i++)
+                {
+                    Point2d p = pl.GetPoint2dAt(i);
+                    if (OnWallBand(p.X, xWall, right)) on++;
+                    if (p.Y < minY) minY = p.Y;
+                    if (p.Y > maxY) maxY = p.Y;
+                }
+                if (on < n - 1) return;
+                if (maxY - minY < 40.0) return;
+                double delta = yNew - yFloor;
+                for (int i = 0; i < n; i++)
+                {
+                    Point2d p = pl.GetPoint2dAt(i);
+                    if (p.Y > yLip - 8.0) continue;
+                    if (p.Y > yFloor + 22.0) continue;
+                    pl.SetPointAt(i, new Point2d(p.X, p.Y + delta));
+                }
+            }
+
+            private static bool OnWallBand(double x, double xWall, bool right)
+            {
+                if (right) return x >= xWall - 12.0 && x <= xWall + 100.0;
+                return x <= xWall + 12.0 && x >= xWall - 100.0;
+            }
+
+            private void LiftHatchBottom(Hatch hatch, double xWall, double yFloor, double yNew, double yLip)
+            {
+                try
+                {
+                    int n = hatch.NumberOfLoops;
+                    var loops = new List<LoopCopy>();
+                    bool changed = false;
+                    for (int i = 0; i < n; i++)
+                    {
+                        HatchLoop loop = hatch.GetLoopAt(i);
+                        var pts = new Point2dCollection();
+                        var bulges = new DoubleCollection();
+                        if (loop.IsPolyline)
+                        {
+                            foreach (BulgeVertex v in loop.Polyline)
+                            {
+                                double x = v.Vertex.X;
+                                double y = v.Vertex.Y;
+                                if (Math.Abs(x - xWall) <= 35.0 && y <= yLip - 4.0 && y >= yFloor - 12.0 && y <= yFloor + 30.0)
+                                {
+                                    y = yNew;
+                                    changed = true;
+                                }
+                                if (pts.Count > 0 && TryFloorStep(pts[pts.Count - 1], new Point2d(x, y), out Point2d mid))
+                                {
+                                    pts.Add(mid);
+                                    bulges.Add(0);
+                                }
+                                pts.Add(new Point2d(x, y));
+                                bulges.Add(v.Bulge);
+                            }
+                        }
+                        else if (loop.Curves != null)
+                        {
+                            foreach (Curve2d c in loop.Curves)
+                            {
+                                if (!(c is LineSegment2d ln)) continue;
+                                double x = ln.StartPoint.X;
+                                double y = ln.StartPoint.Y;
+                                if (Math.Abs(x - xWall) <= 35.0 && y <= yLip - 4.0 && y >= yFloor - 12.0 && y <= yFloor + 30.0)
+                                {
+                                    y = yNew;
+                                    changed = true;
+                                }
+                                pts.Add(new Point2d(x, y));
+                                bulges.Add(0);
+                            }
+                        }
+                        if (pts.Count >= 3)
+                            loops.Add(new LoopCopy { Type = loop.LoopType, Pts = pts, Bulges = bulges });
+                    }
+                    if (!changed || loops.Count == 0) return;
+                    try { hatch.Associative = false; } catch { }
+                    for (int i = n - 1; i >= 0; i--)
+                        hatch.RemoveLoopAt(i);
+                    foreach (LoopCopy lp in loops)
+                        hatch.AppendLoop(lp.Type, lp.Pts, lp.Bulges);
+                    try { hatch.EvaluateHatch(true); } catch { }
+                }
+                catch { }
+            }
+
+            private static void EraseDotBelow(Entity ent, double xWall, double yFloor, double yNew, bool right)
+            {
+                if (ent is DBText || ent is Dimension || ent is Hatch) return;
+                Extents3d e;
+                try { e = ent.GeometricExtents; }
+                catch { return; }
+                double w = e.MaxPoint.X - e.MinPoint.X;
+                double h = e.MaxPoint.Y - e.MinPoint.Y;
+                if (w > 25.0 || h > 25.0) return;
+                double cx = (e.MinPoint.X + e.MaxPoint.X) * 0.5;
+                double cy = (e.MinPoint.Y + e.MaxPoint.Y) * 0.5;
+                if (!OnWallBand(cx, xWall, right)) return;
+                if (cy <= yFloor + 8.0 || cy >= yNew - 6.0) return;
+                try { ent.Erase(); } catch { }
+            }
+
+            private double DyUniform(double y)
+            {
                 if (y >= Y0 - 0.8) return 0;
                 if (Math.Abs(y - YLip) <= 3.0) return 0;
                 if (Math.Abs(y - Y1) <= 12.0) return Dy1;
@@ -3202,6 +3514,59 @@ namespace ST4Yardimci
                 if (y > Y3) return Lerp(y, Y3, Y2, Dy3, Dy2);
                 if (y > Y4) return Lerp(y, Y4, Y3, Dy4, Dy3);
                 return Dy4;
+            }
+
+            private bool TryFloorStep(Point2d a, Point2d b, out Point2d mid)
+            {
+                mid = default;
+                if (!SplitHeight || DetayBaslik) return false;
+                double yFloor = Y3 + Dy3;
+                double hiY = a.Y > b.Y ? a.Y : b.Y;
+                double loY = a.Y < b.Y ? a.Y : b.Y;
+                if (hiY - loY < 8.0) return false;
+                if (Math.Abs(loY - yFloor) > 20.0) return false;
+                if (hiY - yFloor < 8.0) return false;
+                if (Math.Abs(a.X - b.X) < 2.0) return false;
+                Point2d hi = a.Y >= b.Y ? a : b;
+                double xL = XInnerL;
+                double xR = XInnerR + DW;
+                if (Math.Abs(hi.X - xL) > 8.0 && Math.Abs(hi.X - xR) > 8.0)
+                    return false;
+                mid = new Point2d(hi.X, yFloor);
+                return true;
+            }
+
+            private void InsertFloorSteps(Polyline pl)
+            {
+                if (!SplitHeight || pl == null) return;
+                int guard = 0;
+                int i = 0;
+                while (guard++ < 40)
+                {
+                    int n = pl.NumberOfVertices;
+                    if (n < 2) return;
+                    if (!pl.Closed && i >= n - 1) return;
+                    if (pl.Closed && i >= n) return;
+                    int j = i + 1;
+                    bool closing = false;
+                    if (j >= n)
+                    {
+                        if (!pl.Closed) return;
+                        j = 0;
+                        closing = true;
+                    }
+                    Point2d a = pl.GetPoint2dAt(i);
+                    Point2d b = pl.GetPoint2dAt(j);
+                    if (TryFloorStep(a, b, out Point2d mid))
+                    {
+                        int at = closing ? n : i + 1;
+                        pl.AddVertexAt(at, mid, 0, 0, 0);
+                        try { pl.SetBulgeAt(i, 0); } catch { }
+                        i += 2;
+                        continue;
+                    }
+                    i++;
+                }
             }
 
             private static double Lerp(double y, double y0, double y1, double d0, double d1)
@@ -3229,8 +3594,7 @@ namespace ST4Yardimci
                         foreach (BulgeVertex v in loop.Polyline)
                         {
                             Point3d m = MapHatchPt(v.Vertex.X, v.Vertex.Y, yZemin);
-                            pts.Add(new Point2d(m.X, m.Y));
-                            bulges.Add(v.Bulge);
+                            AddHatchVertex(pts, bulges, m, v.Bulge);
                         }
                     }
                     else if (loop.Curves != null)
@@ -3239,8 +3603,7 @@ namespace ST4Yardimci
                         {
                             if (!(c is LineSegment2d ln)) continue;
                             Point3d m = MapHatchPt(ln.StartPoint.X, ln.StartPoint.Y, yZemin);
-                            pts.Add(new Point2d(m.X, m.Y));
-                            bulges.Add(0);
+                            AddHatchVertex(pts, bulges, m, 0);
                         }
                     }
                     if (pts.Count < 3) return;
@@ -3263,6 +3626,17 @@ namespace ST4Yardimci
                 if (m.Y < yZemin - 0.5)
                     m = new Point3d(m.X, yZemin, m.Z);
                 return m;
+            }
+
+            private void AddHatchVertex(Point2dCollection pts, DoubleCollection bulges, Point3d m, double bulge)
+            {
+                if (pts.Count > 0 && TryFloorStep(pts[pts.Count - 1], new Point2d(m.X, m.Y), out Point2d mid))
+                {
+                    pts.Add(mid);
+                    bulges.Add(0);
+                }
+                pts.Add(new Point2d(m.X, m.Y));
+                bulges.Add(bulge);
             }
 
             private sealed class LoopCopy

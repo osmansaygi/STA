@@ -49,7 +49,7 @@ namespace ST4Yardimci
                     return;
                 }
                 if (ed != null)
-                    ed.WriteMessage("\nBETONARME TOOL yuklendi. BAPANEL otomatik aciliyor…  |  OTOOLCU  PLANOLCU  MERDIVEN  DOSEMEDONATI  OTODONATI  SEHPADONATI  HASIRDONATI  RADYEILAVE  TEMELHATILI  TEMELCEKURU  DONATIBOYU  DONATIMETRAJ  DONATI ADET  DONATI OKU  KOTDEGISTIR  KATMANYUKLE");
+                    ed.WriteMessage("\nBETONARME TOOL yuklendi. BAPANEL otomatik aciliyor…  |  OTOOLCU  PLANOLCU  MERDIVEN  DOSEMEDONATI  OTODONATI  SEHPADONATI  HASIRDONATI  RADYEILAVE  TEMELHATILI  TEMELCEKURU  TEMELDETAY  DONATIBOYU  DONATIMETRAJ  DONATI ADET  DONATI OKU  KOTDEGISTIR  KATMANYUKLE");
 
                 // NETLOAD sırasında palet hemen açılamayabilir; Idle'da bir kez aç.
                 AcApp.Idle -= OnIdleShowBaPanel;
@@ -144,6 +144,7 @@ namespace ST4Yardimci
             try { HasirDonatiForm.Shutdown(); } catch { }
             try { RadyeTemelDonatiForm.Shutdown(); } catch { }
             try { TemelHatiliForm.Shutdown(); } catch { }
+            try { ParapetForm.Shutdown(); } catch { }
             try { KuranglezForm.Shutdown(); } catch { }
             try { DonatiBoyuForm.Shutdown(); } catch { }
             try { DonatiMetrajForm.Shutdown(); } catch { }
@@ -429,6 +430,21 @@ namespace ST4Yardimci
             TemelHatiliForm.ShowOrActivate();
         }
 
+        [CommandMethod("PARAPET")]
+        [CommandMethod("PARAPETDETAY")]
+        public void Parapet()
+        {
+            if (!Gate("PARAPET")) return;
+            ParapetForm.ShowOrActivate();
+        }
+
+        [CommandMethod("PARAPETCIZ", CommandFlags.Modal)]
+        public void ParapetCiz()
+        {
+            if (!Gate("PARAPET")) return;
+            ParapetRunner.RunManual();
+        }
+
         [CommandMethod("TEMELHATILICIZ", CommandFlags.Modal)]
         public void TemelHatiliCiz()
         {
@@ -464,6 +480,21 @@ namespace ST4Yardimci
         {
             if (!Gate("TEMELCEKURU")) return;
             TemelCekuruRunner.RunFromPlan();
+        }
+
+        /// <summary>Temel detayı — temel çukurunun tek kesiti; sol ve sağ yükseklik ayrı.</summary>
+        [CommandMethod("TEMELDETAY")]
+        public void TemelDetay()
+        {
+            if (!Gate("TEMELDETAY")) return;
+            TemelDetayForm.ShowOrActivate();
+        }
+
+        [CommandMethod("TEMELDETAYCIZ", CommandFlags.Modal)]
+        public void TemelDetayCiz()
+        {
+            if (!Gate("TEMELDETAY")) return;
+            TemelCekuruRunner.RunDetay();
         }
 
         /// <summary>Kuranglez donatı detayı — plan + A-A kesit, ölçek 1/25.</summary>

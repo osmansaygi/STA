@@ -170,7 +170,7 @@ namespace ST4Yardimci
             if (g.UstKnown && g.AltKnown)
             {
                 double stem = g.UstKotCm - g.AltKotCm;
-                TemelCekuruSettings.CukurDerinligiCm = stem + TemelCekuruSettings.HatilYuksekligiCm;
+                TemelCekuruSettings.CukurDerinligiCm = stem;
             }
         }
 
@@ -180,17 +180,6 @@ namespace ST4Yardimci
             if (TemelCekuruSettings.PaspayiCm * 2.0 + 2.0 > TemelCekuruSettings.AltTemelYuksekligiCm)
             {
                 why = "paspayı alt temel kalınlığına sığmıyor";
-                return false;
-            }
-            if (TemelCekuruSettings.HatilYuksekligiCm > 0.5
-                && TemelCekuruSettings.SubasmanYuksekligiCm + 10.0 > TemelCekuruSettings.HatilYuksekligiCm)
-            {
-                why = "subasman, hatıl yüksekliğinin en az 10 cm altında olmalı";
-                return false;
-            }
-            if (TemelCekuruSettings.StemCm + 0.5 < TemelCekuruSettings.UstTemelYuksekligiCm)
-            {
-                why = "üst ve alt kot arası, üst temelden küçük";
                 return false;
             }
             return true;
@@ -580,11 +569,10 @@ namespace ST4Yardimci
             string der = "";
             if (g.UstKnown && g.AltKnown)
             {
-                double hatil = g.HatilKnown ? g.HatilCm : TemelCekuruSettings.HatilYuksekligiCm;
                 der = string.Format(
                     CultureInfo.InvariantCulture,
                     ", çukur derinliği {0:0} cm",
-                    g.UstKotCm - g.AltKotCm + hatil);
+                    g.UstKotCm - g.AltKotCm);
             }
             return string.Format(
                 CultureInfo.InvariantCulture,

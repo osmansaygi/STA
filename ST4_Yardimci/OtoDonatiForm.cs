@@ -36,6 +36,8 @@ namespace ST4Yardimci
         private readonly TextBox _txtAltAralik;
         private readonly TextBox _txtUstAralik;
         private readonly GonyeSemasiPanel _gonyeSemasi;
+        private readonly CheckBox _chkAltCiz;
+        private readonly CheckBox _chkUstCiz;
         private readonly CheckBox _chkSehpa;
         private readonly Button _btnManuel;
         private readonly Button _btnRun;
@@ -180,6 +182,11 @@ namespace ST4Yardimci
                 OtoDonatiSettings.AltGonyeSol,
                 OtoDonatiSettings.AltGonyeSag);
             Controls.Add(_gonyeSemasi); y += gonyeH + 10;
+
+            _chkAltCiz = MakeCheck("Alt donatı çizilsin", Pad, y, OtoDonatiSettings.AltDonatiCiz);
+            Controls.Add(_chkAltCiz); y += 22;
+            _chkUstCiz = MakeCheck("Üst donatı çizilsin", Pad, y, OtoDonatiSettings.UstDonatiCiz);
+            Controls.Add(_chkUstCiz); y += 22;
 
             _chkSehpa = MakeCheck("Sehpa donatısı", Pad, y, OtoDonatiSettings.SehpaDonatisi);
             Controls.Add(_chkSehpa); y += 30;
@@ -326,6 +333,8 @@ namespace ST4Yardimci
                 OtoDonatiSettings.AltGonyeSol,
                 OtoDonatiSettings.AltGonyeSag);
             _chkSehpa.Checked = OtoDonatiSettings.SehpaDonatisi;
+            _chkAltCiz.Checked = OtoDonatiSettings.AltDonatiCiz;
+            _chkUstCiz.Checked = OtoDonatiSettings.UstDonatiCiz;
         }
 
         private bool TryPushSettings()
@@ -382,7 +391,14 @@ namespace ST4Yardimci
             OtoDonatiSettings.UstGonyeSag = _gonyeSemasi.UstSag;
             OtoDonatiSettings.AltGonyeSol = _gonyeSemasi.AltSol;
             OtoDonatiSettings.AltGonyeSag = _gonyeSemasi.AltSag;
+            OtoDonatiSettings.AltDonatiCiz = _chkAltCiz.Checked;
+            OtoDonatiSettings.UstDonatiCiz = _chkUstCiz.Checked;
             OtoDonatiSettings.SehpaDonatisi = _chkSehpa.Checked;
+            if (!_chkAltCiz.Checked && !_chkUstCiz.Checked)
+            {
+                Warn("Alt veya üst donatıdan en az biri çizilsin.");
+                return false;
+            }
             return true;
         }
 
@@ -429,6 +445,8 @@ namespace ST4Yardimci
                 p.UstGonyeSag = _gonyeSemasi.UstSag;
                 p.AltGonyeSol = _gonyeSemasi.AltSol;
                 p.AltGonyeSag = _gonyeSemasi.AltSag;
+                p.AltDonatiCiz = _chkAltCiz.Checked;
+                p.UstDonatiCiz = _chkUstCiz.Checked;
                 p.SehpaDonatisi = _chkSehpa.Checked;
             }
             catch { }

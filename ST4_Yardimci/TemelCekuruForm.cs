@@ -39,15 +39,15 @@ namespace ST4Yardimci
         public const double TemplateTemelUstKotuCm = -300;
 
         public static double GrobetonAcisi { get; set; } = TemplateGrobetonAcisi;
-        /// <summary>Hatıl üstünden perde dibine (cm). Dairedeki toplam düşey ölçü.</summary>
+        /// <summary>Temel üstünden çukur tabanına derinlik (cm); hatıl hariç.</summary>
         public static double CukurDerinligiCm { get; set; } = TemplateCukurDerinligiCm;
 
-        /// <summary>Hatıl altından perde dibine. Çukur derinliği eksi hatıl.</summary>
+        /// <summary>Temel üstünden çukur tabanına. Hatıl yüksekliğinden bağımsız.</summary>
         public static double StemCm
         {
             get
             {
-                double s = CukurDerinligiCm - HatilYuksekligiCm;
+                double s = CukurDerinligiCm;
                 return s < 1 ? 1 : s;
             }
         }
@@ -81,7 +81,7 @@ namespace ST4Yardimci
             if (m.ContainsKey("CukurDerinligiCm"))
                 CukurDerinligiCm = BaIni.GetD(m, "CukurDerinligiCm", CukurDerinligiCm);
             else if (m.ContainsKey("TemelYuksekligiCm"))
-                CukurDerinligiCm = BaIni.GetD(m, "TemelYuksekligiCm", TemplateTemelYuksekligiCm) + HatilYuksekligiCm;
+                CukurDerinligiCm = BaIni.GetD(m, "TemelYuksekligiCm", TemplateTemelYuksekligiCm);
             UstTemelYuksekligiCm = BaIni.GetD(m, "UstTemelYuksekligiCm", UstTemelYuksekligiCm);
             AltTemelYuksekligiCm = BaIni.GetD(m, "AltTemelYuksekligiCm", AltTemelYuksekligiCm);
             TemelGenisligiCm = BaIni.GetD(m, "TemelGenisligiCm", TemelGenisligiCm);
@@ -147,6 +147,57 @@ namespace ST4Yardimci
         {
             return "\u00F8" + capMm.ToString(CultureInfo.InvariantCulture)
                 + "/" + aralikCm.ToString(CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>Temel detayı çizimi bu değerleri ödünç alır; bitince geri yazılır.</summary>
+        internal struct Snapshot
+        {
+            public double GrobetonAcisi, CukurDerinligiCm, HatilYuksekligiCm, HatilGenisligiCm;
+            public double SubasmanYuksekligiCm, UstTemelYuksekligiCm, AltTemelYuksekligiCm;
+            public double TemelGenisligiCm, DigerGenislikCm, PaspayiCm, TemelUstKotuCm;
+            public int UstCapMm, UstAralikCm, AltCapMm, AltAralikCm;
+        }
+
+        public static Snapshot Capture()
+        {
+            EnsureLoaded();
+            return new Snapshot
+            {
+                GrobetonAcisi = GrobetonAcisi,
+                CukurDerinligiCm = CukurDerinligiCm,
+                HatilYuksekligiCm = HatilYuksekligiCm,
+                HatilGenisligiCm = HatilGenisligiCm,
+                SubasmanYuksekligiCm = SubasmanYuksekligiCm,
+                UstTemelYuksekligiCm = UstTemelYuksekligiCm,
+                AltTemelYuksekligiCm = AltTemelYuksekligiCm,
+                TemelGenisligiCm = TemelGenisligiCm,
+                DigerGenislikCm = DigerGenislikCm,
+                PaspayiCm = PaspayiCm,
+                TemelUstKotuCm = TemelUstKotuCm,
+                UstCapMm = UstCapMm,
+                UstAralikCm = UstAralikCm,
+                AltCapMm = AltCapMm,
+                AltAralikCm = AltAralikCm
+            };
+        }
+
+        public static void Restore(Snapshot s)
+        {
+            GrobetonAcisi = s.GrobetonAcisi;
+            CukurDerinligiCm = s.CukurDerinligiCm;
+            HatilYuksekligiCm = s.HatilYuksekligiCm;
+            HatilGenisligiCm = s.HatilGenisligiCm;
+            SubasmanYuksekligiCm = s.SubasmanYuksekligiCm;
+            UstTemelYuksekligiCm = s.UstTemelYuksekligiCm;
+            AltTemelYuksekligiCm = s.AltTemelYuksekligiCm;
+            TemelGenisligiCm = s.TemelGenisligiCm;
+            DigerGenislikCm = s.DigerGenislikCm;
+            PaspayiCm = s.PaspayiCm;
+            TemelUstKotuCm = s.TemelUstKotuCm;
+            UstCapMm = s.UstCapMm;
+            UstAralikCm = s.UstAralikCm;
+            AltCapMm = s.AltCapMm;
+            AltAralikCm = s.AltAralikCm;
         }
     }
 
@@ -236,7 +287,7 @@ namespace ST4Yardimci
             _pas = Cell(0, y, "Paspayı", "cm", 2, 10, 0.5m, 1, (decimal)TemelCekuruSettings.PaspayiCm);
             _ustKot = Cell(1, y, "Temel üst kotu", "cm", -5000, 5000, 1, 0, (decimal)TemelCekuruSettings.TemelUstKotuCm);
             y += 28;
-            _temel = Cell(0, y, "Çukur derinliği", "cm", 80, 600, 1, 0, (decimal)TemelCekuruSettings.CukurDerinligiCm);
+            _temel = Cell(0, y, "Çukur derinliği", "cm", 1, 600, 1, 0, (decimal)TemelCekuruSettings.CukurDerinligiCm);
             _aci = Cell(1, y, "Grobeton açısı", "°", 50, 89, 1, 0, (decimal)TemelCekuruSettings.GrobetonAcisi);
             y += 28;
             _ust = Cell(0, y, "Üst temel yük.", "cm", 15, 200, 1, 0, (decimal)TemelCekuruSettings.UstTemelYuksekligiCm);
@@ -373,25 +424,6 @@ namespace ST4Yardimci
             {
                 MessageBox.Show(
                     "Paspayı, alt temel yüksekliğine sığmıyor.",
-                    "Temel Çukuru",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
-                return;
-            }
-            if (TemelCekuruSettings.HatilYuksekligiCm > 0.5
-                && TemelCekuruSettings.SubasmanYuksekligiCm + 10.0 > TemelCekuruSettings.HatilYuksekligiCm)
-            {
-                MessageBox.Show(
-                    "Subasman yüksekliği, hatıl yüksekliğinin en az 10 cm altında olmalı.",
-                    "Temel Çukuru",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
-                return;
-            }
-            if (TemelCekuruSettings.StemCm + 0.5 < TemelCekuruSettings.UstTemelYuksekligiCm)
-            {
-                MessageBox.Show(
-                    "Çukur derinliği, hatıl yüksekliği + üst temelden küçük olamaz.",
                     "Temel Çukuru",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);

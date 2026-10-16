@@ -1356,38 +1356,7 @@ namespace ST4Yardimci
 
             ObjectId ResolveOrCreatePlanOlcuDonati25()
             {
-                var dst = (DimStyleTable)_tr.GetObject(_db.DimStyleTableId, OpenMode.ForRead);
-                if (dst.Has(DimStyle25))
-                    return dst[DimStyle25];
-
-                DimStyleTableRecord src = null;
-                foreach (string tryName in new[] { "PLAN_OLCU_DONATI", "PLAN_OLCU", "Standard" })
-                {
-                    if (!dst.Has(tryName)) continue;
-                    src = _tr.GetObject(dst[tryName], OpenMode.ForRead) as DimStyleTableRecord;
-                    if (src != null) break;
-                }
-
-                dst.UpgradeOpen();
-                var rec = new DimStyleTableRecord { Name = DimStyle25 };
-                if (src != null)
-                {
-                    try { rec.CopyFrom(src); } catch { }
-                    try { rec.Name = DimStyle25; } catch { }
-                }
-                try { if (!_yazi.IsNull) rec.Dimtxsty = _yazi; } catch { }
-                try { rec.Dimlfac = 0.5; } catch { }
-                try { rec.Dimscale = 1.0; } catch { }
-                try { rec.Dimtxt = 10.0; } catch { }
-                try { rec.Dimdec = 0; } catch { }
-                try { rec.Dimtdec = 0; } catch { }
-                try { rec.Dimtih = false; } catch { }
-                try { rec.Dimtoh = false; } catch { }
-                try { rec.Dimtad = 1; } catch { }
-                ObjectId id = dst.Add(rec);
-                _tr.AddNewlyCreatedDBObject(rec, true);
-                dst.DowngradeOpen();
-                return id;
+                return BaDimensionStyles.Ensure(_tr, _db, DimStyle25);
             }
 
             void Layer(string name, short aci, LineWeight lw, bool dashed, ObjectId dashId)

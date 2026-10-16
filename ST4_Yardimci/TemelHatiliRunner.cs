@@ -2013,39 +2013,7 @@ namespace ST4Yardimci
 
             private ObjectId ResolveOrCreatePlanOlcuDonati25()
             {
-                var dst = (DimStyleTable)_tr.GetObject(_db.DimStyleTableId, OpenMode.ForRead);
-                if (dst.Has(DimStylePlanOlcuDonati25))
-                    return dst[DimStylePlanOlcuDonati25];
-
-                // Yoksa PLAN_OLCU / Standard'dan kopyala; 1/25 için Dimlfac=0.5
-                DimStyleTableRecord src = null;
-                foreach (string tryName in new[] { "PLAN_OLCU_DONATI", "PLAN_OLCU", "Standard" })
-                {
-                    if (!dst.Has(tryName)) continue;
-                    src = _tr.GetObject(dst[tryName], OpenMode.ForRead) as DimStyleTableRecord;
-                    if (src != null) break;
-                }
-
-                dst.UpgradeOpen();
-                var rec = new DimStyleTableRecord { Name = DimStylePlanOlcuDonati25 };
-                if (src != null)
-                {
-                    try { rec.CopyFrom(src); } catch { }
-                    try { rec.Name = DimStylePlanOlcuDonati25; } catch { }
-                }
-                try { if (!_style.IsNull) rec.Dimtxsty = _style; } catch { }
-                try { rec.Dimlfac = 0.5; } catch { }
-                try { rec.Dimscale = 1.0; } catch { }
-                try { rec.Dimtxt = 10.0; } catch { }
-                try { rec.Dimdec = 0; } catch { }
-                try { rec.Dimtdec = 0; } catch { }
-                try { rec.Dimtih = false; } catch { }
-                try { rec.Dimtoh = false; } catch { }
-                try { rec.Dimtad = 1; } catch { }
-                ObjectId id = dst.Add(rec);
-                _tr.AddNewlyCreatedDBObject(rec, true);
-                dst.DowngradeOpen();
-                return id;
+                return BaDimensionStyles.Ensure(_tr, _db, DimStylePlanOlcuDonati25);
             }
         }
 
