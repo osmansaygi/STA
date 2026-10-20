@@ -164,7 +164,10 @@ namespace ST4PlanIdCiz
             if (start < 0)
                 return false;
 
-            int end = FindKirisVePanelLine(lines, start + 1);
+            int radye = GprRadyeAyir.IlkRaporSatiri(lines);
+            int end = FindKirisVePanelLine(lines, start + 1, radye);
+            if (end < 0 && radye > start)
+                end = radye;
             if (end < 0)
                 return false;
 
@@ -354,9 +357,10 @@ namespace ST4PlanIdCiz
             return -1;
         }
 
-        private static int FindKirisVePanelLine(string[] lines, int searchFrom)
+        private static int FindKirisVePanelLine(string[] lines, int searchFrom, int searchTo)
         {
-            for (int i = searchFrom; i < lines.Length; i++)
+            if (searchTo < 0 || searchTo > lines.Length) searchTo = lines.Length;
+            for (int i = searchFrom; i < searchTo; i++)
             {
                 string l = lines[i];
                 if (l.IndexOf("PANEL", StringComparison.OrdinalIgnoreCase) < 0) continue;

@@ -265,6 +265,7 @@ namespace ST4PlanIdCiz
             foreach (string raw in lines)
             {
                 string ascii = ToAsciiKapama(raw);
+                if (GprRadyeAyir.RaporBaslangici(ascii)) break;
                 if (!inSection)
                 {
                     if (ascii.IndexOf("PANEL BETONARME HESAP", StringComparison.OrdinalIgnoreCase) >= 0)

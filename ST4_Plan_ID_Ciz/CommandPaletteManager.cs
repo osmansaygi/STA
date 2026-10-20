@@ -23,6 +23,7 @@ namespace ST4PlanIdCiz
         private static PaletteSet _palette;
         private static bool _suppressSave;
         private static int _lastFullHeight = PaletteHeight;
+        private static bool _shuttingDown;
 
         public static void Show()
         {
@@ -79,10 +80,11 @@ namespace ST4PlanIdCiz
 
         public static void Shutdown()
         {
-            if (_palette == null) return;
-            SaveLayout();
-            try { _palette.Visible = false; } catch { }
-            try { _palette.Dispose(); } catch { }
+            // Terminate çağrıldığında AutoCAD yerel palet penceresini zaten yok etmiş olabilir.
+            // Size/Visible/Dispose erişimi bu aşamada yakalanamayan AccessViolation üretiyor.
+            // Konum, normal taşıma/boyut olaylarında kaydedilir; yerel pencereyi AutoCAD kapatır.
+            _shuttingDown = true;
+            _suppressSave = true;
             _palette = null;
         }
 
@@ -106,7 +108,7 @@ namespace ST4PlanIdCiz
 
         private static void SaveLayout()
         {
-            if (_suppressSave || _palette == null) return;
+            if (_shuttingDown || _suppressSave || _palette == null) return;
             try
             {
                 int w = _palette.Size.Width;
@@ -255,6 +257,7 @@ namespace ST4PlanIdCiz
             ("Kolon D\u00fc\u015fey", "KOLONDUSEY"),
             ("Temel Plan\u0131",   "TEMEL50ST4"),
             ("Rd. Temel Plan\u0131", "TEMELDONATI"),
+            ("\u0130lave deneme", "TEMELILAVEDENEME"),
         };
         private static readonly (string label, string cmd)[] S100 =
         {
@@ -283,6 +286,7 @@ namespace ST4PlanIdCiz
             ("Bina G\u00f6r\u00fcn\u00fc\u015f\u00fc", "BINAGORUNUS"),
             ("Bina Kesiti", "BINAKESITI"),
             ("Kiriş Açılımları", "KIRISACILIMLARI"),
+            ("Sürekli Temel Açılımları", "SUREKLITEMELACILIMLARI"),
         };
 
         public CommandPaletteControl()
@@ -297,6 +301,7 @@ namespace ST4PlanIdCiz
             y = AddGroup(y, "Genel", Gen);
             y = AddGroup(y, "Deneme", AltDeneme);
             EnsureDarkFiller();
+            ToolPaletteUi.AttachIconMenu(this);
         }
 
         private int AddGroup(int y, string title, (string label, string cmd)[] items)
@@ -322,6 +327,7 @@ namespace ST4PlanIdCiz
             y = ToolPaletteUi.AddToolRow(this, y, "Temel kiriş düzelt", StaToolIcons.ForCommand("TEMELKIRISDUZELT"), "TEMELKIRISDUZELT");
             y = ToolPaletteUi.AddToolRow(this, y, "Metraj", StaToolIcons.ForCommand("METRAJ"), "METRAJ");
             EnsureDarkFiller();
+            ToolPaletteUi.AttachIconMenu(this);
         }
     }
 }

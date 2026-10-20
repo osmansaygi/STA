@@ -578,7 +578,9 @@ namespace ST4PlanIdCiz
             var result = new Dictionary<string, (int xKol, int yKol, double bkX, double bkY)>(StringComparer.OrdinalIgnoreCase);
             if (lines == null) return result;
             double Num(string s) => double.TryParse(s.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out double v) ? v : 0;
-            for (int i = 0; i < lines.Length; i++)
+            int son = GprRadyeAyir.IlkRaporSatiri(lines);
+            if (son < 0) son = lines.Length;
+            for (int i = 0; i < son; i++)
             {
                 string ln = lines[i];
                 if (string.IsNullOrEmpty(ln) || ln.IndexOf("kol:", StringComparison.OrdinalIgnoreCase) < 0) continue;
@@ -867,6 +869,12 @@ namespace ST4PlanIdCiz
                         byte[] rb = j < gprRawLines.Length ? gprRawLines[j] : null;
                         string raw = lines[j] ?? string.Empty;
                         string c = StripGprLinePrefix(raw);
+                        if (GprRadyeAyir.RaporBaslangici(c) || GprRadyeAyir.RaporBaslangici(raw))
+                        {
+                            iEnd = j;
+                            foundEnd = true;
+                            break;
+                        }
                         if (IsGprKolonMomentBuyutmeFootnoteLine(raw, rb))
                         {
                             iEnd = j;

@@ -358,9 +358,11 @@ namespace ST4PlanIdCiz
             bool olcek25 = false,
             bool katKatCiz = false,
             bool benzerKatBirlestir = true,
-            HashSet<int> allowedFloorIndexes = null)
+            HashSet<int> allowedFloorIndexes = null,
+            HashSet<int> drawingFloorIndexes = null)
         {
             const double s = 1.0;
+            _kolonDuseyLastMainAntetBounds = null;
             _ntsDrawFactory = NtsGeometryServices.Instance.CreateGeometryFactory();
             _kolonDuseyGpr = null;
             _kolonDuseyGprHcr = null;
@@ -404,6 +406,8 @@ namespace ST4PlanIdCiz
                 if (_kolonDuseyGpr == null || _kolonDuseyGpr.Count == 0)
                     TryFillKolonDuseyFromSmx(st4SourcePath, ed);
                 ApplyKolonDuseyNetAralikCapBuyutme(st4SourcePath, ed);
+                if (drawingFloorIndexes != null)
+                    ed?.WriteMessage("\nAPLIKASYON/DUSEY: donati verileri hazir, kat detaylari ciziliyor.");
                 EnsureLayers(tr, db);
                 EnsurePlanLayer(tr, db, LayerKiris, 2, LineWeight.LineWeight030, useDashed: false);
                 EnsurePlanLayer(tr, db, LayerPerde, 6, LineWeight.LineWeight040, useDashed: false);
@@ -488,6 +492,9 @@ namespace ST4PlanIdCiz
                         }
                     }
                     var floorsOrdered = new List<int>(floorZ.Keys);
+                    // Yalnız seçilen katları çiz; komşu katların filiz/devam hesaplarını koru.
+                    if (drawingFloorIndexes != null)
+                        floorsOrdered.RemoveAll(fi => !drawingFloorIndexes.Contains(fi));
                     floorsOrdered.Sort((a, b) => floorZ[a].CompareTo(floorZ[b]));
                     var katGruplari = benzerKatBirlestir
                         ? BuildKolonDuseyBenzerKatGruplari(floorsOrdered)
@@ -793,6 +800,8 @@ namespace ST4PlanIdCiz
                     }
                     if (olcek25)
                     {
+                        if (drawingFloorIndexes != null)
+                            ed?.WriteMessage("\nAPLIKASYON/DUSEY: 1/25 olcekleme basliyor.");
                         try { ApplyKolonDuseyOlcek25(tr, db, btr, insertLl, beforeAll); }
                         catch (System.Exception ex25)
                         {
@@ -801,7 +810,10 @@ namespace ST4PlanIdCiz
                     }
                     if (katKatCiz && katRowPafta.Count > 0)
                     {
-                        try { PlaceKolonDusey2KatlarInAnaAntet(tr, btr, katRowPafta, insertLl, olcek25 ? 2.0 : 1.0, st4SourcePath, ed); }
+                        if (drawingFloorIndexes != null)
+                            ed?.WriteMessage("\nAPLIKASYON/DUSEY: ana antet olusturuluyor.");
+                        try { PlaceKolonDusey2KatlarInAnaAntet(tr, btr, katRowPafta, insertLl, olcek25 ? 2.0 : 1.0, st4SourcePath, ed,
+                            applicationIntegration: drawingFloorIndexes != null); }
                         catch (System.Exception exPafta)
                         {
                             ed?.WriteMessage("\nKOLONDUSEY2: ana antet paftalama atlandi ({0}).", exPafta.Message);
@@ -862,7 +874,8 @@ namespace ST4PlanIdCiz
             Point3d insertLl,
             double olcekCarpan,
             string st4SourcePath,
-            Editor ed)
+            Editor ed,
+            bool applicationIntegration = false)
         {
             if (tr == null || btr == null || katlar == null || katlar.Count == 0) return;
             if (!TryGetEmbeddedAntetSheetViewOutOffsets(out double outDx, out double outDy, ed))
@@ -911,7 +924,21 @@ namespace ST4PlanIdCiz
                     sheetViewLeft, sheetViewBottom, maxX + pay,
                     st4SourcePath, ed,
                     baslik, null,
-                    out _, out double outRight, out _);
+                    out double placedLeft, out double outRight, out double placedTop,
+                    antetScaleTextOverride: applicationIntegration
+                        ? (olcekCarpan > 1.5 ? "OLCEK: 1/25" : "OLCEK: 1/50") : null);
+                if (ok && applicationIntegration)
+                {
+                    var bounds = new Extents3d(new Point3d(placedLeft, outBottom, 0),
+                        new Point3d(outRight, placedTop, 0));
+                    if (_kolonDuseyLastMainAntetBounds.HasValue)
+                    {
+                        var combined = _kolonDuseyLastMainAntetBounds.Value;
+                        combined.AddExtents(bounds);
+                        _kolonDuseyLastMainAntetBounds = combined;
+                    }
+                    else _kolonDuseyLastMainAntetBounds = bounds;
+                }
                 if (!ok)
                     outRight = maxX + pay + outDx;
                 outLeft = outRight + anaAntetAraCm;
@@ -3221,16 +3248,8 @@ namespace ST4PlanIdCiz
                         int d = faceBars[i][k].dia >= 6 ? faceBars[i][k].dia : 14;
                         allPtsDia[i].Add((new Point2d(faceBars[i][k].x, 0.5 * (e.MinY + e.MaxY)), d));
                     }
-                    if (faceBars[i].Count > 0)
-                    {
-                        double xMin = faceBars[i][0].x, xMax = faceBars[i][0].x;
-                        for (int k = 1; k < faceBars[i].Count; k++)
-                        {
-                            if (faceBars[i][k].x < xMin) xMin = faceBars[i][k].x;
-                            if (faceBars[i][k].x > xMax) xMax = faceBars[i][k].x;
-                        }
-                        th[i] = Math.Max(8.0, xMax - xMin);
-                    }
+                    // Üst gönye için kolun kısa kesit boyunu koru; görünüşteki
+                    // donatıların X yayılımı kolun boyudur, kalınlığı değildir.
                 }
                 else if (kinds[i] == 1)
                 {
@@ -8776,7 +8795,7 @@ namespace ST4PlanIdCiz
                 var poly = _ntsDrawFactory.CreatePolygon(_ntsDrawFactory.CreateLinearRing(coords));
                 if (poly != null && !poly.IsValid)
                 {
-                    var b = poly.Buffer(0);
+                    var b = NtsOverlaySafe.PrepareForOverlay(poly);
                     if (b != null && !b.IsEmpty) return b;
                 }
                 return poly;
@@ -9039,7 +9058,7 @@ namespace ST4PlanIdCiz
             {
                 if (!p.IsValid)
                 {
-                    var b = p.Buffer(0);
+                    var b = NtsOverlaySafe.PrepareForOverlay(p);
                     if (b != null && !b.IsEmpty) cover = b;
                 }
             }
@@ -9179,6 +9198,11 @@ namespace ST4PlanIdCiz
         {
             if (diaMm < 6) diaMm = 8;
             return 10.0 * diaMm / 10.0;
+        }
+
+        private static double EtriyeAcilimKesimBoyCm(double w, double h, double hook)
+        {
+            return Math.Round(2.0 * (w + h) + 2.0 * hook);
         }
 
         /// <summary>Çiroz açılım 90° kanca: TS 500 9.3.1.b ≥ 12φ.</summary>
@@ -12462,7 +12486,9 @@ namespace ST4PlanIdCiz
             bool isPerdeKesit,
             out double xMax,
             out double yCirozBelow,
-            double yTopOverride = double.NaN)
+            double yTopOverride = double.NaN,
+            double minHookCm = 0.0, bool showQuantity = true, double radiusCm = double.NaN,
+            double textHeightCm = double.NaN, string labelPrefix = "")
         {
             xMax = sectionE != null ? sectionE.MaxX : 0.0;
             double yTop = sectionE != null
@@ -12477,11 +12503,12 @@ namespace ST4PlanIdCiz
             yCirozBelow = yTop;
             if (tr == null || btr == null || sectionE == null || boxes == null || boxes.Count == 0)
                 return yTop;
-            double rad = KolonKesitEtriyeRadiusCm;
-            double hook = EtriyeAcilimKancaCm(diaMm);
+            double rad = double.IsNaN(radiusCm) ? KolonKesitEtriyeRadiusCm : radiusCm;
+            double hook = Math.Max(minHookCm, EtriyeAcilimKancaCm(diaMm));
             if (adet < 1) adet = 1;
             if (diaMm < 6) diaMm = 8;
-            const double txtH = 8.0;
+            double txtH = double.IsNaN(textHeightCm) ? 8.0 : textHeightCm;
+            double tagH = double.IsNaN(textHeightCm) ? 10.0 : textHeightCm;
             const double txtOff = 7.0;
             var db = btr.Database;
 
@@ -12554,14 +12581,16 @@ namespace ST4PlanIdCiz
 
                 PlaceEtriyeKancaYaziRadiusOrtasi(tr, btr, db, x0, y0, x1, y1, rad, hook, txtH);
 
-                double L = Math.Round(2.0 * (b.w + b.h) + 2.0 * hook);
-                string tag = WithGrupKolonCarpani(string.Format(CultureInfo.InvariantCulture,
-                    "{0}\u00F8{1} L={2:0}", adet, diaMm, L));
+                double L = EtriyeAcilimKesimBoyCm(b.w, b.h, hook);
+                string tag = showQuantity
+                    ? WithGrupKolonCarpani(string.Format(CultureInfo.InvariantCulture, "{0}\u00F8{1} L={2:0}", adet, diaMm, L))
+                    : string.Format(CultureInfo.InvariantCulture, "\u00F8{0} L={1:0}", diaMm, L);
+                tag = labelPrefix + tag;
                 ObjectId idTag = DrawKesitAcilimDonatiYazi(tr, btr, db,
                     new Point3d((x0 + x1) * 0.5, y0 - txtOff - 6.0, 0),
-                    tag, 10.0, 0.0);
+                    tag, tagH, 0.0);
                 SnapTextBoxTopBelow(tr, idTag, y0, gapTag);
-                double tagBot = y0 - KolonDuseyOlcuCizimCm(5.0) - 10.0;
+                double tagBot = y0 - KolonDuseyOlcuCizimCm(5.0) - tagH;
                 try
                 {
                     if (!idTag.IsNull)

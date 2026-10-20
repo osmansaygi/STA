@@ -591,6 +591,14 @@ namespace ST4PlanIdCiz
 
         private List<BeamInfo> GetRawBeamsOnFloor(int floorNo)
         {
+            // Sürekli temel açılımı: ST4 ContinuousFoundations sentetik kirişleri.
+            if (_surekliTemelAcilim && _surekliTemelBeams != null)
+            {
+                var surekli = new List<BeamInfo>();
+                foreach (var b in SurekliTemelAcilimBeamKaynagi(floorNo))
+                    surekli.Add(b);
+                return surekli;
+            }
             if (_rawBeamsByFloorNo == null)
                 _rawBeamsByFloorNo = new Dictionary<int, List<BeamInfo>>();
             if (_rawBeamsByFloorNo.TryGetValue(floorNo, out var list) && list != null)
@@ -859,32 +867,19 @@ namespace ST4PlanIdCiz
         /// 1/50 veya 1/100 kolon aplikasyon planı için tüm katlarda sadece
         /// akslar (+aks ölçüleri), kolonlar (poligon dahil) ve perdeleri çizer.
         /// </summary>
-        public void DrawColumnApplicationPlan(Database db, Editor ed, Point3d baseInsertPoint, string st4SourcePath = null, KolonApplicationPlanScale scaleMode = KolonApplicationPlanScale.Fifty, bool drawPerdeGorunus = false)
+        public void DrawColumnApplicationPlan(Database db, Editor ed, Point3d baseInsertPoint, string st4SourcePath = null, KolonApplicationPlanScale scaleMode = KolonApplicationPlanScale.Fifty, bool drawPerdeGorunus = false,
+            bool mergeSimilarFloors = false, bool drawInformationLabels = true, bool addVerticalDetails = false,
+            bool addKapamaDetails = false)
         {
             _ntsDrawFactory = NtsGeometryServices.Instance.CreateGeometryFactory();
             _isKolon50Mode = true;
             _kolonApplicationScale = scaleMode;
-            _kolon50DrawPerdeGorunus = drawPerdeGorunus && scaleMode == KolonApplicationPlanScale.Fifty;
+            _kolonApplicationInformationLabels = drawInformationLabels;
+            _kolonApplicationActive = true;
+            // Aplikasyonda kapama perde paftaları şimdilik çizilmez.
+            _kolon50DrawPerdeGorunus = false;
             _kolon50GorunusPending = _kolon50DrawPerdeGorunus ? new List<Kolon50GorunusPending>() : null;
             _gprPerdePanelDonati = null;
-            if (_kolon50DrawPerdeGorunus)
-            {
-                string gprPerdePath = ResolveGprPathNextToSt4(st4SourcePath);
-                string gprErr = null;
-                if (!string.IsNullOrEmpty(gprPerdePath))
-                {
-                    GprPerdePanelDonatiParser.TryParse(gprPerdePath, out _gprPerdePanelDonati, out gprErr);
-                    GprPerdePanelDonatiParser.TryReadMaterials(gprPerdePath, out _rebarFckMPa, out _rebarFykMPa);
-                }
-                ApplyRebarMaterialsFromSt4(st4SourcePath);
-                EnsureKapamaPerdeDonatiFromSwx(st4SourcePath);
-                int nPanel = _gprPerdePanelDonati != null ? _gprPerdePanelDonati.Count : 0;
-                if (ed != null)
-                    ed.WriteMessage("\nKOLON50ST4 {0} panel donati: {1} perde. C{2:0}/S{3:0}.{4}",
-                        _kapamaDonatiFromSwx ? "SWX" : "GPR", nPanel,
-                        _rebarFckMPa, _rebarFykMPa,
-                        nPanel == 0 && !string.IsNullOrEmpty(gprErr) ? " " + gprErr : "");
-            }
             _kolon50PerdeCopyExtent = null;
             _kolon50CopyExtentByWallNo = drawPerdeGorunus ? new Dictionary<int, Envelope>() : null;
             _kolon50SheetEntityIds = _kolon50DrawPerdeGorunus ? new Dictionary<int, List<ObjectId>>() : null;
@@ -892,11 +887,21 @@ namespace ST4PlanIdCiz
             string scaleText = scaleMode == KolonApplicationPlanScale.Hundred ? "1/100" : "1/50";
             try
             {
-                using (var tr = db.TransactionManager.StartTransaction())
+                PrepareKolonApplicationRebar(st4SourcePath, ed);
+                var floorGroups = BuildApplicationFloorGroups(mergeSimilarFloors);
+                bool kapamaPending = addKapamaDetails;
+                // Düşey çizimin oturum alanları aplikasyon ayarlarından bağımsızdır.
+                PlanIdDrawingManager verticalManager = null;
+                if (addVerticalDetails)
                 {
-                    EnsureLayers(tr, db);
-                    var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
-                    var btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
+                    verticalManager = new PlanIdDrawingManager(_model);
+                }
+                using (var layerTr = db.TransactionManager.StartTransaction())
+                {
+                    EnsureLayers(layerTr, db);
+                    layerTr.Commit();
+                }
+                {
 
                     Geometry firstFloorUnion = _model.Floors.Count > 0 ? BuildFloorElementUnion(_model.Floors[0]) : null;
                     var firstFloorAxisExt = GetAksSiniriEnvelope(firstFloorUnion);
@@ -908,111 +913,114 @@ namespace ST4PlanIdCiz
                     double firstLowestHorizontalAxisAtZero = GetLowestHorizontalColumnAxisY(0.0, firstFloorAxisExt);
                     double baseDy = baseInsertPoint.Y - antetOutDy + 600.0 - firstLowestHorizontalAxisAtZero;
 
-                    var copyLayouts = new List<(FloorInfo floor, double offsetX, double offsetY, (double Xmin, double Xmax, double Ymin, double Ymax) floorAxisExt)>();
                     double? nextAntetOuterLeftTarget = baseInsertPoint.X + AntetYerlesimSheetViewOutSolPayCm;
                     double? antetOuterLeftDeltaFromSheetViewLeft = antetOutDx;
-                    double kolonGprTableMaxAntetOuterTop = double.NegativeInfinity;
-                    bool kolonGprTableHasAntetTop = false;
-                    double kolonGprTableAnchorLeftX = baseInsertPoint.X;
-                    double kolonGprTableFirstAntetOuterRight = baseInsertPoint.X;
-                    bool kolonGprTableAnchorSet = false;
-                    for (int floorIdx = 0; floorIdx < _model.Floors.Count; floorIdx++)
+                    foreach (var floorGroup in floorGroups)
                     {
-                        var floor = _model.Floors[floorIdx];
-                        double offsetX;
-                        double offsetY = baseDy;
+                        double detailBottom = 0.0;
                         double antetSpacingMul = _kolonApplicationScale == KolonApplicationPlanScale.Hundred ? 2.0 : 1.0;
-
-                        Geometry kolonPerdeUnion = BuildKolonPerdeUnion(floor, 0.0, 0.0);
-                        Geometry axisExtGeom = (kolonPerdeUnion != null && !kolonPerdeUnion.IsEmpty)
-                            ? kolonPerdeUnion
-                            : BuildFloorElementUnion(floor);
-                        var floorAxisExt = GetAksSiniriEnvelope(axisExtGeom);
-                        double leftVerticalAxisX = floorAxisExt.Xmin;
-                        double targetAntetSheetViewLeft;
-                        if (!nextAntetOuterLeftTarget.HasValue)
+                        using (var tr = db.TransactionManager.StartTransaction())
                         {
-                            targetAntetSheetViewLeft = floorAxisExt.Xmin + Kolon50AntetLeftOfLeftVerticalAxisCm * antetSpacingMul;
-                            offsetX = targetAntetSheetViewLeft - (leftVerticalAxisX - Kolon50AntetLeftOfLeftVerticalAxisCm * antetSpacingMul);
-                        }
-                        else
-                        {
-                            double deltaLeft = antetOuterLeftDeltaFromSheetViewLeft ?? 0.0;
-                            targetAntetSheetViewLeft = nextAntetOuterLeftTarget.Value - deltaLeft;
-                            offsetX = targetAntetSheetViewLeft - (leftVerticalAxisX - Kolon50AntetLeftOfLeftVerticalAxisCm * antetSpacingMul);
-                        }
+                            var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
+                            var btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
+                            _kolonApplicationFloorGroup = floorGroup;
+                            int floorIdx = floorGroup[0];
+                            var floor = _model.Floors[floorIdx];
+                            double offsetX;
+                            double offsetY = baseDy;
 
-                        DrawAxes(tr, btr, offsetX, offsetY, floorAxisExt);
-                        DrawColumns(tr, btr, floor, offsetX, offsetY);
-                        DrawWallsForFloor(tr, btr, floor, offsetX, offsetY);
-                        DrawPerdeLabelsForFloor(tr, btr, floor, offsetX, offsetY, kolonPerdeUnion);
-                        DrawColumnPlanDimensionsForFloor(tr, btr, db, floor, offsetX, offsetY);
-                        copyLayouts.Add((floor, offsetX, offsetY, floorAxisExt));
 
-                        double layoutMinX = floorAxisExt.Xmin + offsetX;
-                        double layoutMaxX = floorAxisExt.Xmax + offsetX;
-                        double layoutMinY = floorAxisExt.Ymin + offsetY;
-                        double layoutMaxY = floorAxisExt.Ymax + offsetY;
-                        double antetSheetViewLeft = targetAntetSheetViewLeft;
-                        double yLowestHorizontalAxis = GetLowestHorizontalColumnAxisY(offsetY, floorAxisExt);
-                        double antetSheetViewBottom = yLowestHorizontalAxis - 600.0;
-                        double desiredAntetTargetRightPostScale = layoutMaxX + AntetTargetRightExtraCm * antetSpacingMul;
-                        bool scaleAntetTwoTimes = _kolonApplicationScale == KolonApplicationPlanScale.Hundred;
-                        double antetTargetRight = scaleAntetTwoTimes
-                            ? (antetSheetViewLeft + (desiredAntetTargetRightPostScale - antetSheetViewLeft) * 0.5)
-                            : desiredAntetTargetRightPostScale;
-                        // Antet ölçümü başarısız olsa bile bir sonraki kat için güvenli ayrık yerleşim.
-                        double plannedNextAntetOuterLeftTarget = desiredAntetTargetRightPostScale + Kolon50AntetGapBetweenSheetsCm * antetSpacingMul;
-                        string kolonPlanAntetTitle = BuildKolonPlanAntetTitle(floor);
-                        if (TryDrawAntetFromEmbeddedTemplate(
-                            tr, btr, layoutMinX, layoutMinY, layoutMaxY, antetSheetViewLeft, antetSheetViewBottom, antetTargetRight, st4SourcePath, ed,
-                            kolonPlanAntetTitle, null, out double placedAntetOuterLeft, out double placedAntetOuterRight, out double placedAntetOuterTop, scaleAntetTwoTimes, useKolonAntetScaleOneHundred: scaleAntetTwoTimes))
-                        {
-                            antetOuterLeftDeltaFromSheetViewLeft = placedAntetOuterLeft - antetSheetViewLeft;
-                            nextAntetOuterLeftTarget = placedAntetOuterRight + Kolon50AntetGapBetweenSheetsCm * antetSpacingMul;
-                            kolonGprTableHasAntetTop = true;
-                            kolonGprTableMaxAntetOuterTop = Math.Max(kolonGprTableMaxAntetOuterTop, placedAntetOuterTop);
-                            if (!kolonGprTableAnchorSet)
+                            Geometry kolonPerdeUnion = BuildKolonPerdeUnion(floor, 0.0, 0.0);
+                            Geometry axisExtGeom = (kolonPerdeUnion != null && !kolonPerdeUnion.IsEmpty)
+                                ? kolonPerdeUnion
+                                : BuildFloorElementUnion(floor);
+                            var floorAxisExt = GetAksSiniriEnvelope(axisExtGeom);
+                            double leftVerticalAxisX = floorAxisExt.Xmin;
+                            double targetAntetSheetViewLeft;
+                            if (!nextAntetOuterLeftTarget.HasValue)
                             {
-                                kolonGprTableAnchorSet = true;
-                                const double kolonGprTableInsetFromAntetLeftCm = 120.0;
-                                kolonGprTableAnchorLeftX = placedAntetOuterLeft + kolonGprTableInsetFromAntetLeftCm;
-                                kolonGprTableFirstAntetOuterRight = placedAntetOuterRight;
+                                targetAntetSheetViewLeft = floorAxisExt.Xmin + Kolon50AntetLeftOfLeftVerticalAxisCm * antetSpacingMul;
+                                offsetX = targetAntetSheetViewLeft - (leftVerticalAxisX - Kolon50AntetLeftOfLeftVerticalAxisCm * antetSpacingMul);
                             }
+                            else
+                            {
+                                double deltaLeft = antetOuterLeftDeltaFromSheetViewLeft ?? 0.0;
+                                targetAntetSheetViewLeft = nextAntetOuterLeftTarget.Value - deltaLeft;
+                                offsetX = targetAntetSheetViewLeft - (leftVerticalAxisX - Kolon50AntetLeftOfLeftVerticalAxisCm * antetSpacingMul);
+                            }
+
+                            DrawAxes(tr, btr, offsetX, offsetY, floorAxisExt);
+                            DrawColumns(tr, btr, floor, offsetX, offsetY);
+                            DrawWallsForFloor(tr, btr, floor, offsetX, offsetY);
+                            DrawPerdeLabelsForFloor(tr, btr, floor, offsetX, offsetY, kolonPerdeUnion);
+                            DrawColumnPlanDimensionsForFloor(tr, btr, db, floor, offsetX, offsetY);
+
+                            double layoutMinX = floorAxisExt.Xmin + offsetX;
+                            double layoutMaxX = floorAxisExt.Xmax + offsetX;
+                            double layoutMinY = floorAxisExt.Ymin + offsetY;
+                            double layoutMaxY = floorAxisExt.Ymax + offsetY;
+                            double antetSheetViewLeft = targetAntetSheetViewLeft;
+                            double yLowestHorizontalAxis = GetLowestHorizontalColumnAxisY(offsetY, floorAxisExt);
+                            double antetSheetViewBottom = yLowestHorizontalAxis - 600.0;
+                            // Düşey paftayı SheetView'a değil aplikasyonun dış antet tabanına hizala.
+                            detailBottom = antetSheetViewBottom + antetOutDy * antetSpacingMul;
+                            double desiredAntetTargetRightPostScale = layoutMaxX + AntetTargetRightExtraCm * antetSpacingMul;
+                            bool scaleAntetTwoTimes = _kolonApplicationScale == KolonApplicationPlanScale.Hundred;
+                            double antetTargetRight = scaleAntetTwoTimes
+                                ? (antetSheetViewLeft + (desiredAntetTargetRightPostScale - antetSheetViewLeft) * 0.5)
+                                : desiredAntetTargetRightPostScale;
+                            // Antet ölçümü başarısız olsa bile bir sonraki kat için güvenli ayrık yerleşim.
+                            double plannedNextAntetOuterLeftTarget = desiredAntetTargetRightPostScale + Kolon50AntetGapBetweenSheetsCm * antetSpacingMul;
+                            string kolonPlanAntetTitle = ApplicationGroupTitle(floor);
+                            string kolonPlanBenzerKatText = ApplicationGroupSimilarFloorText(floor);
+                            if (TryDrawAntetFromEmbeddedTemplate(
+                                tr, btr, layoutMinX, layoutMinY, layoutMaxY, antetSheetViewLeft, antetSheetViewBottom, antetTargetRight, st4SourcePath, ed,
+                                kolonPlanAntetTitle, kolonPlanBenzerKatText, out double placedAntetOuterLeft, out double placedAntetOuterRight, out double placedAntetOuterTop, scaleAntetTwoTimes, useKolonAntetScaleOneHundred: scaleAntetTwoTimes))
+                            {
+                                antetOuterLeftDeltaFromSheetViewLeft = placedAntetOuterLeft - antetSheetViewLeft;
+                                nextAntetOuterLeftTarget = placedAntetOuterRight + Kolon50AntetGapBetweenSheetsCm * antetSpacingMul;
+                            }
+                            else
+                            {
+                                nextAntetOuterLeftTarget = plannedNextAntetOuterLeftTarget;
+                            }
+                            ApplyPlanStructuralLayerDrawOrder(tr, btr);
+                            tr.Commit();
                         }
-                        else
+                        if (kapamaPending)
                         {
-                            nextAntetOuterLeftTarget = plannedNextAntetOuterLeftTarget;
+                            kapamaPending = false;
+                            KapamaPerdeSettings.EnsureLoaded();
+                            double kapamaLeft = nextAntetOuterLeftTarget.Value;
+                            double kapamaRight = new PlanIdDrawingManager(_model).DrawApplicationKapamaDetails(
+                                db, ed, st4SourcePath, kapamaLeft, detailBottom, KapamaPerdeSettings.TemelHatili);
+                            if (kapamaRight > kapamaLeft + 0.01)
+                                nextAntetOuterLeftTarget = kapamaRight + Kolon50AntetGapBetweenSheetsCm * antetSpacingMul;
+                        }
+                        if (verticalManager != null)
+                        {
+                            double detailLeft = nextAntetOuterLeftTarget.Value;
+                            double detailRight = verticalManager.DrawApplicationVerticalDetails(
+                                db, ed, st4SourcePath, floorGroup, detailLeft, detailBottom);
+                            nextAntetOuterLeftTarget = Math.Max(detailLeft, detailRight)
+                                + Kolon50AntetGapBetweenSheetsCm * antetSpacingMul;
                         }
                     }
 
-                    DrawSimplePerdeKolonCopiesByFloorId(tr, btr, copyLayouts);
+                    // Kapama perde kopyaları ve kolon data tablosu şimdilik kapalı.
 
-                    // GPR tablosu konumu: kopya perde/kolon çizilmediyse _kolon50PerdeCopyExtent boş kalır; tablo yine de plan üst sınırına göre yerleşsin.
-                    if (_kolon50PerdeCopyExtent == null && copyLayouts.Count > 0)
-                    {
-                        double maxY = copyLayouts.Max(x => x.floorAxisExt.Ymax + x.offsetY);
-                        double minX = copyLayouts.Min(x => x.floorAxisExt.Xmin + x.offsetX);
-                        double maxX = copyLayouts.Max(x => x.floorAxisExt.Xmax + x.offsetX);
-                        _kolon50PerdeCopyExtent = new Envelope(minX, maxX, maxY, maxY);
-                    }
 
-                    TryDrawKolonDonatiTableAboveKolon50PerdeCopies(
-                        tr, btr, db, ed, baseInsertPoint, st4SourcePath, cmdTag, copyLayouts,
-                        kolonGprTableHasAntetTop ? kolonGprTableMaxAntetOuterTop : (double?)null,
-                        kolonGprTableAnchorSet ? kolonGprTableAnchorLeftX : (double?)null,
-                        kolonGprTableAnchorSet ? kolonGprTableFirstAntetOuterRight : (double?)null);
-
-                    ApplyPlanStructuralLayerDrawOrder(tr, btr);
-                    tr.Commit();
                     ed.WriteMessage(
-                        "\n{0}: {1} kat icin {2} kolon aplikasyon plani cizildi (aks, aks olculeri, kolonlar/poligon kolonlar, perdeler).",
-                        cmdTag, _model.Floors.Count, scaleText);
+                        "\n{0}: {1} kat icin {2} pafta, {3} kolon aplikasyon plani cizildi (aks, aks olculeri, kolonlar/poligon kolonlar, perdeler).",
+                        cmdTag, _model.Floors.Count, floorGroups.Count, scaleText);
                 }
             }
             finally
             {
                 _isKolon50Mode = false;
+                _kolonApplicationFloorGroup = null;
+                _kolonApplicationInformationLabels = true;
+                _kolonApplicationActive = false;
                 _kolonApplicationScale = null;
                 _kolon50DrawPerdeGorunus = false;
                 _kolon50GorunusPending = null;
@@ -3362,7 +3370,8 @@ namespace ST4PlanIdCiz
             string st4SourcePath,
             TemelFoundationPlanScale scaleMode,
             int planCopyCount,
-            IList<TemelPlanCopyLayout> copyLayouts)
+            IList<TemelPlanCopyLayout> copyLayouts,
+            string[] copyCaptionsOverride = null)
         {
             _ntsDrawFactory = NtsGeometryServices.Instance.CreateGeometryFactory();
             _temelFoundationScale = scaleMode;
@@ -3397,7 +3406,7 @@ namespace ST4PlanIdCiz
                     double xRightBalloonTemel = 0;
                     bool antetInit = false;
                     double stride = 0;
-                    string[] copyCaptions = { "1 - OLCU", "2 - ANA DONATI", "3 - ALT ILAVE DONATI", "4 - UST ILAVE DONATI" };
+                    string[] copyCaptions = copyCaptionsOverride ?? new[] { "1 - OLCU", "2 - ANA DONATI", "3 - ALT ILAVE DONATI", "4 - UST ILAVE DONATI" };
 
                     for (int copyIndex = 0; copyIndex < planCopyCount; copyIndex++)
                     {
@@ -11287,6 +11296,8 @@ namespace ST4PlanIdCiz
                 : (floor != null ? floor.FloorNo.ToString(CultureInfo.InvariantCulture) : "B");
             int pad = columnNoPadWidth < 1 ? 1 : columnNoPadWidth;
             string nameLine = "S" + storyId + columnNo.ToString("D" + pad, CultureInfo.InvariantCulture);
+            if (_isKolon50Mode)
+                nameLine = ApplicationElementName("S", floor, columnNo.ToString("D" + pad, CultureInfo.InvariantCulture));
             string dimLine = columnType == 2
                 ? "R= " + dim.W.ToString("F0", CultureInfo.InvariantCulture)
                 : string.Format(CultureInfo.InvariantCulture, "({0:F0}/{1:F0})", dim.W, dim.H);
@@ -11306,6 +11317,7 @@ namespace ST4PlanIdCiz
                     Rotation = rotationRad
                 };
                 AppendEntity(tr, btr, txt);
+                AppendKolonApplicationRebarLabel(tr, btr, floor, columnNo, namePos, angleRad, labelHeightCm, gapNameToDimCm);
                 return;
             }
             var txt1 = new DBText
@@ -11334,6 +11346,7 @@ namespace ST4PlanIdCiz
                 Rotation = rotationRad
             };
             AppendEntity(tr, btr, txt2);
+            AppendKolonApplicationRebarLabel(tr, btr, floor, columnNo, dimPos, angleRad, labelHeightCm, gapNameToDimCm);
         }
 
         /// <summary>
@@ -11593,7 +11606,16 @@ namespace ST4PlanIdCiz
         private static Geometry TryCascadedPolygonUnionSafe(IReadOnlyList<Geometry> geoms)
         {
             if (geoms == null || geoms.Count == 0) return null;
-            if (geoms.Count == 1) return geoms[0];
+            // Geçerli parçalar değişmez; geçersizler Buffer(0) olmadan düzeltilir (yığın taşması önleme).
+            var prepared = new List<Geometry>(geoms.Count);
+            foreach (var g in geoms)
+            {
+                if (g == null || g.IsEmpty) continue;
+                var p = NtsOverlaySafe.PrepareForOverlay(g);
+                if (p != null && !p.IsEmpty) prepared.Add(p);
+            }
+            if (prepared.Count == 0) return null;
+            if (prepared.Count == 1) return prepared[0];
             foreach (double? scale in new double?[] { null, 1.0, 100.0, 50.0, 20.0 })
             {
                 try
@@ -11601,12 +11623,12 @@ namespace ST4PlanIdCiz
                     List<Geometry> work;
                     if (scale == null)
                     {
-                        work = new List<Geometry>(geoms);
+                        work = prepared;
                     }
                     else
                     {
                         work = new List<Geometry>();
-                        foreach (var g in geoms)
+                        foreach (var g in prepared)
                         {
                             var r = ReducePrecisionSafe(g, scale.Value);
                             if (r != null && !r.IsEmpty) work.Add(r);
@@ -13515,10 +13537,11 @@ namespace ST4PlanIdCiz
                     : new Point2d((firstA.X + firstB.X) * 0.5, (firstA.Y + firstB.Y) * 0.5);
                 double perdeLengthCm = GetPerdeLengthCm(wallCenter, u, kolonUnionForWalls, factory, firstA.GetDistanceTo(firstB));
                 const double perdeLabelMinLengthForDimensionsCm = 160.0;
+                string wallName = _isKolon50Mode ? ApplicationElementName("P", floor, beamNumeroStr) : "P" + katEtiketi + beamNumeroStr;
                 string labelText = perdeLengthCm < perdeLabelMinLengthForDimensionsCm
-                    ? string.Format(CultureInfo.InvariantCulture, "P{0}{1}", katEtiketi, beamNumeroStr)
-                    : string.Format(CultureInfo.InvariantCulture, "P{0}{1} ({2}/{3})",
-                        katEtiketi, beamNumeroStr, (int)Math.Round(beam.WidthCm), (int)Math.Round(perdeLengthCm));
+                    ? wallName
+                    : string.Format(CultureInfo.InvariantCulture, "{0} ({1}/{2})",
+                        wallName, (int)Math.Round(beam.WidthCm), (int)Math.Round(perdeLengthCm));
                 double textWidthCm = EstimateTextWidthCm(labelText, wallLabelHeightCm);
                 double tMin = (rectBottomLeft - firstA).DotProduct(u);
                 double tMax = (rectBottomRight - firstA).DotProduct(u);
@@ -15940,7 +15963,7 @@ namespace ST4PlanIdCiz
                 if (!TryPopulateDatabaseFromEmbeddedTemelAntet(sourceDb, ed))
                     return false;
 
-                var ids = new ObjectIdCollection();
+                using var ids = new ObjectIdCollection();
                 ObjectId sourceMsId;
                 using (Transaction trSrc = sourceDb.TransactionManager.StartTransaction())
                 {
@@ -15961,7 +15984,7 @@ namespace ST4PlanIdCiz
                 EnsureLayerForAntet(tr, btr.Database, LayerAntetCizgi, 163);
                 EnsureLayerForAntet(tr, btr.Database, LayerAntetYazi, 253);
 
-                var mapping = new IdMapping();
+                using var mapping = new IdMapping();
                 btr.Database.WblockCloneObjects(ids, btr.ObjectId, mapping, DuplicateRecordCloning.Ignore, false);
                 var rootEntityIds = new List<ObjectId>();
                 AntetValueSet antetValues = BuildAntetValues(st4SourcePath);
@@ -16358,6 +16381,7 @@ namespace ST4PlanIdCiz
                 foreach (string raw in File.ReadLines(gprPath))
                 {
                     string line = raw ?? string.Empty;
+                    if (GprRadyeAyir.RaporBaslangici(line)) break;
                     if (string.IsNullOrEmpty(v.Dts) && line.Contains("DTS"))
                     {
                         var m = Regex.Match(line, @"DTS\s*:\s*([0-9]+[A-Za-z]?)");

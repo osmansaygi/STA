@@ -16,6 +16,36 @@ namespace ST4PlanIdCiz
         public const int IconSize = 32;
         public const int HeaderH = 22;
 
+        internal static void AttachIconMenu(Control parent)
+        {
+            var menu = new ContextMenuStrip();
+            var design = new ToolStripMenuItem("Simge tasarımı");
+            var monolit = new ToolStripMenuItem("Monolit");
+            var classic = new ToolStripMenuItem("Klasik");
+            monolit.Click += (s, e) => StaMonolitIcons.Select(true);
+            classic.Click += (s, e) => StaMonolitIcons.Select(false);
+            design.DropDownItems.Add(monolit);
+            design.DropDownItems.Add(classic);
+            menu.Items.Add(design);
+            menu.Opening += (s, e) => { monolit.Checked = StaMonolitIcons.Enabled; classic.Checked = !StaMonolitIcons.Enabled; };
+            parent.ContextMenuStrip = menu;
+            Action reload = () =>
+            {
+                if (parent.IsDisposed) return;
+                foreach (Control row in parent.Controls)
+                    if (row.Tag is string cmd)
+                        foreach (Control child in row.Controls)
+                            if (child is PictureBox pic)
+                            {
+                                Image old = pic.Image;
+                                pic.Image = StaToolIcons.ForCommand(cmd);
+                                old?.Dispose();
+                            }
+            };
+            StaMonolitIcons.Changed += reload;
+            parent.Disposed += (s, e) => { StaMonolitIcons.Changed -= reload; menu.Dispose(); };
+        }
+
         public static int AddGroupHeader(Control parent, string title, int top)
         {
             var lbl = new Label
@@ -103,7 +133,7 @@ namespace ST4PlanIdCiz
         }
     }
 
-    /// <summary>AutoCAD tarzı gri + ACI 94 yeşil vurgu ile 32×32 komut ikonları.</summary>
+    /// <summary>Monolit 32×32 command icons with personal overrides and classic fallbacks.</summary>
     internal static class StaToolIcons
     {
         private static readonly Color Gray = Color.FromArgb(0x66, 0x66, 0x66);
@@ -172,6 +202,8 @@ namespace ST4PlanIdCiz
         {
             Image user = TryUserOverride(cmd);
             if (user != null) return user;
+            Image monolit = StaMonolitIcons.TryLoad(cmd);
+            if (monolit != null) return monolit;
             Image embedded = TryEmbedded(cmd);
             if (embedded != null) return embedded;
             if (string.IsNullOrEmpty(cmd)) return GlyphPlan();
