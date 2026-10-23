@@ -24,6 +24,12 @@ namespace ST4Yardimci
         public int UstDonatiCapMm;
         public double AltAralikCm;
         public double UstAralikCm;
+        /// <summary>Y yönü (düşey) çubuklar; yukarıdaki dört alan X yönüdür.</summary>
+        public int AltDonatiCapYMm;
+        public int UstDonatiCapYMm;
+        public double AltAralikYCm;
+        public double UstAralikYCm;
+        public int SehpaCapMm;
         public bool AltGonyeSol;
         public bool AltGonyeSag;
         public bool UstGonyeSol;
@@ -43,6 +49,11 @@ namespace ST4Yardimci
             UstDonatiCapMm = 12,
             AltAralikCm = 15,
             UstAralikCm = 15,
+            AltDonatiCapYMm = 14,
+            UstDonatiCapYMm = 12,
+            AltAralikYCm = 15,
+            UstAralikYCm = 15,
+            SehpaCapMm = 12,
             AltGonyeSol = true,
             AltGonyeSag = true,
             UstGonyeSol = true,
@@ -63,6 +74,11 @@ namespace ST4Yardimci
             UstDonatiCapMm = 10,
             AltAralikCm = 15,
             UstAralikCm = 15,
+            AltDonatiCapYMm = 12,
+            UstDonatiCapYMm = 10,
+            AltAralikYCm = 15,
+            UstAralikYCm = 15,
+            SehpaCapMm = 10,
             AltGonyeSol = true,
             AltGonyeSag = true,
             UstGonyeSol = true,
@@ -84,6 +100,11 @@ namespace ST4Yardimci
             UstDonatiCapMm = src.UstDonatiCapMm;
             AltAralikCm = src.AltAralikCm;
             UstAralikCm = src.UstAralikCm;
+            AltDonatiCapYMm = src.AltDonatiCapYMm;
+            UstDonatiCapYMm = src.UstDonatiCapYMm;
+            AltAralikYCm = src.AltAralikYCm;
+            UstAralikYCm = src.UstAralikYCm;
+            SehpaCapMm = src.SehpaCapMm;
             AltGonyeSol = src.AltGonyeSol;
             AltGonyeSag = src.AltGonyeSag;
             UstGonyeSol = src.UstGonyeSol;
@@ -146,6 +167,17 @@ namespace ST4Yardimci
         public static int UstDonatiCapMm { get => Active.UstDonatiCapMm; set => Active.UstDonatiCapMm = value; }
         public static double AltAralikCm { get => Active.AltAralikCm; set => Active.AltAralikCm = value; }
         public static double UstAralikCm { get => Active.UstAralikCm; set => Active.UstAralikCm = value; }
+        public static int AltDonatiCapYMm { get => Active.AltDonatiCapYMm; set => Active.AltDonatiCapYMm = value; }
+        public static int UstDonatiCapYMm { get => Active.UstDonatiCapYMm; set => Active.UstDonatiCapYMm = value; }
+        public static double AltAralikYCm { get => Active.AltAralikYCm; set => Active.AltAralikYCm = value; }
+        public static double UstAralikYCm { get => Active.UstAralikYCm; set => Active.UstAralikYCm = value; }
+        public static int SehpaCapMm { get => Active.SehpaCapMm; set => Active.SehpaCapMm = value; }
+
+        /// <summary>X yönü = yatay çubuklar (mevcut alanlar); Y yönü = düşey çubuklar.</summary>
+        public static int AltCap(bool yatay) => yatay ? AltDonatiCapMm : AltDonatiCapYMm;
+        public static int UstCap(bool yatay) => yatay ? UstDonatiCapMm : UstDonatiCapYMm;
+        public static double AltAralik(bool yatay) => yatay ? AltAralikCm : AltAralikYCm;
+        public static double UstAralik(bool yatay) => yatay ? UstAralikCm : UstAralikYCm;
 
         public static bool AltGonyeSol { get => Active.AltGonyeSol; set => Active.AltGonyeSol = value; }
         public static bool AltGonyeSag { get => Active.AltGonyeSag; set => Active.AltGonyeSag = value; }
@@ -157,7 +189,7 @@ namespace ST4Yardimci
         /// <summary>Kapalıysa üst donatı çizilmez (konum şeması değişmez).</summary>
         public static bool UstDonatiCiz { get => Active.UstDonatiCiz; set => Active.UstDonatiCiz = value; }
 
-        /// <summary>Sehpa donatısı (mantar/radyede ayrı; çizim sonra).</summary>
+        /// <summary>Sehpa donatısı: OTODONATICIZ alanları temel antetinin üstüne sehpa detayı ekler.</summary>
         public static bool SehpaDonatisi { get => Active.SehpaDonatisi; set => Active.SehpaDonatisi = value; }
 
         private static string StorePath
@@ -217,6 +249,11 @@ namespace ST4Yardimci
             Write(sb, prefix + "_UstDonatiCapMm", p.UstDonatiCapMm);
             Write(sb, prefix + "_AltAralikCm", p.AltAralikCm);
             Write(sb, prefix + "_UstAralikCm", p.UstAralikCm);
+            Write(sb, prefix + "_AltDonatiCapYMm", p.AltDonatiCapYMm);
+            Write(sb, prefix + "_UstDonatiCapYMm", p.UstDonatiCapYMm);
+            Write(sb, prefix + "_AltAralikYCm", p.AltAralikYCm);
+            Write(sb, prefix + "_UstAralikYCm", p.UstAralikYCm);
+            Write(sb, prefix + "_SehpaCapMm", p.SehpaCapMm);
             Write(sb, prefix + "_AltGonyeSol", p.AltGonyeSol);
             Write(sb, prefix + "_AltGonyeSag", p.AltGonyeSag);
             Write(sb, prefix + "_UstGonyeSol", p.UstGonyeSol);
@@ -258,6 +295,7 @@ namespace ST4Yardimci
             bool hasLegacy = false;
             bool radyeTouched = false;
             bool mantarTouched = false;
+            bool radyeY = false, mantarY = false;
 
             foreach (string raw in File.ReadAllLines(path, Encoding.UTF8))
             {
@@ -279,11 +317,13 @@ namespace ST4Yardimci
                 if (TryApplyPrefixed(key, val, "Radye_", _radye))
                 {
                     radyeTouched = true;
+                    if (IsYKey(key)) radyeY = true;
                     continue;
                 }
                 if (TryApplyPrefixed(key, val, "Mantar_", _mantar))
                 {
                     mantarTouched = true;
+                    if (IsYKey(key)) mantarY = true;
                     continue;
                 }
 
@@ -306,6 +346,22 @@ namespace ST4Yardimci
                 _radye.CopyFrom(legacy);
             else if (hasLegacy && !mantarTouched)
                 _mantar.CopyFrom(legacy);
+
+            // Eski kayıtta Y yönü yok → X değerleri iki yönde de geçerli kalsın.
+            if (!radyeY) CopyXToY(_radye);
+            if (!mantarY) CopyXToY(_mantar);
+        }
+
+        private static bool IsYKey(string key) =>
+            key.EndsWith("CapYMm", StringComparison.OrdinalIgnoreCase) ||
+            key.EndsWith("AralikYCm", StringComparison.OrdinalIgnoreCase);
+
+        private static void CopyXToY(OtoDonatiProfile p)
+        {
+            p.AltDonatiCapYMm = p.AltDonatiCapMm;
+            p.UstDonatiCapYMm = p.UstDonatiCapMm;
+            p.AltAralikYCm = p.AltAralikCm;
+            p.UstAralikYCm = p.UstAralikCm;
         }
 
         private static bool TryApplyPrefixed(string key, string val, string prefix, OtoDonatiProfile p)
@@ -334,6 +390,16 @@ namespace ST4Yardimci
             { p.AltAralikCm = aa; return true; }
             if (key.Equals("UstAralikCm", StringComparison.OrdinalIgnoreCase) && TryD(val, out double ua))
             { p.UstAralikCm = ua; return true; }
+            if (key.Equals("AltAralikYCm", StringComparison.OrdinalIgnoreCase) && TryD(val, out double aay))
+            { p.AltAralikYCm = aay; return true; }
+            if (key.Equals("UstAralikYCm", StringComparison.OrdinalIgnoreCase) && TryD(val, out double uay))
+            { p.UstAralikYCm = uay; return true; }
+            if (key.Equals("AltDonatiCapYMm", StringComparison.OrdinalIgnoreCase) && TryI(val, out int acy))
+            { p.AltDonatiCapYMm = acy; return true; }
+            if (key.Equals("UstDonatiCapYMm", StringComparison.OrdinalIgnoreCase) && TryI(val, out int ucy))
+            { p.UstDonatiCapYMm = ucy; return true; }
+            if (key.Equals("SehpaCapMm", StringComparison.OrdinalIgnoreCase) && TryI(val, out int sc))
+            { p.SehpaCapMm = sc; return true; }
             if (key.Equals("AltDonatiCapMm", StringComparison.OrdinalIgnoreCase) && TryI(val, out int ac))
             { p.AltDonatiCapMm = ac; return true; }
             if (key.Equals("UstDonatiCapMm", StringComparison.OrdinalIgnoreCase) && TryI(val, out int uc))

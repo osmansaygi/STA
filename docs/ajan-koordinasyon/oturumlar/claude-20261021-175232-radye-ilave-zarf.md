@@ -1,0 +1,19 @@
+# Claude Code — RADYEILAVE zarf kutusundan direkt donatı
+- Ajan: Claude Code / bu sohbet
+- Güncelleme: 2026-10-21 20:56 (Europe/Istanbul)
+- Durum: tamamlandı
+- Görev: Yeni Rd. Temel Planı zarf kutuları (TEMEL ILAVE KUTU X/Y) içindeki ø/aralık yazısıyla kutu yönünde direkt ilave donatı; ısı konturu kullanılmaz.
+- Ayrılanlar: yok.
+- Değişen: ST4_Yardimci/RadyeIlaveRunner.cs (RunInteractive zarf akışı, DrawBands ayrımı, eski ısı-kutu eşleme kaldırıldı); ST4_Yardimci/RadyeTemelDonatiForm.cs (düğme metni); docs/modul-durum/ST4_Yardimci.md.
+- Doğrulama: Debug/net48 0 hata/0 uyarı. NETLOAD `ST4_Yardimci_20261021_205503.dll` (eski 20261020_204827 hedef tarafından silindi). Verify-Project pwsh yok, koşulmadı. AutoCAD canlı yok.
+- Görev 2: aynı zarf grubundaki kutular tek donatı oku hattı (GroupZarfs, DrawBands bant başı ø/aralık). DLL `ST4_Yardimci_20261021_205806.dll`, derleme 0/0, AutoCAD canlı yok.
+- Görev 3: gönye boyu etikete eklendi; paspayı sınırındaki uçlar gönyelenir (EndAtTemelEdge). DLL `ST4_Yardimci_20261021_210404.dll`, 0 hata; 1 uyarı kilitli eski DLL silme. AutoCAD canlı yok.
+- Görev 4: gönye yazısı ve L gerçek gönye (GonyeYaziBoyu), çizim max. DLL `ST4_Yardimci_20261021_211120.dll`, 0/0. AutoCAD canlı yok.
+- Görev 5: GroupZarfs yalnız yapışık (≤2 cm) + ortak along ≥2×40 cm. DLL `ST4_Yardimci_20261021_211657.dll`, 0 hata, 1 uyarı (211120 kilitli). AutoCAD canlı yok.
+- Görev 6: gönye yazısı donatı tarafına (outS). DLL `ST4_Yardimci_20261021_212009.dll`, 0/0. Neden tahmini; AutoCAD COM erişimi yok.
+- Görev 7: aks kaçıklık ölçüleri (DrawAksOlculeri) + BaDimensionStyles PLAN_OLCU_10. DLL `ST4_Yardimci_20261021_212702.dll`, 0/0. AutoCAD canlı yok.
+- Görev 8: aks ölçüsü ofseti 15 cm, düşey ölçüler sağda. DLL `ST4_Yardimci_20261021_213143.dll`, 0/0. AutoCAD canlı yok.
+- Görev 9: iki aşamalı çizim (DrawBandBars/DrawBandOku), OkuHattiniAyir ~25 cm. DLL `ST4_Yardimci_20261021_214015.dll`, 0 hata, 1 uyarı (kilitli eski DLL). AutoCAD canlı yok.
+- Görev 10: PLAN_OLCU_10 tam sayı; PickCleanFixedCoord kenar payı. DLL `ST4_Yardimci_20261021_214408.dll`, 0/0. AutoCAD canlı yok.
+- Görev 11: stil adı ILAVE_OLCU. DLL `ST4_Yardimci_20261021_215207.dll`, 0/0. AutoCAD canlı yok.
+- Açık: AutoCAD görsel kontrol.

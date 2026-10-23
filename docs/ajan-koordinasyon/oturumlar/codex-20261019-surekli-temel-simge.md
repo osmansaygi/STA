@@ -1,0 +1,14 @@
+# Sürekli temel açılımı Monolit simgesi
+- Ajan: Codex / bu sohbet
+- Güncelleme: 2026-10-19 (Europe/Istanbul)
+- Durum: tamamlandı
+- Görev: SUREKLITEMELACILIMLARI simgesini onaylı Monolit ailesine uydur.
+- Ayrılan dosyalar: yok. Son işlemde değişenler: docs/modul-durum/ST4_Plan_ID_Ciz.Simgeler.md; tools/SurekliTemelIconCheck/**; ST4_Plan_ID_Ciz/bin/Debug/net48/ST4_Plan_ID_Ciz_20261019_233438.dll,pdb; NETLOAD/ST4_Plan_ID_Ciz_20261019_233438.dll,pdb ve gerekli bağımlılıklar. NETLOAD/bin altındaki 5 eski Plan DLL/PDB silindi.
+- Ortak çıktı kaynakları: derleme/ara çıktı tools/SurekliTemelIconCheck/build ve obj içinde; yeni DLL/PDB NETLOAD'a kopyalanacak, eski tarihli Plan DLL/PDB'leri temizlenecek. Yardımcı ve bağımlılıklar korunacak.
+- Çakışma: aktif eski kiriş kaydı modül ana durum dosyasını ve ortak çıktıları ayırmış; bu dosyalara yazılmayacak.
+- Doğrulama: Verify-Project dört regresyon PASS; izole Debug/net48 derleme 0 hata/0 uyarı; gerçek DLL içindeki yükleyiciden 28/32 px görünüm, alpha/içerik ve Klasik seçimi PASS. Mevcut komut eşlemesi ve kişisel simge önceliği korunuyor.
+- DLL: tools/SurekliTemelIconCheck/build/ST4_Plan_ID_Ciz_20261019_144744.dll. Ortak NETLOAD'a kopyalanmadı; AutoCAD canlı doğrulama yapılmadı.
+- Takip: kullanıcı panelde eski simgeyi görüyor. NETLOAD eski DLL'leri içeriyor; ST4Icons komut override'ı yok. Mevcut panelin kullanıcı-simge yoluna yalnız bu komut için onaylı PNG kurulacak; eski DLL'nin ForCommand yükleyicisiyle doğrulanacak. Canlı DLL yüklenmeyecek.
+- Takip sonucu: gerçek kullanıcı ST4Icons yoluna kuruldu; NETLOAD'daki 010206 DLL'si gerçek ForCommand çağrısıyla kurulu Monolit'i okuyor, Fit32 sonrası bütün pikseller eşit. Canlı panelde sağ tık → Simge tasarımı → Monolit ile resim önbelleği yenilenmeli. Canlı UI tıklanmadı; eklenti yeniden derlenmedi veya yüklenmedi.
+- Yeni açık kullanıcı talimatı: “YENİDEN DERLE ... ESKİ DLL LERİ SİL”. Önceki NETLOAD rezervasyonuna rağmen bu görevde yeni Plan DLL'sinin dağıtımı ve eski Plan çıktılarının temizliği açıkça yetkilendirildi. Kaynak çizim dosyaları ve diğer ajanın çalışma kaydı değiştirilmeyecek. Canlı AutoCAD'e DLL otomatik yüklenmeyecek.
+- Sonuç: yeniden Debug/net48 derlendi, 0 hata/0 uyarı. NETLOAD ve bin'e kopyalandı, derleme/NETLOAD DLL hash aynı. Gömülü yeni PNG hash kaynakla aynı; dağıtılmış DLL simge yükleyicisi PASS; Verify-Project dört regresyon PASS. NETLOAD'da yalnız 233438 Plan DLL/PDB kaldı. Canlı AutoCAD'e yükleme yapılmadı; eski yüklenmiş assembly için temiz oturum gerekir.

@@ -498,8 +498,12 @@ namespace ST4Yardimci
                     // geçince (yukarıda) ya da hat tamamen bu açıklığın içindeyse çizilir.
                     // Uç döşeme (hat orada başlar/biter, öbür yüze varmaz) açılmaz.
                     // İlave/L/4, boydan kesilen komşunun uzatması olarak kalır.
+                    // Uç, kendi mesnetinin içinde/dış yüzüne kadar olabilir (komşu döşemeye girmez).
+                    double tLo = (leftOuter - a).DotProduct(u);
+                    double tRo = (rightOuter - a).DotProduct(u);
+                    if (tRo < tLo) { double tmpO = tLo; tLo = tRo; tRo = tmpO; }
                     bool pickInsideSpan = overlap >= 20.0
-                        && tPick0 >= tL - 20.0 && tPick1 <= tR + 20.0;
+                        && tPick0 >= Math.Min(tL, tLo) - 20.0 && tPick1 <= Math.Max(tR, tRo) + 20.0;
                     if (!inPick && pickInsideSpan
                         && (fromLabeledFace || SpanMidInLabeledFace(altDuzAlan, mid, slabTexts)))
                     {
@@ -596,6 +600,8 @@ namespace ST4Yardimci
                 ApplyNormalSlabKotFromArea(allSpans, altDuzAlan, slabTexts);
                 DropDuplicateSlabSpans(allSpans, slabTexts);
                 Polyline[] spanBounds = CollectSpanBoundaries(allSpans, altDuzAlan, a, u, n);
+                for (int i = 0; spanBounds != null && i < spanBounds.Length && i < allSpans.Count; i++)
+                    spanBounds[i] = OwnSlabBoundary(spanBounds[i], allSpans[i], slabTexts);
                 Polyline[] ownPoly = spanBounds == null ? null : (Polyline[])spanBounds.Clone();
 
                 // BOUNDARY: yalnız mesnet katmanı. Ekran yenilenmez; katmanlar komut bitmeden geri açılır.
@@ -839,10 +845,12 @@ namespace ST4Yardimci
                     }
                     if (EtkinYon != DonatiYonu.Serbest && ownPoly != null && si < ownPoly.Length)
                     {
-                        // AutoCAD BOUNDARY, ada algılama açık. Tohum: alt düz ortası.
-                        Polyline built = TraceSlabBoundary(ed, duzMid, n);
+                        // Tohum: alt düz ortası. Önce model yüzü (zoom/ekrandan bağımsız, kıl payı
+                        // aralıklar kapalı); yoksa AutoCAD BOUNDARY. Komşu döşeme adını içeren atılır.
+                        Polyline built = OwnSlabBoundary(
+                            MesnetBoundaryPolyline(altDuzAlan, duzMid, n, span.Mid), span, slabTexts);
                         if (built == null)
-                            built = BoundaryAtSeed(altDuzAlan, duzMid);
+                            built = OwnSlabBoundary(TraceSlabBoundary(ed, duzMid, n), span, slabTexts);
                         if (built != null)
                         {
                             try { ownPoly[si]?.Dispose(); } catch { }
@@ -1966,7 +1974,7 @@ namespace ST4Yardimci
             int i0 = (int)Math.Floor(x0 / BoundaryIndex.BucketCm), i1 = (int)Math.Floor(x1 / BoundaryIndex.BucketCm);
             int j0 = (int)Math.Floor(y0 / BoundaryIndex.BucketCm), j1 = (int)Math.Floor(y1 / BoundaryIndex.BucketCm);
             int gen = ++bounds.StampGen;
-            var probeSeg = MakeProbeSeg(a, b);
+            using var probeSeg = MakeProbeSeg(a, b);
             for (int i = i0; i <= i1; i++)
             for (int j = j0; j <= j1; j++)
             {
@@ -2325,7 +2333,8 @@ namespace ST4Yardimci
             if (along.Length < 1e-6) return false;
             along = along / along.Length;
             var cand = slabTexts ?? new List<SlabTextRec>();
-            if (TryPickSlabLabelInCorridor(leftInner, rightInner, along, n.GetNormal(), cand, bounds, areas, out SlabTextRec lab))
+            if (TryPickSlabLabelInCorridor(leftInner, rightInner, along, n.GetNormal(), cand, bounds, areas, out SlabTextRec lab)
+                || TryPickSlabLabelAlongStrip(leftInner, rightInner, along, n.GetNormal(), cand, bounds, areas, out lab))
             {
                 FillSlabInfoFromBlob(ref slab, lab.Text);
                 AttachUstKotFromPlanLabel(lab, null, ref slab);
@@ -2389,6 +2398,43 @@ namespace ST4Yardimci
                     found = st;
                     ok = true;
                 }
+            }
+            return ok;
+        }
+
+        /// <summary>
+        /// Uzun konsol şeridi: etiket şerit boyunca uzakta olabilir (CK D1-19, hattan 12 m).
+        /// Etiket açıklığın genişliği içinde olmalı ve açıklık ortasından etikete giden doğru
+        /// hiçbir mesnet/sınır çizgisini kesmemeli (şerit dışına, komşu döşemeye geçmez).
+        /// </summary>
+        private static bool TryPickSlabLabelAlongStrip(
+            Point3d leftInner,
+            Point3d rightInner,
+            Vector3d along,
+            Vector3d nn,
+            List<SlabTextRec> candidates,
+            BoundaryIndex bounds,
+            List<ClosedArea> areas,
+            out SlabTextRec found)
+        {
+            found = default;
+            double len = leftInner.DistanceTo(rightInner);
+            if (len < 8.0 || bounds == null || candidates == null || candidates.Count == 0) return false;
+            Point3d mid = Mid(leftInner, rightInner);
+            double best = double.MaxValue;
+            bool ok = false;
+            foreach (var st in candidates)
+            {
+                Point3d p = st.Insert;
+                double t = (p - leftInner).DotProduct(along);
+                if (t < 0.0 || t > len) continue;
+                double perp = Math.Abs((p - leftInner).DotProduct(nn));
+                if (perp > FloodMaxRadiusCm || perp >= best) continue;
+                if (PointInsideBosluk(areas, p) || PointInsideMesnetBody(areas, p)) continue;
+                if (SegmentCrossesBoundary(bounds, mid, p, 0.5, false)) continue;
+                best = perp;
+                found = st;
+                ok = true;
             }
             return ok;
         }
@@ -3948,7 +3994,11 @@ namespace ST4Yardimci
         {
             DosemeKonsolSettings.ApplySteel(konsolBoyCm, adetRefLenCm, ref adet, ref cap, ref aralik);
             GprSteelKind want = sagSide ? GprSteelKind.SagIlave : GprSteelKind.SolIlave;
-            if (!TryFindGprSteel(notes, near, want, out GprSteelRec g))
+            // Konsol döşemesinin kendi üst donatısı (düz/pilye/türsüz) konsol ilavesinin GPR karşılığıdır.
+            if (!TryFindGprSteel(notes, near, want, out GprSteelRec g)
+                && !TryFindGprSteel(notes, near, GprSteelKind.Pilye, out g)
+                && !TryFindGprSteel(notes, near, GprSteelKind.Duz, out g)
+                && !TryFindGprSteel(notes, near, GprSteelKind.Unknown, out g))
                 return false;
             if (g.CapMm <= 0 || g.AralikCm <= 0) return true; // bulundu ama eksik — eş say
             double progAs = AsPerMeterCm2(cap, aralik);
@@ -4381,12 +4431,17 @@ namespace ST4Yardimci
             SlabInfo nb;
             if (!TryClassifyGapAsDoseme(bounds, near, far, o, n, areas, slabTexts, gprNotes, out nb))
             {
-                // Etiket yok (küçük konsol / kot uzak DB): kısa çıkıntı yine konsol
-                if (!yakinSinir && !kisaBosKonsol) return false;
-                nb = new SlabInfo { CapMm = 8, AralikCm = 20, HasLabel = true };
+                // Etiket yok (küçük konsol / kot uzak DB): kısa çıkıntı yine konsol.
+                // Uzun konsol şeridinde etiket şerit boyunca uzakta olabilir (CK D1-19).
                 Vector3d nn = n.GetNormal();
                 var cand = slabTexts ?? new List<SlabTextRec>();
-                if (TryPickSlabLabelInCorridor(near, far, o, nn, cand, bounds, areas, out SlabTextRec lab))
+                SlabTextRec lab = default;
+                bool stripLab = sinirKenar
+                    && TryPickSlabLabelAlongStrip(near, far, o, nn, cand, bounds, areas, out lab);
+                if (!yakinSinir && !kisaBosKonsol && !stripLab) return false;
+                nb = new SlabInfo { CapMm = 8, AralikCm = 20, HasLabel = true };
+                if (stripLab
+                    || TryPickSlabLabelInCorridor(near, far, o, nn, cand, bounds, areas, out lab))
                 {
                     FillSlabInfoFromBlob(ref nb, lab.Text);
                     AttachUstKotFromPlanLabel(lab, null, ref nb);
@@ -4436,7 +4491,7 @@ namespace ST4Yardimci
             layer = "";
             bool any = false;
             Point3d end = origin + dir * maxLen;
-            var probeSeg = MakeProbeSeg(origin, end);
+            using var probeSeg = MakeProbeSeg(origin, end);
             foreach (var bd in bounds.Items)
             {
                 var pts = new List<Point3d>();
@@ -4731,32 +4786,7 @@ namespace ST4Yardimci
 
         private static ObjectId GetOrCreateYaziBeykentTextStyle(Transaction tr, Database db)
         {
-            var txtTable = (TextStyleTable)tr.GetObject(db.TextStyleTableId, OpenMode.ForRead);
-            if (txtTable.Has(TextStyleYazi))
-                return txtTable[TextStyleYazi];
-
-            var rec = new TextStyleTableRecord { Name = TextStyleYazi };
-            try
-            {
-                rec.Font = new Autodesk.AutoCAD.GraphicsInterface.FontDescriptor(
-                    "Bahnschrift Light Condensed", false, false, 0, 0);
-            }
-            catch
-            {
-                try
-                {
-                    rec.Font = new Autodesk.AutoCAD.GraphicsInterface.FontDescriptor(
-                        "Arial", false, false, 0, 0);
-                }
-                catch { }
-            }
-            try { rec.TextSize = 0.0; } catch { }
-            try { rec.XScale = 1.0; } catch { }
-            txtTable.UpgradeOpen();
-            ObjectId id = txtTable.Add(rec);
-            tr.AddNewlyCreatedDBObject(rec, true);
-            txtTable.DowngradeOpen();
-            return id;
+            return BaDimensionStyles.EnsureYazi(tr, db);
         }
 
         private enum StockParkKind { None, Unmatched, MoveDown, IlaveDown }
@@ -5426,6 +5456,7 @@ namespace ST4Yardimci
                     span.L, Lbar, ref adet, ref cap, ref aralik);
 
                 Vector3d off = KonsolOff(tip, mainEnd);
+                tip = KonsolTipInsideKatSinir(tip, mainEnd, off, n);
                 List<Point3d> fig;
                 if (span.L <= KonsolPilyeMinUzCm)
                     fig = BuildFirketePoints(tip, beamFar, mainEnd, n, off, kirisGonye);
@@ -5443,7 +5474,7 @@ namespace ST4Yardimci
                     tr, btr, db, fig, cap, adet, aralik, n, u,
                     donatiLayer, yaziLayer, yaziStyleId, true,
                     Mid(tip + off, mainEnd + off),
-                    !ilaveGpr, StockParkKind.IlaveDown, MinSpanCm * 0.25);
+                    !ilaveGpr, KonsolPark(ilaveGpr), MinSpanCm * 0.25);
             }
         }
 
@@ -5451,6 +5482,41 @@ namespace ST4Yardimci
         /// Konsol ≤50: üst ilave firkete — üst bacak, 10 cm kenar gönye, dönüş kiriş uzak ucuna paspayı.
         /// beamTopGonyeCm &gt; 0: kiriş içi üst uca gönye (kot farkı / arkası boş → 40 cm).
         /// </summary>
+        /// <summary>
+        /// Konsol ilavesi konsol ayarından gelir; GPR yazısı yoksa aşağı taşınmaz (kaybolur),
+        /// yerinde kırmızı kalır.
+        /// </summary>
+        private static StockParkKind KonsolPark(bool gprOk) =>
+            gprOk ? StockParkKind.None : StockParkKind.Unmatched;
+
+        /// <summary>
+        /// Konsol ucu yana (off) kaydırılınca eğik kat sınırının dışına düşer; kırpma uç gönyesini
+        /// siler ve çubuk düz mesnet ilavesi gibi kalır. Uç, kaydırılmış konumda gönyesiyle birlikte
+        /// paspayı kadar içeride kalana dek ana uca doğru geri çekilir.
+        /// </summary>
+        private static Point3d KonsolTipInsideKatSinir(Point3d tip, Point3d back, Vector3d off, Vector3d up)
+        {
+            if (_katSinirClamp == null || _katSinirClamp.Count == 0) return tip;
+            Vector3d d = tip - back;
+            double len = d.Length;
+            if (len < 1.0) return tip;
+            Vector3d dir = d / len;
+            Vector3d g = up.Length > 1e-9 ? -up.GetNormal() * KonsolIlaveGonyeCm : new Vector3d();
+            Vector3d pas = dir * (PaspayiCm - 0.5);
+            bool Ok(Point3d t) =>
+                PointInsideKatSinir(_katSinirClamp, t + off + pas)
+                && PointInsideKatSinir(_katSinirClamp, t + off + g + pas);
+            if (Ok(tip)) return tip;
+            // Uç zaten kat sınırı dışındaysa (sınır başka katman) dokunma.
+            if (!PointInsideKatSinir(_katSinirClamp, tip)) return tip;
+            for (double s = 0.5; s <= 40.0 && s < len - 1.0; s += 0.5)
+            {
+                Point3d t = tip - dir * s;
+                if (Ok(t)) return t;
+            }
+            return tip;
+        }
+
         private static List<Point3d> BuildFirketePoints(
             Point3d tip,
             Point3d beamFar,
@@ -5819,6 +5885,7 @@ namespace ST4Yardimci
                                 out int adet, out int cap, out int aralik);
                             Point3d tip = supports[s].FaceMin - u * Math.Max(0.0, leftSp.Value.L - PaspayiCm);
                             Point3d beamFar = supports[s].FaceMax - u * PaspayiCm;
+                            tip = KonsolTipInsideKatSinir(tip, beamFar, off, n);
                             if (placedKonsol != null)
                                 placedKonsol.Add(new KonsolPlacedBar { A = tip, B = beamFar, AlongN = offsetAlongNCm });
                             DrawLabeledStock(
@@ -5827,7 +5894,7 @@ namespace ST4Yardimci
                                 cap, adet, aralik, n, u,
                                 donatiLayer, yaziLayer, yaziStyleId, true,
                                 Mid(tip + off, beamFar + off),
-                                !gprOk, StockParkKind.IlaveDown, MinSpanCm * 0.25);
+                                !gprOk, KonsolPark(gprOk), MinSpanCm * 0.25);
                         }
                         else
                         {
@@ -5848,6 +5915,7 @@ namespace ST4Yardimci
                                 out int adet, out int cap, out int aralik);
                             Point3d tip = supports[s].FaceMax + u * Math.Max(0.0, rightSp.Value.L - PaspayiCm);
                             Point3d beamFar = supports[s].FaceMin + u * PaspayiCm;
+                            tip = KonsolTipInsideKatSinir(tip, beamFar, off2, n);
                             if (placedKonsol != null)
                                 placedKonsol.Add(new KonsolPlacedBar { A = tip, B = beamFar, AlongN = offsetAlongNCm + StaggerCm });
                             DrawLabeledStock(
@@ -5856,7 +5924,7 @@ namespace ST4Yardimci
                                 cap, adet, aralik, n, u,
                                 donatiLayer, yaziLayer, yaziStyleId, true,
                                 Mid(tip + off2, beamFar + off2),
-                                !gprOk, StockParkKind.IlaveDown, MinSpanCm * 0.25);
+                                !gprOk, KonsolPark(gprOk), MinSpanCm * 0.25);
                         }
                         else
                         {
@@ -5898,10 +5966,12 @@ namespace ST4Yardimci
                 GprSteelRec gL = default, gR = default;
                 bool hasL = leftSp.HasValue && TryGetClassedIlave(leftSp.Value, true, out gL);
                 bool hasR = rightSp.HasValue && TryGetClassedIlave(rightSp.Value, false, out gR);
-                if (hasL && hasR)
+                // STA4 mesnet ilavesini çoğu zaman tek döşemeye yazar (ör. K1-08: yalnız D1-07 sol ila).
+                // Bir yanda yazı varsa o kullanılır; çizilmeyen komşunun yazısı da geçerlidir.
+                if (hasL || hasR)
                 {
-                    double asL = AsPerMeterCm2(gL.CapMm, gL.AralikCm);
-                    double asR = AsPerMeterCm2(gR.CapMm, gR.AralikCm);
+                    double asL = hasL ? AsPerMeterCm2(gL.CapMm, gL.AralikCm) : -1.0;
+                    double asR = hasR ? AsPerMeterCm2(gR.CapMm, gR.AralikCm) : -1.0;
                     GprSteelRec win = asL >= asR ? gL : gR;
                     if (win.CapMm > 0) cp = win.CapMm;
                     if (win.AralikCm > 0) ar = win.AralikCm;
@@ -5932,6 +6002,7 @@ namespace ST4Yardimci
                         double kirisGonye = devamAciklik ? 0.0 : KonsolKirisGonyeCm;
                         // Örtüşen ikinci konsol +5 cm (aynı mesnet veya uzun çubuk)
                         Vector3d offK1 = n * ResolveKonsolAlongN(placedKonsol, tip, mainEnd, u, offsetAlongNCm);
+                        tip = KonsolTipInsideKatSinir(tip, mainEnd, offK1, n);
                         // Konsol solda (prev) → sol ilave
                         bool gprOk = PickKonsolIlaveSteel(rightSp.Value, sagSide: false, boyK, tip.DistanceTo(mainEnd),
                             out ad, out cp, out ar);
@@ -5943,7 +6014,7 @@ namespace ST4Yardimci
                                 cp, ad, ar, n, u,
                                 donatiLayer, yaziLayer, yaziStyleId, true,
                                 Mid(tip + offK1, mainEnd + offK1),
-                                !gprOk, StockParkKind.IlaveDown, MinSpanCm * 0.25);
+                                !gprOk, KonsolPark(gprOk), MinSpanCm * 0.25);
                         }
                         else
                         {
@@ -5956,7 +6027,7 @@ namespace ST4Yardimci
                                 cp, ad, ar, n, u,
                                 donatiLayer, yaziLayer, yaziStyleId, true,
                                 Mid(tip + offK1, mainEnd + offK1),
-                                !gprOk, StockParkKind.IlaveDown, MinSpanCm * 0.25);
+                                !gprOk, KonsolPark(gprOk), MinSpanCm * 0.25);
                         }
                     }
                     if (kNext)
@@ -5970,6 +6041,7 @@ namespace ST4Yardimci
                             : beamFar;
                         double kirisGonye = devamAciklik ? 0.0 : KonsolKirisGonyeCm;
                         Vector3d offKn = n * ResolveKonsolAlongN(placedKonsol, tip, mainEnd, u, offsetAlongNCm);
+                        tip = KonsolTipInsideKatSinir(tip, mainEnd, offKn, n);
                         // Konsol sağda (next) → sağ ilave
                         bool gprOk = PickKonsolIlaveSteel(leftSp.Value, sagSide: true, boyK, tip.DistanceTo(mainEnd),
                             out ad, out cp, out ar);
@@ -5981,7 +6053,7 @@ namespace ST4Yardimci
                                 cp, ad, ar, n, u,
                                 donatiLayer, yaziLayer, yaziStyleId, true,
                                 Mid(tip + offKn, mainEnd + offKn),
-                                !gprOk, StockParkKind.IlaveDown, MinSpanCm * 0.25);
+                                !gprOk, KonsolPark(gprOk), MinSpanCm * 0.25);
                         }
                         else
                         {
@@ -5994,7 +6066,7 @@ namespace ST4Yardimci
                                 cp, ad, ar, n, u,
                                 donatiLayer, yaziLayer, yaziStyleId, true,
                                 Mid(tip + offKn, mainEnd + offKn),
-                                !gprOk, StockParkKind.IlaveDown, MinSpanCm * 0.25);
+                                !gprOk, KonsolPark(gprOk), MinSpanCm * 0.25);
                         }
                     }
                     continue;
@@ -6102,7 +6174,7 @@ namespace ST4Yardimci
             Func<string, bool> layerOk,
             List<HitRec> hits)
         {
-            var probeSeg = MakeProbeSeg(a, b);
+            using var probeSeg = MakeProbeSeg(a, b);
             foreach (ObjectId id in btr)
             {
                 if (!(tr.GetObject(id, OpenMode.ForRead) is Entity ent))
@@ -6185,18 +6257,7 @@ namespace ST4Yardimci
             short aci,
             LineWeight lw)
         {
-            var lt = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
-            if (lt.Has(name))
-                return name;
-            lt.UpgradeOpen();
-            var rec = new LayerTableRecord
-            {
-                Name = name,
-                Color = Color.FromColorIndex(ColorMethod.ByAci, aci),
-                LineWeight = lw
-            };
-            lt.Add(rec);
-            tr.AddNewlyCreatedDBObject(rec, true);
+            BeykentKatmanYukle.Ensure(tr, db, name, aci, lw);
             return name;
         }
 

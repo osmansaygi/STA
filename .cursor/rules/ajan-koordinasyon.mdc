@@ -1,0 +1,12 @@
+---
+description: Cursor ve Codex ortak klasörde görev, dosya ve derleme koordinasyonu
+alwaysApply: true
+---
+
+# Ajan koordinasyonu
+
+- Her görevin başında ve düzenleme öncesinde `docs/ajan-koordinasyon/PROTOKOL.md` ile `docs/ajan-koordinasyon/oturumlar/` içindeki aktif kayıtları oku ve protokolü uygula.
+- Her sohbet için ayrı kayıt oluştur; dosya sahipliğini ve ortak çıktı kaynaklarını düzenlemeden önce bildir.
+- Başka aktif kaydın dosyasına veya ortak çıktı kaynağına çakışan işlem yapma. Bağımsız işe devam et; çakışan işi kullanıcıya bildir.
+- Dosyayı değiştirmeden hemen önce diskten tekrar oku; başkasının değişikliğini geri alma.
+- İş sonunda kendi kaydını kapat, ilgili modül hafızasını güncelle. Başkasının kaydını kapatma.

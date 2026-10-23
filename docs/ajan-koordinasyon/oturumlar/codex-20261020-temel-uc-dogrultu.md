@@ -1,0 +1,12 @@
+# Sürekli temel uç ve kırık doğrultu düzeltmesi
+- Ajan: Codex / bu sohbet
+- Güncelleme: 2026-10-20 (Europe/Istanbul)
+- Durum: tamamlandı
+- Görev: kolon altında boş kalan temel uçlarını çizimde tamamla; diğer doğrultu temelinin merkez çizgisi dış sınırını kullan; kırılan grupta her temeli kendi doğrultusunda aç.
+- Ayrılan dosyalar/kaynaklar: yok. Değişen: ST4_Plan_ID_Ciz/PlanIdDrawingManager.SurekliTemelGorunus.cs; tools/SurekliTemelViewCheck/**; docs/modul-durum/ST4_Plan_ID_Ciz.SurekliGorunus.md; bu kayıt. SB-60/SB-75 hattı T45 ve ayrıca T42 kontrol edildi.
+- Çıktılar: tools/SurekliTemelViewCheck/build ve obj izole; önceki açık yeniden derle/eskileri sil talimatıyla NETLOAD Plan DLL/PDB dağıtımı ve eski tarihli Plan kopyalarının temizliği. Kiriş kaydındaki kaynaklar ve ortak bin/obj düzenlenmeyecek. Canlı AutoCAD'e yükleme yapılmayacak.
+- Sonuç: uçlarda kolon altı tamamlanır; diğer temelin orta çizgi kesişimindeki dış sınırı değerlendirilir. Kırık grupta her temel kendi doğrultusunda açılır, ortak kolon tek istasyonda kalır. ST4 girdisi ve donatı hesapları değiştirilmedi; donatı gösterimi kapalı.
+- Doğrulama: net48 0 hata/0 uyarı; Verify-Project dört regresyon PASS. Sentetik kırık yön/ters uçlar/eksik kolon altı/farklı kot/uzun ucun korunması PASS. Kullanıcının güncel MS_OTP_01.st4 dosyası antetli/antetsiz COMPLETE; T5/T6/T14 kolon altları tam destekli; tüm genişlikler kaynakla aynı, donatı 0, kolon etiketi tekil, kaynak SHA256 değişmedi. AKDAG antetli regresyon COMPLETE. DXF önizlemeleri incelendi.
+- Dağıtım: NETLOAD/ST4_Plan_ID_Ciz_20261020_003338.dll ve PDB kopyalandı; DLL hash eşit. Önceki 235720 DLL/PDB silindi. Çıktı rezervasyonu kaldırıldı. Canlı AutoCAD'e yüklenmedi; kullanıcı oturumunda görsel onay açık.
+- Açılı uç takip sonucu: kolon yüzünden geçen uç artık ayakiziyle eşleşir. En enine diğer temel seçilir; net kolon dışı çıkıntı açıyla dönüştürülüp kolon görünüş yüzüne eklenir. T45 iki uç 22,831452 cm, T42 iki uç 24,277273 cm (karşı temel normalinde 20/20 cm); ters uç sırasında aynı. Yeni test eski DLL'de FAIL, son DLL'de PASS. Tüm MS kolon görünüşlerinde (188) alt destek PASS. MS antetli/antetsiz, sentetik ve AKDAG Core Console COMPLETE; kaynak ST4 hash aynı, donatı 0, etiket tekil. Verify-Project dört PASS, net48 0 hata/0 uyarı.
+- Son dağıtım: NETLOAD/ST4_Plan_ID_Ciz_20261020_005637.dll ve PDB; hash kaynakla aynı; 003338 DLL/PDB silindi. Canlı AutoCAD'e yükleme yapılmadı. Güncel testler angles-*-final adlarıyla izole araç klasöründe; T42/T45 önizlemeleri incelendi.

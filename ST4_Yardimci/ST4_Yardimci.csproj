@@ -14,7 +14,27 @@
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <!-- Geliştirme (Debug): şifreleme yok. Ofis/dağıtım: Release veya /p:SkipObfuscar=false -->
     <SkipObfuscar Condition="'$(SkipObfuscar)' == '' and '$(Configuration)' == 'Debug'">true</SkipObfuscar>
+    <!-- Home şeridi grupları (eski BAPANEL yerine) net48 ofis paketinde ve 2027'de. -->
+    <DefineConstants>$(DefineConstants);BA_HOME_RIBBON</DefineConstants>
   </PropertyGroup>
+
+  <!-- AutoCAD 2027 uses its own .NET 10 API; keep the legacy build separate. -->
+  <PropertyGroup Condition="'$(AutoCAD2027Build)' == 'true'">
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <UseWPF>true</UseWPF>
+    <BaseAssemblyName>ST4_Yardimci_2027</BaseAssemblyName>
+    <AssemblyName>$(BaseAssemblyName)</AssemblyName>
+    <AutoCADInstallDir>C:\Program Files\Autodesk\AutoCAD 2027</AutoCADInstallDir>
+    <DefineConstants>$(DefineConstants);AUTOCAD2027</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(AutoCAD2027Build)' == 'true'">
+    <Reference Include="AdWindows">
+      <HintPath>$(AutoCADInstallDir)\AdWindows.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
 
   <PropertyGroup>
     <!-- 2027 mgd DLL'leri .NET 10; net48 derlemesi NuGet 24.3 kullanır. 2027 yalnız Obfuscar arama yolunda. -->
@@ -48,11 +68,28 @@
     </PackageReference>
   </ItemGroup>
 
-  <ItemGroup>
+  <ItemGroup Condition="'$(AutoCAD2027Build)' != 'true'">
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Drawing" />
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="System.Management" />
+    <Reference Include="System.Runtime.Serialization" />
+    <!-- BaHomeRibbonManager: AdWindows (AutoCAD.NET paketi) WPF tipleri. -->
+    <Reference Include="PresentationCore" />
+    <Reference Include="PresentationFramework" />
+    <Reference Include="WindowsBase" />
+    <Reference Include="System.Xaml" />
+  </ItemGroup>
+  <!-- Plan ID ile ortak katman / ölçü / yazı stili ayarları (KATMANYUKLE formu). -->
+  <ItemGroup>
+    <Compile Include="..\Ortak\BeykentStil\*.cs" Link="Ortak\%(Filename)%(Extension)" />
+    <Compile Include="..\Ortak\Monolit\*.cs" Link="Ortak\Monolit\%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(AutoCAD2027Build)' == 'true'">
+    <Reference Include="System.Management">
+      <HintPath>$(AutoCADInstallDir)\System.Management.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
   </ItemGroup>
 
   <PropertyGroup>
@@ -199,7 +236,7 @@
     <Message Importance="high" Text="========================================" />
   </Target>
 
-  <Target Name="CopyToNetloadFolder" AfterTargets="CleanupOutputFolder">
+  <Target Name="CopyToNetloadFolder" AfterTargets="CleanupOutputFolder" Condition="'$(AutoCAD2027Build)' != 'true'">
     <ReadLinesFromFile File="$(IntermediateOutputPath)assemblyname.stamp" Condition="Exists('$(IntermediateOutputPath)assemblyname.stamp')">
       <Output TaskParameter="Lines" ItemName="_CopyAsm" />
     </ReadLinesFromFile>
@@ -210,15 +247,16 @@
       <_CopyNote Condition="'$(SkipObfuscar)' == 'true'">sifresiz Debug</_CopyNote>
       <_CopyNote Condition="'$(SkipObfuscar)' != 'true'">obfuscated</_CopyNote>
     </PropertyGroup>
-    <MakeDir Directories="$(_NetloadDir)" />
+    <MakeDir Directories="$(_NetloadDir)" Condition="'$(SkipNetloadCopy)' != 'true'" />
     <MakeDir Directories="$(_BundleWin)" />
     <ItemGroup>
       <_OldNetloadYard Include="$(_NetloadDir)\ST4_Yardimci*.dll;$(_NetloadDir)\ST4_Yardimci*.pdb" />
     </ItemGroup>
-    <Delete Files="@(_OldNetloadYard)" ContinueOnError="true" />
-    <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="$(_NetloadDir)" SkipUnchangedFiles="false" />
+    <Delete Files="@(_OldNetloadYard)" ContinueOnError="true" Condition="'$(SkipNetloadCopy)' != 'true'" />
+    <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="$(_NetloadDir)" SkipUnchangedFiles="false"
+          Condition="'$(SkipNetloadCopy)' != 'true'" />
     <Copy SourceFiles="$(OutputPath)$(AssemblyName).pdb" DestinationFolder="$(_NetloadDir)" SkipUnchangedFiles="false"
-          Condition="'$(SkipObfuscar)' == 'true' and Exists('$(OutputPath)$(AssemblyName).pdb')" />
+          Condition="'$(SkipNetloadCopy)' != 'true' and '$(SkipObfuscar)' == 'true' and Exists('$(OutputPath)$(AssemblyName).pdb')" />
     <!-- Autoloader: sabit isim + bagimliliklar (NTS yoksa ofiste gocme). -->
     <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll"
           DestinationFiles="$(_BundleWin)\ST4_Yardimci.dll"
@@ -243,8 +281,23 @@
           SkipUnchangedFiles="false" />
     <Copy SourceFiles="@(_BundleDeps)" DestinationFolder="$(_SetupPayload)" SkipUnchangedFiles="false"
           Condition="'@(_BundleDeps)' != ''" />
-    <Message Importance="high" Text="NETLOAD guncellendi ($(_CopyNote)): $(_NetloadDir)\$(AssemblyName).dll" />
+    <Message Importance="high" Text="NETLOAD guncellendi ($(_CopyNote)): $(_NetloadDir)\$(AssemblyName).dll"
+            Condition="'$(SkipNetloadCopy)' != 'true'" />
+    <Message Importance="high" Text="NETLOAD atlandi (SkipNetloadCopy)."
+            Condition="'$(SkipNetloadCopy)' == 'true'" />
     <Message Importance="high" Text="Autoload bundle: $(_BundleWin)\ST4_Yardimci.dll" />
     <Message Importance="high" Text="Setup-Ofis payload: $(_SetupPayload)\ST4_Yardimci.dll" />
+  </Target>
+  <Target Name="CopyToNetload2027Folder" AfterTargets="CleanupOutputFolder" Condition="'$(AutoCAD2027Build)' == 'true'">
+    <ReadLinesFromFile File="$(IntermediateOutputPath)assemblyname.stamp">
+      <Output TaskParameter="Lines" ItemName="_Net10Stamp" />
+    </ReadLinesFromFile>
+    <PropertyGroup>
+      <_Net10Name>@(_Net10Stamp)</_Net10Name>
+      <_Net10Dir>$(MSBuildProjectDirectory)\..\NETLOAD\AutoCAD2027\@(_Net10Stamp)</_Net10Dir>
+    </PropertyGroup>
+    <MakeDir Directories="$(_Net10Dir)" />
+    <Copy SourceFiles="$(OutputPath)$(_Net10Name).dll;$(OutputPath)NetTopologySuite.dll" DestinationFolder="$(_Net10Dir)" />
+    <Message Importance="high" Text="AutoCAD 2027 / .NET 10: $(_Net10Dir)\@(_Net10Stamp).dll" />
   </Target>
 </Project>

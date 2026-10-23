@@ -1,0 +1,118 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <OutputType>Library</OutputType>
+    <RootNamespace>ST4Yardimci</RootNamespace>
+    <BaseAssemblyName>ST4_Yardimci</BaseAssemblyName>
+    <!-- Saat damgası StampAssemblyName hedefinde bir kez konur (Now her okumada değişmesin). -->
+    <AssemblyName>$(BaseAssemblyName)</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <Platforms>AnyCPU</Platforms>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <Deterministic>false</Deterministic>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <!-- Geliştirme (Debug): şifreleme yok. Ofis/dağıtım: Release veya /p:SkipObfuscar=false -->
+    <SkipObfuscar Condition="'$(SkipObfuscar)' == '' and '$(Configuration)' == 'Debug'">true</SkipObfuscar>
+  </PropertyGroup>
+  <!-- AutoCAD 2027 uses its own .NET 10 API; keep the legacy build separate. -->
+  <PropertyGroup Condition="'$(AutoCAD2027Build)' == 'true'">
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <UseWPF>true</UseWPF>
+    <BaseAssemblyName>ST4_Yardimci_2027</BaseAssemblyName>
+    <AssemblyName>$(BaseAssemblyName)</AssemblyName>
+    <AutoCADInstallDir>C:\Program Files\Autodesk\AutoCAD 2027</AutoCADInstallDir>
+  </PropertyGroup>
+  <PropertyGroup>
+    <!-- 2027 mgd DLL'leri .NET 10; net48 derlemesi NuGet 24.3 kullanır. 2027 yalnız Obfuscar arama yolunda. -->
+    <AutoCADInstallDir Condition="'$(AutoCADInstallDir)' == '' and Exists('C:\Program Files\Autodesk\AutoCAD 2026\acdbmgd.dll')">C:\Program Files\Autodesk\AutoCAD 2026</AutoCADInstallDir>
+    <AutoCADInstallDir Condition="'$(AutoCADInstallDir)' == '' and Exists('C:\Program Files\Autodesk\AutoCAD 2025\acdbmgd.dll')">C:\Program Files\Autodesk\AutoCAD 2025</AutoCADInstallDir>
+    <AutoCADInstallDir Condition="'$(AutoCADInstallDir)' == '' and Exists('C:\Program Files\Autodesk\AutoCAD 2024\acdbmgd.dll')">C:\Program Files\Autodesk\AutoCAD 2024</AutoCADInstallDir>
+    <AutoCADInstallDir Condition="'$(AutoCADInstallDir)' == '' and Exists('C:\Program Files\Autodesk\AutoCAD 2023\acdbmgd.dll')">C:\Program Files\Autodesk\AutoCAD 2023</AutoCADInstallDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="NetTopologySuite" Version="2.6.0" />
+    <PackageReference Include="Obfuscar" Version="2.2.49" GeneratePathProperty="true">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="AutoCAD.NET" Version="24.3.0" Condition="'$(AutoCADInstallDir)' == ''">
+      <ExcludeAssets>runtime</ExcludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <!-- Obfuscar bağımlılık yolu (derleme NuGet ile olduğunda). -->
+    <PackageReference Include="AutoCAD.NET.Model" Version="24.3.0" GeneratePathProperty="true" Condition="'$(AutoCADInstallDir)' == ''">
+      <ExcludeAssets>runtime</ExcludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="AutoCAD.NET.Core" Version="24.3.0" GeneratePathProperty="true" Condition="'$(AutoCADInstallDir)' == ''">
+      <ExcludeAssets>runtime</ExcludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup Condition="'$(AutoCAD2027Build)' != 'true'">
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Management" />
+    <Reference Include="System.Runtime.Serialization" />
+  </ItemGroup>
+  <!-- Plan ID ile ortak katman / ölçü / yazı stili ayarları (KATMANYUKLE formu). -->
+  <ItemGroup>
+    <Compile Include="C:\Users\BEYKENT\Documents\CURSOR\Osman_donusum\ST4_Yardimci\..\Ortak\BeykentStil\*.cs" Link="Ortak\%(Filename)%(Extension)" />
+    <Compile Include="C:\Users\BEYKENT\Documents\CURSOR\Osman_donusum\ST4_Yardimci\..\Ortak\Monolit\*.cs" Link="Ortak\Monolit\%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(AutoCAD2027Build)' == 'true'">
+    <Reference Include="System.Management">
+      <HintPath>$(AutoCADInstallDir)\System.Management.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+  <PropertyGroup>
+    <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="C:\Users\BEYKENT\Documents\CURSOR\Osman_donusum\ST4_Yardimci\Icons\oto_olcu_16.png" LogicalName="ST4Yardimci.Icons.oto_olcu_16.png" Condition="Exists('C:\Users\BEYKENT\Documents\CURSOR\Osman_donusum\ST4_Yardimci\Icons\oto_olcu_16.png')" />
+    <EmbeddedResource Include="C:\Users\BEYKENT\Documents\CURSOR\Osman_donusum\ST4_Yardimci\Icons\oto_olcu_32.png" LogicalName="ST4Yardimci.Icons.oto_olcu_32.png" Condition="Exists('C:\Users\BEYKENT\Documents\CURSOR\Osman_donusum\ST4_Yardimci\Icons\oto_olcu_32.png')" />
+    <EmbeddedResource Include="C:\Users\BEYKENT\Documents\CURSOR\Osman_donusum\ST4_Yardimci\Icons\*.png" Exclude="C:\Users\BEYKENT\Documents\CURSOR\Osman_donusum\ST4_Yardimci\Icons\oto_olcu_*.png" Condition="Exists('C:\Users\BEYKENT\Documents\CURSOR\Osman_donusum\ST4_Yardimci\Icons')">
+      <LogicalName>ST4Yardimci.Icons.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="C:\Users\BEYKENT\Documents\CURSOR\Osman_donusum\ST4_Yardimci\SEHPA.dwg" LogicalName="ST4Yardimci.Sehpa.SEHPA.dwg" Condition="Exists('C:\Users\BEYKENT\Documents\CURSOR\Osman_donusum\ST4_Yardimci\SEHPA.dwg')" />
+    <EmbeddedResource Include="C:\Users\BEYKENT\Documents\CURSOR\Osman_donusum\ST4_Yardimci\kesit_sembol.dwg" LogicalName="ST4Yardimci.KesitSembol.kesit_sembol.dwg" Condition="Exists('C:\Users\BEYKENT\Documents\CURSOR\Osman_donusum\ST4_Yardimci\kesit_sembol.dwg')" />
+    <EmbeddedResource Include="C:\Users\BEYKENT\Documents\CURSOR\Osman_donusum\ST4_Yardimci\DEMIR_TABLOSU.dwg" LogicalName="ST4Yardimci.DemirTablosu.DEMIR_TABLOSU.dwg" Condition="Exists('C:\Users\BEYKENT\Documents\CURSOR\Osman_donusum\ST4_Yardimci\DEMIR_TABLOSU.dwg')" />
+    <EmbeddedResource Include="C:\Users\BEYKENT\Documents\CURSOR\Osman_donusum\ST4_Yardimci\TEMEL_CUKURU.dwg" LogicalName="ST4Yardimci.TemelCekuru.TEMEL_CUKURU.dwg" Condition="Exists('C:\Users\BEYKENT\Documents\CURSOR\Osman_donusum\ST4_Yardimci\TEMEL_CUKURU.dwg')" />
+    <EmbeddedResource Include="C:\Users\BEYKENT\Documents\CURSOR\Osman_donusum\ST4_Yardimci\HASIR.dwg" LogicalName="ST4Yardimci.Hasir.HASIR.dwg" Condition="Exists('C:\Users\BEYKENT\Documents\CURSOR\Osman_donusum\ST4_Yardimci\HASIR.dwg')" />
+    <EmbeddedResource Include="C:\Users\BEYKENT\Documents\CURSOR\Osman_donusum\ST4_Yardimci\HASIRMETRAJ.dwg" LogicalName="ST4Yardimci.HasirMetraj.HASIRMETRAJ.dwg" Condition="Exists('C:\Users\BEYKENT\Documents\CURSOR\Osman_donusum\ST4_Yardimci\HASIRMETRAJ.dwg')" />
+  </ItemGroup>
+  <ItemGroup Condition="Exists('$(AutoCADInstallDir)\acdbmgd.dll') and Exists('$(AutoCADInstallDir)\acmgd.dll')">
+    <Reference Include="acdbmgd">
+      <HintPath>$(AutoCADInstallDir)\acdbmgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="acmgd">
+      <HintPath>$(AutoCADInstallDir)\acmgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="accoremgd">
+      <HintPath>$(AutoCADInstallDir)\accoremgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+  <!-- Derleme her zaman ST4_Yardimci.dll üretir; damga adı Build sonrası kopyada verilir.
+       AssemblyName'i hedef içinde değiştirmek SDK TargetName'e geç kalır (Obfuscar boş arardı). -->
+  <!-- Derleme sonrası Obfuscar: isimler + stringler (UUID) karışır; public AutoCAD API korunur. -->
+  <PropertyGroup>
+    <OutputPath>build/</OutputPath>
+    <NuGetAudit>false</NuGetAudit>
+    <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AssemblyName>ST4_Yardimci_20261022_150054</AssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="C:\Users\BEYKENT\Documents\CURSOR\Osman_donusum\ST4_Yardimci\**\*.cs" Exclude="C:\Users\BEYKENT\Documents\CURSOR\Osman_donusum\ST4_Yardimci\bin\**;C:\Users\BEYKENT\Documents\CURSOR\Osman_donusum\ST4_Yardimci\obj\**" />
+  </ItemGroup>
+</Project>

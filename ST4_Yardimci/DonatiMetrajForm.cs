@@ -132,7 +132,7 @@ namespace ST4Yardimci
     }
 
     /// <summary>Modeless form — gömülü demir tablosunu yerleştirir. Kapanış donatı boyu ile aynıdır.</summary>
-    internal sealed class DonatiMetrajForm : Form
+    internal sealed class DonatiMetrajForm : Beykent.Monolit.MonolitForm
     {
         private static DonatiMetrajForm _instance;
 
@@ -236,8 +236,8 @@ namespace ST4Yardimci
             ShowInTaskbar = false;
             MinimizeBox = false;
             MaximizeBox = false;
-            BackColor = AcadPaletteTheme.Bg;
-            ForeColor = AcadPaletteTheme.Text;
+            BackColor = Beykent.Monolit.StandardFormTheme.Bg;
+            ForeColor = Beykent.Monolit.StandardFormTheme.Text;
             Font = new SdFont("Segoe UI", 8.5f);
             KeyPreview = true;
 
@@ -251,8 +251,8 @@ namespace ST4Yardimci
                 MaxLength = 6,
                 TextAlign = HorizontalAlignment.Center,
                 BorderStyle = BorderStyle.FixedSingle,
-                BackColor = AcadPaletteTheme.InputBg,
-                ForeColor = AcadPaletteTheme.Text
+                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
+                ForeColor = Beykent.Monolit.StandardFormTheme.Text
             };
             Controls.Add(_txtFi);
             y += 26;
@@ -265,8 +265,8 @@ namespace ST4Yardimci
                 Size = new Size(72, 22),
                 TextAlign = HorizontalAlignment.Center,
                 BorderStyle = BorderStyle.FixedSingle,
-                BackColor = AcadPaletteTheme.InputBg,
-                ForeColor = AcadPaletteTheme.Text
+                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
+                ForeColor = Beykent.Monolit.StandardFormTheme.Text
             };
             Controls.Add(_txtMax);
             y += 26;
@@ -277,8 +277,8 @@ namespace ST4Yardimci
             {
                 Location = new Point(10, y),
                 Size = new Size(300, 78),
-                BackColor = AcadPaletteTheme.InputBg,
-                ForeColor = AcadPaletteTheme.Text,
+                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
+                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
                 BorderStyle = BorderStyle.FixedSingle,
                 IntegralHeight = false,
                 SelectionMode = SelectionMode.MultiExtended
@@ -303,7 +303,7 @@ namespace ST4Yardimci
                 Text = "Komut satırında özet yaz",
                 Location = new Point(10, y),
                 AutoSize = true,
-                ForeColor = AcadPaletteTheme.Text,
+                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
                 BackColor = Color.Transparent,
                 Checked = DonatiMetrajSettings.OnizlemeMesaji
             };
@@ -315,7 +315,7 @@ namespace ST4Yardimci
                 Text = "Renkli poz balonu",
                 Location = new Point(10, y),
                 AutoSize = true,
-                ForeColor = AcadPaletteTheme.Text,
+                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
                 BackColor = Color.Transparent,
                 Checked = DonatiMetrajSettings.Renkli
             };
@@ -356,6 +356,16 @@ namespace ST4Yardimci
                     Screen.PrimaryScreen.WorkingArea.Top + 60);
             }
             catch { StartPosition = FormStartPosition.CenterScreen; }
+
+            // Kompakt, içerik odaklı form düzeni.
+            var ui = BeginCompact(320);
+            ui.Section(null).Field("Ø / boy sınırı · cm", _txtFi, _txtMax);
+            ui.Section("Etiket katmanları").Layers(_lstLayers, btnAdd, btnDel, btnRem);
+            ui.Tip(_chkOnizleme, _chkOnizleme.Text); _chkOnizleme.Text = "Özet yaz";
+            ui.Section(null).Choices(_chkRenkli, _chkOnizleme);
+            ui.Footer(btnRun, btnClose, btnAntet, btnToplam);
+            btnRun.Text = "Metraj al";
+            ui.Finish();
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -494,7 +504,7 @@ namespace ST4Yardimci
             Location = new Point(x, y),
             AutoSize = false,
             Size = new Size(w, 18),
-            ForeColor = AcadPaletteTheme.TextMuted,
+            ForeColor = Beykent.Monolit.StandardFormTheme.TextMuted,
             BackColor = Color.Transparent
         };
 
@@ -506,13 +516,13 @@ namespace ST4Yardimci
                 Location = new Point(x, y),
                 Size = new Size(w, 26),
                 FlatStyle = FlatStyle.Flat,
-                BackColor = AcadPaletteTheme.BgAlt,
-                ForeColor = accent ? AcadPaletteTheme.Accent : AcadPaletteTheme.Text,
+                BackColor = Beykent.Monolit.StandardFormTheme.BgAlt,
+                ForeColor = accent ? Beykent.Monolit.StandardFormTheme.Accent : Beykent.Monolit.StandardFormTheme.Text,
                 Cursor = Cursors.Hand,
                 Font = new SdFont("Segoe UI", 8f)
             };
-            b.FlatAppearance.BorderColor = AcadPaletteTheme.InputBorder;
-            b.FlatAppearance.MouseOverBackColor = AcadPaletteTheme.BgHover;
+            b.FlatAppearance.BorderColor = Beykent.Monolit.StandardFormTheme.InputBorder;
+            b.FlatAppearance.MouseOverBackColor = Beykent.Monolit.StandardFormTheme.BgHover;
             return b;
         }
 

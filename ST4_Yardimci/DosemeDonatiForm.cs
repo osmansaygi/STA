@@ -11,7 +11,7 @@ namespace ST4Yardimci
     /// Döşeme Donatı formu. Donatı Çiz serbest yönle çalışır.
     /// Sınır listesi konsol kenarı, mesnet listesi mesnet kabulü.
     /// </summary>
-    internal sealed class DosemeDonatiForm : Form
+    internal sealed class DosemeDonatiForm : Beykent.Monolit.MonolitForm
     {
         private static DosemeDonatiForm _instance;
 
@@ -87,7 +87,7 @@ namespace ST4Yardimci
             MinimizeBox = false;
             MaximizeBox = false;
             ClientSize = new Size(368, 420);
-            BackColor = AcadPaletteTheme.Bg;
+            BackColor = Beykent.Monolit.StandardFormTheme.Bg;
             ForeColor = Color.White;
             Font = new SdFont("Segoe UI", 9f);
             KeyPreview = true;
@@ -128,7 +128,7 @@ namespace ST4Yardimci
 
             _btnCizgisel = MakeButton("Donatı Çiz", 12, y, 230);
             _btnCizgisel.Font = new SdFont("Segoe UI", 9f, FontStyle.Bold);
-            _btnCizgisel.ForeColor = AcadPaletteTheme.Accent;
+            _btnCizgisel.ForeColor = Beykent.Monolit.StandardFormTheme.Accent;
             _btnCizgisel.Click += OnCizgisel;
             _btnClose = MakeButton("Kapat", 250, y, 106);
             _btnClose.Click += (s, e) => Close();
@@ -176,6 +176,18 @@ namespace ST4Yardimci
                     Screen.PrimaryScreen.WorkingArea.Top + 110);
             }
             catch { StartPosition = FormStartPosition.CenterScreen; }
+
+            // Kompakt, içerik odaklı form düzeni.
+            var ui = BeginCompact(370);
+            ui.Section("Donatı yönü").Options(_rbSerbest, _rbX, _rbY);
+            ui.Section(null).Actions(btnAyar);
+            ui.Tabs(146,
+                ui.Page("Konsol", p => p.Layers(_lstSinir, ui.LayerButtons(_lstSinir))),
+                ui.Page("Mesnet", p => p.Layers(_lstMesnet, ui.LayerButtons(_lstMesnet))),
+                ui.Page("Boşluk", p => p.Layers(_lstBosluk, ui.LayerButtons(_lstBosluk))),
+                ui.Page("Kat sınırı", p => p.Layers(_lstKatSinir, ui.LayerButtons(_lstKatSinir))));
+            ui.Footer(_btnCizgisel, _btnClose);
+            ui.Finish();
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -272,8 +284,8 @@ namespace ST4Yardimci
         {
             Location = new Point(x, y),
             Size = new Size(w, h),
-            BackColor = AcadPaletteTheme.InputBg,
-            ForeColor = AcadPaletteTheme.Text,
+            BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
+            ForeColor = Beykent.Monolit.StandardFormTheme.Text,
             BorderStyle = BorderStyle.FixedSingle,
             IntegralHeight = false,
             SelectionMode = SelectionMode.MultiExtended
@@ -328,12 +340,12 @@ namespace ST4Yardimci
                 Location = new Point(x, y),
                 Size = new Size(w, 28),
                 FlatStyle = FlatStyle.Flat,
-                BackColor = AcadPaletteTheme.BgAlt,
+                BackColor = Beykent.Monolit.StandardFormTheme.BgAlt,
                 ForeColor = Color.White,
                 Cursor = Cursors.Hand
             };
-            b.FlatAppearance.BorderColor = AcadPaletteTheme.InputBorder;
-            b.FlatAppearance.MouseOverBackColor = AcadPaletteTheme.BgHover;
+            b.FlatAppearance.BorderColor = Beykent.Monolit.StandardFormTheme.InputBorder;
+            b.FlatAppearance.MouseOverBackColor = Beykent.Monolit.StandardFormTheme.BgHover;
             return b;
         }
     }

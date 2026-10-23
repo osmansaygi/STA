@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF><UseWindowsForms>true</UseWindowsForms>
+    <DefineConstants>AUTOCAD2027</DefineConstants><NuGetAudit>false</NuGetAudit>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="AdWindows"><HintPath>C:/Program Files/Autodesk/AutoCAD 2027/AdWindows.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="Microsoft.Xaml.Behaviors"><HintPath>C:/Program Files/Autodesk/AutoCAD 2027/Microsoft.Xaml.Behaviors.dll</HintPath><Private>true</Private></Reference>
+    <Compile Include="../../../ST4_Plan_ID_Ciz/BeykentRibbonManager.cs" Link="BeykentRibbonManager.cs" />
+    <Compile Include="../../../ST4_Plan_ID_Ciz/BeykentRibbonCatalog.cs" Link="BeykentRibbonCatalog.cs" />
+    <Compile Include="../../../ST4_Plan_ID_Ciz/StaMonolitIcons.cs" Link="StaMonolitIcons.cs" />
+    <Compile Include="../prepared/StaToolIcons.cs" Link="StaToolIcons.cs" />
+    <EmbeddedResource Include="../../../ST4_Plan_ID_Ciz/Icons/*.png"><LogicalName>ST4PlanIdCiz.Icons.%(Filename)%(Extension)</LogicalName></EmbeddedResource>
+  </ItemGroup>
+</Project>

@@ -1,0 +1,21 @@
+# Cursor çalışma kaydı
+
+- Ajan: Cursor / sürekli temel açılımları (kiriş açılımı benzeri)
+- Güncelleme: 2026-10-19 00:25 (Europe/Istanbul)
+- Durum: tamamlandı
+- Görev: ST4'e sürekli temel açılımları; form kiriş gibi; montaj altta, düz üstte
+- Değişen:
+  - ST4_Plan_ID_Ciz/SurekliTemelAcilimForm.cs (yeni)
+  - ST4_Plan_ID_Ciz/SurekliTemelAcilimCommands.cs (yeni)
+  - ST4_Plan_ID_Ciz/PlanIdDrawingManager.SurekliTemelAcilim.cs (yeni)
+  - ST4_Plan_ID_Ciz/PlanIdDrawingManager.KirisAcilim.cs
+  - ST4_Plan_ID_Ciz/PlanIdDrawingManager.KirisAcilim.Kesit.cs
+  - ST4_Plan_ID_Ciz/PlanIdDrawingManager.KirisAcilim.Yerlesim.cs
+  - ST4_Plan_ID_Ciz/PlanIdDrawingManager.cs (GetRawBeamsOnFloor)
+  - ST4_Plan_ID_Ciz/CommandPaletteManager.cs
+  - ST4_Plan_ID_Ciz/StaMonolitIcons.cs
+  - ST4_Plan_ID_Ciz/Icons/surekli_temel_acilim_monolit.png
+  - docs/modul-durum/ST4_Plan_ID_Ciz.md
+- DLL: NETLOAD\ST4_Plan_ID_Ciz_20261019_002224.dll
+- Doğrulama: Debug/net48 0 hata; AutoCAD canlı yok
+- Açık: canlı görsel onay; TMX çoklu span ↔ tek ST4 şerit eşlemesi GPR öncelikli

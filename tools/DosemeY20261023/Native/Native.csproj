@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+ <PropertyGroup><TargetFramework>net10.0-windows</TargetFramework><LangVersion>latest</LangVersion><NuGetAudit>false</NuGetAudit><Nullable>disable</Nullable></PropertyGroup>
+ <ItemGroup>
+  <Reference Include="acdbmgd"><HintPath>C:/Program Files/Autodesk/AutoCAD 2027/acdbmgd.dll</HintPath><Private>false</Private></Reference>
+  <Reference Include="acmgd"><HintPath>C:/Program Files/Autodesk/AutoCAD 2027/acmgd.dll</HintPath><Private>false</Private></Reference>
+  <Reference Include="accoremgd"><HintPath>C:/Program Files/Autodesk/AutoCAD 2027/accoremgd.dll</HintPath><Private>false</Private></Reference>
+  <Reference Include="Plan"><HintPath>../../../NETLOAD/arsiv/GUNCEL_2027_20261023_204821_053/ST4_Plan_ID_Ciz_2027_20261023_190204.dll</HintPath><Private>false</Private></Reference>
+  <Reference Include="NetTopologySuite"><HintPath>../../../NETLOAD/arsiv/GUNCEL_2027_20261023_204821_053/NetTopologySuite.dll</HintPath><Private>false</Private></Reference>
+ </ItemGroup>
+</Project>

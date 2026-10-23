@@ -12,13 +12,18 @@ namespace ST4PlanIdCiz
     {
         public bool Antetli;
         public int? SeciliKatNo;
+        /// <summary>Sürekli temel: aynı hizadaki temeller tek açılım (false: her temel ayrı).</summary>
+        public bool TemelBirlestir = true;
+        /// <summary>Kiriş açılımı: düz ve alt ilave donatıların ikinci gönyesi (a+b ℓb'yi tutmayınca eklenen kol) çizilmez.</summary>
+        public bool AltIkinciGonyeKaldir;
     }
 
-    internal sealed class KirisAcilimForm : Form
+    internal sealed class KirisAcilimForm : Beykent.Monolit.MonolitForm
     {
-        private static bool _sonAntetli = true, _sonTumKatlar = true;
+        private static bool _sonAntetli = true, _sonTumKatlar = true, _sonIkinciGonyeKaldir;
         private static int? _sonKatNo;
         private readonly RadioButton _antetli, _tum;
+        private readonly CheckBox _ikinciGonye;
         private readonly ComboBox _kat;
         private readonly List<FloorInfo> _katlar;
         public KirisAcilimSecenekleri Secenekler { get; private set; }
@@ -45,7 +50,7 @@ namespace ST4PlanIdCiz
             MaximizeBox = MinimizeBox = false;
             ShowInTaskbar = false;
             Font = new Font("Segoe UI", 9f);
-            BackColor = AcadPaletteTheme.Bg; ForeColor = AcadPaletteTheme.Text;
+            BackColor = Beykent.Monolit.StandardFormTheme.Bg; ForeColor = Beykent.Monolit.StandardFormTheme.Text;
             var drawing = new GroupBox { Text = "Çizim düzeni · 1/25", Left = 16, Top = 12, Width = 388, Height = 76, ForeColor = ForeColor };
             _antetli = new RadioButton { Text = "Antetli", Left = 18, Top = 30, Width = 150, Checked = _sonAntetli };
             var plain = new RadioButton { Text = "Antetsiz", Left = 198, Top = 30, Width = 150, Checked = !_sonAntetli };
@@ -55,10 +60,12 @@ namespace ST4PlanIdCiz
             var selected = new RadioButton { Text = "Seçili kat", Left = 198, Top = 24, Width = 150, Checked = !_sonTumKatlar };
             _kat = new ComboBox { Left = 18, Top = 60, Width = 350, DropDownStyle = ComboBoxStyle.DropDownList, Enabled = !_sonTumKatlar };
             foreach (var f in _katlar)
-                _kat.Items.Add((string.IsNullOrWhiteSpace(f.Name) ? "Kat " + f.FloorNo : f.Name) + "  (" + f.ElevationM.ToString("0.00") + " m)");
+                _kat.Items.Add((string.IsNullOrWhiteSpace(f.Name) ? "Kat " + f.FloorNo : f.Name) + "  (" + (f.ElevationM * 100.0).ToString("0.##") + " cm)");
             if (_katlar.Count > 0) _kat.SelectedIndex = Math.Max(0, _katlar.FindIndex(f => f.FloorNo == _sonKatNo));
             _tum.CheckedChanged += (s, e) => _kat.Enabled = !_tum.Checked;
             floors.Controls.AddRange(new Control[] { _tum, selected, _kat }); Controls.Add(floors);
+            _ikinciGonye = new CheckBox { Text = "İkinci gönyeyi kaldır (düz ve alt ilave)", Left = 18, Top = 244, Width = 350, Checked = _sonIkinciGonyeKaldir };
+            Controls.Add(_ikinciGonye);
             Controls.Add(new Label { Text = "Her kat tek antet · dar yerleşim · takımlar arası 80 cm.", Left = 18, Top = 218, Width = 388, Height = 25 });
             var draw = new Button { Text = "Çiz", Left = 216, Top = 261, Width = 90, Height = 30 };
             var cancel = new Button { Text = "İptal", Left = 314, Top = 261, Width = 90, Height = 30, DialogResult = DialogResult.Cancel };
@@ -67,13 +74,22 @@ namespace ST4PlanIdCiz
                 if (!_tum.Checked && _kat.SelectedIndex < 0)
                 { MessageBox.Show(this, "Çizilecek katı seçin.", Text); return; }
                 Secenekler = new KirisAcilimSecenekleri { Antetli = _antetli.Checked,
-                    SeciliKatNo = _tum.Checked ? (int?)null : _katlar[_kat.SelectedIndex].FloorNo };
-                _sonAntetli = _antetli.Checked; _sonTumKatlar = _tum.Checked;
+                    SeciliKatNo = _tum.Checked ? (int?)null : _katlar[_kat.SelectedIndex].FloorNo,
+                    AltIkinciGonyeKaldir = _ikinciGonye.Checked };
+                _sonAntetli = _antetli.Checked; _sonTumKatlar = _tum.Checked; _sonIkinciGonyeKaldir = _ikinciGonye.Checked;
                 if (_kat.SelectedIndex >= 0) _sonKatNo = _katlar[_kat.SelectedIndex].FloorNo;
                 DialogResult = DialogResult.OK; Close();
             };
             Controls.AddRange(new Control[] { draw, cancel });
             AcceptButton = draw; CancelButton = cancel;
+
+            // Kompakt, içerik odaklı form düzeni.
+            var ui = BeginCompact(350);
+            ui.Section("Çizim düzeni · 1/25").Options(_antetli, plain);
+            ui.Section("Kat seçimi").Choices(_tum, selected).Field("Çizilecek kat", _kat);
+            ui.Section("Gönyeler").Choices(_ikinciGonye);
+            ui.Footer(draw, cancel);
+            ui.Finish();
         }
     }
 }

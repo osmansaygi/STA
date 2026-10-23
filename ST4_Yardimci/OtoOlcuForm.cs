@@ -11,7 +11,7 @@ namespace ST4Yardimci
     /// <summary>
     /// Modeless Oto Ölçü ayar formu.
     /// </summary>
-    internal sealed class OtoOlcuForm : Form
+    internal sealed class OtoOlcuForm : Beykent.Monolit.MonolitForm
     {
         private static OtoOlcuForm _instance;
 
@@ -87,13 +87,13 @@ namespace ST4Yardimci
             MinimizeBox = false;
             MaximizeBox = false;
             Size = new Size(340, 620);
-            BackColor = AcadPaletteTheme.Bg;
-            ForeColor = AcadPaletteTheme.Text;
+            BackColor = Beykent.Monolit.StandardFormTheme.Bg;
+            ForeColor = Beykent.Monolit.StandardFormTheme.Text;
             Font = new SdFont("Segoe UI", 9f);
             KeyPreview = true;
             KeyDown += OnFormKeyDown;
 
-            int y = 10;
+            int y = 74;
             Controls.Add(MakeLabel("Hazır şablon", 12, y)); y += 20;
             _cmbPreset = MakeCombo(12, y, 300);
             _cmbPreset.SelectedIndexChanged += OnPresetChanged;
@@ -149,7 +149,7 @@ namespace ST4Yardimci
             {
                 Location = new Point(0, y),
                 Size = new Size(340, 160),
-                BackColor = AcadPaletteTheme.Bg
+                BackColor = Beykent.Monolit.StandardFormTheme.Bg
             };
             int sy = 0;
             _pnlSecond.Controls.Add(MakeLabel("2. ölçü katmanları", 12, sy)); sy += 20;
@@ -190,7 +190,7 @@ namespace ST4Yardimci
 
             _btnRun = MakeButton("Ölçü al", 12, y, 200);
             _btnRun.Font = new SdFont("Segoe UI", 9f, FontStyle.Bold);
-            _btnRun.ForeColor = AcadPaletteTheme.Accent;
+            _btnRun.ForeColor = Beykent.Monolit.StandardFormTheme.Accent;
             _btnRun.Click += OnRun;
             _btnClose = MakeButton("Kapat", 224, y, 88);
             _btnClose.Click += (s, e) => { PushSettings(); Close(); };
@@ -216,6 +216,19 @@ namespace ST4Yardimci
 
             RefreshFromDrawing();
             UpdateSecondVisibility();
+
+
+            // Kompakt, içerik odaklı form düzeni.
+            var ui = BeginCompact(360);
+            ui.Section("Hazır şablon").Template(_cmbPreset, _btnPresetAdd, _btnPresetRemove);
+            ui.Section("Ölçü ayarları").Field(_lblStyle, _cmbDimStyle)
+                .FieldWhen(() => !OtoOlcuSettings.IsAksOlcuPreset, _lblOlcuTipi, _cmbOlcuTipi);
+            ui.Section("1. ölçü katmanları").Layers(_lstLayers1, _btnAdd1, _btnDelList1, _btnRemove1).When(() => !OtoOlcuSettings.IsAksOlcuPreset);
+            ui.Section("2. ölçü katmanları").Layers(_lstLayers2, _btnAdd2, _btnDelList2, _btnRemove2).Choices(_chkIkinciToplam)
+                .When(() => !OtoOlcuSettings.IsAksOlcuPreset && _cmbOlcuTipi.SelectedIndex == 1);
+            ui.Section(null).Control(_lblAksHint).When(() => OtoOlcuSettings.IsAksOlcuPreset);
+            ui.Footer(_btnRun, _btnClose);
+            ui.Finish();
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -249,6 +262,8 @@ namespace ST4Yardimci
             _btnPresetRemove.Enabled = !aks;
             _cmbDimStyle.Enabled = !aks;
 
+            if (CompactLayoutReady) { RefreshCompactLayout(); return; }
+
             int y;
             if (aks)
             {
@@ -279,8 +294,8 @@ namespace ST4Yardimci
         {
             Location = new Point(x, y),
             Size = new Size(w, h),
-            BackColor = AcadPaletteTheme.InputBg,
-            ForeColor = AcadPaletteTheme.Text,
+            BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
+            ForeColor = Beykent.Monolit.StandardFormTheme.Text,
             BorderStyle = BorderStyle.FixedSingle,
             IntegralHeight = false,
             SelectionMode = SelectionMode.MultiExtended
@@ -303,13 +318,13 @@ namespace ST4Yardimci
                 Location = new Point(x, y),
                 Size = new Size(w, 28),
                 FlatStyle = FlatStyle.Flat,
-                BackColor = AcadPaletteTheme.BgAlt,
-                ForeColor = AcadPaletteTheme.Text,
+                BackColor = Beykent.Monolit.StandardFormTheme.BgAlt,
+                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
                 Cursor = Cursors.Hand
             };
-            b.FlatAppearance.BorderColor = AcadPaletteTheme.InputBorder;
-            b.FlatAppearance.MouseOverBackColor = AcadPaletteTheme.BgHover;
-            b.FlatAppearance.MouseDownBackColor = AcadPaletteTheme.BgPressed;
+            b.FlatAppearance.BorderColor = Beykent.Monolit.StandardFormTheme.InputBorder;
+            b.FlatAppearance.MouseOverBackColor = Beykent.Monolit.StandardFormTheme.BgHover;
+            b.FlatAppearance.MouseDownBackColor = Beykent.Monolit.StandardFormTheme.BgPressed;
             return b;
         }
 
@@ -318,8 +333,8 @@ namespace ST4Yardimci
             Location = new Point(x, y),
             Size = new Size(w, 26),
             DropDownStyle = ComboBoxStyle.DropDownList,
-            BackColor = AcadPaletteTheme.InputBg,
-            ForeColor = AcadPaletteTheme.Text,
+            BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
+            ForeColor = Beykent.Monolit.StandardFormTheme.Text,
             FlatStyle = FlatStyle.Flat
         };
 
@@ -438,7 +453,7 @@ namespace ST4Yardimci
 
         private string PromptText(string prompt, string title)
         {
-            using (var f = new Form())
+            using (var f = new Beykent.Monolit.MonolitForm())
             {
                 f.Text = title;
                 f.FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -447,7 +462,7 @@ namespace ST4Yardimci
                 f.MaximizeBox = false;
                 f.ShowInTaskbar = false;
                 f.ClientSize = new Size(320, 110);
-                f.BackColor = AcadPaletteTheme.Bg;
+                f.BackColor = Beykent.Monolit.StandardFormTheme.Bg;
                 f.ForeColor = Color.White;
 
                 var lbl = new Label
@@ -461,7 +476,7 @@ namespace ST4Yardimci
                 {
                     Location = new Point(12, 36),
                     Size = new Size(296, 24),
-                    BackColor = AcadPaletteTheme.InputBg,
+                    BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
                     ForeColor = Color.White,
                     BorderStyle = BorderStyle.FixedSingle
                 };
@@ -472,7 +487,7 @@ namespace ST4Yardimci
                     Location = new Point(148, 72),
                     Size = new Size(80, 28),
                     FlatStyle = FlatStyle.Flat,
-                    BackColor = AcadPaletteTheme.BgAlt,
+                    BackColor = Beykent.Monolit.StandardFormTheme.BgAlt,
                     ForeColor = Color.White
                 };
                 var cancel = new Button
@@ -482,7 +497,7 @@ namespace ST4Yardimci
                     Location = new Point(236, 72),
                     Size = new Size(72, 28),
                     FlatStyle = FlatStyle.Flat,
-                    BackColor = AcadPaletteTheme.BgAlt,
+                    BackColor = Beykent.Monolit.StandardFormTheme.BgAlt,
                     ForeColor = Color.White
                 };
                 f.Controls.Add(lbl);

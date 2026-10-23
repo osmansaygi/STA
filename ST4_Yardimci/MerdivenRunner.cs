@@ -147,7 +147,18 @@ namespace ST4Yardimci
             public bool IsDosemeSiniri;
             /// <summary>Kiriş yüksekliği (cm); etiketten, yoksa 0.</summary>
             public double HeightCm;
+            /// <summary>Seçimdeki kiriş etiketleri (yalnız kirişte; tüm kirişler aynı liste).</summary>
+            public List<KirisLabel> Labels;
             public List<(Point2d A, Point2d B)> Edges = new List<(Point2d, Point2d)>();
+        }
+
+        /// <summary>KZ-51 (25/50): Pos = yazı merkezi, AngleRad = yazı açısı (bilinmiyorsa NaN).</summary>
+        private sealed class KirisLabel
+        {
+            public Point2d Pos;
+            public double WidthCm;
+            public double HeightCm;
+            public double AngleRad = double.NaN;
         }
 
         /// <summary>
@@ -1773,48 +1784,72 @@ namespace ST4Yardimci
             double bestGap = double.MaxValue;
             PlanSupport best = null;
             double bestThick = 25;
+            double bestNearT = 0;
+            int bestNearEdge = -1;
+            bool bestThickFromFace = false;
 
             foreach (var s in supports)
             {
                 if (s?.Edges == null || s.Edges.Count == 0) continue;
 
-                // Yalnız ekseni gerçekten kesen kenarlar (köşe projeksiyonu yok — yanlış kısa sahanlık)
-                var hits = new List<double>();
-                foreach (var e in s.Edges)
-                {
-                    if (!TryLineSegIntersectParam(origin, axis, e.A, e.B, out double tHit, out double latHit))
-                        continue;
-                    if (latHit > latMax) continue;
-                    hits.Add(tHit);
-                }
-                if (hits.Count == 0) continue;
-                hits.Sort();
-                // Tekilleştir
-                var uniq = new List<double>();
-                foreach (double t in hits)
-                {
-                    if (uniq.Count == 0 || Math.Abs(t - uniq[uniq.Count - 1]) > 1.0)
-                        uniq.Add(t);
-                }
-
-                double tMin = uniq[0];
-                double tMax = uniq[uniq.Count - 1];
-                double span = Math.Max(tMax - tMin, 0);
-                bool thin = span < 5;
-
                 double gap;
                 double thick;
-                if (forward)
+                int nearEdge = -1;
+                double nearT = 0;
+                bool thickFromFace = false;
+                if (s.IsKiris)
                 {
-                    if (tMin < 2.0) continue;
-                    gap = tMin;
-                    thick = thin ? (s.IsDosemeSiniri ? 0 : 25) : Math.Min(200, Math.Max(span, 15));
+                    // Kiriş: yakın yüz = yönde ilk gerçek kesişim; genişlik = karşı yüz (aynı veya
+                    // ayrı çizgi). 1/50 kalıpta kiriş kenarları ayrı Line → eski "thin" 25 cm idi.
+                    if (!TryKirisNearFace(origin, axis, s, forward, out nearT, out nearEdge))
+                        continue;
+                    gap = forward ? nearT : -nearT;
+                    if (TryKirisFarFace(origin, axis, supports, nearT, forward, out double farT))
+                    {
+                        thick = Math.Min(200, Math.Max(Math.Abs(farT - nearT), 10));
+                        thickFromFace = true;
+                    }
+                    else
+                        thick = 25;
                 }
                 else
                 {
-                    if (tMax > -2.0) continue;
-                    gap = -tMax;
-                    thick = thin ? (s.IsDosemeSiniri ? 0 : 25) : Math.Min(200, Math.Max(span, 15));
+                    // Yalnız ekseni gerçekten kesen kenarlar (köşe projeksiyonu yok — yanlış kısa sahanlık)
+                    var hits = new List<double>();
+                    foreach (var e in s.Edges)
+                    {
+                        if (!TryLineSegIntersectParam(origin, axis, e.A, e.B, out double tHit, out double latHit))
+                            continue;
+                        if (latHit > latMax) continue;
+                        hits.Add(tHit);
+                    }
+                    if (hits.Count == 0) continue;
+                    hits.Sort();
+                    // Tekilleştir
+                    var uniq = new List<double>();
+                    foreach (double t in hits)
+                    {
+                        if (uniq.Count == 0 || Math.Abs(t - uniq[uniq.Count - 1]) > 1.0)
+                            uniq.Add(t);
+                    }
+
+                    double tMin = uniq[0];
+                    double tMax = uniq[uniq.Count - 1];
+                    double span = Math.Max(tMax - tMin, 0);
+                    bool thin = span < 5;
+
+                    if (forward)
+                    {
+                        if (tMin < 2.0) continue;
+                        gap = tMin;
+                        thick = thin ? (s.IsDosemeSiniri ? 0 : 25) : Math.Min(200, Math.Max(span, 15));
+                    }
+                    else
+                    {
+                        if (tMax > -2.0) continue;
+                        gap = -tMax;
+                        thick = thin ? (s.IsDosemeSiniri ? 0 : 25) : Math.Min(200, Math.Max(span, 15));
+                    }
                 }
                 if (gap >= RayMaxCm) continue;
 
@@ -1832,22 +1867,121 @@ namespace ST4Yardimci
 
                 bestGap = gap;
                 bestThick = thick;
+                bestNearT = nearT;
+                bestNearEdge = nearEdge;
+                bestThickFromFace = thickFromFace;
                 best = s;
             }
 
             if (best == null) return false;
 
+            double heightCm = best.IsKiris ? best.HeightCm : 0;
+            if (best.IsKiris && bestNearEdge >= 0)
+            {
+                // Etiket kesişim noktasındaki kirişten (en yakın merkez değil — komşu kiriş etiketi)
+                var lb = MatchKirisLabel(best, origin, axis, bestNearT, best.Edges[bestNearEdge], bestThick);
+                if (lb != null)
+                {
+                    heightCm = lb.HeightCm;
+                    if (!bestThickFromFace && lb.WidthCm >= 10 && lb.WidthCm <= 200)
+                        bestThick = lb.WidthCm;
+                }
+            }
+
             b = new EndBoundary
             {
                 GapCm = bestGap,
                 ThickCm = best.IsDosemeSiniri ? 0 : bestThick,
-                HeightCm = best.IsKiris ? best.HeightCm : 0,
+                HeightCm = heightCm,
                 IsKiris = best.IsKiris,
                 IsPerde = best.IsPerde,
                 IsKolon = best.IsKolon,
                 IsDosemeSiniri = best.IsDosemeSiniri
             };
             return true;
+        }
+
+        /// <summary>Kiriş yakın yüzü: yönde (|t| ≥ 2) eksenle gerçekten kesişen ilk kenar.</summary>
+        private static bool TryKirisNearFace(
+            Point2d origin, Vector2d axis, PlanSupport s, bool forward,
+            out double nearT, out int nearEdge)
+        {
+            nearT = 0;
+            nearEdge = -1;
+            for (int i = 0; i < s.Edges.Count; i++)
+            {
+                var e = s.Edges[i];
+                if (!TryCrossAxis(origin, axis, e.A, e.B, out double t)) continue;
+                if (forward ? t < 2.0 : t > -2.0) continue;
+                if (nearEdge < 0 || (forward ? t < nearT : t > nearT))
+                {
+                    nearT = t;
+                    nearEdge = i;
+                }
+            }
+            return nearEdge >= 0;
+        }
+
+        /// <summary>Kiriş karşı yüzü: yakın yüzün ötesinde (1–150 cm) herhangi bir kiriş kenarı.</summary>
+        private static bool TryKirisFarFace(
+            Point2d origin, Vector2d axis, List<PlanSupport> supports,
+            double nearT, bool forward, out double farT)
+        {
+            const double maxW = 150.0;
+            farT = 0;
+            bool any = false;
+            foreach (var s in supports)
+            {
+                if (s == null || !s.IsKiris || s.Edges == null) continue;
+                foreach (var e in s.Edges)
+                {
+                    if (!TryCrossAxis(origin, axis, e.A, e.B, out double t)) continue;
+                    double d = forward ? t - nearT : nearT - t;
+                    if (d <= 1.0 || d > maxW) continue;
+                    if (!any || (forward ? t < farT : t > farT))
+                    {
+                        farT = t;
+                        any = true;
+                    }
+                }
+            }
+            return any;
+        }
+
+        /// <summary>
+        /// Kesişen kirişin etiketi: yakın yüz doğrultusuna dik mesafe ≤ genişlik+80 cm, yazı açısı
+        /// kirişe paralel (biliniyorsa); doğrultu boyunca kesişim noktasına en yakın etiket.
+        /// </summary>
+        private static KirisLabel MatchKirisLabel(
+            PlanSupport s, Point2d origin, Vector2d axis, double nearT,
+            (Point2d A, Point2d B) edge, double thickCm)
+        {
+            if (s?.Labels == null || s.Labels.Count == 0) return null;
+            Vector2d u = edge.B - edge.A;
+            if (u.Length < Tol) return null;
+            u = u.GetNormal();
+            double edgeAng = Math.Atan2(u.Y, u.X);
+            Point2d cross = origin + axis * nearT;
+            double perpMax = Math.Max(thickCm, 15) + 80.0;
+
+            KirisLabel best = null;
+            double bestScore = double.MaxValue;
+            foreach (var lb in s.Labels)
+            {
+                Vector2d w = lb.Pos - cross;
+                double perp = Math.Abs(w.X * u.Y - w.Y * u.X);
+                double along = Math.Abs(w.X * u.X + w.Y * u.Y);
+                if (perp > perpMax || along > 1500.0) continue;
+                if (!double.IsNaN(lb.AngleRad) && Math.Abs(Math.Sin(lb.AngleRad - edgeAng)) > 0.26)
+                    continue;
+                double score = along + 2.0 * perp;
+                if (score < bestScore)
+                {
+                    bestScore = score;
+                    best = lb;
+                }
+            }
+            return best;
         }
 
         private static int BoundaryScore(PlanSupport s, bool forward)
@@ -2362,7 +2496,7 @@ namespace ST4Yardimci
             if (solCut && solW < 15) solW = 15;
             if (sagCut && sagW < 15) sagW = 15;
             if (solBeam && solW < 15) solW = 15;
-            if (sagBeam && sagW < 15) sagW = 25;
+            if (sagBeam && sagW < 15) sagW = 15;
 
             double x0 = 0; // sol sınır yakın yüz
             double colLeft = (solCut || solBeam) ? -solW : 0;
@@ -6368,14 +6502,7 @@ namespace ST4Yardimci
 
         private static ObjectId EnsureTextStyle(Transaction tr, Database db)
         {
-            var tst = (TextStyleTable)tr.GetObject(db.TextStyleTableId, OpenMode.ForRead);
-            if (tst.Has(TextStyleYazi))
-                return tst[TextStyleYazi];
-            tst.UpgradeOpen();
-            var rec = new TextStyleTableRecord { Name = TextStyleYazi };
-            tst.Add(rec);
-            tr.AddNewlyCreatedDBObject(rec, true);
-            return rec.ObjectId;
+            return BaDimensionStyles.EnsureYazi(tr, db);
         }
 
         private static bool TryBuildOrientedPath(
@@ -6442,6 +6569,7 @@ namespace ST4Yardimci
             path = BuildOrientedVertices(cikisPl, circlePt.Value, triPt.Value);
 
             var kirisLabels = new List<(Point2d Pos, double WidthCm, double HeightCm)>();
+            var kirisLabelList = new List<KirisLabel>();
 
             foreach (ObjectId id in ids)
             {
@@ -6455,8 +6583,11 @@ namespace ST4Yardimci
                 // Kiriş etiketi: KZ-51 (25/50) → genişlik/yükseklik
                 if (LayerHas(lyr, "KIRIS ISMI") || (LayerHas(lyr, "KIRIS") && LayerHas(lyr, "ISMI")))
                 {
-                    if (TryReadKirisLabel(ent, out Point2d lp, out double wCm, out double hCm))
+                    if (TryReadKirisLabel(ent, out Point2d lp, out double wCm, out double hCm, out double angRad))
+                    {
                         kirisLabels.Add((lp, wCm, hCm));
+                        kirisLabelList.Add(new KirisLabel { Pos = lp, WidthCm = wCm, HeightCm = hCm, AngleRad = angRad });
+                    }
                     continue;
                 }
 
@@ -6480,12 +6611,18 @@ namespace ST4Yardimci
             }
 
             AssignKirisHeightsFromLabels(supports, kirisLabels);
+            foreach (var s in supports)
+            {
+                if (s.IsKiris) s.Labels = kirisLabelList;
+            }
             return true;
         }
 
-        private static bool TryReadKirisLabel(Entity ent, out Point2d pos, out double widthCm, out double heightCm)
+        private static bool TryReadKirisLabel(Entity ent, out Point2d pos, out double widthCm, out double heightCm,
+            out double angleRad)
         {
             pos = default;
+            angleRad = double.NaN;
             widthCm = 0;
             heightCm = 0;
             string txt = null;
@@ -6493,13 +6630,22 @@ namespace ST4Yardimci
             {
                 txt = db.TextString;
                 pos = To2(db.Position);
+                angleRad = db.Rotation;
             }
             else if (ent is MText mt)
             {
                 txt = mt.Contents ?? mt.Text;
                 pos = To2(mt.Location);
+                angleRad = mt.Rotation;
             }
             if (string.IsNullOrWhiteSpace(txt)) return false;
+            // Konum: yazı merkezi (sağa/ortaya hizalı yazıda Position kirişten uzakta kalabilir)
+            try
+            {
+                Extents3d ex = ent.GeometricExtents;
+                pos = new Point2d(0.5 * (ex.MinPoint.X + ex.MaxPoint.X), 0.5 * (ex.MinPoint.Y + ex.MaxPoint.Y));
+            }
+            catch { }
             // KZ-51 (25/50) veya 25/50
             var m = System.Text.RegularExpressions.Regex.Match(
                 txt.Replace(',', '.'),
@@ -6872,17 +7018,7 @@ namespace ST4Yardimci
         private static void EnsureLayer(Transaction tr, Database db, string name, short aci,
             LineWeight lw, bool dashed)
         {
-            var lt = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
-            if (lt.Has(name)) return;
-            lt.UpgradeOpen();
-            var rec = new LayerTableRecord
-            {
-                Name = name,
-                Color = Color.FromColorIndex(ColorMethod.ByAci, aci),
-                LineWeight = lw
-            };
-            lt.Add(rec);
-            tr.AddNewlyCreatedDBObject(rec, true);
+            BeykentKatmanYukle.Ensure(tr, db, name, aci, lw, dashed);
         }
 
         private static bool LayerHas(string lyr, string key) =>

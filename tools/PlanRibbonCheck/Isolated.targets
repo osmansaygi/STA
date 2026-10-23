@@ -1,0 +1,10 @@
+<Project>
+  <Target Name="PrepareIsolatedRibbonSources" BeforeTargets="CoreCompile">
+    <ItemGroup>
+      <Compile Remove="obj\**\*.cs;bin\**\*.cs;$(MSBuildProjectDirectory)\obj\**\*.cs;$(MSBuildProjectDirectory)\bin\**\*.cs" />
+    </ItemGroup>
+  </Target>
+  <Target Name="CopyToNetloadFolder" />
+  <Target Name="CopyToNetload2027Folder" />
+  <Target Name="ShowDllPath" />
+</Project>

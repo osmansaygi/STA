@@ -1,0 +1,30 @@
+---
+description: AutoCAD göçme önleme — NTS Buffer(0)/Union, çift DLL, komut kuyruğu, extents
+globs: ST4_Plan_ID_Ciz/**/*.cs,ST4_Yardimci/**/*.cs
+alwaysApply: false
+---
+
+# AutoCAD / NTS stabilite (çizim aynı kalsın)
+
+Geçerli geometriye ve çizim görünümüne dokunma; yalnız çökme / gereksiz Overlay riskini kes.
+
+## Yasak / kaçın
+
+- **`Buffer(0)` ile topoloji düzeltme** — OverlayNG yığın taşırır; `catch` StackOverflow yakalamaz, AutoCAD ölür.
+- Geçerli poligonda bile “temizlik” için `Buffer(0)` çağırma (yavaş + risk).
+- Komut bitiminde **`SendStringToExecute("ZOOM"/"REGEN")`** — sonraki MOVE/COPY fatal üretebiliyordu; `AcadDocumentViewUtil` kullan.
+- NETLOAD anında PaletteSet açma; Idle + (gerekirse) mutex / `BAPANEL` kuyruğu.
+- Aynı AutoCAD oturumunda **eski + yeni DLL** (tarihli NETLOAD birikimi) — MOVE/COPY göçmesi.
+
+## Doğru yol
+
+- Geçersiz geometri: **`NtsOverlaySafe.PrepareForOverlay` / `FixIfInvalid` / `FixToPolygon`** (`GeometryFixer` + ince ızgara). Geçerli girdi **aynen** döner.
+- Büyük birleşim: önce Prepare; gerekirse `CascadedUnionSafe` veya mevcut `TryCascadedPolygonUnionSafe` / parça Union (ör. 30’luk).
+- Native `LineSegment2d.IntersectWith` yerine C# doğru parçası kesişimi (döşeme örneği).
+- `GeometricExtents` / hatch evaluate: `try/catch` veya `SafeEvaluateHatch`.
+- Dim stil tablosu yazarken entity’yi aynı anda ForWrite açma.
+
+## Performans (görünüm aynı)
+
+- Geçerli geometride Overlay/Buffer çağırma.
+- Tüm katı tek Polygonizer/Union’a verme; karo / chunk kullan (mevcut döşeme deseni).

@@ -9,7 +9,7 @@ using SdSize = System.Drawing.Size;
 namespace ST4Yardimci
 {
     /// <summary>Hasır donatı ayar formu — tip, standart ebat, bindirme, paspayı.</summary>
-    internal sealed class HasirDonatiForm : Form
+    internal sealed class HasirDonatiForm : Beykent.Monolit.MonolitForm
     {
         private const int Pad = 12;
         private const int FormW = 300;
@@ -77,8 +77,8 @@ namespace ST4Yardimci
             ShowInTaskbar = false;
             MinimizeBox = false;
             MaximizeBox = false;
-            BackColor = AcadPaletteTheme.Bg;
-            ForeColor = AcadPaletteTheme.Text;
+            BackColor = Beykent.Monolit.StandardFormTheme.Bg;
+            ForeColor = Beykent.Monolit.StandardFormTheme.Text;
             Font = new SdFont("Segoe UI", 9f);
             KeyPreview = true;
 
@@ -153,6 +153,14 @@ namespace ST4Yardimci
             {
                 StartPosition = FormStartPosition.CenterScreen;
             }
+
+            // Kompakt, içerik odaklı form düzeni.
+            var ui = BeginCompact(300);
+            ui.Section(null).Options(_rbTek, _rbCift);
+            ui.Section("Hasır ayarları").Field("Hasır çeşidi", _cmbTip).Field("Boy / en · cm", _numBoy, _numEn)
+                .Field("Bindirme · cm", _numBindirme).Field("Paspayı · cm", _numPas);
+            ui.Footer(btnRun, btnClose);
+            ui.Finish();
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -281,8 +289,8 @@ namespace ST4Yardimci
                 Text = text,
                 Location = new SdPoint(x, y),
                 AutoSize = true,
-                ForeColor = AcadPaletteTheme.TextMuted,
-                BackColor = AcadPaletteTheme.Bg
+                ForeColor = Beykent.Monolit.StandardFormTheme.TextMuted,
+                BackColor = Beykent.Monolit.StandardFormTheme.Bg
             };
         }
 
@@ -293,8 +301,8 @@ namespace ST4Yardimci
                 Text = text,
                 Location = new SdPoint(x, y),
                 AutoSize = true,
-                ForeColor = AcadPaletteTheme.TextMuted,
-                BackColor = AcadPaletteTheme.Bg
+                ForeColor = Beykent.Monolit.StandardFormTheme.TextMuted,
+                BackColor = Beykent.Monolit.StandardFormTheme.Bg
             };
         }
 
@@ -308,8 +316,8 @@ namespace ST4Yardimci
                 Maximum = max,
                 Increment = inc,
                 DecimalPlaces = decimals,
-                BackColor = AcadPaletteTheme.InputBg,
-                ForeColor = AcadPaletteTheme.Text,
+                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
+                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
                 BorderStyle = BorderStyle.FixedSingle
             };
             n.Value = Clamp(n, val);
@@ -324,8 +332,8 @@ namespace ST4Yardimci
                 Location = new SdPoint(x, y),
                 Size = new SdSize(140, 22),
                 DropDownStyle = ComboBoxStyle.DropDownList,
-                BackColor = AcadPaletteTheme.InputBg,
-                ForeColor = AcadPaletteTheme.Text,
+                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
+                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
                 FlatStyle = FlatStyle.Flat,
                 Font = Font
             };
@@ -342,8 +350,8 @@ namespace ST4Yardimci
                 Text = text,
                 Location = new SdPoint(x, y),
                 AutoSize = true,
-                ForeColor = AcadPaletteTheme.Text,
-                BackColor = AcadPaletteTheme.Bg
+                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
+                BackColor = Beykent.Monolit.StandardFormTheme.Bg
             };
         }
 
@@ -355,12 +363,12 @@ namespace ST4Yardimci
                 Location = new SdPoint(x, y),
                 Size = new SdSize(w, 26),
                 FlatStyle = FlatStyle.Flat,
-                BackColor = AcadPaletteTheme.BgAlt,
-                ForeColor = accent ? AcadPaletteTheme.Accent : AcadPaletteTheme.Text,
+                BackColor = Beykent.Monolit.StandardFormTheme.BgAlt,
+                ForeColor = accent ? Beykent.Monolit.StandardFormTheme.Accent : Beykent.Monolit.StandardFormTheme.Text,
                 Font = accent ? new SdFont("Segoe UI", 9f, System.Drawing.FontStyle.Bold) : Font,
                 UseVisualStyleBackColor = false
             };
-            b.FlatAppearance.BorderColor = AcadPaletteTheme.InputBorder;
+            b.FlatAppearance.BorderColor = Beykent.Monolit.StandardFormTheme.InputBorder;
             b.FlatAppearance.BorderSize = 1;
             return b;
         }

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
@@ -17,29 +17,31 @@ namespace ST4Yardimci
     public class PluginLifecycle : IExtensionApplication
     {
         private static Mutex _loadMutex;
+        private bool _ownsInitialization;
 
         public void Initialize()
         {
             try
             {
-                AppDomain.CurrentDomain.AssemblyResolve -= ResolvePluginDependency;
-                AppDomain.CurrentDomain.AssemblyResolve += ResolvePluginDependency;
+                if (_loadMutex != null) return;
                 var ed = AcApp.DocumentManager.MdiActiveDocument?.Editor;
                 WarnIfDuplicateAssemblies(ed);
-                try
+                // A process-specific named handle is shared by timestamped DLL copies.
+                // Keep the first handle alive; a second copy must not create another palette.
+                bool created;
+                var registration = new Mutex(false, @"Local\ST4_Yardimci_ACAD_" +
+                    System.Diagnostics.Process.GetCurrentProcess().Id, out created);
+                if (!created)
                 {
-                    bool created;
-                    _loadMutex = new Mutex(true, @"Local\ST4_Yardimci_ACAD", out created);
-                    if (!created && ed != null)
-                        ed.WriteMessage(
-                            "\nBETONARME TOOL UYARI: Ayni AutoCAD oturumunda ikinci DLL (eski NETLOAD + yeni). " +
-                            "Komutlar cift calisir. AutoCAD'i kapatip tek kopya yukleyin (bundle veya bir NETLOAD).");
+                    registration.Dispose();
+                    ed?.WriteMessage("\nBETONARME TOOL: Bu oturumda Yardimci zaten yuklu. Ikinci kopyanin panel acilisi engellendi. Yeni surum icin AutoCAD'i yeniden baslatin.");
+                    return;
                 }
-                catch (AbandonedMutexException)
-                {
-                    /* onceki oturum kirik kalmis olabilir */
-                }
-                catch { }
+                _loadMutex = registration;
+                _ownsInitialization = true;
+                LogLoadStage("Initialize: " + Assembly.GetExecutingAssembly().Location);
+                AppDomain.CurrentDomain.AssemblyResolve -= ResolvePluginDependency;
+                AppDomain.CurrentDomain.AssemblyResolve += ResolvePluginDependency;
 
                 if (!MachineLicense.IsAllowed())
                 {
@@ -49,11 +51,21 @@ namespace ST4Yardimci
                     return;
                 }
                 if (ed != null)
-                    ed.WriteMessage("\nBETONARME TOOL yuklendi. BAPANEL otomatik aciliyor…  |  OTOOLCU  PLANOLCU  MERDIVEN  DOSEMEDONATI  OTODONATI  SEHPADONATI  HASIRDONATI  RADYEILAVE  TEMELHATILI  TEMELCEKURU  TEMELDETAY  DONATIBOYU  DONATIMETRAJ  DONATI ADET  DONATI OKU  KOTDEGISTIR  KATMANYUKLE");
+                    ed.WriteMessage(BaHomeRibbonCatalog.LegacyPaletteEnabled
+                        ? "\nBETONARME TOOL yuklendi. BAPANEL otomatik aciliyor…  |  OTOOLCU  PLANOLCU  MERDIVEN  DOSEMEDONATI  OTODONATI  SEHPADONATI  HASIRDONATI  RADYEILAVE  TEMELHATILI  TEMELCEKURU  TEMELDETAY  DONATIBOYU  DONATIMETRAJ  DONATI ADET  DONATI OKU  KOTDEGISTIR  KATMANYUKLE"
+                        : "\nBETONARME TOOL yuklendi. Home: Olcu / Detay / Donati / Genel Duzenleme.");
 
                 // NETLOAD sırasında palet hemen açılamayabilir; Idle'da bir kez aç.
                 AcApp.Idle -= OnIdleShowBaPanel;
-                AcApp.Idle += OnIdleShowBaPanel;
+                if (!string.Equals(System.Diagnostics.Process.GetCurrentProcess().ProcessName,
+                    "accoreconsole", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (BaHomeRibbonCatalog.LegacyPaletteEnabled)
+                        AcApp.Idle += OnIdleShowBaPanel;
+#if BA_HOME_RIBBON
+                    BaHomeRibbonManager.Initialize();
+#endif
+                }
             }
             catch { }
         }
@@ -63,49 +75,31 @@ namespace ST4Yardimci
             AcApp.Idle -= OnIdleShowBaPanel;
             try
             {
-                if (!MachineLicense.IsAllowed()) return;
-                // Workspace oturmadan PaletteSet bazı sürümlerde göçürür.
-                if (_idleSkip < 2)
+                if (!BaHomeRibbonCatalog.LegacyPaletteEnabled || !MachineLicense.IsAllowed()) return;
+                var doc = AcApp.DocumentManager.MdiActiveDocument;
+                if (doc == null || !doc.Editor.IsQuiescent)
                 {
-                    _idleSkip++;
                     AcApp.Idle += OnIdleShowBaPanel;
                     return;
                 }
-                // Plan_ID Idle'da STA paneli açıyorsa aynı anda 3 PaletteSet yaratmayı engelle.
-                bool gotGate = false;
-                try
-                {
-                    bool created;
-                    _paletteGate = new Mutex(false, @"Local\ST4_AcadPaletteInit", out created);
-                    gotGate = _paletteGate.WaitOne(1200);
-                }
-                catch { }
-                try
-                {
-                    // Belge yokken PaletteSet bazı sürümlerde düşer — bir Idle daha bekle.
-                    if (AcApp.DocumentManager.MdiActiveDocument == null)
-                    {
-                        AcApp.Idle += OnIdleShowBaPanel;
-                        return;
-                    }
-                    St4LispPaletteManager.Show();
-                    // BAUST paleti / COM toolbar silme ofiste süreç düşürür — açılışta yok.
-                }
-                finally
-                {
-                    if (gotGate)
-                    {
-                        try { _paletteGate?.ReleaseMutex(); } catch { }
-                    }
-                    try { _paletteGate?.Dispose(); } catch { }
-                    _paletteGate = null;
-                }
+                // Queue a normal command after NETLOAD/startup completes. Never create
+                // native palette windows inside an Idle callback or assembly initialization.
+                LogLoadStage("BAPANEL queued");
+                doc.SendStringToExecute("BAPANEL ", true, false, false);
+            }
+            catch (System.Exception ex) { LogLoadStage("Panel queue failed: " + ex); }
+        }
+
+        internal static void LogLoadStage(string stage)
+        {
+            try
+            {
+                File.AppendAllText(Path.Combine(Path.GetTempPath(), "ST4_Yardimci-load.log"),
+                    DateTime.UtcNow.ToString("o") + " PID=" + System.Diagnostics.Process.GetCurrentProcess().Id
+                    + " " + stage + Environment.NewLine);
             }
             catch { }
         }
-
-        private static Mutex _paletteGate;
-        private static int _idleSkip;
 
         /// <summary>Bundle klasöründeki NTS / System.* — çalışma dizini AutoCAD olunca FileNotFound süreç düşürebilir.</summary>
         private static Assembly ResolvePluginDependency(object sender, ResolveEventArgs args)
@@ -138,30 +132,23 @@ namespace ST4Yardimci
 
         public void Terminate()
         {
+            if (!_ownsInitialization) return;
+            LogLoadStage("Terminate begin");
             try { AcApp.Idle -= OnIdleShowBaPanel; } catch { }
+#if BA_HOME_RIBBON
+            try { BaHomeRibbonManager.Shutdown(); } catch { }
+#endif
             try { AppDomain.CurrentDomain.AssemblyResolve -= ResolvePluginDependency; } catch { }
             try { OtoOlcuSettings.Save(); } catch { }
             try { PlanOlcuSettings.Save(); } catch { }
             try { OtoDonatiSettings.Save(); } catch { }
             try { SehpaDonatiSettings.Save(); } catch { }
             try { HasirDonatiSettings.Save(); } catch { }
-            try { OtoOlcuForm.Shutdown(); } catch { }
-            try { PlanOlcuForm.Shutdown(); } catch { }
-            try { MerdivenForm.Shutdown(); } catch { }
-            try { DosemeDonatiForm.Shutdown(); } catch { }
-            try { OtoDonatiForm.Shutdown(); } catch { }
-            try { SehpaDonatiForm.Shutdown(); } catch { }
-            try { HasirDonatiForm.Shutdown(); } catch { }
-            try { RadyeTemelDonatiForm.Shutdown(); } catch { }
-            try { TemelHatiliForm.Shutdown(); } catch { }
-            try { ParapetForm.Shutdown(); } catch { }
-            try { KuranglezForm.Shutdown(); } catch { }
-            try { DonatiBoyuForm.Shutdown(); } catch { }
-            try { DonatiMetrajForm.Shutdown(); } catch { }
-            try { KotDegistirForm.Shutdown(); } catch { }
-            try { BaFormSession.Clear(); } catch { }
+            // Native modeless windows belong to the host; closing them during Terminate can re-enter destroyed UI.
             try { St4LispPaletteManager.Shutdown(); } catch { }
             try { BaTopToolbar.Shutdown(); } catch { }
+            try { _loadMutex?.Dispose(); _loadMutex = null; } catch { }
+            LogLoadStage("Terminate completed");
         }
 
         /// <summary>Aynı oturumda birden fazla ST4_Yardimci / ST4_Plan_ID_Ciz kopyası (eski NETLOAD kalır).</summary>
@@ -205,6 +192,28 @@ namespace ST4Yardimci
 
     public class CommandEntry
     {
+#if BA_HOME_RIBBON
+        [CommandMethod("BARIBBONAUTO", CommandFlags.NoHistory)]
+        public void BaRibbonAuto()
+        {
+            if (!MachineLicense.EnsureOrWarn()) return;
+            BaHomeRibbonManager.InstallPending();
+        }
+
+        [CommandMethod("BARIBBON")]
+        public void BaRibbon()
+        {
+            if (!MachineLicense.EnsureOrWarn()) return;
+            BaHomeRibbonManager.Show();
+        }
+
+        [CommandMethod("BARIBBONKAPAT")]
+        public void BaRibbonKapat()
+        {
+            if (!MachineLicense.EnsureOrWarn()) return;
+            BaHomeRibbonManager.Hide();
+        }
+#endif
         private static bool Gate(string family)
         {
             if (!MachineLicense.EnsureOrWarn()) return false;
@@ -222,7 +231,12 @@ namespace ST4Yardimci
         public void BaPanel()
         {
             if (!MachineLicense.EnsureOrWarn()) return;
+            if (!BaHomeRibbonCatalog.LegacyPaletteEnabled) return;
+#if !AUTOCAD2027
+            PluginLifecycle.LogLoadStage("BAPANEL creating/showing palette");
             St4LispPaletteManager.Show();
+            PluginLifecycle.LogLoadStage("BAPANEL completed");
+#endif
         }
 
         /// <summary>Eski yazısız simge şeridini kapatır (artık kullanılmaz).</summary>
@@ -237,14 +251,20 @@ namespace ST4Yardimci
         public void BetonarmeToolAlias()
         {
             if (!MachineLicense.EnsureOrWarn()) return;
+            if (!BaHomeRibbonCatalog.LegacyPaletteEnabled) return;
+#if !AUTOCAD2027
             St4LispPaletteManager.Show();
+#endif
         }
 
         [CommandMethod("ST4LISP")]
         public void St4LispPanelAlias()
         {
             if (!MachineLicense.EnsureOrWarn()) return;
+            if (!BaHomeRibbonCatalog.LegacyPaletteEnabled) return;
+#if !AUTOCAD2027
             St4LispPaletteManager.Show();
+#endif
         }
 
         [CommandMethod("OTOOLCU")]
@@ -522,6 +542,14 @@ namespace ST4Yardimci
             KuranglezRunner.RunInteractive();
         }
 
+        [CommandMethod("PERDEBOSLUK", CommandFlags.Modal)]
+        [CommandMethod("PERDE BOSLUK", CommandFlags.Modal)]
+        public void PerdeBosluk()
+        {
+            if (!Gate("PERDEBOSLUK")) return;
+            PerdeBoslukRunner.RunInteractive();
+        }
+
         [CommandMethod("DONATIBOYU")]
         public void DonatiBoyu()
         {
@@ -548,6 +576,20 @@ namespace ST4Yardimci
         {
             if (!Gate("DONATIBOYU")) return;
             DonatiBoyuLayerPick.RunRemove();
+        }
+
+        [CommandMethod("DONATIBOYUCIZIMKATMANEKLE")]
+        public void DonatiBoyuCizimKatmanEkle()
+        {
+            if (!Gate("DONATIBOYU")) return;
+            DonatiBoyuDrawingLayerPick.RunAdd();
+        }
+
+        [CommandMethod("DONATIBOYUCIZIMKATMANKALDIR")]
+        public void DonatiBoyuCizimKatmanKaldir()
+        {
+            if (!Gate("DONATIBOYU")) return;
+            DonatiBoyuDrawingLayerPick.RunRemove();
         }
 
         /// <summary>Mesafe / aralık → üst tamsayı adet; etiket güncellenir. Form yok.</summary>
@@ -652,7 +694,7 @@ namespace ST4Yardimci
             OtoOlcuLayerPick.RunRemove();
         }
 
-        /// <summary>Eksik BEYKENT katmanlarını açar. Var olanın renk ve kalınlığına dokunmaz.</summary>
+        /// <summary>Katman / ölçü stili / yazı stili ayar formu; Yükle ile açık çizime uygular.</summary>
         [CommandMethod("KATMANYUKLE", CommandFlags.Modal)]
         public void KatmanYukle()
         {

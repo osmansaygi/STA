@@ -11,7 +11,7 @@ namespace ST4Yardimci
     /// <summary>
     /// Oto Donatı — radye / mantar ana alt+üst. Enter/Space → çizim; sağ tık / Esc → çık.
     /// </summary>
-    internal sealed class OtoDonatiForm : Form
+    internal sealed class OtoDonatiForm : Beykent.Monolit.MonolitForm
     {
         private const int FormW = 300;
         private const int Pad = 12;
@@ -35,6 +35,11 @@ namespace ST4Yardimci
         private readonly ComboBox _cmbUstCap;
         private readonly TextBox _txtAltAralik;
         private readonly TextBox _txtUstAralik;
+        private readonly ComboBox _cmbAltCapY;
+        private readonly ComboBox _cmbUstCapY;
+        private readonly TextBox _txtAltAralikY;
+        private readonly TextBox _txtUstAralikY;
+        private readonly ComboBox _cmbSehpaCap;
         private readonly GonyeSemasiPanel _gonyeSemasi;
         private readonly CheckBox _chkAltCiz;
         private readonly CheckBox _chkUstCiz;
@@ -113,8 +118,8 @@ namespace ST4Yardimci
             ShowInTaskbar = false;
             MinimizeBox = false;
             MaximizeBox = false;
-            BackColor = AcadPaletteTheme.Bg;
-            ForeColor = AcadPaletteTheme.Text;
+            BackColor = Beykent.Monolit.StandardFormTheme.Bg;
+            ForeColor = Beykent.Monolit.StandardFormTheme.Text;
             Font = new SdFont("Segoe UI", 9f);
             KeyPreview = true;
 
@@ -145,9 +150,9 @@ namespace ST4Yardimci
             _txtPaspayi = MakeText(_col2X, y, FormatNum(OtoDonatiSettings.PaspayiCm, 1));
             y += FieldH + 8;
 
-            Controls.Add(MakeLabel("Üst kot (m)", Pad, y));
+            Controls.Add(MakeLabel("Üst kot (cm)", Pad, y));
             Controls.Add(MakeLabel("Gönye max (cm)", _col2X, y)); y += 16;
-            _txtUstKot = MakeText(Pad, y, FormatNum(OtoDonatiSettings.UstKotM, 2));
+            _txtUstKot = MakeText(Pad, y, FormatNum(OtoDonatiSettings.UstKotM * 100.0, 2));
             _txtGonyeBoyu = MakeText(_col2X, y, FormatNum(OtoDonatiSettings.GonyeBoyuMaxCm, 1));
             y += FieldH + 8;
 
@@ -167,6 +172,15 @@ namespace ST4Yardimci
             _cmbAltCap = MakeCapCombo(Pad, y, OtoDonatiSettings.AltDonatiCapMm);
             _txtAltAralik = MakeText(_col2X, y, FormatNum(OtoDonatiSettings.AltAralikCm, 1));
             Controls.Add(_cmbAltCap);
+            y += FieldH + 8;
+
+            _cmbUstCapY = MakeCapCombo(Pad, y, OtoDonatiSettings.UstDonatiCapYMm);
+            _txtUstAralikY = MakeText(_col2X, y, FormatNum(OtoDonatiSettings.UstAralikYCm, 1));
+            Controls.Add(_cmbUstCapY);
+            y += FieldH + 8;
+            _cmbAltCapY = MakeCapCombo(Pad, y, OtoDonatiSettings.AltDonatiCapYMm);
+            _txtAltAralikY = MakeText(_col2X, y, FormatNum(OtoDonatiSettings.AltAralikYCm, 1));
+            Controls.Add(_cmbAltCapY);
             y += FieldH + 8;
 
             Controls.Add(MakeLabel("Gönye", Pad, y)); y += 16;
@@ -190,6 +204,10 @@ namespace ST4Yardimci
 
             _chkSehpa = MakeCheck("Sehpa donatısı", Pad, y, OtoDonatiSettings.SehpaDonatisi);
             Controls.Add(_chkSehpa); y += 30;
+            _cmbSehpaCap = MakeCapCombo(Pad, y, OtoDonatiSettings.SehpaCapMm);
+            _cmbSehpaCap.Enabled = _chkSehpa.Checked;
+            _chkSehpa.CheckedChanged += (s, e) => _cmbSehpaCap.Enabled = _chkSehpa.Checked;
+            Controls.Add(_cmbSehpaCap); y += FieldH + 8;
 
             _btnManuel = MakeButton("Manuel donatı at", Pad, y, contentW, accent: false);
             _btnManuel.Click += OnManuel;
@@ -207,8 +225,6 @@ namespace ST4Yardimci
             ClientSize = new Size(FormW, y);
 
             MouseDown += OnFormMouseDown;
-            foreach (Control c in Controls)
-                WireRightClick(c);
 
             UpdateKalinlikLabel();
 
@@ -236,6 +252,27 @@ namespace ST4Yardimci
             {
                 StartPosition = FormStartPosition.CenterScreen;
             }
+
+            // Kompakt, içerik odaklı form düzeni.
+            var ui = BeginCompact(360);
+            ui.Tip(_chkAltCiz, _chkAltCiz.Text); ui.Tip(_chkUstCiz, _chkUstCiz.Text); ui.Tip(_chkSehpa, _chkSehpa.Text);
+            _chkAltCiz.Text = "Alt donatı"; _chkUstCiz.Text = "Üst donatı"; _chkSehpa.Text = "Sehpa";
+            ui.Section(null).Options(_rbRadye, _rbMantar);
+            ui.Tip(_cmbSehpaCap, "Sehpa donatı çapı (mm) — temel antetinin üstüne sehpa detayı çizilir.");
+            ui.Tabs(330,
+                ui.Page("Kesit ve donatı", p => p.Field(_lblKalinlik, _txtKalinlik).Field("Paspayı · cm", _txtPaspayi)
+                    .Field("Üst kot · cm", _txtUstKot)
+                    .Field("Üst X · Ø mm / ara cm", _cmbUstCap, _txtUstAralik)
+                    .Field("Üst Y · Ø mm / ara cm", _cmbUstCapY, _txtUstAralikY)
+                    .Field("Alt X · Ø mm / ara cm", _cmbAltCap, _txtAltAralik)
+                    .Field("Alt Y · Ø mm / ara cm", _cmbAltCapY, _txtAltAralikY)
+                    .Choices(_chkAltCiz, _chkUstCiz, _chkSehpa)
+                    .Field("Sehpa · Ø mm", _cmbSehpaCap)),
+                ui.Page("Gönye ve analiz", p => p.Field("En büyük gönye · cm", _txtGonyeBoyu).Field("Analiz eşiği · cm", _txtAnalizEsigi)
+                    .Control(_gonyeSemasi, 120)));
+            ui.Footer(_btnRun, _btnClose, _btnManuel);
+            ui.Finish();
+            foreach (Control c in Controls) WireRightClick(c);
         }
 
         private void WireRightClick(Control c)
@@ -320,19 +357,25 @@ namespace ST4Yardimci
         {
             _txtKalinlik.Text = FormatNum(OtoDonatiSettings.KalinlikCm, 1);
             _txtPaspayi.Text = FormatNum(OtoDonatiSettings.PaspayiCm, 1);
-            _txtUstKot.Text = FormatNum(OtoDonatiSettings.UstKotM, 2);
+            _txtUstKot.Text = FormatNum(OtoDonatiSettings.UstKotM * 100.0, 2);
             _txtGonyeBoyu.Text = FormatNum(OtoDonatiSettings.GonyeBoyuMaxCm, 1);
             _txtAnalizEsigi.Text = FormatNum(OtoDonatiSettings.AnalizEsigiCm, 1);
             SelectCap(_cmbAltCap, OtoDonatiSettings.AltDonatiCapMm);
             SelectCap(_cmbUstCap, OtoDonatiSettings.UstDonatiCapMm);
             _txtAltAralik.Text = FormatNum(OtoDonatiSettings.AltAralikCm, 1);
             _txtUstAralik.Text = FormatNum(OtoDonatiSettings.UstAralikCm, 1);
+            SelectCap(_cmbAltCapY, OtoDonatiSettings.AltDonatiCapYMm);
+            SelectCap(_cmbUstCapY, OtoDonatiSettings.UstDonatiCapYMm);
+            _txtAltAralikY.Text = FormatNum(OtoDonatiSettings.AltAralikYCm, 1);
+            _txtUstAralikY.Text = FormatNum(OtoDonatiSettings.UstAralikYCm, 1);
+            SelectCap(_cmbSehpaCap, OtoDonatiSettings.SehpaCapMm);
             _gonyeSemasi.SetGonye(
                 OtoDonatiSettings.UstGonyeSol,
                 OtoDonatiSettings.UstGonyeSag,
                 OtoDonatiSettings.AltGonyeSol,
                 OtoDonatiSettings.AltGonyeSag);
             _chkSehpa.Checked = OtoDonatiSettings.SehpaDonatisi;
+            _cmbSehpaCap.Enabled = _chkSehpa.Checked;
             _chkAltCiz.Checked = OtoDonatiSettings.AltDonatiCiz;
             _chkUstCiz.Checked = OtoDonatiSettings.UstDonatiCiz;
         }
@@ -349,9 +392,9 @@ namespace ST4Yardimci
                 Warn("Paspayı geçersiz (cm).");
                 return false;
             }
-            if (!TryParseDouble(_txtUstKot.Text, out double kot) || kot < -100 || kot > 300)
+            if (!TryParseDouble(_txtUstKot.Text, out double kot) || kot < -10000 || kot > 30000)
             {
-                Warn("Üst kot geçersiz (m).");
+                Warn("Üst kot geçersiz (cm).");
                 return false;
             }
             if (!TryParseDouble(_txtGonyeBoyu.Text, out double gonyeMax) || gonyeMax < 1 || gonyeMax > 200)
@@ -366,12 +409,22 @@ namespace ST4Yardimci
             }
             if (!TryParseDouble(_txtAltAralik.Text, out double aAr) || aAr < 5 || aAr > 80)
             {
-                Warn("Alt aralık geçersiz (cm).");
+                Warn("Alt X aralık geçersiz (cm).");
                 return false;
             }
             if (!TryParseDouble(_txtUstAralik.Text, out double uAr) || uAr < 5 || uAr > 80)
             {
-                Warn("Üst aralık geçersiz (cm).");
+                Warn("Üst X aralık geçersiz (cm).");
+                return false;
+            }
+            if (!TryParseDouble(_txtAltAralikY.Text, out double aArY) || aArY < 5 || aArY > 80)
+            {
+                Warn("Alt Y aralık geçersiz (cm).");
+                return false;
+            }
+            if (!TryParseDouble(_txtUstAralikY.Text, out double uArY) || uArY < 5 || uArY > 80)
+            {
+                Warn("Üst Y aralık geçersiz (cm).");
                 return false;
             }
 
@@ -380,13 +433,18 @@ namespace ST4Yardimci
                 : OtoDonatiTip.RadyeTemel;
             OtoDonatiSettings.KalinlikCm = kal;
             OtoDonatiSettings.PaspayiCm = pas;
-            OtoDonatiSettings.UstKotM = kot;
+            OtoDonatiSettings.UstKotM = kot / 100.0;
             OtoDonatiSettings.GonyeBoyuMaxCm = gonyeMax;
             OtoDonatiSettings.AnalizEsigiCm = analiz;
             OtoDonatiSettings.AltDonatiCapMm = ParseCap(_cmbAltCap);
             OtoDonatiSettings.UstDonatiCapMm = ParseCap(_cmbUstCap);
             OtoDonatiSettings.AltAralikCm = aAr;
             OtoDonatiSettings.UstAralikCm = uAr;
+            OtoDonatiSettings.AltDonatiCapYMm = ParseCap(_cmbAltCapY);
+            OtoDonatiSettings.UstDonatiCapYMm = ParseCap(_cmbUstCapY);
+            OtoDonatiSettings.AltAralikYCm = aArY;
+            OtoDonatiSettings.UstAralikYCm = uArY;
+            OtoDonatiSettings.SehpaCapMm = ParseCap(_cmbSehpaCap);
             OtoDonatiSettings.UstGonyeSol = _gonyeSemasi.UstSol;
             OtoDonatiSettings.UstGonyeSag = _gonyeSemasi.UstSag;
             OtoDonatiSettings.AltGonyeSol = _gonyeSemasi.AltSol;
@@ -429,8 +487,8 @@ namespace ST4Yardimci
                     p.KalinlikCm = kal;
                 if (TryParseDouble(_txtPaspayi.Text, out double pas) && pas >= 0.5 && pas <= 20)
                     p.PaspayiCm = pas;
-                if (TryParseDouble(_txtUstKot.Text, out double kot) && kot >= -100 && kot <= 300)
-                    p.UstKotM = kot;
+                if (TryParseDouble(_txtUstKot.Text, out double kot) && kot >= -10000 && kot <= 30000)
+                    p.UstKotM = kot / 100.0;
                 if (TryParseDouble(_txtGonyeBoyu.Text, out double gonyeMax) && gonyeMax >= 1 && gonyeMax <= 200)
                     p.GonyeBoyuMaxCm = gonyeMax;
                 if (TryParseDouble(_txtAnalizEsigi.Text, out double analiz) && analiz >= 1 && analiz <= 5000)
@@ -439,8 +497,15 @@ namespace ST4Yardimci
                     p.AltAralikCm = aAr;
                 if (TryParseDouble(_txtUstAralik.Text, out double uAr) && uAr >= 5 && uAr <= 80)
                     p.UstAralikCm = uAr;
+                if (TryParseDouble(_txtAltAralikY.Text, out double aArY) && aArY >= 5 && aArY <= 80)
+                    p.AltAralikYCm = aArY;
+                if (TryParseDouble(_txtUstAralikY.Text, out double uArY) && uArY >= 5 && uArY <= 80)
+                    p.UstAralikYCm = uArY;
                 p.AltDonatiCapMm = ParseCap(_cmbAltCap);
                 p.UstDonatiCapMm = ParseCap(_cmbUstCap);
+                p.AltDonatiCapYMm = ParseCap(_cmbAltCapY);
+                p.UstDonatiCapYMm = ParseCap(_cmbUstCapY);
+                p.SehpaCapMm = ParseCap(_cmbSehpaCap);
                 p.UstGonyeSol = _gonyeSemasi.UstSol;
                 p.UstGonyeSag = _gonyeSemasi.UstSag;
                 p.AltGonyeSol = _gonyeSemasi.AltSol;
@@ -538,7 +603,7 @@ namespace ST4Yardimci
             Text = text,
             Location = new Point(x, y),
             AutoSize = true,
-            ForeColor = AcadPaletteTheme.Text,
+            ForeColor = Beykent.Monolit.StandardFormTheme.Text,
             BackColor = Color.Transparent
         };
 
@@ -547,7 +612,7 @@ namespace ST4Yardimci
             Text = text,
             Location = new Point(x, y),
             AutoSize = true,
-            ForeColor = AcadPaletteTheme.Text,
+            ForeColor = Beykent.Monolit.StandardFormTheme.Text,
             BackColor = Color.Transparent,
             FlatStyle = FlatStyle.Standard
         };
@@ -557,7 +622,7 @@ namespace ST4Yardimci
             Text = text,
             Location = new Point(x, y),
             AutoSize = true,
-            ForeColor = AcadPaletteTheme.Text,
+            ForeColor = Beykent.Monolit.StandardFormTheme.Text,
             BackColor = Color.Transparent,
             FlatStyle = FlatStyle.Standard,
             Checked = on
@@ -573,14 +638,14 @@ namespace ST4Yardimci
             {
                 Location = new Point(x, y),
                 Size = new Size(_fieldW, FieldH),
-                BackColor = AcadPaletteTheme.InputBg,
+                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
                 BorderStyle = BorderStyle.FixedSingle
             };
             var t = new TextBox
             {
                 BorderStyle = BorderStyle.None,
-                BackColor = AcadPaletteTheme.InputBg,
-                ForeColor = AcadPaletteTheme.Text,
+                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
+                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
                 Font = Font,
                 Text = text,
                 TabStop = true
@@ -611,15 +676,15 @@ namespace ST4Yardimci
                 Location = new Point(x, y),
                 Size = new Size(w, 28),
                 FlatStyle = FlatStyle.Flat,
-                BackColor = AcadPaletteTheme.BgAlt,
-                ForeColor = accent ? AcadPaletteTheme.Accent : AcadPaletteTheme.Text,
+                BackColor = Beykent.Monolit.StandardFormTheme.BgAlt,
+                ForeColor = accent ? Beykent.Monolit.StandardFormTheme.Accent : Beykent.Monolit.StandardFormTheme.Text,
                 Font = accent ? new SdFont("Segoe UI", 9f, FontStyle.Bold) : Font,
                 UseVisualStyleBackColor = false
             };
-            b.FlatAppearance.BorderColor = AcadPaletteTheme.InputBorder;
+            b.FlatAppearance.BorderColor = Beykent.Monolit.StandardFormTheme.InputBorder;
             b.FlatAppearance.BorderSize = 1;
-            b.FlatAppearance.MouseOverBackColor = AcadPaletteTheme.BgAlt;
-            b.FlatAppearance.MouseDownBackColor = AcadPaletteTheme.BgAlt;
+            b.FlatAppearance.MouseOverBackColor = Beykent.Monolit.StandardFormTheme.BgAlt;
+            b.FlatAppearance.MouseDownBackColor = Beykent.Monolit.StandardFormTheme.BgAlt;
             return b;
         }
 
@@ -630,8 +695,8 @@ namespace ST4Yardimci
                 Location = new Point(x, y),
                 Size = new Size(_fieldW, FieldH),
                 DropDownStyle = ComboBoxStyle.DropDownList,
-                BackColor = AcadPaletteTheme.InputBg,
-                ForeColor = AcadPaletteTheme.Text,
+                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
+                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
                 FlatStyle = FlatStyle.Flat,
                 Font = Font
             };
@@ -659,7 +724,7 @@ namespace ST4Yardimci
             public GonyeSemasiPanel()
             {
                 DoubleBuffered = true;
-                BackColor = AcadPaletteTheme.Bg;
+                BackColor = Beykent.Monolit.StandardFormTheme.Bg;
                 BorderStyle = BorderStyle.None;
 
                 _chkUstSol = MakeTick();
@@ -724,14 +789,14 @@ namespace ST4Yardimci
                 float altY = midY + 28;
                 float hook = 22;
 
-                using (var pen = new Pen(Color.White, 2f)
+                using (var pen = new Pen(Beykent.Monolit.StandardFormTheme.Text, 2f)
                 {
                     StartCap = LineCap.Round,
                     EndCap = LineCap.Round,
                     LineJoin = LineJoin.Round
                 })
                 using (var font = new SdFont("Segoe UI", 9f, FontStyle.Bold))
-                using (var brush = new SolidBrush(Color.White))
+                using (var brush = new SolidBrush(Beykent.Monolit.StandardFormTheme.Text))
                 {
                     g.DrawLine(pen, x0, ustY, x1, ustY);
                     if (_chkUstSol.Checked)

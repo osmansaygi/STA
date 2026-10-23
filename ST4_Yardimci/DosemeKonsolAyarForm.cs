@@ -6,7 +6,7 @@ using SdFont = System.Drawing.Font;
 namespace ST4Yardimci
 {
     /// <summary>Konsol boyu → çap/aralık ayar formu (4 satır, kalıcı).</summary>
-    internal sealed class DosemeKonsolAyarForm : Form
+    internal sealed class DosemeKonsolAyarForm : Beykent.Monolit.MonolitForm
     {
         private readonly NumericUpDown[] _numBoy = new NumericUpDown[DosemeKonsolSettings.BandCount];
         private readonly ComboBox[] _cmbCap = new ComboBox[DosemeKonsolSettings.BandCount];
@@ -22,7 +22,7 @@ namespace ST4Yardimci
             MinimizeBox = false;
             MaximizeBox = false;
             ClientSize = new Size(420, 250);
-            BackColor = AcadPaletteTheme.Bg;
+            BackColor = Beykent.Monolit.StandardFormTheme.Bg;
             ForeColor = Color.White;
             Font = new SdFont("Segoe UI", 9f);
 
@@ -57,6 +57,14 @@ namespace ST4Yardimci
             Controls.Add(btnCancel);
             AcceptButton = btnOk;
             CancelButton = btnCancel;
+
+            // Kompakt, içerik odaklı form düzeni.
+            var ui = BeginCompact(350);
+            var bandRows = new Control[DosemeKonsolSettings.BandCount][];
+            for (int i = 0; i < bandRows.Length; i++) bandRows[i] = new Control[] { _numBoy[i], _cmbCap[i], _numAralik[i] };
+            ui.Section("Konsol donatı kademeleri").Grid(new[] { "Azami boy · cm", "Ø · mm", "Aralık · cm" }, bandRows);
+            ui.Footer(btnOk, btnCancel);
+            ui.Finish();
         }
 
         private void SaveAndClose()
@@ -99,7 +107,7 @@ namespace ST4Yardimci
                 Maximum = max,
                 Increment = inc,
                 DecimalPlaces = inc < 1 ? 2 : 0,
-                BackColor = AcadPaletteTheme.BgAlt,
+                BackColor = Beykent.Monolit.StandardFormTheme.BgAlt,
                 ForeColor = Color.White
             };
             if (val < min) val = min;
@@ -116,7 +124,7 @@ namespace ST4Yardimci
                 Location = new Point(x, y),
                 Size = new Size(90, 24),
                 DropDownStyle = ComboBoxStyle.DropDownList,
-                BackColor = AcadPaletteTheme.BgAlt,
+                BackColor = Beykent.Monolit.StandardFormTheme.BgAlt,
                 ForeColor = Color.White,
                 FlatStyle = FlatStyle.Flat
             };
@@ -135,7 +143,7 @@ namespace ST4Yardimci
                 Location = new Point(x, y),
                 Size = new Size(w, 28),
                 FlatStyle = FlatStyle.Flat,
-                BackColor = AcadPaletteTheme.BgAlt,
+                BackColor = Beykent.Monolit.StandardFormTheme.BgAlt,
                 ForeColor = Color.White,
                 Cursor = Cursors.Hand
             };

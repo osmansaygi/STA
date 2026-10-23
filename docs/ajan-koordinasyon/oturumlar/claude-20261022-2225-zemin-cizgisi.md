@@ -1,0 +1,20 @@
+﻿# Claude — sürekli temel zemin çizgisi uzantısı 10 cm
+- Ajan: Claude / bu sohbet
+- Güncelleme: 2026-10-22 22:31 (Europe/Istanbul)
+- Durum: tamamlandı — rezervasyon yok
+- Değişen: ST4_Plan_ID_Ciz/PlanIdDrawingManager.Sections.cs (ext parametresi + sabit), PlanIdDrawingManager.SurekliTemelGorunus.cs, PlanIdDrawingManager.KirisAcilim.Kesit.cs (yalnız zemin çağrısı); docs/modul-durum/ST4_Plan_ID_Ciz.SurekliGorunus.md; NETLOAD/OKU.txt.
+- Doğrulama: izole derleme (tools/SurekliTemelViewCheck/Build.ps1) + RunAll zem10 6/6 COMPLETE. DLL NETLOAD/ST4_Plan_ID_Ciz_20261022_223047.dll + PDB SHA256 eşit; 213313 tools/netload-yedek/20261022_eski. Canlı AutoCAD yok.
+- 22:55 ek: uç mesnette donatılar temel sınırına (KirisAcilim.cs GonyeHesap + GovdeUc, yalnız _surekliTemelAcilim). RunAll ucsinir 6/6 COMPLETE. Teslim NETLOAD/ST4_Plan_ID_Ciz_20261022_225236.dll (+PDB, SHA256 eşit); 223047 yedekte. Rezervasyon yok.
+- 22:58 ek: uç gönyeleri (gövde hariç). RunAll gonye 6/6 COMPLETE. Teslim NETLOAD/ST4_Plan_ID_Ciz_20261022_225536.dll (+PDB, SHA256 eşit); 225236 yedekte. Rezervasyon yok.
+- 23:40 ek: B (kısa açıklık ilavesi karşı mesnetten ℓb) + C (ℓb ST4 malzemesinden) + temel serbest uç gönyesi 50φ. Değişen: KirisAcilim.cs, SurekliTemelAcilim.cs, SurekliTemelDonatiGorunus.cs. RunAll bc2 6/6 COMPLETE. Teslim NETLOAD/ST4_Plan_ID_Ciz_20261022_233809.dll (+PDB, SHA256 eşit); 225536 yedekte. Rezervasyon yok.
+- 23.10 01:06 ek: ilave kendi açıklığının max(Ln/4, ℓb, 50φ) (Ln_büyük kaldırıldı). KirisAcilim.cs + SurekliTemelDonatiGorunus.cs. RunAll kendi 6/6 COMPLETE. Teslim NETLOAD/ST4_Plan_ID_Ciz_20261023_010452.dll (+PDB, SHA256 eşit); 233809 yedekte. Rezervasyon yok.
+- 23.10 01:15 ek: montaj bindirme ölçüsü montaj şeridine (KirisAcilim.cs KirisAcilimMontajBindirmeOlcuCiz). RunAll bind 6/6 COMPLETE. Teslim NETLOAD/ST4_Plan_ID_Ciz_20261023_011328.dll (+PDB); 010452 yedekte. Rezervasyon yok.
+- 23.10 01:59 ek: ampatman U donatısı (KirisAcilim.cs struct, SurekliTemelAcilim.cs TMX/GPR, KirisAcilim.Kesit.cs çizim). RunAll amp2 6/6 COMPLETE. Teslim NETLOAD/ST4_Plan_ID_Ciz_20261023_015752.dll (+PDB); 011328 yedekte. Rezervasyon yok.
+- 23.10 02:16 ek: ampatman U DONATI katmanı + R2 (KirisAcilim.Kesit.cs). RunAll ampr 6/6 COMPLETE. Teslim NETLOAD/ST4_Plan_ID_Ciz_20261023_021430.dll (+PDB); 015752 yedekte. Rezervasyon yok.
+- 23.10 02:30 ek: ampatman dağıtma donatısı (KirisAcilim.Kesit.cs, SurekliTemelAcilim.cs). RunAll dag 6/6 COMPLETE. Teslim NETLOAD/ST4_Plan_ID_Ciz_20261023_022748.dll (+PDB); 021430 yedekte. Rezervasyon yok.
+- 23.10 02:33 ek: dağıtma açılımı (SurekliTemelDonatiGorunus.cs, KirisAcilim.Kesit.cs). RunAll dagac 6/6 COMPLETE. Teslim NETLOAD/ST4_Plan_ID_Ciz_20261023_023134.dll (+PDB); 022748 yedekte. Rezervasyon yok.
+- 23.10 02:42 ek: dağıtma en küçük çap (etriye dahil) + ampatman açılım adedi. RunAll adet 6/6 COMPLETE. Teslim NETLOAD/ST4_Plan_ID_Ciz_20261023_024023.dll (+PDB); 023134 yedekte. Rezervasyon yok.
+- 23.10 02:51 ek: dağıtma satırı 50 cm + izdüşüm uzaması. RunAll izd 6/6 COMPLETE. Teslim NETLOAD/ST4_Plan_ID_Ciz_20261023_024946.dll (+PDB); 024023 yedekte. Rezervasyon yok.
+- 23.10 03:05 ek: mesnet içi etriye + çıkıntı 75 cm (SurekliTemelGorunus.cs, SurekliTemelDonatiGorunus.cs, tools/SurekliTemelViewCheck/Native/Smoke.cs). RunAll mes 6/6 COMPLETE. Teslim NETLOAD/ST4_Plan_ID_Ciz_20261023_030357.dll (+PDB); 024946 yedekte. Rezervasyon yok.
+- 23.10 03:15 ek: AutoCAD 2027 çökmesi kök nedeni net48/2027 uyumsuzluğu. Değişen: ST4_Plan_ID_Ciz/ST4_Plan_ID_Ciz.csproj (AutoCAD2027Build hedefi), docs/csharp-autocad-calisma.md (Plan ID 2027 satırı), tools/SurekliTemelViewCheck/Build.ps1 + RunAll.ps1 (-Plan2027). Teslim NETLOAD/AutoCAD2027/ST4_Plan_ID_Ciz_2027_20261023_031104/. RunAll n27 6/6 + Repeat 8/8. net48 NETLOAD kökü değişmedi. Rezervasyon yok.
+- 23.10 03:25 ek: mesnet etriye yazısı hizası (SurekliTemelDonatiGorunus.cs). RunAll hiz27 + hiz48 6/6. Teslim NETLOAD/AutoCAD2027/ST4_Plan_ID_Ciz_2027_20261023_032149/ ve NETLOAD/ST4_Plan_ID_Ciz_20261023_032254.dll; önceki sürümler yedekte. Rezervasyon yok.

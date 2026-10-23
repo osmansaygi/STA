@@ -84,8 +84,23 @@ namespace ST4PlanIdCiz
             }
             string rebar = FormatApplicationRebar(byDia, ResolveKolonDuseyEtriyeDiaMm(fi, columnNo));
             var upFloor = fi + 1 < _model.Floors.Count ? _model.Floors[fi + 1] : null;
+            var upCol = col;
             bool continues = upFloor != null && HasColumnOnFloor(upFloor, col);
-            var up = continues ? GetColumnPolygonForTable(upFloor, col, 0, 0, _ntsDrawFactory) : null;
+            if (!continues && upFloor != null)
+            {
+                // Üstte kesit alanına farklı isimle binen kolon/perde (S1-40 → SC-39) devamdır;
+                // KOLONDUSEY zinciriyle aynı karar.
+                if (BuildKolonDuseyFloorColMap(col).TryGetValue(fi + 1, out int upNo) && upNo != col.ColumnNo)
+                {
+                    var ustKolon = FindKolonByNo(upNo);
+                    if (ustKolon != null && HasColumnOnFloor(upFloor, ustKolon))
+                    {
+                        upCol = ustKolon;
+                        continues = true;
+                    }
+                }
+            }
+            var up = continues ? GetColumnPolygonForTable(upFloor, upCol, 0, 0, _ntsDrawFactory) : null;
             string note = ApplicationContinuationNote(continues, ApplicationSectionChanged(g, up));
             return (rebar, note);
         }

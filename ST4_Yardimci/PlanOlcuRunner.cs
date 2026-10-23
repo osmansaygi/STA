@@ -2648,14 +2648,7 @@ namespace ST4Yardimci
         private static string EnsureOlcuLayer(Transaction tr, Database db)
         {
             string name = OtoOlcuSettings.DefaultDimLayerName;
-            var lt = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
-            if (lt.Has(name)) return name;
-            lt.UpgradeOpen();
-            var rec = new LayerTableRecord { Name = name };
-            try { rec.Color = Color.FromColorIndex(ColorMethod.ByAci, 3); } catch { }
-            try { rec.LineWeight = LineWeight.LineWeight030; } catch { }
-            lt.Add(rec);
-            tr.AddNewlyCreatedDBObject(rec, true);
+            BeykentKatmanYukle.Ensure(tr, db, name, 3, LineWeight.LineWeight030);
             return name;
         }
 

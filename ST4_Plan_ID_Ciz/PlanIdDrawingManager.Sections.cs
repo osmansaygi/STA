@@ -81,6 +81,8 @@ namespace ST4PlanIdCiz
         private const double GrobetonFoundationAIntervalJoinEpsCm = 2.0;
         /// <summary>Zemin çizgisi, temel/grobeton hattı boyunca her uçtan uzatma (cm).</summary>
         private const double KesitZeminCizgiTemelHatUzantisiCm = 50.0;
+        /// <summary>Sürekli temel görünüş ve kesitlerinde zemin çizgisi uç uzatması (2× öncesi; nihai 10 cm).</summary>
+        private const double SurekliTemelZeminCizgiUzantisiCm = 5.0;
         /// <summary>Kesit kotları: yakın kotları tek satırda birleştir (cm).</summary>
         private const double KesitKotMergeTolCm = 1.5;
         /// <summary>A-A kesitte kot üçgeni tepe noktası — yapı sağ kenarından (cm).</summary>
@@ -2503,21 +2505,20 @@ namespace ST4PlanIdCiz
             return minX <= maxX && minY <= maxY && maxX - minX >= 1e-9 && maxY - minY >= 1e-9;
         }
 
-        private static void DrawZeminSingleLineAlongFoundationSection(Transaction tr, BlockTableRecord btr, double minX, double maxX, double minY, double maxY, bool horizontalAlongX, bool mirrorElevationX)
+        private static void DrawZeminSingleLineAlongFoundationSection(Transaction tr, BlockTableRecord btr, double minX, double maxX, double minY, double maxY, bool horizontalAlongX, bool mirrorElevationX, double ext = KesitZeminCizgiTemelHatUzantisiCm)
         {
             if (maxX - minX < 1e-9 || maxY - minY < 1e-9) return;
             if (horizontalAlongX)
-                AppendZeminSegment(tr, btr, new Point2d(minX, minY), new Point2d(maxX, minY));
+                AppendZeminSegment(tr, btr, new Point2d(minX, minY), new Point2d(maxX, minY), ext);
             else
             {
                 double xLine = mirrorElevationX ? maxX : minX;
-                AppendZeminSegment(tr, btr, new Point2d(xLine, minY), new Point2d(xLine, maxY));
+                AppendZeminSegment(tr, btr, new Point2d(xLine, minY), new Point2d(xLine, maxY), ext);
             }
         }
 
-        private static void AppendZeminSegment(Transaction tr, BlockTableRecord btr, Point2d p0, Point2d p1)
+        private static void AppendZeminSegment(Transaction tr, BlockTableRecord btr, Point2d p0, Point2d p1, double ext)
         {
-            double ext = KesitZeminCizgiTemelHatUzantisiCm;
             if (Math.Abs(p1.Y - p0.Y) < 1e-6)
             {
                 double y = p0.Y;
@@ -2996,7 +2997,7 @@ namespace ST4PlanIdCiz
         }
 
         private void DrawKesitEtiketDxfStyle(Transaction tr, BlockTableRecord btr, Database db, Point3d center,
-            Vector2d unitAlongCut, Vector2d unitArrow, bool mirrorAlong, string letter, double geomScale = 1.0)
+            Vector2d unitAlongCut, Vector2d unitArrow, bool mirrorAlong, string letter, double geomScale = 1.0, bool fullLetter = false)
         {
             if (geomScale < 1e-6) geomScale = 1.0;
             double R = KesitEtiketRadiusCm * geomScale;
@@ -3017,11 +3018,11 @@ namespace ST4PlanIdCiz
             var circ = new Circle(center, Vector3d.ZAxis, R) { Layer = LayerKesit, LineWeight = LineWeight.LineWeight060 };
             AppendEntity(tr, btr, circ);
 
-            string ch = letter.Length > 0 ? letter.Substring(0, 1) : "?";
+            string ch = letter.Length > 0 ? (fullLetter ? letter : letter.Substring(0, 1)) : "?";
             var dt = new DBText
             {
                 Layer = LayerKesitIsmi,
-                Height = KesitIsmiLayerYaziYukseklikCm,
+                Height = KesitIsmiLayerYaziYukseklikCm * (fullLetter ? geomScale : 1.0),
                 TextStyleId = GetOrCreateYaziBeykentTextStyle(tr, db),
                 TextString = ch,
                 HorizontalMode = TextHorizontalMode.TextCenter,

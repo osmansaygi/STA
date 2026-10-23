@@ -87,7 +87,7 @@ namespace ST4Yardimci
         }
     }
 
-    internal sealed class TemelDetayForm : Form
+    internal sealed class TemelDetayForm : Beykent.Monolit.MonolitForm
     {
         private static TemelDetayForm _instance;
 
@@ -166,8 +166,8 @@ namespace ST4Yardimci
             MinimizeBox = false;
             MaximizeBox = false;
             AutoScaleMode = AutoScaleMode.None;
-            BackColor = AcadPaletteTheme.Bg;
-            ForeColor = AcadPaletteTheme.Text;
+            BackColor = Beykent.Monolit.StandardFormTheme.Bg;
+            ForeColor = Beykent.Monolit.StandardFormTheme.Text;
             Font = new SdFont("Segoe UI", 8.5f);
             KeyPreview = true;
 
@@ -239,6 +239,17 @@ namespace ST4Yardimci
             {
                 StartPosition = FormStartPosition.CenterScreen;
             }
+
+            // Kompakt, içerik odaklı form düzeni.
+            var ui = BeginCompact(420);
+            ui.Tabs(260,
+                ui.Page("Kesit", p => p.Field("Paspayı / üst kot · cm", _pas, _ustKot).Choices(_solKademe, _sagKademe)
+                    .Field("Sol / sağ kademe · cm", _sol, _sag).Field("Sol / sağ üst temel · cm", _ust, _ustSag)
+                    .Field("Alt temel / açıklık · cm", _alt, _gen).Field("Grobeton açısı · °", _aci).Field("Kademe uzunluğu · cm", _uzunluk)),
+                ui.Page("Hatıl ve donatı", p => p.Field("Hatıl yük. / en · cm", _hatil, _hatilGen).Field("Subasman · cm", _doseme)
+                    .Field("Üst · Ø mm / ara cm", _ustCap, _ustAralik).Field("Alt · Ø mm / ara cm", _altCap, _altAralik)));
+            ui.Footer(btn, close);
+            ui.Finish();
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -347,14 +358,14 @@ namespace ST4Yardimci
             {
                 Location = new Point(12, y),
                 Size = new Size(468, 22),
-                BackColor = AcadPaletteTheme.BgAlt
+                BackColor = Beykent.Monolit.StandardFormTheme.BgAlt
             };
             bar.Controls.Add(new Label
             {
                 Text = title,
                 Location = new Point(8, 3),
                 AutoSize = true,
-                ForeColor = AcadPaletteTheme.Accent,
+                ForeColor = Beykent.Monolit.StandardFormTheme.Accent,
                 BackColor = Color.Transparent,
                 Font = new SdFont(Font, FontStyle.Bold)
             });
@@ -372,7 +383,7 @@ namespace ST4Yardimci
                 Location = new Point(x, y + 3),
                 AutoSize = false,
                 Size = new Size(108, 18),
-                ForeColor = AcadPaletteTheme.TextMuted,
+                ForeColor = Beykent.Monolit.StandardFormTheme.TextMuted,
                 BackColor = Color.Transparent
             });
             var n = new NumericUpDown
@@ -383,8 +394,8 @@ namespace ST4Yardimci
                 Maximum = max,
                 Increment = inc,
                 DecimalPlaces = decimals,
-                BackColor = AcadPaletteTheme.InputBg,
-                ForeColor = AcadPaletteTheme.Text,
+                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
+                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
                 BorderStyle = BorderStyle.FixedSingle
             };
             n.Value = Clamp(n, val);
@@ -395,7 +406,7 @@ namespace ST4Yardimci
                 Text = unit,
                 Location = new Point(x + 172, y + 3),
                 AutoSize = true,
-                ForeColor = AcadPaletteTheme.TextMuted,
+                ForeColor = Beykent.Monolit.StandardFormTheme.TextMuted,
                 BackColor = Color.Transparent
             });
             return n;
@@ -409,7 +420,7 @@ namespace ST4Yardimci
                 Location = new Point(12, y + 3),
                 AutoSize = false,
                 Size = new Size(108, 18),
-                ForeColor = AcadPaletteTheme.TextMuted,
+                ForeColor = Beykent.Monolit.StandardFormTheme.TextMuted,
                 BackColor = Color.Transparent
             });
             var c = new ComboBox
@@ -417,8 +428,8 @@ namespace ST4Yardimci
                 Location = new Point(122, y),
                 Size = new Size(52, 22),
                 DropDownStyle = ComboBoxStyle.DropDownList,
-                BackColor = AcadPaletteTheme.InputBg,
-                ForeColor = AcadPaletteTheme.Text,
+                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
+                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
                 FlatStyle = FlatStyle.Flat
             };
             foreach (int d in new[] { 8, 10, 12, 14, 16, 18, 20, 22, 25 })
@@ -430,7 +441,7 @@ namespace ST4Yardimci
                 Text = "/",
                 Location = new Point(180, y + 3),
                 AutoSize = true,
-                ForeColor = AcadPaletteTheme.Text,
+                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
                 BackColor = Color.Transparent
             });
             aralik = new NumericUpDown
@@ -441,8 +452,8 @@ namespace ST4Yardimci
                 Maximum = 40,
                 Increment = 1,
                 DecimalPlaces = 0,
-                BackColor = AcadPaletteTheme.InputBg,
-                ForeColor = AcadPaletteTheme.Text,
+                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
+                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
                 BorderStyle = BorderStyle.FixedSingle
             };
             aralik.Value = Clamp(aralik, aralikCm);
@@ -488,12 +499,12 @@ namespace ST4Yardimci
                 Location = new Point(x, y),
                 Size = new Size(w, 26),
                 FlatStyle = FlatStyle.Flat,
-                BackColor = AcadPaletteTheme.BgAlt,
-                ForeColor = accent ? AcadPaletteTheme.Accent : AcadPaletteTheme.Text,
+                BackColor = Beykent.Monolit.StandardFormTheme.BgAlt,
+                ForeColor = accent ? Beykent.Monolit.StandardFormTheme.Accent : Beykent.Monolit.StandardFormTheme.Text,
                 Cursor = Cursors.Hand
             };
-            b.FlatAppearance.BorderColor = AcadPaletteTheme.InputBorder;
-            b.FlatAppearance.MouseOverBackColor = AcadPaletteTheme.BgHover;
+            b.FlatAppearance.BorderColor = Beykent.Monolit.StandardFormTheme.InputBorder;
+            b.FlatAppearance.MouseOverBackColor = Beykent.Monolit.StandardFormTheme.BgHover;
             return b;
         }
     }

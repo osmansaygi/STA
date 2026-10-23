@@ -38,7 +38,15 @@ namespace ST4PlanIdCiz
             }
             // NETLOAD sırasında PaletteSet açmak (özellikle Yardımcı ile birlikte) AutoCAD'i göçertebilir.
             Application.Idle -= OnIdleShowStaPanel;
-            Application.Idle += OnIdleShowStaPanel;
+#if AUTOCAD2027
+            if (!string.Equals(System.Diagnostics.Process.GetCurrentProcess().ProcessName,
+                "accoreconsole", StringComparison.OrdinalIgnoreCase))
+                BeykentRibbonManager.Initialize();
+#else
+            if (!string.Equals(System.Diagnostics.Process.GetCurrentProcess().ProcessName,
+                "accoreconsole", StringComparison.OrdinalIgnoreCase))
+                Application.Idle += OnIdleShowStaPanel;
+#endif
         }
 
         private static void OnIdleShowStaPanel(object sender, EventArgs e)
@@ -46,42 +54,24 @@ namespace ST4PlanIdCiz
             Application.Idle -= OnIdleShowStaPanel;
             try
             {
-                // Yardımcı Idle'da BAPANEL açıyorsa aynı tick'te çakışmayı azalt.
-                if (TryEnterPaletteInitGate(1200))
+                var doc = Application.DocumentManager.MdiActiveDocument;
+                if (doc == null || !doc.Editor.IsQuiescent)
                 {
-                    try { CommandPaletteManager.Show(); }
-                    finally { ExitPaletteInitGate(); }
+                    Application.Idle += OnIdleShowStaPanel;
+                    return;
                 }
-                else
-                    CommandPaletteManager.Show();
+                // Create the native panel in command context, as BAPANEL does.
+                doc.SendStringToExecute("STAPANEL ", true, false, false);
             }
             catch { }
         }
 
-        /// <summary>Yardımcı ile ortak named mutex — iki eklenti aynı anda PaletteSet yaratmasın.</summary>
-        internal static bool TryEnterPaletteInitGate(int timeoutMs)
-        {
-            try
-            {
-                bool created;
-                _paletteGate = new System.Threading.Mutex(false, @"Local\ST4_AcadPaletteInit", out created);
-                return _paletteGate.WaitOne(timeoutMs < 0 ? 0 : timeoutMs);
-            }
-            catch { return false; }
-        }
-
-        internal static void ExitPaletteInitGate()
-        {
-            try { _paletteGate?.ReleaseMutex(); } catch { }
-            try { _paletteGate?.Dispose(); } catch { }
-            _paletteGate = null;
-        }
-
-        private static System.Threading.Mutex _paletteGate;
-
         public void Terminate()
         {
             try { Application.Idle -= OnIdleShowStaPanel; } catch { }
+#if AUTOCAD2027
+            BeykentRibbonManager.Shutdown();
+#endif
             CommandPaletteManager.Shutdown();
         }
 
@@ -630,6 +620,8 @@ namespace ST4PlanIdCiz
             var ed = doc.Editor;
             var db = doc.Database;
 
+            if (!KolonApplicationForm.ShowModalAndAccept()) return;
+
             if (!RememberedFilePrompt.TryPrompt(ed, "\nKOLON50ST4 icin ST4 Dosyasi Secin",
                 "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
                 return;
@@ -644,7 +636,11 @@ namespace ST4PlanIdCiz
                 var manager = new PlanIdDrawingManager(model);
                 var insRes = ed.GetPoint(new PromptPointOptions("\nKOLON50ST4 yerlesim noktasi (SheetViewOut sol-altin 50 cm solu): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
-                manager.DrawColumnApplicationPlan(db, ed, insRes.Value, st4Path, KolonApplicationPlanScale.Fifty, drawPerdeGorunus: true);
+                manager.DrawColumnApplicationPlan(db, ed, insRes.Value, st4Path, KolonApplicationPlanScale.Fifty,
+                    mergeSimilarFloors: KolonApplicationForm.BenzerKatlariBeraberCiz,
+                    drawInformationLabels: KolonApplicationForm.BilgiYazilariniYaz,
+                    addVerticalDetails: KolonApplicationForm.KolonDuseyAcilimiEkle,
+                    addKapamaDetails: KolonApplicationForm.KapamaPerdeAcilimiEkle);
                 FinishStaDrawing(doc);
             }
             catch (System.Exception ex)
@@ -663,6 +659,8 @@ namespace ST4PlanIdCiz
             var ed = doc.Editor;
             var db = doc.Database;
 
+            if (!KolonApplicationForm.ShowModalAndAccept()) return;
+
             if (!RememberedFilePrompt.TryPrompt(ed, "\nKOLON100ST4 icin ST4 Dosyasi Secin",
                 "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
                 return;
@@ -677,7 +675,11 @@ namespace ST4PlanIdCiz
                 var manager = new PlanIdDrawingManager(model);
                 var insRes = ed.GetPoint(new PromptPointOptions("\nKOLON100ST4 yerlesim noktasi (SheetViewOut sol-altin 50 cm solu): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
-                manager.DrawColumnApplicationPlan(db, ed, insRes.Value, st4Path, KolonApplicationPlanScale.Hundred);
+                manager.DrawColumnApplicationPlan(db, ed, insRes.Value, st4Path, KolonApplicationPlanScale.Hundred,
+                    mergeSimilarFloors: KolonApplicationForm.BenzerKatlariBeraberCiz,
+                    drawInformationLabels: KolonApplicationForm.BilgiYazilariniYaz,
+                    addVerticalDetails: KolonApplicationForm.KolonDuseyAcilimiEkle,
+                    addKapamaDetails: KolonApplicationForm.KapamaPerdeAcilimiEkle);
                 FinishStaDrawing(doc);
             }
             catch (System.Exception ex)
@@ -943,7 +945,7 @@ namespace ST4PlanIdCiz
             }
         }
 
-        /// <summary>Kiriş açılımı (DENEME): ana aks boyunca düşey kesit. 25°'ye kadar kırılan kirişler tek şeritte. Donatı yok.</summary>
+        /// <summary>Kiriş açılımı: ST4, antet/kat seçimi, yerleşim noktası.</summary>
         [CommandMethod("KIRISACILIMLARI")]
         public void KirisAcilimlari()
         {
@@ -958,18 +960,24 @@ namespace ST4PlanIdCiz
                 "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
                 return;
 
-            var insRes = ed.GetPoint(new PromptPointOptions("\nKIRISACILIMLARI yerlestirme noktasi (ilk kiris alt-sol): ") { AllowNone = false });
-            if (insRes.Status != PromptStatus.OK) return;
-
             try
             {
                 ConfigureNtsNextGenOverlay();
                 var parser = new St4Parser();
                 var model = parser.Parse(st4Path);
                 GprYapiAksLabels.TryMergeFromGprBesideSt4(st4Path, model);
+                if (!KirisAcilimForm.TryShow(model, out var secenekler)) return;
+                string prompt = secenekler.Antetli
+                    ? "\nKIRISACILIMLARI yerlesim noktasi (SheetViewOut sol-altin 50 cm solu): "
+                    : "\nKIRISACILIMLARI yerlestirme noktasi (ilk kiris alt-sol): ";
+                var insRes = ed.GetPoint(new PromptPointOptions(prompt) { AllowNone = false });
+                if (insRes.Status != PromptStatus.OK) return;
                 var manager = new PlanIdDrawingManager(model);
-                manager.DrawKirisAcilimlari(db, ed, insRes.Value, st4Path);
-                FinishStaDrawing(doc);
+                if (manager.DrawKirisAcilimlariSecenekli(db, ed, insRes.Value, st4Path, secenekler))
+                {
+                    try { manager.KirisAcilimGorunumeAl(ed); }
+                    catch { /* görünüm başarısız olsa da çizim kalsın */ }
+                }
             }
             catch (System.Exception ex)
             {
@@ -1102,7 +1110,7 @@ namespace ST4PlanIdCiz
             }
         }
 
-        /// <summary>Aynı antette 4 temel planı (ölçü / ana donatı / alt ilave / üst ilave). STA TEMEL_PDF X-Y alt ve üst.</summary>
+        /// <summary>Aynı antette 4 temel planı (ölçü / ana donatı / alt ilave / üst ilave). İlave zarfları GPR ısısından; PDF istenmez.</summary>
         [CommandMethod("TEMELDONATI")]
         public void TemelDonati()
         {
@@ -1113,13 +1121,11 @@ namespace ST4PlanIdCiz
             var ed = doc.Editor;
             var db = doc.Database;
 
+            // İlave zarf ayarları (en az genişlik, paspay, düşey hiza): TEMELILAVEDENEME ile aynı form.
+            if (!TemelIlaveDenemeForm.TryShow()) return;
+
             if (!RememberedFilePrompt.TryPrompt(ed, "\nTEMELDONATI: ST4 dosyasi secin",
                 "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
-                return;
-
-            if (!RememberedFilePrompt.TryPrompt(ed, "\nTEMELDONATI: TEMEL donati PDF (STA rapor) secin",
-                "PDF (*.pdf)|*.pdf|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindPdf, out string pdfPath,
-                fallbackInitialDirectory: Path.GetDirectoryName(st4Path)))
                 return;
 
             try
@@ -1133,8 +1139,15 @@ namespace ST4PlanIdCiz
                 var insRes = ed.GetPoint(new PromptPointOptions("\nTEMELDONATI yerlesim noktasi (SheetViewOut sol-altin 50 cm solu): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
 
+                // GPR zımbalama tablosunda donatı gereken kolon varsa 5. plan: zımbalama donatısı.
+                List<GprZimbalamaKolon> zimbalama = GprZimbalamaParser.TryRead(st4Path, out _);
+                int kopyaSayisi = zimbalama.Count > 0 ? 5 : 4;
+                string[] basliklar = kopyaSayisi == 5
+                    ? new[] { "1 - OLCU", "2 - ANA DONATI", "3 - ALT ILAVE DONATI", "4 - UST ILAVE DONATI", "5 - ZIMBALAMA DONATISI" }
+                    : null;
+
                 var copies = new List<PlanIdDrawingManager.TemelPlanCopyLayout>();
-                manager.DrawFoundationPlanWithSections(db, ed, insRes.Value, st4Path, TemelFoundationPlanScale.Fifty, 4, copies);
+                manager.DrawFoundationPlanWithSections(db, ed, insRes.Value, st4Path, TemelFoundationPlanScale.Fifty, kopyaSayisi, copies, basliklar);
                 if (copies.Count < 4)
                 {
                     ed.WriteMessage("\nTEMELDONATI: 4 temel kopyasi olusmadi.");
@@ -1142,14 +1155,15 @@ namespace ST4PlanIdCiz
                     return;
                 }
 
-                using (var tr = db.TransactionManager.StartTransaction())
+                // 3. plan X/Y alt, 4. plan X/Y üst: TEMELILAVEDENEME zarfları + lejant yazısı (ısı haritası yok).
+                TemelIlaveDenemeCommands.RdPlanZarflari(db, ed, st4Path, copies);
+                if (copies.Count >= 5)
                 {
-                    var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
-                    var btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
-                    DrawTemelIlaveOnCopy(pdfPath, copies[2], new[] { TemelIlaveDonatiFromPdf.Yon.XAlt, TemelIlaveDonatiFromPdf.Yon.YAlt }, db, ed, tr, btr);
-                    DrawTemelIlaveOnCopy(pdfPath, copies[3], new[] { TemelIlaveDonatiFromPdf.Yon.XUst, TemelIlaveDonatiFromPdf.Yon.YUst }, db, ed, tr, btr);
-                    tr.Commit();
+                    int n = manager.DrawZimbalamaPlan(db, ed, copies[4], zimbalama);
+                    ed.WriteMessage("\nTEMELDONATI: 5. plana {0}/{1} kolon zimbalama donatisi cizildi.", n, zimbalama.Count);
                 }
+                else
+                    ed.WriteMessage("\nTEMELDONATI: zimbalama donatisi gereken kolon yok, 5. plan eklenmedi.");
                 FinishStaDrawing(doc);
             }
             catch (System.Exception ex)

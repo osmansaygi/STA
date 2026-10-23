@@ -737,26 +737,13 @@ namespace ST4Yardimci
                 var poly = gf.CreatePolygon(gf.CreateLinearRing(pts.ToArray()));
                 if (poly == null || poly.IsEmpty || poly.Area < 1.0) return null;
                 if (!poly.IsValid)
-                    poly = LargestPolygon(poly.Buffer(0));
+                    poly = NtsOverlaySafe.FixToPolygon(poly);
                 return poly != null && !poly.IsEmpty && poly.Area >= 1.0 ? poly : null;
             }
             catch
             {
                 return null;
             }
-        }
-
-        private static Polygon LargestPolygon(NetTopologySuite.Geometries.Geometry g)
-        {
-            if (g == null || g.IsEmpty) return null;
-            if (g is Polygon p) return p;
-            Polygon best = null;
-            for (int i = 0; i < g.NumGeometries; i++)
-            {
-                if (g.GetGeometryN(i) is Polygon pi && (best == null || pi.Area > best.Area))
-                    best = pi;
-            }
-            return best;
         }
 
         private static bool ExtentsNear(Entity ent, Envelope env, double pad)
@@ -1008,27 +995,10 @@ namespace ST4Yardimci
         private static void PlaceKesitEtiket(Transaction tr, Database db, string text, double x, double y)
         {
             const string layer = "KESIT ISMI (BEYKENT)";
-            var lt = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
-            if (!lt.Has(layer))
-            {
-                lt.UpgradeOpen();
-                var rec = new LayerTableRecord
-                {
-                    Name = layer,
-                    Color = Color.FromColorIndex(ColorMethod.ByAci, 6),
-                    LineWeight = LineWeight.LineWeight020
-                };
-                var ltt = (LinetypeTable)tr.GetObject(db.LinetypeTableId, OpenMode.ForRead);
-                if (ltt.Has("DASHED")) rec.LinetypeObjectId = ltt["DASHED"];
-                else if (ltt.Has("Dashed")) rec.LinetypeObjectId = ltt["Dashed"];
-                lt.Add(rec);
-                tr.AddNewlyCreatedDBObject(rec, true);
-            }
+            BeykentKatmanYukle.Ensure(tr, db, layer, 6, LineWeight.LineWeight020, true);
             var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
             var ms = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
-            ObjectId style = db.Textstyle;
-            var tst = (TextStyleTable)tr.GetObject(db.TextStyleTableId, OpenMode.ForRead);
-            if (tst.Has(TextStyleYazi)) style = tst[TextStyleYazi];
+            ObjectId style = BaDimensionStyles.EnsureYazi(tr, db);
             var t = new DBText
             {
                 TextString = text,

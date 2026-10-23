@@ -324,37 +324,49 @@ namespace ST4PlanIdCiz
                     btr.AppendEntity(br);
                     tr.AddNewlyCreatedDBObject(br, true);
 
-                    var exploded = new DBObjectCollection();
+                    using var exploded = new DBObjectCollection();
+                    var adopted = new HashSet<DBObject>();
                     try
                     {
-                        br.Explode(exploded);
-                    }
-                    catch (Exception ex)
-                    {
-                        try { tr.Abort(); } catch { /* yok */ }
-                        error = ex.Message;
-                        return false;
-                    }
-
-                    if (exploded.Count == 0)
-                    {
-                        try { tr.Abort(); } catch { }
-                        error = "Insert sonrasi patlatma bos.";
-                        return false;
-                    }
-
-                    br.Erase();
-                    foreach (DBObject o in exploded)
-                    {
-                        if (o is Entity ent)
+                        try
                         {
-                            btr.AppendEntity(ent);
-                            tr.AddNewlyCreatedDBObject(ent, true);
-                            importedIds.Add(ent.ObjectId);
+                            br.Explode(exploded);
                         }
-                    }
+                        catch (Exception ex)
+                        {
+                            try { tr.Abort(); } catch { /* yok */ }
+                            error = ex.Message;
+                            return false;
+                        }
 
-                    tr.Commit();
+                        if (exploded.Count == 0)
+                        {
+                            try { tr.Abort(); } catch { }
+                            error = "Insert sonrasi patlatma bos.";
+                            return false;
+                        }
+
+                        br.Erase();
+                        foreach (DBObject o in exploded)
+                        {
+                            if (o is Entity ent)
+                            {
+                                btr.AppendEntity(ent);
+                                tr.AddNewlyCreatedDBObject(ent, true);
+                                adopted.Add(ent);
+                                importedIds.Add(ent.ObjectId);
+                            }
+                        }
+
+                        tr.Commit();
+                    }
+                    finally
+                    {
+                        // Explode may leave partial results even when it throws.
+                        // Objects registered with the transaction belong to it.
+                        foreach (DBObject o in exploded)
+                            if (o != null && !adopted.Contains(o)) o.Dispose();
+                    }
                 }
 
                 return true;

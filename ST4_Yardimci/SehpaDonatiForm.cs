@@ -232,7 +232,7 @@ namespace ST4Yardimci
     }
 
     /// <summary>Sehpa donatısı formu — radye / mantar. Enter çiz, Esc kapat.</summary>
-    internal sealed class SehpaDonatiForm : Form
+    internal sealed class SehpaDonatiForm : Beykent.Monolit.MonolitForm
     {
         private const int FormW = 300;
         private const int Pad = 12;
@@ -268,7 +268,8 @@ namespace ST4Yardimci
                 _instance.LoadFromSettings();
                 _instance.Visible = true;
                 _instance.BringToFront();
-            }
+            }
+
             BaFormSession.Attach("SEHPADONATI", _instance);
             BaFormSession.EndPick("SEHPADONATI");
         }
@@ -306,8 +307,8 @@ namespace ST4Yardimci
             ShowInTaskbar = false;
             MinimizeBox = false;
             MaximizeBox = false;
-            BackColor = AcadPaletteTheme.Bg;
-            ForeColor = AcadPaletteTheme.Text;
+            BackColor = Beykent.Monolit.StandardFormTheme.Bg;
+            ForeColor = Beykent.Monolit.StandardFormTheme.Text;
             Font = new SdFont("Segoe UI", 9f);
             KeyPreview = true;
 
@@ -346,9 +347,9 @@ namespace ST4Yardimci
             y += 30;
 
             Controls.Add(MakeLabel("Üst kot", Pad, y + 2));
-            _numUstKot = MakeNum(150, y, 70, -80, 200, 0.05m, 2, (decimal)SehpaDonatiSettings.UstKotM);
+            _numUstKot = MakeNum(150, y, 70, -8000, 20000, 5m, 2, (decimal)(SehpaDonatiSettings.UstKotM * 100.0));
             Controls.Add(_numUstKot);
-            Controls.Add(MakeUnit("m", 226, y + 2));
+            Controls.Add(MakeUnit("cm", 226, y + 2));
             y += 32;
 
             Controls.Add(MakeLabel("Min genişlik", Pad, y + 2));
@@ -398,6 +399,15 @@ namespace ST4Yardimci
             {
                 StartPosition = FormStartPosition.CenterScreen;
             }
+
+            // Kompakt, içerik odaklı form düzeni.
+            var ui = BeginCompact(310);
+            ui.Section(null).Options(_rbRadye, _rbMantar);
+            ui.Section("Kesit ve sehpa").Field(_lblKalinlik, _numKalinlik).Field("Paspayı · cm", _numPas)
+                .Field("Çap · mm / üst kot · cm", _cmbCap, _numUstKot)
+                .Field("En az genişlik · cm", _numGenislik).Field(_lblAlan, _numAlan);
+            ui.Footer(btnRun, btnClose);
+            ui.Finish();
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -419,9 +429,9 @@ namespace ST4Yardimci
         {
             if (_lblKalinlik == null) return;
             bool mantar = _rbMantar != null && _rbMantar.Checked;
-            _lblKalinlik.Text = mantar ? "Döşeme kalınlığı" : "Temel kalınlığı";
+            _lblKalinlik.Text = mantar ? "Döşeme kalınlığı · cm" : "Temel kalınlığı · cm";
             if (_lblAlan != null)
-                _lblAlan.Text = mantar ? "Döşeme alanı" : "Radye alanı";
+                _lblAlan.Text = mantar ? "Döşeme alanı · m²" : "Radye alanı · m²";
         }
 
         private void OnTipRadioChanged(object sender, EventArgs e)
@@ -463,7 +473,7 @@ namespace ST4Yardimci
         {
             _numKalinlik.Value = Clamp(_numKalinlik, (decimal)SehpaDonatiSettings.KalinlikCm);
             SelectCap(_cmbCap, SehpaDonatiSettings.CapMm);
-            _numUstKot.Value = Clamp(_numUstKot, (decimal)SehpaDonatiSettings.UstKotM);
+            _numUstKot.Value = Clamp(_numUstKot, (decimal)(SehpaDonatiSettings.UstKotM * 100.0));
             _numGenislik.Value = Clamp(_numGenislik, SehpaDonatiSettings.MinGenislikCm);
             _numAlan.Value = Clamp(_numAlan, (decimal)SehpaDonatiSettings.AlanM2);
             _numPas.Value = Clamp(_numPas, (decimal)SehpaDonatiSettings.PaspayiCm);
@@ -482,7 +492,7 @@ namespace ST4Yardimci
                 : SehpaDonatiTip.RadyeTemel;
             SehpaDonatiSettings.KalinlikCm = kal;
             SehpaDonatiSettings.CapMm = ParseCap(_cmbCap);
-            SehpaDonatiSettings.UstKotM = (double)_numUstKot.Value;
+            SehpaDonatiSettings.UstKotM = (double)_numUstKot.Value / 100.0;
             SehpaDonatiSettings.MinGenislikCm = (int)_numGenislik.Value;
             SehpaDonatiSettings.AlanM2 = (double)_numAlan.Value;
             SehpaDonatiSettings.PaspayiCm = (double)_numPas.Value;
@@ -509,7 +519,7 @@ namespace ST4Yardimci
             if (kal >= 10 && kal <= 400)
                 p.KalinlikCm = kal;
             p.CapMm = ParseCap(_cmbCap);
-            p.UstKotM = (double)_numUstKot.Value;
+            p.UstKotM = (double)_numUstKot.Value / 100.0;
             p.MinGenislikCm = (int)_numGenislik.Value;
             double alan = (double)_numAlan.Value;
             if (alan >= 0.1 && alan <= 1000000)
@@ -576,8 +586,8 @@ namespace ST4Yardimci
                 Text = text,
                 Location = new SdPoint(x, y),
                 AutoSize = true,
-                ForeColor = AcadPaletteTheme.Text,
-                BackColor = AcadPaletteTheme.Bg
+                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
+                BackColor = Beykent.Monolit.StandardFormTheme.Bg
             };
         }
 
@@ -588,8 +598,8 @@ namespace ST4Yardimci
                 Text = text,
                 Location = new SdPoint(x, y),
                 AutoSize = true,
-                ForeColor = AcadPaletteTheme.TextMuted,
-                BackColor = AcadPaletteTheme.Bg
+                ForeColor = Beykent.Monolit.StandardFormTheme.TextMuted,
+                BackColor = Beykent.Monolit.StandardFormTheme.Bg
             };
         }
 
@@ -600,8 +610,8 @@ namespace ST4Yardimci
                 Text = text,
                 Location = new SdPoint(x, y),
                 AutoSize = true,
-                ForeColor = AcadPaletteTheme.TextMuted,
-                BackColor = AcadPaletteTheme.Bg
+                ForeColor = Beykent.Monolit.StandardFormTheme.TextMuted,
+                BackColor = Beykent.Monolit.StandardFormTheme.Bg
             };
         }
 
@@ -615,8 +625,8 @@ namespace ST4Yardimci
                 Maximum = max,
                 Increment = inc,
                 DecimalPlaces = decimals,
-                BackColor = AcadPaletteTheme.InputBg,
-                ForeColor = AcadPaletteTheme.Text,
+                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
+                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
                 BorderStyle = BorderStyle.FixedSingle
             };
             n.Value = Clamp(n, val);
@@ -631,8 +641,8 @@ namespace ST4Yardimci
                 Location = new SdPoint(x, y),
                 Size = new SdSize(70, 22),
                 DropDownStyle = ComboBoxStyle.DropDownList,
-                BackColor = AcadPaletteTheme.InputBg,
-                ForeColor = AcadPaletteTheme.Text,
+                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
+                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
                 FlatStyle = FlatStyle.Flat,
                 Font = Font
             };
@@ -650,12 +660,12 @@ namespace ST4Yardimci
                 Location = new SdPoint(x, y),
                 Size = new SdSize(w, 26),
                 FlatStyle = FlatStyle.Flat,
-                BackColor = AcadPaletteTheme.BgAlt,
-                ForeColor = accent ? AcadPaletteTheme.Accent : AcadPaletteTheme.Text,
+                BackColor = Beykent.Monolit.StandardFormTheme.BgAlt,
+                ForeColor = accent ? Beykent.Monolit.StandardFormTheme.Accent : Beykent.Monolit.StandardFormTheme.Text,
                 Font = accent ? new SdFont("Segoe UI", 9f, System.Drawing.FontStyle.Bold) : Font,
                 UseVisualStyleBackColor = false
             };
-            b.FlatAppearance.BorderColor = AcadPaletteTheme.InputBorder;
+            b.FlatAppearance.BorderColor = Beykent.Monolit.StandardFormTheme.InputBorder;
             b.FlatAppearance.BorderSize = 1;
             return b;
         }

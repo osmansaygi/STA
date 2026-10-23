@@ -101,9 +101,9 @@ namespace ST4PlanIdCiz
                     }
 
                     var pts = IskelePlanGeometry.RemoveCollinear(IskelePlanGeometry.LwPolyVertices(innerPl));
-                    if (pts == null || pts.Count == 0)
+                    if (pts == null || pts.Count < 3)
                     {
-                        ed.WriteMessage("\nVertex bulunamadi.");
+                        ed.WriteMessage("\nEn az 3 gecerli vertex gerekli.");
                         tr.Commit();
                         return;
                     }
@@ -120,7 +120,7 @@ namespace ST4PlanIdCiz
                         nrm = IskelePlanGeometry.VScale(nrm, -1);
                     var outPt = IskelePlanGeometry.VAdd(pOn, IskelePlanGeometry.VScale(nrm, 1000.0));
 
-                    var outerPl = IskelePlanGeometry.OffsetOutside(innerPl, DFar, outPt);
+                    using var outerPl = IskelePlanGeometry.OffsetOutside(innerPl, DFar, outPt);
                     if (outerPl == null)
                     {
                         ed.WriteMessage("\nOffset basarisiz!");

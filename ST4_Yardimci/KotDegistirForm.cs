@@ -118,7 +118,7 @@ namespace ST4Yardimci
     }
 
     /// <summary>Modeless form — seçili katmanlardaki kot yazısını eski değerden yeni değere çevirir.</summary>
-    internal sealed class KotDegistirForm : Form
+    internal sealed class KotDegistirForm : Beykent.Monolit.MonolitForm
     {
         private static KotDegistirForm _instance;
 
@@ -140,7 +140,8 @@ namespace ST4Yardimci
                 _instance.LoadFromSettings();
                 _instance.Visible = true;
                 _instance.BringToFront();
-            }
+            }
+
             BaFormSession.Attach("KOTDEGISTIR", _instance);
             BaFormSession.EndPick("KOTDEGISTIR");
         }
@@ -220,8 +221,8 @@ namespace ST4Yardimci
             ShowInTaskbar = false;
             MinimizeBox = false;
             MaximizeBox = false;
-            BackColor = AcadPaletteTheme.Bg;
-            ForeColor = AcadPaletteTheme.Text;
+            BackColor = Beykent.Monolit.StandardFormTheme.Bg;
+            ForeColor = Beykent.Monolit.StandardFormTheme.Text;
             Font = new SdFont("Segoe UI", 8.5f);
             KeyPreview = true;
 
@@ -244,8 +245,8 @@ namespace ST4Yardimci
             {
                 Location = new Point(10, y),
                 Size = new Size(300, 90),
-                BackColor = AcadPaletteTheme.InputBg,
-                ForeColor = AcadPaletteTheme.Text,
+                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
+                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
                 BorderStyle = BorderStyle.FixedSingle,
                 IntegralHeight = false,
                 SelectionMode = SelectionMode.MultiExtended
@@ -291,6 +292,13 @@ namespace ST4Yardimci
                     Screen.PrimaryScreen.WorkingArea.Top + 60);
             }
             catch { StartPosition = FormStartPosition.CenterScreen; }
+
+            // Kompakt, içerik odaklı form düzeni.
+            var ui = BeginCompact(320);
+            ui.Section(null).Grid(new[] { "Eski kot · cm", "Yeni kot · cm" }, new Control[] { _txtEski, _txtYeni });
+            ui.Section("Kot yazısı katmanları").Layers(_lstLayers, btnAdd, btnDel, btnRem);
+            ui.Footer(btnRun, btnClose);
+            ui.Finish();
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -409,7 +417,7 @@ namespace ST4Yardimci
             Location = new Point(x, y),
             AutoSize = false,
             Size = new Size(w, 18),
-            ForeColor = AcadPaletteTheme.TextMuted,
+            ForeColor = Beykent.Monolit.StandardFormTheme.TextMuted,
             BackColor = Color.Transparent
         };
 
@@ -418,8 +426,8 @@ namespace ST4Yardimci
             Location = new Point(x, y),
             Size = new Size(w, 22),
             BorderStyle = BorderStyle.FixedSingle,
-            BackColor = AcadPaletteTheme.InputBg,
-            ForeColor = AcadPaletteTheme.Text,
+            BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
+            ForeColor = Beykent.Monolit.StandardFormTheme.Text,
             Font = new SdFont("Segoe UI", 9f)
         };
 
@@ -431,13 +439,13 @@ namespace ST4Yardimci
                 Location = new Point(x, y),
                 Size = new Size(w, 26),
                 FlatStyle = FlatStyle.Flat,
-                BackColor = AcadPaletteTheme.BgAlt,
-                ForeColor = accent ? AcadPaletteTheme.Accent : AcadPaletteTheme.Text,
+                BackColor = Beykent.Monolit.StandardFormTheme.BgAlt,
+                ForeColor = accent ? Beykent.Monolit.StandardFormTheme.Accent : Beykent.Monolit.StandardFormTheme.Text,
                 Cursor = Cursors.Hand,
                 Font = new SdFont("Segoe UI", 8f)
             };
-            b.FlatAppearance.BorderColor = AcadPaletteTheme.InputBorder;
-            b.FlatAppearance.MouseOverBackColor = AcadPaletteTheme.BgHover;
+            b.FlatAppearance.BorderColor = Beykent.Monolit.StandardFormTheme.InputBorder;
+            b.FlatAppearance.MouseOverBackColor = Beykent.Monolit.StandardFormTheme.BgHover;
             return b;
         }
     }

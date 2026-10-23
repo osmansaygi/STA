@@ -90,20 +90,21 @@ namespace ST4Yardimci
                 string tip = OtoDonatiSettings.Tip == OtoDonatiTip.MantarDoseme
                     ? "Mantar döşeme"
                     : "Radye temel";
-                int minAlt = MinAdetFromEsik(OtoDonatiSettings.AnalizEsigiCm, OtoDonatiSettings.AltAralikCm);
-                int minUst = MinAdetFromEsik(OtoDonatiSettings.AnalizEsigiCm, OtoDonatiSettings.UstAralikCm);
                 ed.WriteMessage(
-                    "\nOTODONATICIZ ({0}, {1}): eşik={2:0.##}→minAdet alt≥{3} üst≥{4} | alt Φ{5}/{6} üst Φ{7}/{8}  Esc/sağ tık=bitir.",
+                    "\nOTODONATICIZ ({0}, {1}): eşik={2:0.##} | X alt Φ{3}/{4} üst Φ{5}/{6} | Y alt Φ{7}/{8} üst Φ{9}/{10}  Esc/sağ tık=bitir.",
                     tip,
                     KatmanOzeti(),
                     OtoDonatiSettings.AnalizEsigiCm,
-                    minAlt,
-                    minUst,
                     OtoDonatiSettings.AltDonatiCapMm,
                     OtoDonatiSettings.AltAralikCm.ToString("0.##", CultureInfo.InvariantCulture),
                     OtoDonatiSettings.UstDonatiCapMm,
-                    OtoDonatiSettings.UstAralikCm.ToString("0.##", CultureInfo.InvariantCulture));
+                    OtoDonatiSettings.UstAralikCm.ToString("0.##", CultureInfo.InvariantCulture),
+                    OtoDonatiSettings.AltDonatiCapYMm,
+                    OtoDonatiSettings.AltAralikYCm.ToString("0.##", CultureInfo.InvariantCulture),
+                    OtoDonatiSettings.UstDonatiCapYMm,
+                    OtoDonatiSettings.UstAralikYCm.ToString("0.##", CultureInfo.InvariantCulture));
 
+                var sehpaAlanlari = new List<OtoDonatiSehpa.Alan>();
                 while (true)
                 {
                     ObjectId polyId = PickClosedPolygon(ed,
@@ -116,10 +117,20 @@ namespace ST4Yardimci
                     if (n < 0)
                         ed.WriteMessage("\nOTODONATICIZ: poligon okunamadı / geçersiz.");
                     else
+                    {
                         ed.WriteMessage(
                             "\nOTODONATICIZ: {0} donatı (+etiket), {1} boşluk. Başka alan (Esc=bitir).",
                             n, voidIds?.Count ?? 0);
+                        if (OtoDonatiSettings.SehpaDonatisi)
+                        {
+                            OtoDonatiSehpa.Alan alan = OtoDonatiSehpa.ReadAlan(doc, polyId);
+                            if (alan != null) sehpaAlanlari.Add(alan);
+                        }
+                    }
                 }
+
+                if (OtoDonatiSettings.SehpaDonatisi && sehpaAlanlari.Count > 0)
+                    OtoDonatiSehpa.Draw(doc, sehpaAlanlari);
             }
             catch (System.Exception ex)
             {
@@ -154,7 +165,7 @@ namespace ST4Yardimci
                     ? "Mantar döşeme"
                     : "Radye temel";
                 ed.WriteMessage(
-                    "\nOTODONATIMANUEL ({0}, {1}): sanal çizgi boyunca alt Φ{2}/{3} üst Φ{4}/{5} (adetsiz). Esc=bitir.",
+                    "\nOTODONATIMANUEL ({0}, {1}): sanal çizgi boyunca X donatısı alt Φ{2}/{3} üst Φ{4}/{5} (adetsiz). Esc=bitir.",
                     tip,
                     KatmanOzeti(),
                     OtoDonatiSettings.AltDonatiCapMm,
@@ -577,7 +588,7 @@ namespace ST4Yardimci
             List<(double a, double b)> raw = BuildZonesFromScan(
                 y0, y1, y => EffectiveHorizontalChords(ring, voids, y));
             List<ZoneWork> zones = BuildZoneWorks(raw, ring, voids, horizontal: true);
-            MergeSmallZonesPaired(zones);
+            MergeSmallZonesPaired(zones, horizontal: true);
 
             double gap = Math.Max(1.0, OtoDonatiSettings.GonyeBoyuMaxCm) + AltUstExtraGapCm;
             foreach (ZoneWork z in zones)
@@ -599,8 +610,8 @@ namespace ST4Yardimci
                         bars, chords, horizontal: true, midAlt, pas,
                         OtoDonatiSettings.AltGonyeSol, OtoDonatiSettings.AltGonyeSag,
                         gonyeLen,
-                        OtoDonatiSettings.AltDonatiCapMm,
-                        OtoDonatiSettings.AltAralikCm,
+                        OtoDonatiSettings.AltCap(true),
+                        OtoDonatiSettings.AltAralik(true),
                         isUst: false,
                         z.AdetAlt);
                 }
@@ -610,8 +621,8 @@ namespace ST4Yardimci
                         bars, chords, horizontal: true, midAlt + gap, pas,
                         OtoDonatiSettings.UstGonyeSol, OtoDonatiSettings.UstGonyeSag,
                         gonyeLen,
-                        OtoDonatiSettings.UstDonatiCapMm,
-                        OtoDonatiSettings.UstAralikCm,
+                        OtoDonatiSettings.UstCap(true),
+                        OtoDonatiSettings.UstAralik(true),
                         isUst: true,
                         z.AdetUst);
                 }
@@ -641,7 +652,7 @@ namespace ST4Yardimci
             List<(double a, double b)> raw = BuildZonesFromScan(
                 x0, x1, x => EffectiveVerticalChords(ring, voids, x));
             List<ZoneWork> zones = BuildZoneWorks(raw, ring, voids, horizontal: false);
-            MergeSmallZonesPaired(zones);
+            MergeSmallZonesPaired(zones, horizontal: false);
 
             double gap = Math.Max(1.0, OtoDonatiSettings.GonyeBoyuMaxCm) + AltUstExtraGapCm;
             foreach (ZoneWork z in zones)
@@ -663,8 +674,8 @@ namespace ST4Yardimci
                         bars, chords, horizontal: false, midAlt, pas,
                         OtoDonatiSettings.AltGonyeSol, OtoDonatiSettings.AltGonyeSag,
                         gonyeLen,
-                        OtoDonatiSettings.AltDonatiCapMm,
-                        OtoDonatiSettings.AltAralikCm,
+                        OtoDonatiSettings.AltCap(false),
+                        OtoDonatiSettings.AltAralik(false),
                         isUst: false,
                         z.AdetAlt);
                 }
@@ -674,8 +685,8 @@ namespace ST4Yardimci
                         bars, chords, horizontal: false, midAlt - gap, pas,
                         OtoDonatiSettings.UstGonyeSol, OtoDonatiSettings.UstGonyeSag,
                         gonyeLen,
-                        OtoDonatiSettings.UstDonatiCapMm,
-                        OtoDonatiSettings.UstAralikCm,
+                        OtoDonatiSettings.UstCap(false),
+                        OtoDonatiSettings.UstAralik(false),
                         isUst: true,
                         z.AdetUst);
                 }
@@ -887,9 +898,9 @@ namespace ST4Yardimci
                     if (L > maxChord) maxChord = L;
                 }
 
-                int adetAlt = AdetFromAralik(zoneLen, OtoDonatiSettings.AltAralikCm);
-                int adetUst = AdetFromAralik(zoneLen, OtoDonatiSettings.UstAralikCm);
-                if (Math.Abs(OtoDonatiSettings.AltAralikCm - OtoDonatiSettings.UstAralikCm) < 0.05)
+                int adetAlt = AdetFromAralik(zoneLen, OtoDonatiSettings.AltAralik(horizontal));
+                int adetUst = AdetFromAralik(zoneLen, OtoDonatiSettings.UstAralik(horizontal));
+                if (Math.Abs(OtoDonatiSettings.AltAralik(horizontal) - OtoDonatiSettings.UstAralik(horizontal)) < 0.05)
                 {
                     int a = Math.Max(adetAlt, adetUst);
                     adetAlt = a;
@@ -915,11 +926,11 @@ namespace ST4Yardimci
         /// Az adetli şeridi çizme; alt+üst birlikte komşudaki daha uzun demire ekle
         /// (gerçekte aynı hiza istasyonları).
         /// </summary>
-        private static void MergeSmallZonesPaired(List<ZoneWork> zones)
+        private static void MergeSmallZonesPaired(List<ZoneWork> zones, bool horizontal)
         {
             if (zones == null || zones.Count == 0) return;
-            int minAlt = MinAdetFromEsik(OtoDonatiSettings.AnalizEsigiCm, OtoDonatiSettings.AltAralikCm);
-            int minUst = MinAdetFromEsik(OtoDonatiSettings.AnalizEsigiCm, OtoDonatiSettings.UstAralikCm);
+            int minAlt = MinAdetFromEsik(OtoDonatiSettings.AnalizEsigiCm, OtoDonatiSettings.AltAralik(horizontal));
+            int minUst = MinAdetFromEsik(OtoDonatiSettings.AnalizEsigiCm, OtoDonatiSettings.UstAralik(horizontal));
             if (minAlt <= 1 && minUst <= 1) return;
 
             bool changed = true;
@@ -945,7 +956,7 @@ namespace ST4Yardimci
                     zones[best].AdetAlt += zones[i].AdetAlt;
                     zones[best].AdetUst += zones[i].AdetUst;
                     // Aynı aralıkta alıcıda da eşit tut
-                    if (Math.Abs(OtoDonatiSettings.AltAralikCm - OtoDonatiSettings.UstAralikCm) < 0.05)
+                    if (Math.Abs(OtoDonatiSettings.AltAralik(horizontal) - OtoDonatiSettings.UstAralik(horizontal)) < 0.05)
                     {
                         int a = Math.Max(zones[best].AdetAlt, zones[best].AdetUst);
                         zones[best].AdetAlt = a;
@@ -2268,48 +2279,12 @@ namespace ST4Yardimci
 
         private static ObjectId GetOrCreateYaziBeykentTextStyle(Transaction tr, Database db)
         {
-            var txtTable = (TextStyleTable)tr.GetObject(db.TextStyleTableId, OpenMode.ForRead);
-            if (txtTable.Has(TextStyleYazi))
-                return txtTable[TextStyleYazi];
-
-            var rec = new TextStyleTableRecord { Name = TextStyleYazi };
-            try
-            {
-                rec.Font = new Autodesk.AutoCAD.GraphicsInterface.FontDescriptor(
-                    "Bahnschrift Light Condensed", false, false, 0, 0);
-            }
-            catch
-            {
-                try
-                {
-                    rec.Font = new Autodesk.AutoCAD.GraphicsInterface.FontDescriptor(
-                        "Arial", false, false, 0, 0);
-                }
-                catch { }
-            }
-            try { rec.TextSize = 0.0; } catch { }
-            try { rec.XScale = 1.0; } catch { }
-            txtTable.UpgradeOpen();
-            ObjectId id = txtTable.Add(rec);
-            tr.AddNewlyCreatedDBObject(rec, true);
-            txtTable.DowngradeOpen();
-            return id;
+            return BaDimensionStyles.EnsureYazi(tr, db);
         }
 
         private static string EnsureLayer(Transaction tr, Database db, string name, short aci, LineWeight lw)
         {
-            var lt = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
-            if (lt.Has(name))
-                return name;
-            lt.UpgradeOpen();
-            var rec = new LayerTableRecord
-            {
-                Name = name,
-                Color = Color.FromColorIndex(ColorMethod.ByAci, aci),
-                LineWeight = lw
-            };
-            lt.Add(rec);
-            tr.AddNewlyCreatedDBObject(rec, true);
+            BeykentKatmanYukle.Ensure(tr, db, name, aci, lw);
             return name;
         }
 

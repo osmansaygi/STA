@@ -76,7 +76,7 @@ namespace ST4Yardimci
     }
 
     /// <summary>Modeless Radye İlave Donatı formu — alt/üst ilave → ısı seç → X çizer.</summary>
-    internal sealed class RadyeTemelDonatiForm : Form
+    internal sealed class RadyeTemelDonatiForm : Beykent.Monolit.MonolitForm
     {
         private static RadyeTemelDonatiForm _instance;
 
@@ -158,7 +158,7 @@ namespace ST4Yardimci
             MinimizeBox = false;
             MaximizeBox = false;
             ClientSize = new Size(360, 360);
-            BackColor = AcadPaletteTheme.Bg;
+            BackColor = Beykent.Monolit.StandardFormTheme.Bg;
             ForeColor = Color.White;
             Font = new SdFont("Segoe UI", 9f);
             KeyPreview = true;
@@ -202,8 +202,8 @@ namespace ST4Yardimci
             Controls.Add(_rbUst);
             y += 36;
 
-            _btnRun = MakeButton("Isı konturu seç / çiz", 14, y, 200);
-            _btnRun.ForeColor = AcadPaletteTheme.Accent;
+            _btnRun = MakeButton("Plan seç / zarfa donatı at", 14, y, 200);
+            _btnRun.ForeColor = Beykent.Monolit.StandardFormTheme.Accent;
             _btnRun.Click += (s, e) => OnRun();
             _btnClose = MakeButton("Kapat", 224, y, 72);
             _btnClose.Click += (s, e) => Close();
@@ -229,6 +229,16 @@ namespace ST4Yardimci
             {
                 StartPosition = FormStartPosition.CenterScreen;
             }
+
+            // Kompakt, içerik odaklı form düzeni.
+            var ui = BeginCompact(350);
+            _chkIlaveGonye.Text = "Gönye max · cm";
+            ui.Section("Radye kesiti").Field("Temel yüksekliği · cm", _numYukseklik).Field("Paspayı · cm", _numPaspayi)
+                .Field("Yedek aralık · cm", _numAralik);
+            ui.Section("İlave donatı").Options(_rbAlt, _rbUst).Field(_chkIlaveGonye, _numGonyeMax);
+            ui.Tip(_numGonyeMax, "Gönye için en büyük boy (cm)");
+            ui.Footer(_btnRun, _btnClose);
+            ui.Finish();
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -323,12 +333,12 @@ namespace ST4Yardimci
                 Location = new Point(x, y),
                 Size = new Size(w, 28),
                 FlatStyle = FlatStyle.Flat,
-                BackColor = AcadPaletteTheme.BgAlt,
+                BackColor = Beykent.Monolit.StandardFormTheme.BgAlt,
                 ForeColor = Color.White,
                 Cursor = Cursors.Hand
             };
-            b.FlatAppearance.BorderColor = AcadPaletteTheme.InputBorder;
-            b.FlatAppearance.MouseOverBackColor = AcadPaletteTheme.BgHover;
+            b.FlatAppearance.BorderColor = Beykent.Monolit.StandardFormTheme.InputBorder;
+            b.FlatAppearance.MouseOverBackColor = Beykent.Monolit.StandardFormTheme.BgHover;
             return b;
         }
 
@@ -342,7 +352,7 @@ namespace ST4Yardimci
                 Maximum = max,
                 Increment = inc,
                 DecimalPlaces = 1,
-                BackColor = AcadPaletteTheme.InputBg,
+                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
                 ForeColor = Color.White,
                 BorderStyle = BorderStyle.FixedSingle
             };

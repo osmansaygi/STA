@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+ <PropertyGroup><TargetFramework>net10.0-windows</TargetFramework><UseWindowsForms>true</UseWindowsForms><UseWPF>true</UseWPF><LangVersion>latest</LangVersion><NuGetAudit>false</NuGetAudit></PropertyGroup>
+ <ItemGroup>
+  <Reference Include="Plan"><HintPath>$(PlanDll)</HintPath><Private>true</Private></Reference>
+  <Reference Include="NetTopologySuite"><HintPath>../build2027/NetTopologySuite.dll</HintPath><Private>true</Private></Reference>
+  <Reference Include="acdbmgd"><HintPath>C:/Program Files/Autodesk/AutoCAD 2027/acdbmgd.dll</HintPath><Private>false</Private></Reference>
+  <Reference Include="acmgd"><HintPath>C:/Program Files/Autodesk/AutoCAD 2027/acmgd.dll</HintPath><Private>false</Private></Reference>
+  <Reference Include="accoremgd"><HintPath>C:/Program Files/Autodesk/AutoCAD 2027/accoremgd.dll</HintPath><Private>false</Private></Reference>
+ </ItemGroup>
+</Project>

@@ -1,0 +1,11 @@
+# Radye As kaynağı — Codex kotası sonrası devam
+- Ajan: Cursor / bu sohbet
+- Güncelleme: 2026-10-21 01:50 (Europe/Istanbul)
+- Durum: aktif
+- Görev: GPR yazdırmadan kaydedilen mesh As kaynağı. GPR/PDF/DXF çalışma girdisi yok.
+- Devir: `codex-20261020-radye-otomatik.md` kapatılmadı. Kiriş ve Hermes dosyalarına dokunulmadı.
+- Ayrılanlar: ST4_Plan_ID_Ciz/GprRadyeAyir.cs; ST4_Plan_ID_Ciz/RadyeEsikPoligon.cs; ST4_Plan_ID_Ciz/TemelIlaveDenemeCommands.cs; ST4_Plan_ID_Ciz/CommandPaletteManager.cs; ST4_Plan_ID_Ciz/StaMonolitIcons.cs; ST4_Plan_ID_Ciz/Icons/temel_ilave_deneme_monolit.png; ST4_Plan_ID_Ciz/PlanIdDrawingManager.cs (antet GPR kesimi + temel kopya başlığı); ST4_Plan_ID_Ciz/KolonDonatiTableDrawer.cs; ST4_Plan_ID_Ciz/GprDosemeDonatiParser.cs; ST4_Plan_ID_Ciz/GprPerdePanelDonatiParser.cs; ST4_Plan_ID_Ciz/PlanIdDrawingManager.KapamaSwx.cs; ST4_Plan_ID_Ciz/PlanIdDrawingManager.SurekliTemelAcilim.cs; tools/RadyeGprSplitCheck/**; bu kayıt. RadyeKaynak.md Codex kaydında; dokunulmayacak. CommandEntry.cs ve KirisAcilim dosyaları yok. Ortak NETLOAD derlemesi bu kayıttan.
+- Bulgu: düğüm As ve düğüm momentleri yerel 61 dosyada float32/float64 değil. Dörtgenlerde SO1 köşe Mx/My ortalaması 14 yük durumunda tutuluyor. Üçgen ve 4 çarpık dörtgen açık. `1.4G+1.6Q` X18 için 392/402. As formülü yok.
+- Ekran teyidi (22:00): mesh ipucu 73/75/92/93. Mx/My = G yükü (bellek slot 1). Asx/Asy = X alt / Y alt. 93 Asx 4.25 = 4.25009. Dört yüzün tablosu `live-gprfree-reader/nodal-As.csv` içinde; bu görünüş yalnız altı gösteriyor.
+- Doğrulama: GPR ayrım kontrolü PASS (N_ULK_02, kesim satır 15237, düğüm 733). Kullanıcı kutu bölmesini onayladı. Commit 273c5d7 push edildi: origin/cursor/temel-donati-dort-kopya. Canlı AutoCAD bu turda açılmadı.
+- Açık: Kullanıcı sonra devam edecek. Yardımcı, NETLOAD ve CommandEntry bu committe yok.

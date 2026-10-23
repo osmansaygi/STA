@@ -1,0 +1,11 @@
+# Radye ilave donatı ve ısı haritası kaynak incelemesi
+- Ajan: Codex / bu sohbet
+- Güncelleme: 2026-10-20 (Europe/Istanbul)
+- Durum: tamamlandı
+- Görev: N_ULK_02 ısı haritasının PDF dışındaki ham kaynaklarını araştır ve kanıtla.
+- Ayrılan dosyalar/kaynaklar: yok.
+- Değişen: docs/modul-durum/ST4_Plan_ID_Ciz.RadyeKaynak.md; tools/RadyeHeatmapInspect/inspect_radye.py; tools/RadyeHeatmapInspect/output/summary.json ve raw-mesh-results.npz; bu kayıt. PDF renderleri tmp/pdfs/radye-kaynak içinde.
+- Sonuç: SO1 genel/tepe As farkları PDF skala üst değerleriyle eşit (3.14/0.53/1.45); RAD 733 düğüm ve 488 eleman. Kaynak bağlantısı bulundu; tüm noktasal As ve kontur dönüşümü henüz çözülmedi.
+- Doğrulama: salt okunur okuyucu başarılı; üç PDF skala eşleşmesi, düğüm aralıkları, sonlu veri, aynı başlıklar, sıfır kuyruk ve işlem öncesi/sonrası kaynak eşitliği PASS. PDF sayfa 2/3 ve skala kırpmaları görsel incelendi.
+- Test/derleme/dağıtım: okuyucu çalıştırıldı; uygulama testleri, C# derleme, DLL kopyası ve gerçek AutoCAD doğrulaması yapılmadı; uygulama kodu değişmedi.
+- Açık teknik konu: SO1 noktasal alanlarının anlamları, yük zarfları ve As/enterpolasyon dönüşümünü doğrula. Kaynak ayırması yok.

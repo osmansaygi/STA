@@ -1,0 +1,5 @@
+PASS: 24 distinct 32x32 Monolit icons, transparent background and visible content.
+PASS: 24 classic fallback icons.
+PASS: vertical aliases and unknown command fallback.
+PASS: both tab controls refresh without executing drawing commands.
+No saved icon preference modified.

@@ -1,0 +1,19 @@
+# Claude Code — TEMELDONATI 5. plan: zımbalama donatısı
+- Ajan: Claude Code / bu sohbet
+- Güncelleme: 2026-10-21 22:12 (Europe/Istanbul)
+- Durum: tamamlandı
+- Görev: GPR "ZIMBALAMA DONATISI GEREKLI" kolon varsa Rd. Temel Planı'na 5. kopya; kolon altına X/Y etriye merdiveni, etiket, ölçü, etriye açılımı.
+- Ayrılanlar: yok.
+- Değişen: ST4_Plan_ID_Ciz/GprZimbalamaParser.cs (yeni); ST4_Plan_ID_Ciz/PlanIdDrawingManager.Zimbalama.cs (yeni); ST4_Plan_ID_Ciz/CommandEntry.cs (yalnız TemelDonati); docs/modul-durum/ST4_Plan_ID_Ciz.md. PlanIdDrawingManager.cs değişmedi.
+- Doğrulama: Debug/net48 0 hata/0 uyarı; NETLOAD `ST4_Plan_ID_Ciz_20261021_220937.dll`. Parser iki GPR'de (S109/S115, S126) doğru. Verify-Project: pwsh yok, koşulmadı. AutoCAD canlı yok.
+- Açık: AutoCAD'de görsel kontrol (yazı/açılım yerleşimi, uzun kolon S126).
+- Görev 2 (22:27): kolon düşey tarzı etriye açılımı, etiket çizgileri ETIKET CIZGISI, montaj kolon kenarından ≥5 cm içeride, etriye 1 cm dışarı, her merdivende ILAVE_OLCU ölçüsü (montaj ucu–kolon köşesi). Değişen yalnız PlanIdDrawingManager.Zimbalama.cs + modül durumu. DLL `ST4_Plan_ID_Ciz_20261021_222655.dll`, 0/0. AutoCAD canlı yok.
+- Görev 3 (22:42): etriye adedi STA4 kuralı floor(kol/s)+1 (S126 36, S109 28); etiket nokta/kırık kılavuz/raf/poz balonu/dağılım çizgisi. Yalnız PlanIdDrawingManager.Zimbalama.cs + modül durumu. DLL `ST4_Plan_ID_Ciz_20261021_224152.dll`, 0/0. AutoCAD canlı yok.
+- Görev 4 (22:51): poz balonu, dağılım çizgisi ve raf sonu tiki kaldırıldı; etriye kılavuzu etriye ucundan. DLL `ST4_Plan_ID_Ciz_20261021_225135.dll`, 0 hata, 1 uyarı (224152 AutoCAD'de kilitli). AutoCAD canlı yok.
+- Görev 5 (22:57): etiketler merdiven başına kendi etriye adedini yazar (metraj çift sayımı giderildi). DLL `ST4_Plan_ID_Ciz_20261021_225647.dll`, 0 hata. AutoCAD canlı yok.
+- Görev 6 (22:59): zımbalama etriyesi en az ø10. DLL `ST4_Plan_ID_Ciz_20261021_225937.dll`, 0/0. AutoCAD canlı yok.
+- Görev 7 (23:11): TEMELILAVEDENEME/TEMELDONATI ısı ve zarf temel poligonu dışına çizilmez (sarkan lob kaldırıldı, kutular temel paspay içiyle kırpılır). Değişen: ST4_Plan_ID_Ciz/TemelIlaveDenemeCommands.cs (Cursor radye-devam kaydı bu dosyayı ayırıyor ama 21.10 02:14'ten beri beklemede; kullanıcının doğrudan talebiyle düzenlendi, Cursor değişiklikleri korunarak diskteki güncel içerik üzerine). KutuBol testi PASS; DLL `ST4_Plan_ID_Ciz_20261021_231118.dll`, 0/0. AutoCAD canlı yok.
+- Görev 8 (23:18): kenar kutularında aralık yönündeki genişlik aralığın katı (AralikKatinaUydur). TemelIlaveDenemeCommands.cs. KutuBol PASS; DLL `ST4_Plan_ID_Ciz_20261021_231842.dll`, 0 hata. AutoCAD canlı yok.
+- Görev 9 (23:30): kutu netleştirme (ortak kenar, zincir boyunca aralık katı, ≤2 cm boy hizası, paspay toleransı tek çizgi). TemelIlaveDenemeCommands.cs. KutuBol PASS; DLL `ST4_Plan_ID_Ciz_20261021_233049.dll`, 0 hata. AutoCAD canlı yok.
+- Görev 10 (23:40): DONATI OKU (BEYKENT) ACI 150. Değişen: ST4_Yardimci/DonatiOkuRunner.cs, RadyeIlaveRunner.cs (yalnız renk sabiti), BeykentKatmanYukle.cs, .cursor/rules/beykent-katman-tablosu.mdc, docs/modul-durum/ST4_Yardimci.md. DLL `ST4_Yardimci_20261021_234017.dll`, 0/0. AutoCAD canlı yok.
+- Görev 11 (22.10 00:28): KatmanAyarForm alt düğmeleri (Kaydet / Kaydet ve Yükle) pencere dışına kayıyordu (alt panel dar genişlikte iken sağ sabitleme). Panel genişliği baştan form genişliği. ST4_Yardimci/KatmanAyarForm.cs (yan oturum merkezi-katman dosyası; o oturum boştayken). DLL `ST4_Yardimci_20261022_002832.dll`, 0/0. AutoCAD canlı yok.

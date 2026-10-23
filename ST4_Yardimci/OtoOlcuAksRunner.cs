@@ -366,19 +366,7 @@ namespace ST4Yardimci
         {
             if (string.IsNullOrWhiteSpace(name))
                 name = OtoOlcuSettings.AksOlcuDimLayerName;
-            var lt = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
-            if (lt.Has(name))
-                return name;
-            lt.UpgradeOpen();
-            var lyr = new LayerTableRecord
-            {
-                Name = name,
-                Color = Autodesk.AutoCAD.Colors.Color.FromColorIndex(
-                    Autodesk.AutoCAD.Colors.ColorMethod.ByAci, 6),
-                LineWeight = LineWeight.LineWeight020
-            };
-            lt.Add(lyr);
-            tr.AddNewlyCreatedDBObject(lyr, true);
+            BeykentKatmanYukle.Ensure(tr, db, name, 6, LineWeight.LineWeight020);
             return name;
         }
     }

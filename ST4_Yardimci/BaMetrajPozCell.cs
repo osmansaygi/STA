@@ -3,12 +3,15 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
+using Autodesk.AutoCAD.Runtime;
 
 namespace ST4Yardimci
 {
     /// <summary>Mevcut parapet/temel hatılı tablolarını da LINE/polyline sınırlarından tanır.</summary>
     internal static class BaMetrajPozCell
     {
+        private const string IcAntetLayer = "IC ANTET (BEYKENT)";
+
         internal struct Segment
         {
             public Point3d A, B;
@@ -17,20 +20,54 @@ namespace ST4Yardimci
 
         internal static List<Segment> Collect(Transaction tr, BlockTableRecord space)
         {
-            var result=new List<Segment>();
-            foreach(ObjectId id in space)
+            var result = new List<Segment>();
+            Database db = space.Database;
+            var lt = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
+            // Transaction içinde SelectAll yok — acdb çökmesi riski.
+            if (!lt.Has(IcAntetLayer)) return result;
+
+            RXClass rxLine = RXClass.GetClass(typeof(Line));
+            RXClass rxPl = RXClass.GetClass(typeof(Polyline));
+            foreach (ObjectId id in space)
             {
-                var e=tr.GetObject(id,OpenMode.ForRead) as Entity;
-                if(e==null || e.IsErased || !string.Equals(e.Layer,"IC ANTET (BEYKENT)",StringComparison.OrdinalIgnoreCase)) continue;
-                if(e is Line line) result.Add(new Segment(line.StartPoint,line.EndPoint));
-                else if(e is Polyline p)
-                {
-                    int n=p.NumberOfVertices;
-                    for(int i=0;i<(p.Closed?n:n-1);i++)
-                        if(Math.Abs(p.GetBulgeAt(i))<1e-8) result.Add(new Segment(p.GetPoint3dAt(i),p.GetPoint3dAt((i+1)%n)));
-                }
+                if (!id.IsValid || id.IsErased) continue;
+                RXClass rx = id.ObjectClass;
+                if (rx != rxLine && rx != rxPl) continue;
+                var e = tr.GetObject(id, OpenMode.ForRead) as Entity;
+                if (e == null || e.IsErased ||
+                    !string.Equals(e.Layer, IcAntetLayer, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                AddSegments(e, result);
             }
             return result;
+        }
+
+        /// <summary>Antet yolu: yalnız pencereyle seçilmiş nesnelerden (tam MS taraması yok).</summary>
+        internal static List<Segment> Collect(Transaction tr, IEnumerable<ObjectId> ids)
+        {
+            var result = new List<Segment>();
+            foreach (ObjectId id in ids)
+            {
+                if (!id.IsValid || id.IsErased) continue;
+                var e = tr.GetObject(id, OpenMode.ForRead) as Entity;
+                if (e == null || e.IsErased ||
+                    !string.Equals(e.Layer, IcAntetLayer, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                AddSegments(e, result);
+            }
+            return result;
+        }
+
+        private static void AddSegments(Entity e, List<Segment> result)
+        {
+            if (e is Line line) result.Add(new Segment(line.StartPoint, line.EndPoint));
+            else if (e is Polyline p)
+            {
+                int n = p.NumberOfVertices;
+                for (int i = 0; i < (p.Closed ? n : n - 1); i++)
+                    if (Math.Abs(p.GetBulgeAt(i)) < 1e-8)
+                        result.Add(new Segment(p.GetPoint3dAt(i), p.GetPoint3dAt((i + 1) % n)));
+            }
         }
 
         internal static bool TryFind(Entity label, List<Segment> lines, out Extents3d cell)
@@ -63,19 +100,21 @@ namespace ST4Yardimci
 
         internal static void Center(Entity balloon, DBText text, Extents3d cell)
         {
+            Matrix3d fit=Fit(balloon,cell,out _);
+            balloon.TransformBy(fit); text.TransformBy(fit);
+        }
+
+        /// <summary>Balonu hücreye sığdırıp ortalayan dönüşüm (önce ölçek ≤1, sonra taşıma).</summary>
+        internal static Matrix3d Fit(Entity balloon, Extents3d cell, out double factor)
+        {
             var box=balloon.GeometricExtents;
             var origin=new Point3d((box.MinPoint.X+box.MaxPoint.X)/2,(box.MinPoint.Y+box.MaxPoint.Y)/2,box.MinPoint.Z);
             double width=box.MaxPoint.X-box.MinPoint.X, height=box.MaxPoint.Y-box.MinPoint.Y;
-            double factor=Math.Min(1,Math.Min((cell.MaxPoint.X-cell.MinPoint.X)*0.85/Math.Max(width,1e-6),
+            factor=Math.Min(1,Math.Min((cell.MaxPoint.X-cell.MinPoint.X)*0.85/Math.Max(width,1e-6),
                 (cell.MaxPoint.Y-cell.MinPoint.Y)*0.85/Math.Max(height,1e-6)));
-            if(factor<1)
-            {
-                var scale=Matrix3d.Scaling(factor,origin);
-                balloon.TransformBy(scale); text.TransformBy(scale);
-            }
             var target=new Point3d((cell.MinPoint.X+cell.MaxPoint.X)/2,(cell.MinPoint.Y+cell.MaxPoint.Y)/2,origin.Z);
-            var move=Matrix3d.Displacement(target-origin);
-            balloon.TransformBy(move); text.TransformBy(move);
+            Matrix3d move=Matrix3d.Displacement(target-origin);
+            return factor<1 ? move*Matrix3d.Scaling(factor,origin) : move;
         }
     }
 }

@@ -1736,7 +1736,7 @@ namespace ST4PlanIdCiz
                 if (it.wall != null && !it.wall.IsEmpty) parts.Add(it.wall);
             }
             if (parts.Count == 0) return null;
-            try { return parts.Count == 1 ? parts[0] : CascadedPolygonUnion.Union(parts); }
+            try { return NtsOverlaySafe.CascadedUnionSafe(parts) ?? parts[0]; }
             catch { return parts[0]; }
         }
 
@@ -1753,7 +1753,7 @@ namespace ST4PlanIdCiz
             if (parts.Count == 0) return null;
             try
             {
-                return parts.Count == 1 ? parts[0] : CascadedPolygonUnion.Union(parts);
+                return NtsOverlaySafe.CascadedUnionSafe(parts) ?? parts[0];
             }
             catch
             {
@@ -2321,17 +2321,17 @@ namespace ST4PlanIdCiz
                 var parts = new List<Geometry>();
                 foreach (var c in columns)
                     if (c != null && !c.IsEmpty) parts.Add(c);
-                if (parts.Count == 1) colU = parts[0];
+                if (parts.Count == 1) colU = NtsOverlaySafe.PrepareForOverlay(parts[0]);
                 else if (parts.Count > 1)
-                {
-                    try { colU = CascadedPolygonUnion.Union(parts); } catch { colU = parts[0]; }
-                }
+                    colU = NtsOverlaySafe.CascadedUnionSafe(parts) ?? parts[0];
             }
             if (colU != null && !colU.IsEmpty)
             {
                 try
                 {
-                    var diff = w.Difference(colU);
+                    var ww = NtsOverlaySafe.PrepareForOverlay(w);
+                    var cc = NtsOverlaySafe.PrepareForOverlay(colU);
+                    var diff = ww.Difference(cc);
                     if (diff != null && !diff.IsEmpty) w = diff;
                 }
                 catch { }
@@ -2346,7 +2346,7 @@ namespace ST4PlanIdCiz
             });
             if (kept.Count == 0) return w;
             if (kept.Count == 1) return kept[0];
-            try { return CascadedPolygonUnion.Union(kept); } catch { return kept[0]; }
+            return NtsOverlaySafe.CascadedUnionSafe(kept) ?? kept[0];
         }
 
         private static void CollectCopyPolys(Geometry g, List<Geometry> dest)

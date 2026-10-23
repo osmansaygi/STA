@@ -9,6 +9,7 @@ using Autodesk.AutoCAD.Colors;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Geometry;
+using Autodesk.AutoCAD.Runtime;
 using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
 
 namespace ST4Yardimci
@@ -50,6 +51,10 @@ namespace ST4Yardimci
         private const string LayerPozNo = "POZ NO (BEYKENT)";
         private const string LayerPozBalon = "POZ BALON (BEYKENT)";
         private const string LayerPozTarama = "POZ TARAMA (BEYKENT)";
+        /// <summary>Kiriş açılım L= satırları SheetView altına taşabilir (cm).</summary>
+        private const double AntetAcilimPadBelowCm = 320.0;
+        private const double AntetAcilimPadXCm = 80.0;
+        private const double AntetAcilimPadAboveCm = 40.0;
 
         /// <summary>kg/m. Liste: 8…40 mm (6, 34, 38 yok).</summary>
         private static readonly Dictionary<int, double> KgPerM = new Dictionary<int, double>
@@ -305,13 +310,17 @@ namespace ST4Yardimci
                 if (groups.Count > 0 && n == 0)
                     ed.WriteMessage("\nDONATIMETRAJ: Tabloda çizilecek nesne yok.");
             }
-            catch (Exception ex)
+            catch (System.Exception ex)
             {
                 try { ed.WriteMessage("\nDONATIMETRAJ hata: {0}", ex.Message); }
                 catch { }
             }
         }
 
+        /// <summary>
+        /// Antet metraj — hafif C#: pencere seçimi + yalnız L= etiketleri, benzeştir, tablo.
+        /// Tam model taraması / çizgi boyu / poz balonu yok (çoklu antette çökme ve yavaşlığın kaynağıydı).
+        /// </summary>
         public static void RunByAntet()
         {
             Document doc = AcApp.DocumentManager.MdiActiveDocument;
@@ -325,23 +334,25 @@ namespace ST4Yardimci
             }
 
             string path = EnsureTempDwg();
-
             double maxBoy = DonatiMetrajSettings.MaxBoyCm;
             if (maxBoy < 1) maxBoy = 1200;
 
             var peo = new PromptSelectionOptions
             {
-                MessageForAdding = "\nSheetView antet çevrelerini seçin: ",
+                MessageForAdding = "\nSheetView antet çerçevelerini seçin (SheetViewOut değil): ",
                 MessageForRemoval = "\nSeçimden çıkarın: ",
                 AllowDuplicates = false,
                 RejectObjectsOnLockedLayers = false
             };
             var filter = new SelectionFilter(new[]
             {
+                new TypedValue((int)DxfCode.Operator, "<AND"),
                 new TypedValue((int)DxfCode.Operator, "<OR"),
                 new TypedValue((int)DxfCode.Start, "LWPOLYLINE"),
                 new TypedValue((int)DxfCode.Start, "POLYLINE"),
-                new TypedValue((int)DxfCode.Operator, "OR>")
+                new TypedValue((int)DxfCode.Operator, "OR>"),
+                new TypedValue((int)DxfCode.LayerName, "*SheetView*"),
+                new TypedValue((int)DxfCode.Operator, "AND>")
             });
             PromptSelectionResult psr = ed.GetSelection(peo, filter);
             if (psr.Status != PromptStatus.OK || psr.Value == null || psr.Value.Count == 0)
@@ -351,34 +362,32 @@ namespace ST4Yardimci
             }
 
             var frames = new List<AntetFrame>();
-            int skipped = 0, over = 0, ignored = 0;
-            var overLens = new List<int>();
-
+            int ignoredBad = 0, ignoredOut = 0;
             using (doc.LockDocument())
             using (var tr = doc.Database.TransactionManager.StartTransaction())
             {
-                var bt = (BlockTable)tr.GetObject(doc.Database.BlockTableId, OpenMode.ForRead);
-                var ms = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForRead);
                 foreach (SelectedObject so in psr.Value)
                 {
                     if (so == null) continue;
                     var pl = tr.GetObject(so.ObjectId, OpenMode.ForRead) as Polyline;
                     if (pl == null || pl.IsErased || pl.NumberOfVertices < 3)
                     {
-                        ignored++;
+                        ignoredBad++;
+                        continue;
+                    }
+                    if (IsSheetViewOutLayer(pl.Layer))
+                    {
+                        ignoredOut++;
                         continue;
                     }
                     if (!IsSheetViewLayer(pl.Layer))
                     {
-                        ignored++;
+                        ignoredBad++;
                         continue;
                     }
                     var ring = new List<Point2d>();
                     for (int i = 0; i < pl.NumberOfVertices; i++)
-                    {
-                        Point2d p = pl.GetPoint2dAt(i);
-                        ring.Add(p);
-                    }
+                        ring.Add(pl.GetPoint2dAt(i));
                     bool closed = pl.Closed;
                     if (!closed)
                     {
@@ -388,183 +397,218 @@ namespace ST4Yardimci
                     }
                     if (!closed)
                     {
-                        ignored++;
+                        ignoredBad++;
                         continue;
                     }
                     AntetFrame f = MakeFrame(ring);
-                    if (f == null) ignored++;
+                    if (f == null) ignoredBad++;
                     else frames.Add(f);
                 }
+                tr.Commit();
+            }
 
-                if (frames.Count == 0)
-                {
-                    ed.WriteMessage("\nDONATIMETRAJ: Seçilenler SheetView kapalı poligon değil.");
-                    return;
-                }
+            if (frames.Count == 0)
+            {
+                ed.WriteMessage("\nDONATIMETRAJ: Seçilenler SheetView kapalı poligon değil.");
+                return;
+            }
 
-                foreach (ObjectId id in ms)
-                {
-                    if (!id.IsValid || id.IsErased) continue;
-                    var ent = tr.GetObject(id, OpenMode.ForRead) as Entity;
-                    if (ent == null || ent.IsErased) continue;
-                    if (!(ent is DBText) && !(ent is MText)) continue;
-                    if (!TryTextCenter(ent, out double px, out double py)) continue;
-                    AntetFrame host = SmallestFrame(frames, px, py);
-                    AntetFrame noteHost = host ?? FrameByInsertion(frames, ent);
-                    string raw = ent is DBText tx ? (tx.TextString ?? "") : ((MText)ent).Contents ?? "";
-                    string plain = StripMText(raw);
-                    if (noteHost != null)
-                        NoteKalipBenzer(noteHost, plain);
-                    if (host == null) continue;
-                    if (TryHasirLabel(plain, out HasirHit hh))
-                    {
-                        hh.Id = id;
-                        host.HasirHits.Add(hh);
-                        continue;
-                    }
-                    if (!LayerOk(ent.Layer)) continue;
-                    if (!TryParse(plain, out int adet, out int cap, out int boy, out double rawCm))
-                    {
-                        skipped++;
-                        continue;
-                    }
-                    if (rawCm > maxBoy + 1e-6)
-                    {
-                        over++;
-                        int shown = (int)Math.Round(rawCm, MidpointRounding.AwayFromZero);
-                        if (overLens.Count < 8 && !overLens.Contains(shown))
-                            overLens.Add(shown);
-                    }
-                    host.Hits.Add(new Hit
-                    {
-                        Id = id,
-                        Cap = cap,
-                        Boy = boy,
-                        Adet = adet,
-                        RawCm = rawCm
-                    });
-                }
+            // Transaction dışında pencere seçimi — LISP gibi yalnız o bölgedeki TEXT/MTEXT.
+            SelectionFilter textFilter = AntetTextFilter();
+            var usedIds = new HashSet<ObjectId>();
+            int over = 0;
+            var overLens = new List<int>();
+            int totalL = 0;
 
-                foreach (ObjectId id in ms)
-                {
-                    if (!id.IsValid || id.IsErased) continue;
-                    var ent = tr.GetObject(id, OpenMode.ForRead) as Entity;
-                    if (ent == null || ent.IsErased) continue;
-                    if (!(ent is DBText) && !(ent is MText)) continue;
-                    string raw = ent is DBText tx2 ? (tx2.TextString ?? "") : ((MText)ent).Contents ?? "";
-                    string plain = StripMText(raw);
-                    int kot = CountKesitKotBenzer(plain);
-                    if (kot < 1) continue;
-                    if (!TryTextCenter(ent, out double px, out double py))
-                    {
-                        AntetFrame byIns = FrameByInsertion(frames, ent);
-                        if (byIns != null && kot > byIns.KotBenzer) byIns.KotBenzer = kot;
-                        continue;
-                    }
-                    AntetFrame host = SmallestFrame(frames, px, py) ?? FrameByInsertion(frames, ent);
-                    if (host == null)
-                        host = NearestFrame(frames, px, py, 150.0);
-                    if (host != null && kot > host.KotBenzer) host.KotBenzer = kot;
-                }
+            foreach (AntetFrame frame in frames)
+            {
+                var p1 = new Point3d(frame.MinX - AntetAcilimPadXCm, frame.MinY - AntetAcilimPadBelowCm, 0);
+                var p2 = new Point3d(frame.MaxX + AntetAcilimPadXCm, frame.MaxY + AntetAcilimPadAboveCm, 0);
+                PromptSelectionResult win;
+                try { win = ed.SelectCrossingWindow(p1, p2, textFilter); }
+                catch { continue; }
+                if (win.Status != PromptStatus.OK || win.Value == null || win.Value.Count == 0)
+                    continue;
 
-                string hasirPath = null;
-                bool wantHasir = false;
-                foreach (AntetFrame frame in frames)
-                    if (frame.HasirHits.Count > 0) { wantHasir = true; break; }
-                if (wantHasir)
+                using (doc.LockDocument())
+                using (var tr = doc.Database.TransactionManager.StartTransaction())
                 {
-                    hasirPath = EnsureHasirMetrajDwg();
-                    if (string.IsNullOrEmpty(hasirPath))
-                        ed.WriteMessage("\nDONATIMETRAJ: Gömülü hasır metraj tablosu bulunamadı.");
-                }
-
-                int tables = 0, labels = 0;
-                foreach (AntetFrame frame in frames)
-                {
-                    if (frame.Hits.Count == 0 && frame.HasirHits.Count == 0) continue;
-                    int kat = 1;
-                    if (frame.KotBenzer > 0)
-                        kat = frame.KotBenzer + 1;
-                    else if (frame.KalipPlani && frame.BenzerAdet > 0)
-                        kat = frame.BenzerAdet + 1;
-                    List<Poz> pozlar = frame.Hits.Count > 0 ? PozlarFromHits(frame.Hits, kat) : new List<Poz>();
-                    bool bars = pozlar.Count > 0;
-                    List<HasirPoz> hasirPoz = BuildHasirPozlar(frame.HasirHits);
-                    if (kat > 1)
+                    foreach (SelectedObject so in win.Value)
                     {
-                        foreach (HasirPoz hp in hasirPoz)
+                        if (so == null) continue;
+                        ObjectId id = so.ObjectId;
+                        if (!id.IsValid || id.IsErased || !usedIds.Add(id)) continue;
+                        var ent = tr.GetObject(id, OpenMode.ForRead) as Entity;
+                        if (ent == null || ent.IsErased) continue;
+                        if (!LayerOk(ent.Layer)) continue;
+
+                        string raw = ent is DBText tx ? (tx.TextString ?? "") : (ent is MText mx ? (mx.Contents ?? "") : null);
+                        if (raw == null) continue;
+                        string plain = StripMText(raw);
+
+                        NoteKalipBenzer(frame, plain);
+                        int kot = CountKesitKotBenzer(plain);
+                        if (kot > frame.KotBenzer) frame.KotBenzer = kot;
+
+                        if (TryHasirLabel(plain, out HasirHit hh))
                         {
-                            hp.Adet *= kat;
-                            double alan = hp.Adet * (hp.Wcm / 100.0) * (hp.Hcm / 100.0);
-                            hp.Kg = Math.Round(alan * hp.KgM2, 2, MidpointRounding.AwayFromZero);
+                            hh.Id = id;
+                            frame.HasirHits.Add(hh);
+                            continue;
                         }
-                    }
-                    if (pozlar.Count > 0)
-                        ContinueHasirPoz(hasirPoz, pozlar.Count);
-                    bool mesh = hasirPoz.Count > 0 && !string.IsNullOrEmpty(hasirPath);
-                    if (!bars && !mesh) continue;
-                    var anchor = new Point3d(frame.MaxX + 25.0, frame.MaxY, 0);
-                    double ince = 0, kalin = 0;
-                    if (bars)
-                    {
-                        if (string.IsNullOrEmpty(path))
+
+                        // Yalnız L= — görünüş (duz/mon) ve çizgi ölçümü yok.
+                        if (!TryParse(plain, out int adet, out int cap, out int boy, out double rawCm))
+                            continue;
+                        if (rawCm > maxBoy + 1e-6)
                         {
-                            ed.WriteMessage("\nDONATIMETRAJ: Gömülü demir tablosu bulunamadı.");
-                            bars = false;
+                            over++;
+                            int shown = (int)Math.Round(rawCm, MidpointRounding.AwayFromZero);
+                            if (overLens.Count < 8 && !overLens.Contains(shown))
+                                overLens.Add(shown);
                         }
-                        else
+                        frame.Hits.Add(new Hit
                         {
-                            ClearOldMarks(tr, doc.Database, frame.Hits);
+                            Id = id,
+                            Cap = cap,
+                            Boy = boy,
+                            Adet = adet,
+                            RawCm = rawCm
+                        });
+                        totalL++;
+                    }
+                    tr.Commit();
+                }
+            }
+
+            string hasirPath = null;
+            foreach (AntetFrame frame in frames)
+            {
+                if (frame.HasirHits.Count == 0) continue;
+                hasirPath = EnsureHasirMetrajDwg();
+                if (string.IsNullOrEmpty(hasirPath))
+                    ed.WriteMessage("\nDONATIMETRAJ: Gömülü hasır metraj tablosu bulunamadı.");
+                break;
+            }
+
+            int tables = 0, labels = 0, insertFail = 0, hitFrames = 0;
+            for (int fi = 0; fi < frames.Count; fi++)
+            {
+                AntetFrame frame = frames[fi];
+                if (frame.Hits.Count == 0 && frame.HasirHits.Count == 0) continue;
+                hitFrames++;
+                int kat = 1;
+                if (frame.KotBenzer > 0)
+                    kat = frame.KotBenzer + 1;
+                else if (frame.KalipPlani && frame.BenzerAdet > 0)
+                    kat = frame.BenzerAdet + 1;
+
+                List<Poz> pozlar = frame.Hits.Count > 0 ? PozlarFromHits(frame.Hits, kat) : new List<Poz>();
+                bool bars = pozlar.Count > 0;
+                List<HasirPoz> hasirPoz = BuildHasirPozlar(frame.HasirHits);
+                if (kat > 1)
+                {
+                    foreach (HasirPoz hp in hasirPoz)
+                    {
+                        hp.Adet *= kat;
+                        double alan = hp.Adet * (hp.Wcm / 100.0) * (hp.Hcm / 100.0);
+                        hp.Kg = Math.Round(alan * hp.KgM2, 2, MidpointRounding.AwayFromZero);
+                    }
+                }
+                if (pozlar.Count > 0)
+                    ContinueHasirPoz(hasirPoz, pozlar.Count);
+                bool mesh = hasirPoz.Count > 0 && !string.IsNullOrEmpty(hasirPath);
+                if (!bars && !mesh) continue;
+                if (bars && string.IsNullOrEmpty(path))
+                {
+                    ed.WriteMessage("\nDONATIMETRAJ: Gömülü demir tablosu bulunamadı.");
+                    bars = false;
+                    if (!mesh) continue;
+                }
+
+                var anchor = new Point3d(frame.MaxX + 25.0, frame.MaxY, 0);
+                double ince = 0, kalin = 0;
+                try
+                {
+                    // Eski poz marklarını pencereyle sil (tam MS tarama yok).
+                    ErasePozMarksInFrame(ed, doc, frame);
+                    // Tablolu satırların poz hücresi: yalnız antet penceresindeki IC ANTET çizgileri.
+                    List<ObjectId> cellIds = bars ? SelectIcAntetIdsInFrame(ed, frame) : null;
+
+                    using (doc.LockDocument())
+                    using (var tr = doc.Database.TransactionManager.StartTransaction())
+                    {
+                        if (bars)
+                        {
                             InsertFilled(tr, doc.Database, path, anchor, pozlar, out ince, out kalin, true, out double demirH);
-                            StampLabels(tr, doc.Database, frame.Hits, pozlar);
+                            var cells = cellIds != null && cellIds.Count > 0 ? BaMetrajPozCell.Collect(tr, cellIds) : null;
+                            StampLabelsFast(tr, doc.Database, frame.Hits, pozlar, cells);
                             if (mesh)
                             {
                                 var under = new Point3d(anchor.X, anchor.Y - demirH - HasirTabloGapCm, 0);
                                 InsertHasir(tr, doc.Database, hasirPath, under, true, hasirPoz, out _);
-                                ClearOldMarks(tr, doc.Database, HasirAsHits(frame.HasirHits));
-                                StampHasirPoz(tr, doc.Database, frame.HasirHits, hasirPoz);
+                                StampHasirPozFast(tr, doc.Database, frame.HasirHits, hasirPoz);
                             }
                         }
+                        else
+                        {
+                            InsertHasir(tr, doc.Database, hasirPath, anchor, true, hasirPoz, out _);
+                            StampHasirPozFast(tr, doc.Database, frame.HasirHits, hasirPoz);
+                        }
+                        tr.Commit();
                     }
-                    if (!bars && mesh)
-                    {
-                        InsertHasir(tr, doc.Database, hasirPath, anchor, true, hasirPoz, out _);
-                        ClearOldMarks(tr, doc.Database, HasirAsHits(frame.HasirHits));
-                        StampHasirPoz(tr, doc.Database, frame.HasirHits, hasirPoz);
-                    }
-                    if (!bars && !mesh) continue;
-                    tables++;
-                    labels += frame.Hits.Count;
-                    if (!bars)
-                        ed.WriteMessage("\nDONATIMETRAJ: Antet {0} — yalnız hasır çelik tablosu.", tables);
-                    else if (kat > 1)
-                        ed.WriteMessage(
-                            "\nDONATIMETRAJ: Antet {0} — {1} etiket, {2} poz. İnce {3} kg, kalın {4} kg. {5} kat içindir.{6}",
-                            tables, frame.Hits.Count, pozlar.Count, F2(ince), F2(kalin), kat,
-                            mesh ? " Hasır tablosu 25 cm altta." : "");
-                    else
-                        ed.WriteMessage(
-                            "\nDONATIMETRAJ: Antet {0} — {1} etiket, {2} poz. İnce {3} kg, kalın {4} kg.{5}",
-                            tables, frame.Hits.Count, pozlar.Count, F2(ince), F2(kalin),
-                            mesh ? " Hasır tablosu 25 cm altta." : "");
                 }
-                tr.Commit();
-
-                if (over > 0)
+                catch (System.Exception ex)
                 {
-                    ed.WriteMessage(
-                        "\nDONATIMETRAJ: Uyarı — {0} etiketin L boyu {1:0.##} cm üstünde ({2}).",
-                        over, maxBoy, string.Join(", ", overLens));
+                    insertFail++;
+                    ed.WriteMessage("\nDONATIMETRAJ: Antet {0}/{1} atlandı ({2}).", fi + 1, frames.Count, ex.Message);
+                    continue;
                 }
-                if (tables == 0)
-                    ed.WriteMessage("\nDONATIMETRAJ: Seçilen antet içinde katman listesine uyan etiket yok.");
+
+                tables++;
+                labels += frame.Hits.Count;
+                if (!bars)
+                    ed.WriteMessage("\nDONATIMETRAJ: Antet {0} — yalnız hasır.", tables);
+                else if (kat > 1)
+                    ed.WriteMessage(
+                        "\nDONATIMETRAJ: Antet {0} — {1} L= etiket → {2} poz. İnce {3} kg, kalın {4} kg. {5} kat.{6}",
+                        tables, frame.Hits.Count, pozlar.Count, F2(ince), F2(kalin), kat,
+                        mesh ? " +hasır" : "");
                 else
-                    ed.WriteMessage("\nDONATIMETRAJ: {0} antet, {1} etiket.", tables, labels);
-                if (ignored > 0)
-                    ed.WriteMessage("\nDONATIMETRAJ: {0} seçim SheetView kapalı poligon değildi.", ignored);
-                if (skipped > 0)
-                    ed.WriteMessage("\nDONATIMETRAJ: {0} yazı etiket sayılmadı.", skipped);
+                    ed.WriteMessage(
+                        "\nDONATIMETRAJ: Antet {0} — {1} L= etiket → {2} poz. İnce {3} kg, kalın {4} kg.{5}",
+                        tables, frame.Hits.Count, pozlar.Count, F2(ince), F2(kalin),
+                        mesh ? " +hasır" : "");
             }
+
+            if (over > 0)
+            {
+                ed.WriteMessage(
+                    "\nDONATIMETRAJ: Uyarı — {0} etiketin L boyu {1:0.##} cm üstünde ({2}).",
+                    over, maxBoy, string.Join(", ", overLens));
+            }
+            if (tables == 0 && insertFail > 0)
+                ed.WriteMessage("\nDONATIMETRAJ: {0} antette L= vardı; tablo yazılamadı.", hitFrames);
+            else if (tables == 0)
+                ed.WriteMessage(
+                    "\nDONATIMETRAJ: L= etiket yok. Açılım satırları (…ø… L=…) formdaki DONATI YAZISI katmanında olmalı.");
+            else
+                ed.WriteMessage("\nDONATIMETRAJ: {0} antet, {1} L= etiket (toplam tarama {2}).", tables, labels, totalL);
+            if (ignoredOut > 0)
+                ed.WriteMessage("\nDONATIMETRAJ: {0} SheetViewOut atlandı.", ignoredOut);
+            if (ignoredBad > 0)
+                ed.WriteMessage("\nDONATIMETRAJ: {0} seçim kapalı SheetView değildi.", ignoredBad);
+        }
+
+        private static SelectionFilter AntetTextFilter()
+        {
+            return new SelectionFilter(new[]
+            {
+                new TypedValue((int)DxfCode.Operator, "<OR"),
+                new TypedValue((int)DxfCode.Start, "TEXT"),
+                new TypedValue((int)DxfCode.Start, "MTEXT"),
+                new TypedValue((int)DxfCode.Operator, "OR>")
+            });
         }
 
         private sealed class AntetFrame
@@ -578,11 +622,28 @@ namespace ST4Yardimci
             public int KotBenzer;
         }
 
+        private static bool IsSheetViewOutLayer(string layer)
+        {
+            return !string.IsNullOrWhiteSpace(layer) &&
+                   layer.IndexOf("SheetViewOut", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
         private static bool IsSheetViewLayer(string layer)
         {
             if (string.IsNullOrWhiteSpace(layer)) return false;
-            if (layer.IndexOf("SheetViewOut", StringComparison.OrdinalIgnoreCase) >= 0) return false;
+            if (IsSheetViewOutLayer(layer)) return false;
             return layer.IndexOf("SheetView", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        /// <summary>L= veya çap işareti içeren yazılar; ölçü/başlık gürültüsünü ayırır.</summary>
+        private static bool LooksLikeDonatiLabel(string plain)
+        {
+            if (string.IsNullOrWhiteSpace(plain)) return false;
+            if (Regex.IsMatch(plain, @"[Ll]\s*=")) return true;
+            if (plain.IndexOf('ø') >= 0 || plain.IndexOf('Ø') >= 0 || plain.IndexOf('⌀') >= 0) return true;
+            if (plain.IndexOf("%%c", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            if (plain.IndexOf("%%C", StringComparison.Ordinal) >= 0) return true;
+            return false;
         }
 
         private static AntetFrame MakeFrame(List<Point2d> ring)
@@ -634,6 +695,49 @@ namespace ST4Yardimci
             return best;
         }
 
+        /// <summary>
+        /// Önce kapalı SheetView halkası; yoksa AABB + açılım payı (L= satırları çerçeve altında kalabilir).
+        /// </summary>
+        private static AntetFrame HostFrame(List<AntetFrame> frames, double x, double y)
+        {
+            AntetFrame inside = SmallestFrame(frames, x, y);
+            if (inside != null) return inside;
+            AntetFrame best = null;
+            double bestA = double.MaxValue;
+            foreach (AntetFrame f in frames)
+            {
+                if (x < f.MinX - AntetAcilimPadXCm || x > f.MaxX + AntetAcilimPadXCm) continue;
+                if (y < f.MinY - AntetAcilimPadBelowCm || y > f.MaxY + AntetAcilimPadAboveCm) continue;
+                if (f.Area < bestA)
+                {
+                    best = f;
+                    bestA = f.Area;
+                }
+            }
+            return best;
+        }
+
+        /// <summary>L= yoksa adet+çap (adet yoksa 1).</summary>
+        private static bool TryParseAdetCap(string plain, out int adet, out int cap)
+        {
+            adet = 0;
+            cap = 0;
+            if (string.IsNullOrWhiteSpace(plain)) return false;
+            plain = NormalizeDonatiPlain(plain);
+            string rx = @"(?:(?<adet>\d+(?:\s*[xX×*]\s*\d+)*)\s*)?(?:" + PhiAlt() + @")\s*(?<cap>\d{1,2})"
+                        + @"(?:\s*/\s*\d+(?:[.,]\d+)?)?";
+            Match m = Regex.Match(plain, rx);
+            if (!m.Success) return false;
+            string adetRaw = m.Groups["adet"].Value;
+            if (string.IsNullOrWhiteSpace(adetRaw))
+                adet = 1;
+            else if (!TryAdetProduct(adetRaw, out adet))
+                return false;
+            if (!int.TryParse(m.Groups["cap"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out cap) || cap < 1)
+                return false;
+            return true;
+        }
+
         private static bool PointInRing(List<Point2d> ring, double x, double y)
         {
             bool inside = false;
@@ -662,23 +766,41 @@ namespace ST4Yardimci
             catch { return false; }
         }
 
-        private static AntetFrame FrameByInsertion(List<AntetFrame> frames, Entity ent)
+        /// <summary>GeometricExtents açmadan yazı konumu (büyük DWG tarama için).</summary>
+        private static bool TryTextAnchor(Entity ent, out double x, out double y)
         {
-            double x, y;
+            x = y = 0;
             if (ent is DBText tx)
             {
-                Point3d p = tx.AlignmentPoint;
-                if (p.X == 0 && p.Y == 0 && (tx.Position.X != 0 || tx.Position.Y != 0))
-                    p = tx.Position;
+                Point3d p = tx.Position;
+                if (tx.Justify != AttachmentPoint.BaseLeft &&
+                    tx.Justify != AttachmentPoint.BaseAlign &&
+                    tx.Justify != AttachmentPoint.BaseFit)
+                {
+                    try
+                    {
+                        Point3d a = tx.AlignmentPoint;
+                        if (!(a.X == 0 && a.Y == 0) || (p.X == 0 && p.Y == 0))
+                            p = a;
+                    }
+                    catch { }
+                }
                 x = p.X;
                 y = p.Y;
+                return true;
             }
-            else if (ent is MText mx)
+            if (ent is MText mx)
             {
                 x = mx.Location.X;
                 y = mx.Location.Y;
+                return true;
             }
-            else return null;
+            return false;
+        }
+
+        private static AntetFrame FrameByInsertion(List<AntetFrame> frames, Entity ent)
+        {
+            if (!TryTextAnchor(ent, out double x, out double y)) return null;
             return SmallestFrame(frames, x, y);
         }
 
@@ -889,7 +1011,7 @@ namespace ST4Yardimci
                     byCap.Count, F2(ince), F2(kalin), F2(ince + kalin),
                     hasHasirToplam ? " Hasır " + F2(hasirToplam) + " kg, tablo 25 cm altta." : "");
             }
-            catch (Exception ex)
+            catch (System.Exception ex)
             {
                 try { ed.WriteMessage("\nDONATIMETRAJ hata: {0}", ex.Message); }
                 catch { }
@@ -999,16 +1121,15 @@ namespace ST4Yardimci
             ince = 0;
             kalin = 0;
             height = 0;
-            var bt = (BlockTable)tr.GetObject(destDb.BlockTableId, OpenMode.ForRead);
-            var msDest = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
-
+            // Yan DWG'de new DBText/Line için WorkingDatabase=src zorunlu; WblockClone öncesi geri alınır.
             using (var src = new Database(false, true))
             {
                 src.ReadDwgFile(path, FileOpenMode.OpenForReadAndAllShare, true, null);
+                var ids = new ObjectIdCollection();
                 Database prev = HostApplicationServices.WorkingDatabase;
-                HostApplicationServices.WorkingDatabase = src;
                 try
                 {
+                    HostApplicationServices.WorkingDatabase = src;
                     using (var trs = src.TransactionManager.StartTransaction())
                     {
                         var btSrc = (BlockTable)trs.GetObject(src.BlockTableId, OpenMode.ForRead);
@@ -1017,24 +1138,19 @@ namespace ST4Yardimci
                             FillTotals(trs, src, ms, totals, out ince, out kalin, hasirToplam);
                         else
                             Fill(trs, src, ms, pozlar, out ince, out kalin);
+                        CollectEntities(trs, btSrc, BlockTableRecord.ModelSpace, ids);
                         trs.Commit();
                     }
                 }
                 finally
                 {
-                    HostApplicationServices.WorkingDatabase = prev;
-                }
-
-                var ids = new ObjectIdCollection();
-                using (var trs = src.TransactionManager.StartTransaction())
-                {
-                    var btSrc = (BlockTable)trs.GetObject(src.BlockTableId, OpenMode.ForRead);
-                    CollectEntities(trs, btSrc, BlockTableRecord.ModelSpace, ids);
-                    trs.Commit();
+                    try { HostApplicationServices.WorkingDatabase = prev; } catch { }
                 }
                 if (ids.Count == 0)
                     return 0;
 
+                var bt = (BlockTable)tr.GetObject(destDb.BlockTableId, OpenMode.ForRead);
+                var msDest = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
                 return PlaceCloned(tr, destDb, msDest, ids, pick, topLeft, out height);
             }
         }
@@ -1043,19 +1159,28 @@ namespace ST4Yardimci
         private static int InsertPlain(Transaction tr, Database destDb, string path, Point3d pick, bool topLeft)
         {
             if (string.IsNullOrEmpty(path)) return 0;
-            var bt = (BlockTable)tr.GetObject(destDb.BlockTableId, OpenMode.ForRead);
-            var msDest = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
             using (var src = new Database(false, true))
             {
                 src.ReadDwgFile(path, FileOpenMode.OpenForReadAndAllShare, true, null);
                 var ids = new ObjectIdCollection();
-                using (var trs = src.TransactionManager.StartTransaction())
+                Database prev = HostApplicationServices.WorkingDatabase;
+                try
                 {
-                    var btSrc = (BlockTable)trs.GetObject(src.BlockTableId, OpenMode.ForRead);
-                    CollectEntities(trs, btSrc, BlockTableRecord.ModelSpace, ids);
-                    trs.Commit();
+                    HostApplicationServices.WorkingDatabase = src;
+                    using (var trs = src.TransactionManager.StartTransaction())
+                    {
+                        var btSrc = (BlockTable)trs.GetObject(src.BlockTableId, OpenMode.ForRead);
+                        CollectEntities(trs, btSrc, BlockTableRecord.ModelSpace, ids);
+                        trs.Commit();
+                    }
+                }
+                finally
+                {
+                    try { HostApplicationServices.WorkingDatabase = prev; } catch { }
                 }
                 if (ids.Count == 0) return 0;
+                var bt = (BlockTable)tr.GetObject(destDb.BlockTableId, OpenMode.ForRead);
+                var msDest = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
                 return PlaceCloned(tr, destDb, msDest, ids, pick, topLeft, out _);
             }
         }
@@ -1227,35 +1352,30 @@ namespace ST4Yardimci
                 toplamKg = Math.Round(toplamKg, 2, MidpointRounding.AwayFromZero);
             }
             if (string.IsNullOrEmpty(path)) return 0;
-            var bt = (BlockTable)tr.GetObject(destDb.BlockTableId, OpenMode.ForRead);
-            var msDest = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
             using (var src = new Database(false, true))
             {
                 src.ReadDwgFile(path, FileOpenMode.OpenForReadAndAllShare, true, null);
+                var ids = new ObjectIdCollection();
                 Database prev = HostApplicationServices.WorkingDatabase;
-                HostApplicationServices.WorkingDatabase = src;
                 try
                 {
+                    HostApplicationServices.WorkingDatabase = src;
                     using (var trs = src.TransactionManager.StartTransaction())
                     {
                         var btSrc = (BlockTable)trs.GetObject(src.BlockTableId, OpenMode.ForRead);
                         var ms = (BlockTableRecord)trs.GetObject(btSrc[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
                         FillHasir(trs, src, ms, pozlar, toplamKg);
+                        CollectEntities(trs, btSrc, BlockTableRecord.ModelSpace, ids);
                         trs.Commit();
                     }
                 }
                 finally
                 {
-                    HostApplicationServices.WorkingDatabase = prev;
-                }
-                var ids = new ObjectIdCollection();
-                using (var trs = src.TransactionManager.StartTransaction())
-                {
-                    var btSrc = (BlockTable)trs.GetObject(src.BlockTableId, OpenMode.ForRead);
-                    CollectEntities(trs, btSrc, BlockTableRecord.ModelSpace, ids);
-                    trs.Commit();
+                    try { HostApplicationServices.WorkingDatabase = prev; } catch { }
                 }
                 if (ids.Count == 0) return 0;
+                var bt = (BlockTable)tr.GetObject(destDb.BlockTableId, OpenMode.ForRead);
+                var msDest = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
                 return PlaceCloned(tr, destDb, msDest, ids, pick, topLeft, out _);
             }
         }
@@ -1319,6 +1439,7 @@ namespace ST4Yardimci
             var usedBal = new HashSet<ObjectId>();
             double textH = pozProto != null && pozProto.Height > 1 ? pozProto.Height : 10;
             ObjectId style = pozProto != null ? pozProto.TextStyleId : ObjectId.Null;
+            if (style.IsNull) style = BaDimensionStyles.EnsureYazi(tr, db);
             for (int i = 0; i < n; i++)
             {
                 HasirPoz p = i < pozlar.Count ? pozlar[i] : null;
@@ -1421,6 +1542,8 @@ namespace ST4Yardimci
             EnsureLayer(tr, db, LayerPozNo, 2);
             EnsureLayer(tr, db, LayerPozBalon, 4);
             EnsureRegApp(tr, db);
+            if (DonatiMetrajSettings.Renkli) EnsureTaramaLayer(tr, db);
+            var drawOrder = new ObjectIdCollection();
             var noOf = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             foreach (HasirPoz p in pozlar)
                 noOf[p.Tip + "|" + p.Wcm.ToString(CultureInfo.InvariantCulture) + "|" + p.Hcm.ToString(CultureInfo.InvariantCulture)] = p.No;
@@ -1461,7 +1584,8 @@ namespace ST4Yardimci
                     AlignmentPoint = bal,
                     Position = bal
                 };
-                if (!style.IsNull) tx.TextStyleId = style;
+                if (style.IsNull) style = BaDimensionStyles.EnsureYazi(tr, db);
+                tx.TextStyleId = style;
                 Color fill = null;
                 if (DonatiMetrajSettings.Renkli)
                 {
@@ -1503,9 +1627,11 @@ namespace ST4Yardimci
                 }
                 catch { }
 
+                AlignPozBalloon(ent, pl, tx, db);
                 if (fill != null)
-                    FillPozBalloon(tr, db, ms, pl, tx, fill, ent.Handle.ToString());
+                    FillPozBalloon(tr, db, ms, pl, tx, fill, ent.Handle.ToString(), drawOrder);
             }
+            ApplyPozDrawOrder(tr, ms, drawOrder);
         }
 
         private static void Fill(Transaction tr, Database db, BlockTableRecord ms, List<Poz> pozlar, out double ince, out double kalin)
@@ -2149,23 +2275,46 @@ namespace ST4Yardimci
             DBText pozProto, DBText yaziProto, Polyline balProto, List<Poz> pozlar, int from, int to,
             HashSet<ObjectId> used, HashSet<ObjectId> usedBal)
         {
+            // Satırlar 20 cm aralıklı; Find (<3 cm) ve balon (<8 cm) eşleşmeleri
+            // yalnız en yakın satırda olabilir. Kaynak sırası ve ilk eşleşme korunur.
+            var textRows = new Dictionary<int, List<DBText>>();
+            foreach (DBText text in texts)
+                if (!text.IsErased)
+                    PozRow(textRows, (int)Math.Round((PozY0 - Anchor(text).Y) / Satir)).Add(text);
+            var balloonRows = new Dictionary<int, List<Polyline>>();
+            foreach (Polyline balloon in balloons)
+                if (!balloon.IsErased)
+                    PozRow(balloonRows, (int)Math.Round((PozY0 - Center(balloon).Y) / Satir)).Add(balloon);
             for (int i = from; i < to; i++)
             {
                 Poz p = pozlar[i];
                 int row = i / 2;
+                List<DBText> rowTexts = PozRow(textRows, row);
+                List<Polyline> rowBalloons = PozRow(balloonRows, row);
+                int oldTexts = rowTexts.Count, oldBalloons = rowBalloons.Count;
                 double[] cols = (i % 2 == 0) ? SolSutun : SagSutun;
                 double y = PozY0 - row * Satir;
-                Put(tr, db, ms, texts, pozProto, cols[0], y, p.No.ToString(CultureInfo.InvariantCulture), used);
-                Put(tr, db, ms, texts, yaziProto, cols[1], y, AdetYazi(p), used);
-                Put(tr, db, ms, texts, yaziProto, cols[2], y, Fi() + p.Cap.ToString(CultureInfo.InvariantCulture), used);
-                Put(tr, db, ms, texts, yaziProto, cols[3], y, p.BoyCm.ToString(CultureInfo.InvariantCulture), used);
-                Put(tr, db, ms, texts, yaziProto, cols[4], y, F2(p.Kg), used);
-                EnsureBalloon(tr, db, ms, balloons, balProto, cols[0], y,
+                Put(tr, db, ms, rowTexts, pozProto, cols[0], y, p.No.ToString(CultureInfo.InvariantCulture), used);
+                Put(tr, db, ms, rowTexts, yaziProto, cols[1], y, AdetYazi(p), used);
+                Put(tr, db, ms, rowTexts, yaziProto, cols[2], y, Fi() + p.Cap.ToString(CultureInfo.InvariantCulture), used);
+                Put(tr, db, ms, rowTexts, yaziProto, cols[3], y, p.BoyCm.ToString(CultureInfo.InvariantCulture), used);
+                Put(tr, db, ms, rowTexts, yaziProto, cols[4], y, F2(p.Kg), used);
+                EnsureBalloon(tr, db, ms, rowBalloons, balProto, cols[0], y,
                     p.No.ToString(CultureInfo.InvariantCulture),
                     pozProto == null || pozProto.Height < 1e-6 ? 10 : pozProto.Height,
-                    pozProto == null ? ObjectId.Null : pozProto.TextStyleId,
-                    usedBal, Find(texts, cols[0], y));
+                    pozProto == null || pozProto.TextStyleId.IsNull
+                        ? BaDimensionStyles.EnsureYazi(tr, db) : pozProto.TextStyleId,
+                    usedBal, Find(rowTexts, cols[0], y));
+                for (int n = oldTexts; n < rowTexts.Count; n++) texts.Add(rowTexts[n]);
+                for (int n = oldBalloons; n < rowBalloons.Count; n++) balloons.Add(rowBalloons[n]);
             }
+        }
+
+        private static List<T> PozRow<T>(Dictionary<int, List<T>> rows, int row)
+        {
+            if (!rows.TryGetValue(row, out List<T> values))
+                rows[row] = values = new List<T>();
+            return values;
         }
 
         /// <summary>
@@ -2342,7 +2491,7 @@ namespace ST4Yardimci
             used.Add(t.ObjectId);
         }
 
-        private const double PozGap = 5.0;
+        private const double PozGap = 5.5;
         private const string MetrajPozApp = "ST4METRAJPOZ";
         private const double LeftPozL = 1839.321;
         private const double LeftPozR = 1879.321;
@@ -2542,6 +2691,17 @@ namespace ST4Yardimci
             return layer.IndexOf(part, StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
+        private static string NormalizeDonatiPlain(string plain)
+        {
+            if (string.IsNullOrEmpty(plain)) return "";
+            // Dar/boşluksuz NBSP vb. kiriş etiketlerinde parse kırılmasın.
+            plain = plain.Replace('\u00A0', ' ').Replace('\u2007', ' ').Replace('\u202F', ' ')
+                .Replace('\u2009', ' ').Replace('\r', ' ').Replace('\n', ' ');
+            // Çap işaretlerini tek forma indir (⌀ diametre / boş küme karışıklığı).
+            plain = plain.Replace('\u2300', 'ø').Replace('⌀', 'ø').Replace('Ø', 'ø');
+            return plain;
+        }
+
         private static bool TryParse(string plain, out int adet, out int cap, out int boyCm, out double rawCm)
         {
             adet = 0;
@@ -2549,12 +2709,30 @@ namespace ST4Yardimci
             boyCm = 0;
             rawCm = 0;
             if (string.IsNullOrWhiteSpace(plain)) return false;
-            // Çap ile L arasında "gov." gibi ara yazı olabilir: 2ø12 gov. l=900
-            string rx = @"(?<adet>\d+(?:\s*[xX×*]\s*\d+)*)\s*(?:" + PhiAlt() + @")\s*(?<cap>\d{1,2})(?:\s*/\s*\d+(?:[.,]\d+)?)?(?:\s+\S+){0,6}\s*"
+            plain = NormalizeDonatiPlain(plain);
+            // Adet isteğe bağlı (ø8 L=138 → 1). Çap ile L arasında ara yazı serbest.
+            // Kiriş: 2x26ø8/9 L=220 MONTAJ — L= sonrası ek yazı serbest.
+            string rx = @"(?:(?<adet>\d+(?:\s*[xX×*]\s*\d+)*)\s*)?(?:" + PhiAlt() + @")\s*(?<cap>\d{1,2})"
+                        + @"(?:\s*/\s*\d+(?:[.,]\d+)?)?(?:\s+\S+){0,8}\s*"
                         + @"[Ll]\s*=\s*(?<boy>\d+(?:[.,]\d+)?)";
             Match m = Regex.Match(plain, rx);
-            if (!m.Success) return false;
-            if (!TryAdetProduct(m.Groups["adet"].Value, out adet))
+            if (!m.Success)
+            {
+                // Phi ve L= ayrı yerdeyse (ara biçim bozuk) yine dene.
+                if (!TryParseAdetCap(plain, out adet, out cap)) return false;
+                Match mL = Regex.Match(plain, @"[Ll]\s*=\s*(?<boy>\d+(?:[.,]\d+)?)");
+                if (!mL.Success) return false;
+                string boyLoose = mL.Groups["boy"].Value.Replace(',', '.');
+                if (!double.TryParse(boyLoose, NumberStyles.Float, CultureInfo.InvariantCulture, out double boyLooseV))
+                    return false;
+                rawCm = boyLooseV;
+                boyCm = (int)Math.Round(boyLooseV, MidpointRounding.AwayFromZero);
+                return boyCm > 0;
+            }
+            string adetRaw = m.Groups["adet"].Value;
+            if (string.IsNullOrWhiteSpace(adetRaw))
+                adet = 1;
+            else if (!TryAdetProduct(adetRaw, out adet))
                 return false;
             if (!int.TryParse(m.Groups["cap"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out cap) || cap < 1)
                 return false;
@@ -2651,6 +2829,324 @@ namespace ST4Yardimci
                 _balLocal = list;
         }
 
+        /// <summary>
+        /// Antet hızlı poz: balon+numara her zaman.
+        /// Renkli=true → pastel kontur + SOLID tarama; false → kontur+numara.
+        /// MeasureTextWidth / DrawOrder / tam MS tarama yok. Tablolu satırda balon,
+        /// normal yoldaki gibi pencereden okunan poz hücresine (cells) ortalanır.
+        /// </summary>
+        private static void StampLabelsFast(Transaction tr, Database db, List<Hit> hits, List<Poz> pozlar, List<BaMetrajPozCell.Segment> cells)
+        {
+            if (hits == null || hits.Count == 0 || pozlar == null || pozlar.Count == 0) return;
+            var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
+            var ms = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
+            EnsureLayer(tr, db, LayerPozNo, 2);
+            EnsureLayer(tr, db, LayerPozBalon, 4);
+            EnsureRegApp(tr, db);
+            bool renkli = DonatiMetrajSettings.Renkli;
+            if (renkli)
+                EnsureTaramaLayer(tr, db);
+            ObjectId style = BaDimensionStyles.EnsureYazi(tr, db);
+            var noOf = new Dictionary<long, int>();
+            foreach (Poz p in pozlar)
+                noOf[p.Cap * 100000L + p.BoyCm] = p.No;
+
+            foreach (Hit h in hits)
+            {
+                if (!noOf.TryGetValue(h.Cap * 100000L + h.Boy, out int no)) continue;
+                var ent = tr.GetObject(h.Id, OpenMode.ForRead) as Entity;
+                if (ent == null || ent.IsErased) continue;
+                if (!TryFastLabelPose(ent, out Point3d anchor, out double rot, out double height))
+                    continue;
+                if (height < 1e-6) height = 5;
+
+                string num = no.ToString(CultureInfo.InvariantCulture);
+                double textW = Math.Max(height * 0.7, num.Length * height * 0.55);
+                var dir = new Vector3d(Math.Cos(rot), Math.Sin(rot), 0);
+                Point3d bal = anchor - dir * (PozGap + StadiumWidth(textW, height) * 0.5);
+                string handle = ent.Handle.ToString();
+
+                Color fill = renkli ? PastelForCap(h.Cap) : null;
+
+                // Önce balon (+tarama), sonra numara → draw order şişirmesi yok.
+                var pl = new Polyline();
+                WriteStadium(pl, bal, rot, textW, height);
+                pl.Layer = LayerPozBalon;
+                if (fill != null)
+                    pl.Color = fill;
+                ms.AppendEntity(pl);
+                tr.AddNewlyCreatedDBObject(pl, true);
+                TagMetrajPoz(pl, handle);
+
+                AlignPozBalloon(ent, pl, null, db);
+                double textH = height;
+                try
+                {
+                    if (cells != null && BaMetrajPozCell.TryFind(ent, cells, out Extents3d cell))
+                    {
+                        pl.TransformBy(BaMetrajPozCell.Fit(pl, cell, out double factor));
+                        textH = height * factor;
+                    }
+                }
+                catch { }
+                if (fill != null)
+                    FillPozBalloonFast(tr, db, ms, pl, fill, handle);
+
+                var tx = new DBText
+                {
+                    TextString = num,
+                    Height = textH,
+                    Rotation = rot,
+                    Layer = LayerPozNo,
+                    TextStyleId = style,
+                    HorizontalMode = TextHorizontalMode.TextCenter,
+                    VerticalMode = TextVerticalMode.TextVerticalMid,
+                    AlignmentPoint = bal,
+                    Position = bal
+                };
+                if (fill != null)
+                    tx.Color = TextOnFill(fill);
+                ms.AppendEntity(tx);
+                tr.AddNewlyCreatedDBObject(tx, true);
+                CenterFastPozNumber(tx, db, Center(pl));
+                TagMetrajPoz(tx, handle);
+            }
+        }
+
+        /// <summary>Antet penceresindeki IC ANTET çizgileri (transaction dışında pencere seçimi).</summary>
+        private static List<ObjectId> SelectIcAntetIdsInFrame(Editor ed, AntetFrame frame)
+        {
+            var ids = new List<ObjectId>();
+            var p1 = new Point3d(frame.MinX - AntetAcilimPadXCm, frame.MinY - AntetAcilimPadBelowCm, 0);
+            var p2 = new Point3d(frame.MaxX + AntetAcilimPadXCm, frame.MaxY + AntetAcilimPadAboveCm, 0);
+            var filter = new SelectionFilter(new[]
+            {
+                new TypedValue((int)DxfCode.Operator, "<AND"),
+                new TypedValue((int)DxfCode.Operator, "<OR"),
+                new TypedValue((int)DxfCode.Start, "LINE"),
+                new TypedValue((int)DxfCode.Start, "LWPOLYLINE"),
+                new TypedValue((int)DxfCode.Operator, "OR>"),
+                new TypedValue((int)DxfCode.LayerName, "IC ANTET (BEYKENT)"),
+                new TypedValue((int)DxfCode.Operator, "AND>")
+            });
+            PromptSelectionResult win;
+            try { win = ed.SelectCrossingWindow(p1, p2, filter); }
+            catch { return ids; }
+            if (win.Status != PromptStatus.OK || win.Value == null) return ids;
+            foreach (SelectedObject so in win.Value)
+                if (so != null) ids.Add(so.ObjectId);
+            return ids;
+        }
+
+        private static void StampHasirPozFast(Transaction tr, Database db, List<HasirHit> hits, List<HasirPoz> pozlar)
+        {
+            if (hits == null || pozlar == null || hits.Count == 0) return;
+            var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
+            var ms = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
+            EnsureLayer(tr, db, LayerPozNo, 2);
+            EnsureLayer(tr, db, LayerPozBalon, 4);
+            EnsureRegApp(tr, db);
+            bool renkli = DonatiMetrajSettings.Renkli;
+            if (renkli)
+                EnsureTaramaLayer(tr, db);
+            ObjectId style = BaDimensionStyles.EnsureYazi(tr, db);
+            var noOf = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (HasirPoz p in pozlar)
+                noOf[p.Tip + "|" + p.Wcm.ToString(CultureInfo.InvariantCulture) + "|" + p.Hcm.ToString(CultureInfo.InvariantCulture)] = p.No;
+
+            foreach (HasirHit h in hits)
+            {
+                if (h == null || h.Id.IsNull) continue;
+                string key = h.Tip + "|" + h.Wcm.ToString(CultureInfo.InvariantCulture) + "|" + h.Hcm.ToString(CultureInfo.InvariantCulture);
+                if (!noOf.TryGetValue(key, out int no)) continue;
+                var ent = tr.GetObject(h.Id, OpenMode.ForRead) as Entity;
+                if (ent == null || ent.IsErased) continue;
+                if (!TryFastLabelPose(ent, out Point3d anchor, out double rot, out double height))
+                    continue;
+                if (height < 1e-6) height = 5;
+
+                string num = no.ToString(CultureInfo.InvariantCulture);
+                double textW = Math.Max(height * 0.7, num.Length * height * 0.55);
+                var dir = new Vector3d(Math.Cos(rot), Math.Sin(rot), 0);
+                Point3d bal = anchor - dir * (PozGap + StadiumWidth(textW, height) * 0.5);
+                string handle = ent.Handle.ToString();
+
+                Color fill = renkli ? PastelForHasir(h.Tip) : null;
+
+                var pl = new Polyline();
+                WriteStadium(pl, bal, rot, textW, height);
+                pl.Layer = LayerPozBalon;
+                if (fill != null)
+                    pl.Color = fill;
+                ms.AppendEntity(pl);
+                tr.AddNewlyCreatedDBObject(pl, true);
+                TagMetrajPoz(pl, handle);
+
+                AlignPozBalloon(ent, pl, null, db);
+                if (fill != null)
+                    FillPozBalloonFast(tr, db, ms, pl, fill, handle);
+
+                var tx = new DBText
+                {
+                    TextString = num,
+                    Height = height,
+                    Rotation = rot,
+                    Layer = LayerPozNo,
+                    TextStyleId = style,
+                    HorizontalMode = TextHorizontalMode.TextCenter,
+                    VerticalMode = TextVerticalMode.TextVerticalMid,
+                    AlignmentPoint = bal,
+                    Position = bal
+                };
+                if (fill != null)
+                    tx.Color = TextOnFill(fill);
+                ms.AppendEntity(tx);
+                tr.AddNewlyCreatedDBObject(tx, true);
+                CenterFastPozNumber(tx, db, Center(pl));
+                TagMetrajPoz(tx, handle);
+            }
+        }
+
+        private static void CenterFastPozNumber(DBText text, Database db, Point3d center)
+        {
+            try
+            {
+                text.AdjustAlignment(db);
+                if (!TryPozLocalBounds(text, text.Rotation, out Extents3d e)) return;
+                var mid = new Point3d(
+                    0.5 * (e.MinPoint.X + e.MaxPoint.X),
+                    0.5 * (e.MinPoint.Y + e.MaxPoint.Y), 0);
+                mid = mid.TransformBy(Matrix3d.Rotation(text.Rotation, Vector3d.ZAxis, Point3d.Origin));
+                text.TransformBy(Matrix3d.Displacement(center - mid));
+            }
+            catch { }
+        }
+
+        // Dünya eksenine paralel sınırın izdüşümü eğik yazıda gerçek sol kenar
+        // değildir. Yerel doğrultuda ölç: balonun sağ kenarı ile yazının sol
+        // kenarı arasında tam PozGap, iki görsel orta hat arasında sıfır fark.
+        private static void AlignPozBalloon(Entity label, Polyline balloon, DBText number, Database db)
+        {
+            double rot = label is DBText text ? text.Rotation : ((MText)label).Rotation;
+            if (!TryPozLocalBounds(label, rot, out Extents3d le) ||
+                !TryPozLocalBounds(balloon, rot, out Extents3d be)) return;
+            double dy = (le.MinPoint.Y + le.MaxPoint.Y - be.MinPoint.Y - be.MaxPoint.Y) * 0.5;
+            var delta = new Vector3d(le.MinPoint.X - PozGap - be.MaxPoint.X, dy, 0)
+                .TransformBy(Matrix3d.Rotation(rot, Vector3d.ZAxis, Point3d.Origin));
+            var move = Matrix3d.Displacement(delta);
+            balloon.TransformBy(move);
+            if (number != null)
+            {
+                number.TransformBy(move);
+                CenterFastPozNumber(number, db, Center(balloon));
+            }
+        }
+
+        private static bool TryPozLocalBounds(Entity entity, double rotation, out Extents3d bounds)
+        {
+            bounds = default;
+            try
+            {
+                using (var local = (Entity)entity.Clone())
+                {
+                    local.TransformBy(Matrix3d.Rotation(-rotation, Vector3d.ZAxis, Point3d.Origin));
+                    bounds = local.GeometricExtents;
+                    return true;
+                }
+            }
+            catch { return false; }
+        }
+
+        private static bool TryFastLabelPose(Entity ent, out Point3d anchor, out double rot, out double height)
+        {
+            anchor = Point3d.Origin;
+            rot = 0;
+            height = 5;
+            if (ent is DBText dbt)
+            {
+                height = dbt.Height > 0.1 ? dbt.Height : 5;
+                rot = dbt.Rotation;
+            }
+            else if (ent is MText mt)
+            {
+                height = mt.TextHeight > 0.1 ? mt.TextHeight : 5;
+                rot = mt.Rotation;
+            }
+            else return false;
+
+            // Insertion/AlignmentPoint metnin görsel ortası değildir (BaseLeft,
+            // TopCenter, MText attachment vb.). Yalnız seçilen etiketin sınırını
+            // oku; balonu metnin sol kenarında, aynı görsel merkez hattına koy.
+            try
+            {
+                Extents3d e = ent.GeometricExtents;
+                var dir = new Vector3d(Math.Cos(rot), Math.Sin(rot), 0);
+                var mid = new Point3d(
+                    0.5 * (e.MinPoint.X + e.MaxPoint.X),
+                    0.5 * (e.MinPoint.Y + e.MaxPoint.Y), 0);
+                ProjRange(e, dir, out double lmin, out _);
+                double midProj = mid.X * dir.X + mid.Y * dir.Y;
+                anchor = mid - dir * (midProj - lmin);
+                return true;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>Antet penceresindeki eski metraj poz marklarını siler (tam model taraması yok).</summary>
+        private static void ErasePozMarksInFrame(Editor ed, Document doc, AntetFrame frame)
+        {
+            if (ed == null || doc == null || frame == null) return;
+            var p1 = new Point3d(frame.MinX - AntetAcilimPadXCm, frame.MinY - AntetAcilimPadBelowCm, 0);
+            var p2 = new Point3d(frame.MaxX + AntetAcilimPadXCm, frame.MaxY + AntetAcilimPadAboveCm, 0);
+            var filter = new SelectionFilter(new[]
+            {
+                new TypedValue((int)DxfCode.Operator, "<AND"),
+                new TypedValue((int)DxfCode.Operator, "<OR"),
+                new TypedValue((int)DxfCode.Start, "TEXT"),
+                new TypedValue((int)DxfCode.Start, "LWPOLYLINE"),
+                new TypedValue((int)DxfCode.Start, "HATCH"),
+                new TypedValue((int)DxfCode.Operator, "OR>"),
+                new TypedValue((int)DxfCode.Operator, "<OR"),
+                new TypedValue((int)DxfCode.LayerName, "POZ NO (BEYKENT)"),
+                new TypedValue((int)DxfCode.LayerName, "POZ BALON (BEYKENT)"),
+                new TypedValue((int)DxfCode.LayerName, "POZ TARAMA (BEYKENT)"),
+                new TypedValue((int)DxfCode.LayerName, "HPOZ NO (BEYKENT)"),
+                new TypedValue((int)DxfCode.LayerName, "HPOZ BALON (BEYKENT)"),
+                new TypedValue((int)DxfCode.Operator, "OR>"),
+                new TypedValue((int)DxfCode.Operator, "AND>")
+            });
+            PromptSelectionResult win;
+            try { win = ed.SelectCrossingWindow(p1, p2, filter); }
+            catch { return; }
+            if (win.Status != PromptStatus.OK || win.Value == null || win.Value.Count == 0)
+                return;
+
+            using (doc.LockDocument())
+            using (var tr = doc.Database.TransactionManager.StartTransaction())
+            {
+                EnsureRegApp(tr, doc.Database);
+                foreach (SelectedObject so in win.Value)
+                {
+                    if (so == null) continue;
+                    var ent = tr.GetObject(so.ObjectId, OpenMode.ForWrite, false) as Entity;
+                    if (ent == null || ent.IsErased) continue;
+                    // Yalnız bu komutun bastığı marklar (XData) veya rakam POZ NO.
+                    if (MetrajPozHandle(ent) != null)
+                    {
+                        Erase(ent);
+                        continue;
+                    }
+                    if (ent is DBText tx && LayerHas(tx.Layer, "POZ NO"))
+                    {
+                        string s = (tx.TextString ?? "").Trim();
+                        if (Regex.IsMatch(s, @"^\d{1,4}$"))
+                            Erase(tx);
+                    }
+                }
+                tr.Commit();
+            }
+        }
+
         private static void StampLabels(Transaction tr, Database db, List<Hit> hits, List<Poz> pozlar)
         {
             if (hits == null || hits.Count == 0 || _balLocal == null || _balLocal.Count < 3)
@@ -2661,6 +3157,8 @@ namespace ST4Yardimci
             EnsureLayer(tr, db, LayerPozNo, 2);
             EnsureLayer(tr, db, LayerPozBalon, 4);
             EnsureRegApp(tr, db);
+            if (DonatiMetrajSettings.Renkli) EnsureTaramaLayer(tr, db);
+            var drawOrder = new ObjectIdCollection();
             var noOf = new Dictionary<long, int>();
             foreach (Poz p in pozlar)
                 noOf[p.Cap * 100000L + p.BoyCm] = p.No;
@@ -2701,7 +3199,8 @@ namespace ST4Yardimci
                     AlignmentPoint = bal,
                     Position = bal
                 };
-                if (!style.IsNull) tx.TextStyleId = style;
+                if (style.IsNull) style = BaDimensionStyles.EnsureYazi(tr, db);
+                tx.TextStyleId = style;
                 Color fill = null;
                 if (DonatiMetrajSettings.Renkli)
                 {
@@ -2739,29 +3238,21 @@ namespace ST4Yardimci
                     }
                     else
                     {
-                        ProjRange(ent.GeometricExtents, dir, out lmin, out _);
-                        ProjRange(pl.GeometricExtents, dir, out _, out double bmax);
-                        double shift = (lmin - PozGap) - bmax;
-                        if (Math.Abs(shift) > 0.05)
-                        {
-                            var move = Matrix3d.Displacement(dir * shift);
-                            pl.TransformBy(move);
-                            tx.TransformBy(move);
-                        }
+                        AlignPozBalloon(ent, pl, tx, db);
                     }
                 }
                 catch { }
 
                 if (fill != null)
-                    FillPozBalloon(tr, db, ms, pl, tx, fill, ent.Handle.ToString());
+                    FillPozBalloon(tr, db, ms, pl, tx, fill, ent.Handle.ToString(), drawOrder);
             }
+            ApplyPozDrawOrder(tr, ms, drawOrder);
         }
 
-        private static void FillPozBalloon(Transaction tr, Database db, BlockTableRecord ms, Polyline pl, DBText tx, Color fill, string handle)
+        private static void FillPozBalloon(Transaction tr, Database db, BlockTableRecord ms, Polyline pl, DBText tx, Color fill, string handle, ObjectIdCollection drawOrder)
         {
             try
             {
-                EnsureTaramaLayer(tr, db);
                 var hatch = new Hatch();
                 hatch.SetDatabaseDefaults(db);
                 hatch.Layer = LayerPozTarama;
@@ -2775,9 +3266,44 @@ namespace ST4Yardimci
                 hatch.EvaluateHatch(true);
                 TagMetrajPoz(hatch, handle);
 
+                drawOrder.Add(hatch.ObjectId);
+                drawOrder.Add(pl.ObjectId);
+                drawOrder.Add(tx.ObjectId);
+            }
+            catch { }
+        }
+
+        private static void ApplyPozDrawOrder(Transaction tr, BlockTableRecord ms, ObjectIdCollection ids)
+        {
+            if (ids.Count == 0) return;
+            try
+            {
+                // Aynı tarama → kontur → rakam sırası; çizimin diğer sıralama
+                // yuvalarını taşımadan bütün yeni markları tek seferde sırala.
                 var order = (DrawOrderTable)tr.GetObject(ms.DrawOrderTableId, OpenMode.ForWrite);
-                order.MoveAbove(new ObjectIdCollection { tx.ObjectId }, hatch.ObjectId);
-                order.MoveBelow(new ObjectIdCollection { hatch.ObjectId }, pl.ObjectId);
+                order.SetRelativeDrawOrder(ids);
+            }
+            catch { }
+        }
+
+        /// <summary>Antet: SOLID tarama; DrawOrder yok (numara hatch’ten sonra eklenir).</summary>
+        private static void FillPozBalloonFast(Transaction tr, Database db, BlockTableRecord ms, Polyline pl, Color fill, string handle)
+        {
+            if (pl == null || fill == null) return;
+            try
+            {
+                var hatch = new Hatch();
+                hatch.SetDatabaseDefaults(db);
+                hatch.Layer = LayerPozTarama;
+                hatch.Color = fill;
+                ms.AppendEntity(hatch);
+                tr.AddNewlyCreatedDBObject(hatch, true);
+                hatch.SetHatchPattern(HatchPatternType.PreDefined, "SOLID");
+                hatch.Associative = true;
+                hatch.HatchStyle = HatchStyle.Normal;
+                hatch.AppendLoop(HatchLoopTypes.Outermost, new ObjectIdCollection { pl.ObjectId });
+                hatch.EvaluateHatch(true);
+                TagMetrajPoz(hatch, handle);
             }
             catch { }
         }
@@ -2844,21 +3370,9 @@ namespace ST4Yardimci
 
         private static void EnsureTaramaLayer(Transaction tr, Database db)
         {
+            BeykentKatmanYukle.Ensure(tr, db, LayerPozTarama, 8, LineWeight.LineWeight020);
             var lt = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
-            if (!lt.Has(LayerPozTarama))
-            {
-                lt.UpgradeOpen();
-                var rec = new LayerTableRecord
-                {
-                    Name = LayerPozTarama,
-                    Color = Color.FromColorIndex(ColorMethod.ByAci, 8),
-                    LineWeight = LineWeight.LineWeight020,
-                    IsPlottable = false
-                };
-                lt.Add(rec);
-                tr.AddNewlyCreatedDBObject(rec, true);
-                return;
-            }
+            if (!lt.Has(LayerPozTarama)) return;
             var existing = (LayerTableRecord)tr.GetObject(lt[LayerPozTarama], OpenMode.ForRead);
             if (existing.IsPlottable)
             {
@@ -2912,17 +3426,7 @@ namespace ST4Yardimci
 
         private static void EnsureLayer(Transaction tr, Database db, string name, short aci)
         {
-            var lt = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
-            if (lt.Has(name)) return;
-            lt.UpgradeOpen();
-            var rec = new LayerTableRecord
-            {
-                Name = name,
-                Color = Color.FromColorIndex(ColorMethod.ByAci, aci),
-                LineWeight = LineWeight.LineWeight020
-            };
-            lt.Add(rec);
-            tr.AddNewlyCreatedDBObject(rec, true);
+            BeykentKatmanYukle.Ensure(tr, db, name, aci, LineWeight.LineWeight020);
         }
 
         private static void ClearOldMarks(Transaction tr, Database db, List<Hit> hits)
@@ -2936,6 +3440,13 @@ namespace ST4Yardimci
                 var ent = tr.GetObject(h.Id, OpenMode.ForRead, false) as Entity;
                 if (ent == null || ent.IsErased) continue;
                 handles.Add(ent.Handle.ToString());
+                if (TryTextAnchor(ent, out double ax, out double ay))
+                {
+                    pads.Add(new Extents3d(
+                        new Point3d(ax - 40, ay - 40, 0),
+                        new Point3d(ax + 40, ay + 40, 0)));
+                    continue;
+                }
                 try
                 {
                     Extents3d e = ent.GeometricExtents;
@@ -2950,9 +3461,15 @@ namespace ST4Yardimci
             var ms = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForRead);
             var kill = new List<Entity>();
             var killedPts = new List<Point3d>();
+            RXClass rxText = RXClass.GetClass(typeof(DBText));
+            RXClass rxPl = RXClass.GetClass(typeof(Polyline));
+            RXClass rxHatch = RXClass.GetClass(typeof(Hatch));
+            // Transaction içinde SelectAll yok. Yalnız poz mark sınıfları.
             foreach (ObjectId id in ms)
             {
                 if (!id.IsValid || id.IsErased) continue;
+                RXClass rx = id.ObjectClass;
+                if (rx != rxText && rx != rxPl && rx != rxHatch) continue;
                 var ent = tr.GetObject(id, OpenMode.ForRead) as Entity;
                 if (ent == null || ent.IsErased) continue;
                 if (handles.Contains(ent.Handle.ToString())) continue;
@@ -2963,20 +3480,24 @@ namespace ST4Yardimci
                         kill.Add(ent);
                     continue;
                 }
-                if (!(ent is DBText tx)) continue;
-                if (!LayerHas(tx.Layer, "POZ NO")) continue;
-                string s = (tx.TextString ?? "").Trim();
-                if (!Regex.IsMatch(s, @"^\d{1,4}$")) continue;
-                Extents3d te;
-                try { te = tx.GeometricExtents; }
-                catch { continue; }
-                if (!HitsPad(te, pads)) continue;
-                kill.Add(tx);
-                killedPts.Add(Anchor(tx));
+                if (ent is DBText tx)
+                {
+                    if (!LayerHas(tx.Layer, "POZ NO")) continue;
+                    string s = (tx.TextString ?? "").Trim();
+                    if (!Regex.IsMatch(s, @"^\d{1,4}$")) continue;
+                    Point3d a = Anchor(tx);
+                    var te = new Extents3d(
+                        new Point3d(a.X - 8, a.Y - 8, 0),
+                        new Point3d(a.X + 8, a.Y + 8, 0));
+                    if (!HitsPad(te, pads)) continue;
+                    kill.Add(tx);
+                    killedPts.Add(a);
+                }
             }
             foreach (ObjectId id in ms)
             {
                 if (!id.IsValid || id.IsErased) continue;
+                if (id.ObjectClass != rxPl) continue;
                 var ent = tr.GetObject(id, OpenMode.ForRead) as Entity;
                 if (!(ent is Polyline pl) || pl.IsErased) continue;
                 if (MetrajPozHandle(pl) != null) continue;
@@ -3055,7 +3576,8 @@ namespace ST4Yardimci
                 AlignmentPoint = Point3d.Origin,
                 Position = Point3d.Origin
             };
-            if (!style.IsNull) tx.TextStyleId = style;
+            if (style.IsNull) style = BaDimensionStyles.EnsureYazi(tr, db);
+            tx.TextStyleId = style;
             ms.AppendEntity(tx);
             tr.AddNewlyCreatedDBObject(tx, true);
             try { tx.AdjustAlignment(db); } catch { }

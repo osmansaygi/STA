@@ -11,7 +11,27 @@
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <Deterministic>false</Deterministic>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <!-- net48 çıktısı 2027 ile aynı seçim klasöründe bulunmasın. Testler kökü ayırabilir. -->
+    <NetloadRootDir Condition="'$(NetloadRootDir)' == ''">$(MSBuildProjectDirectory)\..\NETLOAD</NetloadRootDir>
   </PropertyGroup>
+  <!-- AutoCAD 2027 kendi .NET 10 API'sini kullanır; net48 derlemesi 2027'de Transaction.Commit sırasında
+       yığın bozulmasıyla göçer (0xc0000005, il_objectAppended). 2027 derlemesi ayrı ve NETLOAD kökünü değiştirmez. -->
+  <PropertyGroup Condition="'$(AutoCAD2027Build)' == 'true'">
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <UseWPF>true</UseWPF>
+    <BaseAssemblyName>ST4_Plan_ID_Ciz_2027</BaseAssemblyName>
+    <AssemblyName>$(BaseAssemblyName)_$([System.DateTime]::Now.ToString("yyyyMMdd_HHmmss"))</AssemblyName>
+    <AutoCADInstallDir>C:\Program Files\Autodesk\AutoCAD 2027</AutoCADInstallDir>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+    <DefineConstants>$(DefineConstants);AUTOCAD2027</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(AutoCAD2027Build)' == 'true'">
+    <Reference Include="AdWindows">
+      <HintPath>$(AutoCADInstallDir)\AdWindows.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
   <PropertyGroup>
     <AutoCADInstallDir Condition="'$(AutoCADInstallDir)' == '' and Exists('C:\Program Files\Autodesk\AutoCAD 2026\acdbmgd.dll')">C:\Program Files\Autodesk\AutoCAD 2026</AutoCADInstallDir>
     <AutoCADInstallDir Condition="'$(AutoCADInstallDir)' == '' and Exists('C:\Program Files\Autodesk\AutoCAD 2025\acdbmgd.dll')">C:\Program Files\Autodesk\AutoCAD 2025</AutoCADInstallDir>
@@ -30,9 +50,22 @@
     </PackageReference>
   </ItemGroup>
 
-  <ItemGroup>
+  <ItemGroup Condition="'$(AutoCAD2027Build)' != 'true'">
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Drawing" />
+    <Reference Include="System.Runtime.Serialization" />
+  </ItemGroup>
+  <!-- Yardımcı ile ortak katman / ölçü / yazı stili ayarları (%APPDATA%\BEYKENT\katman-stil.json). -->
+  <ItemGroup>
+    <Compile Include="..\Ortak\BeykentStil\*.cs" Link="Ortak\%(Filename)%(Extension)" />
+    <Compile Include="..\Ortak\Monolit\*.cs" Link="Ortak\Monolit\%(Filename)%(Extension)" />
+  </ItemGroup>
+  <!-- SUREKLITEMELACILIMLARI antet üstü temel hatılı detayı: Yardımcı TEMELHATILI çizicisi aynen (ayar köprüsü YardimciTemelHatiliBaglanti.cs). -->
+  <ItemGroup>
+    <Compile Include="..\ST4_Yardimci\TemelHatiliRunner.cs" Link="Yardimci\TemelHatiliRunner.cs" />
+    <Compile Include="..\ST4_Yardimci\BaDimensionStyles.cs" Link="Yardimci\BaDimensionStyles.cs" />
+    <Compile Include="..\ST4_Yardimci\BaIni.cs" Link="Yardimci\BaIni.cs" />
+    <Compile Include="..\ST4_Yardimci\OtoOlcuDimFactory.cs" Link="Yardimci\OtoOlcuDimFactory.cs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -102,15 +135,15 @@
     <Message Importance="high" Text="ST4_Plan_ID_Ciz DLL YUKLEME ADRESI:" />
     <Message Importance="high" Text="  Klasor: $(MSBuildProjectDirectory)\$(OutputPath)" />
     <Message Importance="high" Text="  Dosya: $(AssemblyName).dll (her derlemede farkli tarih/saat)" />
-    <Message Importance="high" Text="  KISAYOL: $(MSBuildProjectDirectory)\..\NETLOAD\" />
-    <Message Importance="high" Text="  AutoCAD: NETLOAD → NETLOAD klasoru → $(AssemblyName).dll" />
+    <Message Importance="high" Condition="'$(AutoCAD2027Build)' != 'true'" Text="  net48: $(NetloadRootDir)\Legacy-net48\$(AssemblyName).dll — AutoCAD 2027'de YUKLEMEYIN." />
+    <Message Importance="high" Condition="'$(AutoCAD2027Build)' == 'true'" Text="  AutoCAD 2027: $(TargetPath) (bagimliliklariyla; otomatik dagitim kapali)." />
     <Message Importance="high" Text="========================================" />
   </Target>
 
-  <!-- Ortak NETLOAD klasorune kopyala (kolay secim). -->
-  <Target Name="CopyToNetloadFolder" AfterTargets="CleanupOutputFolder">
+  <!-- Legacy DLL yalnız sürüme özel klasöre; NETLOAD kökünden yanlış 2027 yüklemesini önler. -->
+  <Target Name="CopyToNetloadFolder" AfterTargets="CleanupOutputFolder" Condition="'$(AutoCAD2027Build)' != 'true'">
     <PropertyGroup>
-      <_NetloadDir>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\NETLOAD'))</_NetloadDir>
+      <_NetloadDir>$([System.IO.Path]::GetFullPath('$(NetloadRootDir)\Legacy-net48'))</_NetloadDir>
     </PropertyGroup>
     <MakeDir Directories="$(_NetloadDir)" />
     <ItemGroup>
@@ -128,11 +161,11 @@
   </Target>
   <Target Name="CopyYatayKot" AfterTargets="Build">
     <PropertyGroup>
-      <_NetloadDirKot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\NETLOAD'))</_NetloadDirKot>
+      <_NetloadDirKot>$([System.IO.Path]::GetFullPath('$(NetloadRootDir)\Legacy-net48'))</_NetloadDirKot>
     </PropertyGroup>
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\YATAY_KOT.dxf" DestinationFolder="$(OutputPath)" Condition="Exists('$(MSBuildProjectDirectory)\..\YATAY_KOT.dxf')" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\YATAY_KOT.dwg" DestinationFolder="$(OutputPath)" Condition="Exists('$(MSBuildProjectDirectory)\..\YATAY_KOT.dwg')" />
-    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\YATAY_KOT.dwg" DestinationFolder="$(_NetloadDirKot)" Condition="Exists('$(MSBuildProjectDirectory)\..\YATAY_KOT.dwg')" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\YATAY_KOT.dwg" DestinationFolder="$(_NetloadDirKot)" Condition="'$(AutoCAD2027Build)' != 'true' and Exists('$(MSBuildProjectDirectory)\..\YATAY_KOT.dwg')" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\iskele_plan.lsp" DestinationFolder="$(OutputPath)" Condition="Exists('$(MSBuildProjectDirectory)\..\iskele_plan.lsp')" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ISKELE_KESIT.dxf" DestinationFolder="$(OutputPath)" Condition="Exists('$(MSBuildProjectDirectory)\..\ISKELE_KESIT.dxf')" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ISKELE_KESIT.dwg" DestinationFolder="$(OutputPath)" Condition="Exists('$(MSBuildProjectDirectory)\..\ISKELE_KESIT.dwg')" />

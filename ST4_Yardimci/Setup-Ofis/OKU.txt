@@ -22,3 +22,6 @@ AutoCAD’in düşmemesi için:
 - Eski yazısız şerit (BAUST) açılışta kurulmaz. COM ile şerit silinmez.
 
 AutoCAD açılınca komut satırında “BETONARME TOOL yuklendi” yazmalı.
+Komutlar Home (Giriş) sekmesinde: Ölçü / Detay / Donatı / Genel Düzenleme
+grupları. Eski BETONARME TOOL yan paneli açılmaz. Gruplar görünmezse
+komut satırına BARIBBON yazın; kaldırmak için BARIBBONKAPAT.

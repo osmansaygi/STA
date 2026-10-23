@@ -1,0 +1,27 @@
+Edit/reference role: attached Monolit concept board is STYLE REFERENCE ONLY. Generate a production sprite atlas of exactly TWENTY individual Monolit style structural-engineering utility icons with actual transparent alpha background. No title, no text, no numerals, no captions, no panels, no backdrop, no grid lines, no floor, no contact shadows outside silhouettes. Image rectangular 4 columns by 5 rows in equal square cells, all twenty cells identical size, total image ratio 4:5. Icons occupy central 78 percent of each cell, with clear transparent gutters. Every row has exactly four icons. Identical camera angle, optical size and scale, premium isometric architectural model style. Warm ivory concrete, saturated cobalt blue bent steel reinforcement, safety orange dimension arrows and highlight bars. The reference's sculptural quality and material appearance but much simpler, clean bold silhouettes for REAL 28/32 pixel toolbar icons; no tiny ribbing/textures, no excessive rods, no microdetails. Each icon must be independent, fully inside its own cell.
+ROW1 left to right:
+1 auto dimension: ivory short beam, cobalt dimension line, two orange end ticks, NO number;
+2 plan dimension: compact ivory L-shaped plan walls and orange/cobalt orthogonal measurement lines, NO number;
+3 stair: ivory five-step stair, cobalt side rail;
+4 slab reinforcement: ivory concrete square slab with three blue and three orange crossing steel rods.
+ROW2:
+5 automatic reinforcement: simple ivory rectangle concrete frame with cobalt rectangular rebar hoop and small orange lightning bolt on upper right;
+6 rebar support chair: ONLY bent cobalt steel chair shape with orange short horizontal top, open legs, no furniture seat;
+7 wire mesh: detached four-by-four blue steel mesh with two orange bars, no concrete;
+8 additional raft reinforcement: thick ivory raft slab with two short raised orange reinforcing bars over longer blue lower bars.
+ROW3:
+9 foundation tie beam: long low ivory beam joining two square ivory footings, cobalt bar in beam;
+10 parapet section: ivory upright wall joined to short slab at its bottom, orange bent coping at top, cobalt rebar;
+11 foundation pit: three-sided low ivory excavation frame, deep blue hollow centre and a small orange down arrow;
+12 footing section: ivory T-shaped footing and vertical column, three blue bars and one orange horizontal tie.
+ROW4:
+13 basement lightwell: U-shaped open-top ivory walls with cobalt railing on ONE side, no front face;
+14 wall opening: a single upright ivory wall with a rectangular hole fully inside it, two blue vertical bars and orange lintel;
+15 rebar length: one thick cobalt hooked bar with orange dimension line below, NO number;
+16 rebar quantity takeoff: warm ivory paper sheet with three cobalt horizontal rows, small orange bent bar on sheet, no writing.
+ROW5:
+17 rebar count: FOUR short cobalt upright rods on an ivory base, orange diagonal tally stroke crossing rods;
+18 rebar leader: three cobalt horizontal bars with orange bent leader arrow pointing to middle bar, very clear arrowhead;
+19 elevation: cobalt inverted triangle on ivory datum slab, orange vertical double-ended arrow beside it, NO number;
+20 load layers: three stacked thin ivory/cobalt architectural plan tiles offset vertically, orange downward arrow over top tile.
+Strict requirements: twenty icons exactly, no duplicates, no missing icons, four columns five rows, true transparency, no visible checkerboard baked in. These are app assets not an illustration board.

@@ -864,42 +864,12 @@ namespace ST4Yardimci
 
         private static ObjectId GetOrCreateTextStyle(Transaction tr, Database db)
         {
-            try
-            {
-                var tst = (TextStyleTable)tr.GetObject(db.TextStyleTableId, OpenMode.ForRead);
-                if (tst.Has(TextStyleYazi))
-                    return tst[TextStyleYazi];
-                tst.UpgradeOpen();
-                var rec = new TextStyleTableRecord
-                {
-                    Name = TextStyleYazi,
-                    FileName = "txt.shx",
-                    TextSize = 0
-                };
-                ObjectId id = tst.Add(rec);
-                tr.AddNewlyCreatedDBObject(rec, true);
-                return id;
-            }
-            catch
-            {
-                return ObjectId.Null;
-            }
+            return BaDimensionStyles.EnsureYazi(tr, db);
         }
 
         private static string EnsureLayer(Transaction tr, Database db, string name, short aci, LineWeight lw)
         {
-            var lt = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
-            if (lt.Has(name))
-                return name;
-            lt.UpgradeOpen();
-            var rec = new LayerTableRecord
-            {
-                Name = name,
-                Color = Color.FromColorIndex(ColorMethod.ByAci, aci),
-                LineWeight = lw
-            };
-            lt.Add(rec);
-            tr.AddNewlyCreatedDBObject(rec, true);
+            BeykentKatmanYukle.Ensure(tr, db, name, aci, lw);
             return name;
         }
 

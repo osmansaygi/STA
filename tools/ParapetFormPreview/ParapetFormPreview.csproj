@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Windows.Forms" />
+    <Compile Include="../../ST4_Yardimci/ParapetForm.cs" Link="ParapetForm.cs" />
+    <Compile Include="../../ST4_Yardimci/ParapetSettings.cs" Link="ParapetSettings.cs" />
+    <Compile Include="../../ST4_Yardimci/AcadPaletteTheme.cs" Link="AcadPaletteTheme.cs" />
+    <Compile Include="../../ST4_Yardimci/YardimciUi.cs" Link="YardimciUi.cs" />
+  </ItemGroup>
+</Project>

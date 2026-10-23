@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <LangVersion>latest</LangVersion>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <NuGetAudit>false</NuGetAudit>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Runtime.Serialization" />
+    <Compile Include="../../Ortak/Monolit/MonolitForm.cs" />
+    <Compile Include="../../Ortak/Monolit/CompactLayout.cs" />
+    <Compile Include="../../Ortak/Monolit/StandardFormTheme.cs" />
+    <Compile Include="../../ST4_Yardimci/AcadPaletteTheme.cs" />
+    <Compile Include="../../ST4_Plan_ID_Ciz/AcadPaletteTheme.cs" />
+    <Compile Include="generated/*.cs" />
+    <Compile Include="Smoke.cs" />
+    <Compile Include="HostStubs.cs" />
+  </ItemGroup>
+</Project>

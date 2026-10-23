@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
 using NetTopologySuite.Geometries;
+using NetTopologySuite.Operation.OverlayNG;
 using NetTopologySuite.Operation.Polygonize;
 using NetTopologySuite.Operation.Union;
 
@@ -123,7 +124,7 @@ namespace ST4Yardimci
             if (lines.Count == 0) return faces;
             try
             {
-                Geometry noded = UnaryUnionOp.Union(lines);
+                Geometry noded = NodeLinesRobust(lines, gf);
                 if (noded == null || noded.IsEmpty) return faces;
                 var polygonizer = new Polygonizer();
                 polygonizer.Add(noded);
@@ -482,10 +483,26 @@ namespace ST4Yardimci
                 {
                     int n = Math.Min(chunk, bodies.Count - i);
                     var part = new List<Geometry>(n);
-                    for (int k = 0; k < n; k++) part.Add(bodies[i + k]);
-                    Geometry u = UnaryUnionOp.Union(part);
+                    for (int k = 0; k < n; k++)
+                    {
+                        Geometry prep = NtsOverlaySafe.PrepareForOverlay(bodies[i + k]);
+                        if (prep != null && !prep.IsEmpty) part.Add(prep);
+                    }
+                    if (part.Count == 0) continue;
+                    Geometry u = part.Count == 1 ? part[0] : UnaryUnionOp.Union(part);
                     if (u == null || u.IsEmpty) continue;
-                    acc = acc == null ? u : acc.Union(u);
+                    u = NtsOverlaySafe.FixIfInvalid(u);
+                    if (acc == null) acc = u;
+                    else
+                    {
+                        try { acc = NtsOverlaySafe.PrepareForOverlay(acc).Union(u); }
+                        catch
+                        {
+                            var aa = NtsOverlaySafe.ReducePrecision(acc, 10.0) ?? acc;
+                            var uu = NtsOverlaySafe.ReducePrecision(u, 10.0) ?? u;
+                            try { acc = aa.Union(uu); } catch { /* parça atlanır */ }
+                        }
+                    }
                 }
                 if (acc == null || acc.IsEmpty) return null;
                 return acc;
@@ -720,7 +737,9 @@ namespace ST4Yardimci
                 if (px < minX || px > maxX || py < minY || py > maxY) continue;
                 ClosestOnSeg(px, py, o, out double cx, out double cy, out double d2);
                 double d = Math.Sqrt(d2);
-                if (d <= 0.05) return false;
+                // Yalnız tam temas bağlı sayılır. Kolon yüzü 54179.9126 / kiriş ucu 54179.91 gibi
+                // kıl payı aralık poligonlayıcıda açık kalır; iki döşeme tek yüz olur.
+                if (d <= 1e-6) return false;
                 if (d <= tolCm)
                 {
                     double along = (cx - px) * dx + (cy - py) * dy;
@@ -770,7 +789,8 @@ namespace ST4Yardimci
             var lines = new List<Geometry>();
             foreach (RawSeg s in segs)
             {
-                if (Dist(s.X0, s.Y0, s.X1, s.Y1) < 0.4) continue;
+                // Kaçak kapatmanın böldüğü kısa parça atılırsa kapanan aralık yeniden açılır.
+                if (Dist(s.X0, s.Y0, s.X1, s.Y1) < 0.01) continue;
                 lines.Add(gf.CreateLineString(new[]
                 {
                     new Coordinate(s.X0, s.Y0),
@@ -780,7 +800,7 @@ namespace ST4Yardimci
             if (lines.Count == 0) return faces;
             try
             {
-                Geometry noded = UnaryUnionOp.Union(lines);
+                Geometry noded = NodeLinesRobust(lines, gf);
                 if (noded == null || noded.IsEmpty) return faces;
                 var polygonizer = new Polygonizer();
                 polygonizer.Add(noded);
@@ -792,6 +812,24 @@ namespace ST4Yardimci
             }
             catch { }
             return faces;
+        }
+
+        /// <summary>Düğümleme ızgarası 0.01 cm: kıl payı ayrık çakışık kenarlar tek kenar olur.</summary>
+        private const double NodingGridScale = 100.0;
+
+        /// <summary>
+        /// Çizgileri sabit hassasiyette (snap-rounding) düğümler; olmazsa kayan noktalı birleşim.
+        /// </summary>
+        private static Geometry NodeLinesRobust(List<Geometry> lines, GeometryFactory gf)
+        {
+            try
+            {
+                Geometry all = gf.BuildGeometry(lines);
+                Geometry noded = UnaryUnionNG.Union(all, new PrecisionModel(NodingGridScale));
+                if (noded != null && !noded.IsEmpty) return noded;
+            }
+            catch { }
+            return UnaryUnionOp.Union(lines);
         }
 
         private static void PullEndsOntoNearest(List<RawSeg> segs, double tolCm)
@@ -1249,6 +1287,38 @@ namespace ST4Yardimci
             return MemoryPolylineFromPolygon(face);
         }
 
+        /// <summary>
+        /// Açıklık poligonu başka döşemenin adını içeriyorsa atılır (kıl payı aralıktan sızan
+        /// BOUNDARY ya da birleşik yüz). Böylece komşu döşemenin GPR yazısı bu açıklığa geçmez.
+        /// </summary>
+        private static Polyline OwnSlabBoundary(Polyline pl, SpanRec sp, List<SlabTextRec> slabTexts)
+        {
+            if (pl == null) return null;
+            if (BoundaryHoldsOnlyOwnSlab(pl, sp, slabTexts)) return pl;
+            try { pl.Dispose(); } catch { }
+            return null;
+        }
+
+        /// <summary>İsimsiz açıklıkta iki farklı döşeme adı içeren poligon da reddedilir.</summary>
+        private static bool BoundaryHoldsOnlyOwnSlab(Polyline pl, SpanRec sp, List<SlabTextRec> slabTexts)
+        {
+            if (pl == null || slabTexts == null) return true;
+            string own = NormSlabKey(sp.Slab.Name);
+            string other = null;
+            foreach (SlabTextRec st in slabTexts)
+            {
+                Match m = RxSlabName.Match(st.Text ?? "");
+                if (!m.Success) continue;
+                string key = NormSlabKey(m.Groups[1].Value);
+                if (string.IsNullOrEmpty(key) || key == own) continue;
+                if (!PolyContains(pl, st.Pos)) continue;
+                if (!string.IsNullOrEmpty(own)) return false;
+                if (other == null) other = key;
+                else if (other != key) return false;
+            }
+            return true;
+        }
+
         private static bool TrySlabFace(
             AltDuzAlanModel model, Point3d seed, Vector3d n, Point3d toward, out Polygon face)
         {
@@ -1570,8 +1640,12 @@ namespace ST4Yardimci
 
         private static bool SpanMidInLabeledFace(AltDuzAlanModel model, Point3d mid, List<SlabTextRec> slabTexts)
         {
-            return TryFaceContaining(model, mid, out Polygon face)
-                && TryLabelInFace(model, face, slabTexts, out _);
+            if (TryFaceContaining(model, mid, out Polygon face)
+                && TryLabelInFace(model, face, slabTexts, out _))
+                return true;
+            // Faces düğümlenmeden poligonlanır, hücre çoğu zaman eksik. Düğümlü mesnet yüzüne bak.
+            Polygon bound = SmallestCovering(model?.BoundFaces, model, mid, Vector3d.XAxis, mid);
+            return bound != null && TryLabelInFace(model, bound, slabTexts, out _);
         }
 
         /// <summary>
@@ -2662,18 +2736,8 @@ namespace ST4Yardimci
             {
                 var poly = gf.CreatePolygon(coords.ToArray());
                 if (poly.IsValid && poly.Area > 1.0) return poly;
-                Geometry fixedG = poly.Buffer(0);
-                if (fixedG is Polygon fp && fp.Area > 1.0) return fp;
-                if (fixedG != null)
-                {
-                    Polygon best = null;
-                    for (int i = 0; i < fixedG.NumGeometries; i++)
-                    {
-                        if (fixedG.GetGeometryN(i) is Polygon p && (best == null || p.Area > best.Area))
-                            best = p;
-                    }
-                    return best;
-                }
+                Polygon fixedPoly = NtsOverlaySafe.FixToPolygon(poly);
+                if (fixedPoly != null && fixedPoly.Area > 1.0) return fixedPoly;
             }
             catch { }
             return null;

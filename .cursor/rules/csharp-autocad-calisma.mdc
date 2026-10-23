@@ -1,0 +1,15 @@
+---
+description: C# AutoCAD geliştirme, sürüm ayrımı ve doğrulama düzeni
+globs: ST4_Yardimci/**/*.cs,ST4_Plan_ID_Ciz/**/*.cs,ST4_Yardimci/*.csproj,ST4_Plan_ID_Ciz/*.csproj,tools/**/*.ps1
+alwaysApply: false
+---
+
+# C# / AutoCAD
+
+- `docs/csharp-autocad-calisma.md` içindeki çalışma ve doğrulama düzenini uygula.
+- Önce hedef AutoCAD sürümünü belirle; net48 ile AutoCAD 2027/net10 referans ve çıktılarını karıştırma.
+- Geçerli çizim davranışını koru; dar kapsamlı düzeltme yap. Native nesne sahipliğini, transaction ve komut bağlamını kontrol et.
+- Genel test komutu: `pwsh -NoProfile -File tools/Verify-Project.ps1`. Dar değişiklikte ilgili testi seç; gereksiz tekrar yapma.
+- Derleme ve analiz için araca açık `-BuildTarget` ver; ortak kaynakları koordinasyon kaydına al. Derleme hedefleri NETLOAD/bundle/payload klasörlerini güncelleyebilir.
+- Yeni hata için davranışı sınayan regresyon ekle; düşük etkili ayar/biçim değişikliği için uygulamayı kopyalayan test yazma.
+- Derlendi / DLL kopyalandı / AutoCAD'de denendi durumlarını ayrı bildir.

@@ -81,7 +81,8 @@ namespace ST4Yardimci
         public static void Shutdown()
         {
             // AutoCAD kapanırken PaletteSet.Dispose süreç düşürebilir — yalnız bırak.
-            try { SaveLayout(); } catch { }
+            // Native docking handles may already be destroyed during Terminate.
+            // Layout is saved by the normal movement/state events while the host is alive.
             _strip = null;
             _icons = null;
         }

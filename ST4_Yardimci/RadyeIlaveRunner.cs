@@ -12,12 +12,52 @@ using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
 namespace ST4Yardimci
 {
     /// <summary>
-    /// Radye İlave Donatı — TEMEL ILAVE X / Y ısı konturu.
-    /// X: yatay bant+çubuk (KUTU X). Y: düşey bant+çubuk (KUTU Y, yazı sol-üst).
+    /// Radye İlave Donatı — Rd. Temel Planı zarfı (KUTU X / Y) içindeki ø/aralık zarf yönünde atılır.
+    /// X: yatay çubuk (KUTU X). Y: düşey çubuk (KUTU Y). Isı konturu yalnız DrawRecorded yolunda.
     /// X/Y bant+çubuk; TEMEL çukuru banda girerse trim (paspayı) + serbest dilimlere tam boy.
     /// </summary>
     internal static class RadyeIlaveRunner
     {
+        internal sealed class RecordedJob
+        {
+            internal List<Point2d> Ring;
+            internal bool IsY, Upper;
+            internal int Diameter, Spacing;
+        }
+
+        // Programmatic entry for validated recorded As regions. The interactive
+        // contour selection, matching and cleanup path is unchanged.
+        internal static int DrawRecorded(Document doc, Database db, List<RecordedJob> inputs)
+        {
+            if (doc == null) throw new InvalidOperationException("Aktif çizim yok.");
+            RadyeTemelDonatiSettings.EnsureLoaded();
+            double oldHeight = RadyeTemelDonatiSettings.TemelYuksekligiCm;
+            bool oldUpper = RadyeTemelDonatiSettings.IlaveUst;
+            var obstacles = new List<(double x0, double x1, double y0, double y1)>();
+            var labels = new List<PendingDonatiLabel>();
+            int bands = 0;
+            try
+            {
+                RadyeTemelDonatiSettings.TemelYuksekligiCm = 40;
+                using (var tr = db.TransactionManager.StartTransaction()) { CollectVisualObstacles(tr, db, obstacles); tr.Commit(); }
+                foreach (var input in inputs)
+                {
+                    RadyeTemelDonatiSettings.IlaveUst = input.Upper;
+                    double x0 = double.MaxValue, x1 = double.MinValue, y0 = double.MaxValue, y1 = double.MinValue;
+                    foreach (Point2d p in input.Ring) { x0 = Math.Min(x0, p.X); x1 = Math.Max(x1, p.X); y0 = Math.Min(y0, p.Y); y1 = Math.Max(y1, p.Y); }
+                    var job = new HeatJob { Ring = input.Ring, Ext = new Extents3d(new Point3d(x0, y0, 0), new Point3d(x1, y1, 0)), IsY = input.IsY,
+                        Kutu = new KutuInfo { Found = true, CapMm = input.Diameter, AralikCm = input.Spacing,
+                            Label = "STA kayıtlı seçim: ø" + input.Diameter + "/" + input.Spacing } };
+                    int count = DrawForJob(doc, db, doc.Editor, job, obstacles, labels);
+                    if (count < 1) throw new InvalidOperationException("Otomatik ısı alanı için donatı bandı üretilemedi.");
+                    bands += count;
+                }
+                if (labels.Count > 0) FlushPendingDonatiLabels(doc, db, labels, obstacles);
+                return bands;
+            }
+            finally { RadyeTemelDonatiSettings.TemelYuksekligiCm = oldHeight; RadyeTemelDonatiSettings.IlaveUst = oldUpper; }
+        }
+
         private const string LayerHeatX = "TEMEL ILAVE X (BEYKENT)";
         private const string LayerHeatY = "TEMEL ILAVE Y (BEYKENT)";
         private const string LayerKutuX = "TEMEL ILAVE KUTU X (BEYKENT)";
@@ -30,7 +70,7 @@ namespace ST4Yardimci
         private const string DimStyleDonatiOku = "DONATI OKU (BEYKENT)";
         private const string LayerTemel = "TEMEL (BEYKENT)";
         private const string TextStyleYazi = "YAZI (BEYKENT)";
-        private const short DonatiOkuAci = 242;
+        private const short DonatiOkuAci = 150;
         private const short DonatiHalkasiAci = 2; // sarı
         private const double DonatiOkuCircleDiaCm = 4.0;
         private const double DonatiOkuCircleWidthCm = 4.0; // global width
@@ -56,17 +96,16 @@ namespace ST4Yardimci
         {
             240, 300, 400, 600, 1200
         };
-        private static readonly Regex DonatiYaziRx = new Regex(
-            @"(\d+)\s*[\u00D8\u00F8ØøΦφ]\s*(\d{1,2})\s*/\s*(\d{1,3})",
+        /// <summary>Zarf yazısı: "ø16/20" (adet önekli veya "yetmez" ekli olabilir).</summary>
+        private static readonly Regex ZarfYaziRx = new Regex(
+            @"[\u00D8\u00F8ØøΦφ]\s*(\d{1,2})\s*/\s*(\d{1,3})",
             RegexOptions.CultureInvariant);
 
         private struct KutuInfo
         {
             public bool Found;
-            public double MinX, MaxX, MinY, MaxY;
             public int CapMm;
             public double AralikCm;
-            public int AdetLabel;
             public string Label;
         }
 
@@ -78,23 +117,21 @@ namespace ST4Yardimci
             public double Height => Y1 - Y0;
         }
 
-        private struct KutuBox
+        /// <summary>Rd. Temel Planı zarf kutusu: kutu = bant, yazı = ø/aralık.</summary>
+        private struct ZarfJob
         {
             public ObjectId Id;
             public ObjectId LabelId;
-            public double MinX, MaxX, MinY, MaxY;
+            public double X0, X1, Y0, Y1;
+            public bool IsY;
             public int CapMm;
             public double AralikCm;
-            public int AdetLabel;
             public string Label;
-            public bool HasLabel;
+            public bool Yetmez;
         }
 
         private struct HeatJob
         {
-            public ObjectId PolyId;
-            public ObjectId KutuPolyId;
-            public ObjectId KutuLabelId;
             public List<Point2d> Ring;
             public Extents3d Ext;
             public KutuInfo Kutu;
@@ -105,6 +142,7 @@ namespace ST4Yardimci
         private struct DonatiOkuSeg
         {
             public double Along0, Along1, Fixed;
+            public bool Hooked; // gönyeli: aks ölçüsü atılmaz
         }
 
         /// <summary>Tüm çubuklar çizildikten sonra yerleştirilecek etiket (dik donatı engeline göre kayar).</summary>
@@ -132,25 +170,31 @@ namespace ST4Yardimci
             try
             {
                 ed.WriteMessage(
-                    "\nRADYEILAVECIZ: {0} | ısı X/Y (çoklu) | Ø/aralık ← kendi KUTU X/Y",
+                    "\nRADYEILAVECIZ: {0} | plan seç → KUTU X/Y zarfı içindeki ø/aralık zarf yönünde atılır",
                     RadyeTemelDonatiSettings.IlaveKatEtiketi);
 
-                List<ObjectId> ids = PickHeatContours(ed);
+                List<ObjectId> ids = PickZarfObjects(ed);
                 if (ids.Count == 0)
                 {
                     ed.WriteMessage("\nRADYEILAVECIZ: seçim yok / iptal.");
                     return;
                 }
 
-                List<HeatJob> jobs = PrepareHeatJobs(doc, db, ed, ids);
+                List<ZarfJob> jobs;
+                using (doc.LockDocument())
+                using (var tr = db.TransactionManager.StartTransaction())
+                {
+                    jobs = CollectZarfJobs(tr, ids, ed);
+                    tr.Commit();
+                }
                 if (jobs.Count == 0)
                 {
-                    ed.WriteMessage("\nRADYEILAVECIZ: geçerli X/Y ısı konturu yok.");
+                    ed.WriteMessage("\nRADYEILAVECIZ: yazılı KUTU X/Y zarfı yok.");
                     return;
                 }
 
-                int ok = 0, fail = 0, totalBands = 0;
-                var drawnJobs = new List<HeatJob>();
+                int ok = 0, fail = 0, totalBars = 0;
+                var drawn = new List<ZarfJob>();
                 var sharedObstacles = new List<(double x0, double x1, double y0, double y1)>();
                 var pendingLabels = new List<PendingDonatiLabel>();
 
@@ -162,28 +206,62 @@ namespace ST4Yardimci
                     tr0.Commit();
                 }
 
-                for (int i = 0; i < jobs.Count; i++)
+                List<List<ZarfJob>> groups = GroupZarfs(jobs);
+                var okuStates = new List<BandGroupState>();
+                for (int g = 0; g < groups.Count; g++)
                 {
-                    int n = DrawForJob(doc, db, ed, jobs[i], sharedObstacles, pendingLabels);
-                    if (n < 0) fail++;
-                    else
+                    List<ZarfJob> grp = groups[g];
+                    bool isY = grp[0].IsY;
+                    var bands = new List<CoverRect>();
+                    var caps = new List<int>();
+                    var araliks = new List<double>();
+                    var outer = new CoverRect { X0 = double.MaxValue, X1 = double.MinValue, Y0 = double.MaxValue, Y1 = double.MinValue };
+                    ed.WriteMessage("\n  Zarf grubu {0} ({1}, {2} kutu):", g + 1, isY ? "Y" : "X", grp.Count);
+                    foreach (ZarfJob z in grp)
                     {
-                        ok++;
-                        totalBands += n;
-                        drawnJobs.Add(jobs[i]);
+                        var band = new CoverRect { X0 = z.X0, X1 = z.X1, Y0 = z.Y0, Y1 = z.Y1 };
+                        band.StockW = isY ? band.Height : band.Width;
+                        bands.Add(band);
+                        caps.Add(z.CapMm);
+                        araliks.Add(z.AralikCm);
+                        outer.X0 = Math.Min(outer.X0, z.X0); outer.X1 = Math.Max(outer.X1, z.X1);
+                        outer.Y0 = Math.Min(outer.Y0, z.Y0); outer.Y1 = Math.Max(outer.Y1, z.Y1);
+                        ed.WriteMessage(
+                            "\n    KUTU '{0}' → ø{1}/{2}  W={3:0.#} H={4:0.#}{5}",
+                            z.Label, z.CapMm, z.AralikCm, band.Width, band.Height,
+                            z.Yetmez ? "  (UYARI: zarf 'yetmez' işaretli)" : "");
                     }
+                    int before = pendingLabels.Count;
+                    // 1. aşama: grubun çubukları; oku hattı tüm gruplardan sonra (diğer grupların
+                    // donatı/ölçüleri bilinsin, birbirine girmesin).
+                    BandGroupState st = DrawBandBars(doc, db, ed, outer, bands, isY, caps, araliks, sharedObstacles, pendingLabels);
+                    int n = pendingLabels.Count - before;
+                    if (n < 1)
+                    {
+                        fail += grp.Count;
+                        ed.WriteMessage("\n    Atlandı: zarf içinde çubuk üretilemedi.");
+                        continue;
+                    }
+                    okuStates.Add(st);
+                    ok += grp.Count;
+                    totalBars += n;
+                    drawn.AddRange(grp);
                 }
+
+                // 2. aşama: grup başına tek donatı oku hattı + aks ölçüleri
+                foreach (BandGroupState st in okuStates)
+                    DrawBandOku(doc, db, st, sharedObstacles, pendingLabels);
 
                 // Tüm X+Y çubukları çizildikten sonra etiketleri kaydırarak yerleştir
                 if (pendingLabels.Count > 0)
                     FlushPendingDonatiLabels(doc, db, pendingLabels, sharedObstacles);
 
-                if (drawnJobs.Count > 0)
-                    EraseHeatAndKutuAfterDraw(doc, db, ed, drawnJobs);
+                if (drawn.Count > 0)
+                    EraseZarfAfterDraw(doc, db, ed, drawn);
 
                 ed.WriteMessage(
-                    "\nRADYEILAVECIZ: {0} kontur OK ({1} bant), {2} atlandı.",
-                    ok, totalBands, fail);
+                    "\nRADYEILAVECIZ: {0} zarf OK ({1} çubuk dilimi), {2} atlandı.",
+                    ok, totalBars, fail);
             }
             catch (System.Exception ex)
             {
@@ -195,25 +273,26 @@ namespace ST4Yardimci
             }
         }
 
-        private static List<ObjectId> PickHeatContours(Editor ed)
+        /// <summary>Plan seçimi: yalnız KUTU X/Y katmanındaki polyline ve yazılar alınır.</summary>
+        private static List<ObjectId> PickZarfObjects(Editor ed)
         {
             var result = new List<ObjectId>();
             var opt = new PromptSelectionOptions
             {
                 MessageForAdding = string.Format(
                     CultureInfo.InvariantCulture,
-                    "\nIsı konturları seçin [{0} / {1}] (çoklu): ",
-                    LayerHeatX, LayerHeatY),
+                    "\nRadye temel planını seçin [{0} / {1}]: ",
+                    LayerKutuX, LayerKutuY),
                 MessageForRemoval = "\nÇıkarılacak: ",
                 AllowDuplicates = false
             };
             var filter = new SelectionFilter(new[]
             {
                 new TypedValue((int)DxfCode.Operator, "<AND"),
-                new TypedValue((int)DxfCode.Start, "LWPOLYLINE"),
+                new TypedValue((int)DxfCode.Start, "LWPOLYLINE,TEXT,MTEXT"),
                 new TypedValue((int)DxfCode.Operator, "<OR"),
-                new TypedValue((int)DxfCode.LayerName, LayerHeatX),
-                new TypedValue((int)DxfCode.LayerName, LayerHeatY),
+                new TypedValue((int)DxfCode.LayerName, LayerKutuX),
+                new TypedValue((int)DxfCode.LayerName, LayerKutuY),
                 new TypedValue((int)DxfCode.Operator, "OR>"),
                 new TypedValue((int)DxfCode.Operator, "AND>")
             });
@@ -229,301 +308,167 @@ namespace ST4Yardimci
         }
 
         /// <summary>
-        /// Seçilen ısıları oku; X→KUTU X, Y→KUTU Y tekil eşle — karışmasın.
+        /// Kapalı KUTU polyline = zarf; yazısı (ör. "ø16/20") zarfın içindeki aynı katman yazısı.
+        /// Yazı merkezi birden çok zarfa düşerse en küçük zarf alır. KUTU X → yatay, KUTU Y → düşey çubuk.
         /// </summary>
-        private static List<HeatJob> PrepareHeatJobs(
-            Document doc, Database db, Editor ed, List<ObjectId> polyIds)
+        private static List<ZarfJob> CollectZarfJobs(Transaction tr, List<ObjectId> ids, Editor ed)
         {
-            var heatsX = new List<(ObjectId id, List<Point2d> ring, Extents3d ext)>();
-            var heatsY = new List<(ObjectId id, List<Point2d> ring, Extents3d ext)>();
-            var kutularX = new List<KutuBox>();
-            var kutularY = new List<KutuBox>();
-
-            using (doc.LockDocument())
-            using (var tr = db.TransactionManager.StartTransaction())
+            var boxes = new List<ZarfJob>();
+            var texts = new List<(ObjectId id, string text, Point3d c, bool isY)>();
+            for (int i = 0; i < ids.Count; i++)
             {
-                for (int i = 0; i < polyIds.Count; i++)
+                var ent = tr.GetObject(ids[i], OpenMode.ForRead) as Entity;
+                if (ent == null) continue;
+                bool isX = LayerEquals(ent.Layer, LayerKutuX);
+                bool isY = LayerEquals(ent.Layer, LayerKutuY);
+                if (!isX && !isY) continue;
+                Extents3d e;
+                try { e = ent.GeometricExtents; } catch { continue; }
+                if (ent is Polyline pl)
                 {
-                    var ent = tr.GetObject(polyIds[i], OpenMode.ForRead) as Entity;
-                    if (!(ent is Polyline pl) || pl.NumberOfVertices < 3) continue;
-                    bool isX = LayerEquals(pl.Layer, LayerHeatX);
-                    bool isY = LayerEquals(pl.Layer, LayerHeatY);
-                    if (!isX && !isY)
-                    {
-                        ed.WriteMessage("\n  Atlandı (katman≠X/Y): {0}", pl.Layer ?? "?");
-                        continue;
-                    }
-                    List<Point2d> ring = ExtractRing(pl);
-                    EnsureClosed(ring);
-                    if (ring.Count < 3) continue;
-                    double area = 0;
-                    try { area = Math.Abs(pl.Area); } catch { area = PolygonAreaCm2(ring); }
-                    if (area < MinHeatAreaCm2 - 1e-6)
-                    {
-                        ed.WriteMessage(
-                            "\n  Atlandı (alan={0:0.#} < {1:0} cm²): {2}",
-                            area, MinHeatAreaCm2, isY ? "Y" : "X");
-                        continue;
-                    }
-                    Extents3d ext;
-                    try { ext = pl.GeometricExtents; }
-                    catch { continue; }
-                    if (isY) heatsY.Add((polyIds[i], ring, ext));
-                    else heatsX.Add((polyIds[i], ring, ext));
+                    if (!pl.Closed || pl.NumberOfVertices < 3) continue;
+                    double x0 = e.MinPoint.X, x1 = e.MaxPoint.X, y0 = e.MinPoint.Y, y1 = e.MaxPoint.Y;
+                    if (x1 - x0 < 8 || y1 - y0 < 8) continue;
+                    boxes.Add(new ZarfJob { Id = ids[i], LabelId = ObjectId.Null, X0 = x0, X1 = x1, Y0 = y0, Y1 = y1, IsY = isY });
                 }
-
-                CollectKutuBoxes(tr, db, kutularX, LayerKutuX, labelNearTopLeft: false);
-                CollectKutuBoxes(tr, db, kutularY, LayerKutuY, labelNearTopLeft: true);
-                tr.Commit();
+                else
+                {
+                    string text = ent is DBText t ? t.TextString : (ent as MText)?.Text;
+                    if (string.IsNullOrWhiteSpace(text) || !ZarfYaziRx.IsMatch(text)) continue;
+                    var c = new Point3d(0.5 * (e.MinPoint.X + e.MaxPoint.X), 0.5 * (e.MinPoint.Y + e.MaxPoint.Y), 0);
+                    texts.Add((ids[i], text, c, isY));
+                }
             }
 
-            ed.WriteMessage(
-                "\n  Isı X={0} KUTU X={1} | Isı Y={2} KUTU Y={3}",
-                heatsX.Count, kutularX.Count, heatsY.Count, kutularY.Count);
+            for (int ti = 0; ti < texts.Count; ti++)
+            {
+                int best = -1;
+                double bestArea = double.MaxValue;
+                for (int bi = 0; bi < boxes.Count; bi++)
+                {
+                    ZarfJob b = boxes[bi];
+                    if (b.IsY != texts[ti].isY || !b.LabelId.IsNull) continue;
+                    Point3d c = texts[ti].c;
+                    if (c.X < b.X0 || c.X > b.X1 || c.Y < b.Y0 || c.Y > b.Y1) continue;
+                    double area = (b.X1 - b.X0) * (b.Y1 - b.Y0);
+                    if (area < bestArea) { bestArea = area; best = bi; }
+                }
+                if (best < 0) continue;
+                ZarfJob z = boxes[best];
+                Match m = ZarfYaziRx.Match(texts[ti].text);
+                int.TryParse(m.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out z.CapMm);
+                double.TryParse(m.Groups[2].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out z.AralikCm);
+                z.LabelId = texts[ti].id;
+                z.Label = texts[ti].text.Trim();
+                z.Yetmez = z.Label.IndexOf("yetmez", StringComparison.OrdinalIgnoreCase) >= 0;
+                boxes[best] = z;
+            }
 
-            var jobs = new List<HeatJob>();
-            AssignJobs(ed, heatsX, kutularX, isY: false, jobs);
-            AssignJobs(ed, heatsY, kutularY, isY: true, jobs);
+            var jobs = new List<ZarfJob>();
+            int noText = 0;
+            foreach (ZarfJob z in boxes)
+            {
+                if (z.LabelId.IsNull || z.CapMm <= 0 || z.AralikCm < 1.0) { noText++; continue; }
+                jobs.Add(z);
+            }
+            ed.WriteMessage("\n  Zarf: {0} kutu, {1} yazılı, {2} yazısız atlandı.", boxes.Count, jobs.Count, noText);
+            // Önce X, sonra Y (etiket yerleşimi eski sırayla aynı)
+            jobs.Sort((a, b) => a.IsY.CompareTo(b.IsY));
             return jobs;
         }
 
-        private static void AssignJobs(
-            Editor ed,
-            List<(ObjectId id, List<Point2d> ring, Extents3d ext)> heats,
-            List<KutuBox> kutular,
-            bool isY,
-            List<HeatJob> jobs)
-        {
-            var pairs = new List<(int hi, int ki, double score)>();
-            for (int hi = 0; hi < heats.Count; hi++)
-            {
-                for (int ki = 0; ki < kutular.Count; ki++)
-                {
-                    double score = ScoreHeatToKutu(heats[hi].ext, kutular[ki]);
-                    if (score > 0) pairs.Add((hi, ki, score));
-                }
-            }
-            pairs.Sort((a, b) => b.score.CompareTo(a.score));
-
-            var heatUsed = new bool[heats.Count];
-            var kutuUsed = new bool[kutular.Count];
-            var assign = new int[heats.Count];
-            for (int i = 0; i < assign.Length; i++) assign[i] = -1;
-
-            for (int p = 0; p < pairs.Count; p++)
-            {
-                int hi = pairs[p].hi, ki = pairs[p].ki;
-                if (heatUsed[hi] || kutuUsed[ki]) continue;
-                heatUsed[hi] = true;
-                kutuUsed[ki] = true;
-                assign[hi] = ki;
-            }
-
-            string yon = isY ? "Y" : "X";
-            for (int hi = 0; hi < heats.Count; hi++)
-            {
-                var kutu = default(KutuInfo);
-                if (assign[hi] >= 0)
-                {
-                    KutuBox box = kutular[assign[hi]];
-                    kutu.Found = true;
-                    kutu.MinX = box.MinX; kutu.MaxX = box.MaxX;
-                    kutu.MinY = box.MinY; kutu.MaxY = box.MaxY;
-                    kutu.CapMm = box.CapMm;
-                    kutu.AralikCm = box.AralikCm;
-                    kutu.AdetLabel = box.AdetLabel;
-                    kutu.Label = box.Label;
-                }
-                else
-                    ed.WriteMessage("\n  Uyarı: ısı{0}[{1}] için eşleşen KUTU {0} yok.", yon, hi + 1);
-
-                jobs.Add(new HeatJob
-                {
-                    PolyId = heats[hi].id,
-                    KutuPolyId = assign[hi] >= 0 ? kutular[assign[hi]].Id : ObjectId.Null,
-                    KutuLabelId = assign[hi] >= 0 ? kutular[assign[hi]].LabelId : ObjectId.Null,
-                    Ring = heats[hi].ring,
-                    Ext = heats[hi].ext,
-                    Kutu = kutu,
-                    IsY = isY
-                });
-            }
-        }
-
-        /// <summary>Isıyı kapsayan / merkezini içeren kutu; daha dar kutu daha yüksek skor.</summary>
-        private static double ScoreHeatToKutu(Extents3d heat, KutuBox box)
-        {
-            double hx0 = heat.MinPoint.X, hx1 = heat.MaxPoint.X;
-            double hy0 = heat.MinPoint.Y, hy1 = heat.MaxPoint.Y;
-            double hcx = 0.5 * (hx0 + hx1), hcy = 0.5 * (hy0 + hy1);
-            double bx0 = box.MinX, bx1 = box.MaxX, by0 = box.MinY, by1 = box.MaxY;
-            double kutuArea = Math.Max(1.0, (bx1 - bx0) * (by1 - by0));
-
-            double ox0 = Math.Max(hx0, bx0), ox1 = Math.Min(hx1, bx1);
-            double oy0 = Math.Max(hy0, by0), oy1 = Math.Min(hy1, by1);
-            double overlap = (ox1 > ox0 && oy1 > oy0) ? (ox1 - ox0) * (oy1 - oy0) : 0;
-            if (overlap < 1e-6) return -1;
-
-            bool containsHeat = hx0 >= bx0 - 2 && hx1 <= bx1 + 2 && hy0 >= by0 - 2 && hy1 <= by1 + 2;
-            bool containsCenter = hcx >= bx0 && hcx <= bx1 && hcy >= by0 && hcy <= by1;
-            if (!containsHeat && !containsCenter) return -1;
-
-            // Daha dar kapsayan kutu kazanır (çoklu seçimde karışmayı önler)
-            double tightness = 1e6 / kutuArea;
-            if (containsHeat) return 1e12 + tightness + overlap;
-            return 1e9 + tightness + overlap;
-        }
-
-        private static void CollectKutuBoxes(
-            Transaction tr, Database db, List<KutuBox> kutular, string kutuLayer, bool labelNearTopLeft)
-        {
-            kutular.Clear();
-            var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
-            var btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForRead);
-
-            var boxes = new List<(ObjectId id, double x0, double x1, double y0, double y1)>();
-            foreach (ObjectId id in btr)
-            {
-                var ent = tr.GetObject(id, OpenMode.ForRead) as Entity;
-                if (!(ent is Polyline pl) || !pl.Closed || pl.NumberOfVertices < 3) continue;
-                if (!LayerEquals(pl.Layer, kutuLayer)) continue;
-                Extents3d be;
-                try { be = pl.GeometricExtents; } catch { continue; }
-                double bx0 = be.MinPoint.X, bx1 = be.MaxPoint.X;
-                double by0 = be.MinPoint.Y, by1 = be.MaxPoint.Y;
-                if (bx1 - bx0 < 8 || by1 - by0 < 8) continue;
-                boxes.Add((id, bx0, bx1, by0, by1));
-            }
-
-            var texts = new List<(ObjectId id, string text, Point3d pos)>();
-            foreach (ObjectId id in btr)
-            {
-                var ent = tr.GetObject(id, OpenMode.ForRead) as Entity;
-                string text = null;
-                Point3d pos = default;
-                if (ent is DBText dbText)
-                {
-                    if (!LayerEquals(dbText.Layer, kutuLayer)) continue;
-                    text = dbText.TextString;
-                    pos = dbText.Position;
-                }
-                else if (ent is MText mt)
-                {
-                    if (!LayerEquals(mt.Layer, kutuLayer)) continue;
-                    text = mt.Contents;
-                    pos = mt.Location;
-                }
-                else continue;
-                if (string.IsNullOrWhiteSpace(text) || !DonatiYaziRx.IsMatch(text)) continue;
-                texts.Add((id, text, pos));
-            }
-
-            var textAssign = new int[boxes.Count];
-            for (int i = 0; i < textAssign.Length; i++) textAssign[i] = -1;
-            var textPairs = new List<(int bi, int ti, double dist)>();
-            for (int bi = 0; bi < boxes.Count; bi++)
-            {
-                var b = boxes[bi];
-                for (int ti = 0; ti < texts.Count; ti++)
-                {
-                    Point3d pos = texts[ti].pos;
-                    if (pos.X < b.x0 - 80 || pos.X > b.x1 + 80) continue;
-                    if (pos.Y < b.y0 - 50) continue;
-                    double dist;
-                    if (labelNearTopLeft)
-                    {
-                        // Y kutu: sol üst
-                        dist = Math.Abs(pos.Y - b.y1) + Math.Abs(pos.X - b.x0);
-                        if (pos.X <= b.x0 + 0.4 * (b.x1 - b.x0) && pos.Y >= b.y1 - 150)
-                            dist -= 500;
-                    }
-                    else
-                    {
-                        // X kutu: üst kenar ortası
-                        dist = Math.Abs(pos.Y - b.y1)
-                             + 0.02 * Math.Abs(pos.X - 0.5 * (b.x0 + b.x1));
-                        if (pos.X >= b.x0 - 5 && pos.X <= b.x1 + 5 && pos.Y <= b.y1 + 120)
-                            dist -= 500;
-                    }
-                    textPairs.Add((bi, ti, dist));
-                }
-            }
-            textPairs.Sort((a, b) => a.dist.CompareTo(b.dist));
-            var textUsed = new bool[texts.Count];
-            var boxHasText = new bool[boxes.Count];
-            for (int p = 0; p < textPairs.Count; p++)
-            {
-                int bi = textPairs[p].bi, ti = textPairs[p].ti;
-                if (boxHasText[bi] || textUsed[ti]) continue;
-                if (textPairs[p].dist > 1e7) continue;
-                boxHasText[bi] = true;
-                textUsed[ti] = true;
-                textAssign[bi] = ti;
-            }
-
-            for (int bi = 0; bi < boxes.Count; bi++)
-            {
-                var b = boxes[bi];
-                var box = new KutuBox
-                {
-                    Id = b.id,
-                    MinX = b.x0, MaxX = b.x1,
-                    MinY = b.y0, MaxY = b.y1
-                };
-                int ti = textAssign[bi];
-                if (ti >= 0)
-                {
-                    box.LabelId = texts[ti].id;
-                    box.Label = texts[ti].text;
-                    box.HasLabel = true;
-                    Match m = DonatiYaziRx.Match(box.Label);
-                    if (m.Success)
-                    {
-                        int.TryParse(m.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out box.AdetLabel);
-                        int.TryParse(m.Groups[2].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out box.CapMm);
-                        double.TryParse(m.Groups[3].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out box.AralikCm);
-                    }
-                }
-                kutular.Add(box);
-            }
-        }
-
         /// <summary>
-        /// Çizim sonrası: ısı konturu + eşleşen KUTU + kutu donatı yazısı silinir.
-        /// Stok bantlar (CIZGI) kalır; ana dış çerçeve zaten çizilmez.
+        /// Zarf grubu: aynı yönde, dik yönde birbirine yapışık (boşluk ≤ 2 cm) kutular.
+        /// Grubun tüm kutularının çubukları ortak bir ölçü hattıyla kesilebilmeli (ortak boy kesişimi
+        /// ≥ 2×uç payı); değilse birleşmez. Ayrık kutu kendi çubuğu üzerinde ayrı ölçülür.
         /// </summary>
-        private static void EraseHeatAndKutuAfterDraw(
-            Document doc, Database db, Editor ed, List<HeatJob> drawnJobs)
+        private static List<List<ZarfJob>> GroupZarfs(List<ZarfJob> jobs)
         {
-            if (drawnJobs == null || drawnJobs.Count == 0) return;
-            var toErase = new HashSet<ObjectId>();
-            for (int i = 0; i < drawnJobs.Count; i++)
+            const double YapisikTolCm = 2.0;
+            int n = jobs.Count;
+            var parent = new int[n];
+            var lo = new double[n];
+            var hi = new double[n];
+            for (int i = 0; i < n; i++)
             {
-                if (!drawnJobs[i].PolyId.IsNull) toErase.Add(drawnJobs[i].PolyId);
-                if (!drawnJobs[i].KutuPolyId.IsNull) toErase.Add(drawnJobs[i].KutuPolyId);
-                if (!drawnJobs[i].KutuLabelId.IsNull) toErase.Add(drawnJobs[i].KutuLabelId);
+                parent[i] = i;
+                lo[i] = jobs[i].IsY ? jobs[i].Y0 : jobs[i].X0;
+                hi[i] = jobs[i].IsY ? jobs[i].Y1 : jobs[i].X1;
             }
-            if (toErase.Count == 0) return;
+            int Find(int i) { while (parent[i] != i) i = parent[i] = parent[parent[i]]; return i; }
 
+            var pairs = new List<(int i, int j, double gap)>();
+            for (int i = 0; i < n; i++)
+            {
+                for (int j = i + 1; j < n; j++)
+                {
+                    ZarfJob a = jobs[i], b = jobs[j];
+                    if (a.IsY != b.IsY) continue;
+                    // across: adet ekseni (X kutu → Y, Y kutu → X)
+                    double cLo = a.IsY ? a.X0 : a.Y0, cHi = a.IsY ? a.X1 : a.Y1;
+                    double dLo = a.IsY ? b.X0 : b.Y0, dHi = a.IsY ? b.X1 : b.Y1;
+                    double gap = Math.Max(cLo, dLo) - Math.Min(cHi, dHi);
+                    if (gap > YapisikTolCm) continue;
+                    pairs.Add((i, j, gap));
+                }
+            }
+            pairs.Sort((p, q) => p.gap.CompareTo(q.gap));
+            foreach (var p in pairs)
+            {
+                int ri = Find(p.i), rj = Find(p.j);
+                if (ri == rj) continue;
+                // along: grubun ortak çubuk kesişimi; ölçü hattı tüm çubukları uçtan uzak kesmeli
+                double nLo = Math.Max(lo[ri], lo[rj]);
+                double nHi = Math.Min(hi[ri], hi[rj]);
+                if (nHi - nLo < 2.0 * DonatiOkuEndClearCm) continue;
+                parent[ri] = rj;
+                lo[rj] = nLo;
+                hi[rj] = nHi;
+            }
+
+            var byRoot = new Dictionary<int, List<ZarfJob>>();
+            var order = new List<int>();
+            for (int i = 0; i < n; i++)
+            {
+                int r = Find(i);
+                if (!byRoot.TryGetValue(r, out List<ZarfJob> list))
+                {
+                    list = new List<ZarfJob>();
+                    byRoot[r] = list;
+                    order.Add(r);
+                }
+                list.Add(jobs[i]);
+            }
+            var groups = new List<List<ZarfJob>>();
+            foreach (int r in order) groups.Add(byRoot[r]);
+            return groups;
+        }
+
+        /// <summary>Çizim sonrası: kullanılan zarf kutusu ve yazısı silinir.</summary>
+        private static void EraseZarfAfterDraw(Document doc, Database db, Editor ed, List<ZarfJob> drawn)
+        {
             int erased = 0;
             using (doc.LockDocument())
             using (var tr = db.TransactionManager.StartTransaction())
             {
-                foreach (ObjectId id in toErase)
+                foreach (ZarfJob z in drawn)
                 {
-                    if (id.IsNull || id.IsErased) continue;
-                    try
+                    foreach (ObjectId id in new[] { z.Id, z.LabelId })
                     {
-                        var ent = tr.GetObject(id, OpenMode.ForWrite, false) as Entity;
-                        if (ent == null || ent.IsErased) continue;
-                        ent.Erase();
-                        erased++;
+                        if (id.IsNull || id.IsErased) continue;
+                        try
+                        {
+                            var ent = tr.GetObject(id, OpenMode.ForWrite, false) as Entity;
+                            if (ent == null || ent.IsErased) continue;
+                            ent.Erase();
+                            erased++;
+                        }
+                        catch { }
                     }
-                    catch { }
                 }
                 tr.Commit();
             }
-            ed.WriteMessage("\n  Temizlik: {0} ısı/kutu/yazı silindi.", erased);
+            ed.WriteMessage("\n  Temizlik: {0} zarf/yazı silindi.", erased);
         }
 
         private static int DrawForJob(
@@ -570,9 +515,115 @@ namespace ST4Yardimci
                 : BuildHeatBandsX(ring, outer, aralik);
             ed.WriteMessage("\n  Bant sayısı={0}", bands.Count);
 
-            double stockRef = isY ? outer.Height : outer.Width;
+            DrawBands(doc, db, ed, outer, bands, isY, capMm, aralik, obstacles, pendingLabels);
+            return bands.Count;
+        }
+
+        /// <summary>Bantlara çubuk + TEMEL/çukur trim + donatı oku (ısı ve zarf yolu ortak).</summary>
+        private static void DrawBands(
+            Document doc, Database db, Editor ed, CoverRect outer, List<CoverRect> bands,
+            bool isY, int capMm, double aralik,
+            List<(double x0, double x1, double y0, double y1)> obstacles,
+            List<PendingDonatiLabel> pendingLabels)
+        {
+            var caps = new List<int>();
+            var araliks = new List<double>();
+            for (int i = 0; i < bands.Count; i++) { caps.Add(capMm); araliks.Add(aralik); }
+            DrawBands(doc, db, ed, outer, bands, isY, caps, araliks, obstacles, pendingLabels);
+        }
+
+        /// <summary>Bant başına ø/aralık; tüm bantlar tek donatı oku hattını paylaşır (zarf grubu).</summary>
+        private static void DrawBands(
+            Document doc, Database db, Editor ed, CoverRect outer, List<CoverRect> bands,
+            bool isY, IList<int> caps, IList<double> araliks,
+            List<(double x0, double x1, double y0, double y1)> obstacles,
+            List<PendingDonatiLabel> pendingLabels)
+        {
+            if (obstacles == null)
+                obstacles = new List<(double x0, double x1, double y0, double y1)>();
+            if (pendingLabels == null)
+                pendingLabels = new List<PendingDonatiLabel>();
+            BandGroupState st = DrawBandBars(doc, db, ed, outer, bands, isY, caps, araliks, obstacles, pendingLabels);
+            DrawBandOku(doc, db, st, obstacles, pendingLabels);
+        }
+
+        /// <summary>1. aşama sonucu: grubun çubukları ve engel listesindeki kendi aralığı.</summary>
+        private sealed class BandGroupState
+        {
+            public CoverRect Outer;
+            public List<CoverRect> Bands;
+            public bool IsY;
+            public List<DonatiOkuSeg> BarSegs = new List<DonatiOkuSeg>();
+            public List<double> PitEdges = new List<double>();
+            public int ObsStart, ObsEnd, LabelStart, LabelEnd;
+        }
+
+        /// <summary>
+        /// 2. aşama: donatı oku + aks ölçüleri. Oku hattı, kendi grubu dışındaki çubuk/ölçü/oku
+        /// engellerinden ~25 cm uzak seçilir (tüm grupların çubukları önceden çizilmiş olmalı).
+        /// </summary>
+        private static void DrawBandOku(
+            Document doc, Database db, BandGroupState st,
+            List<(double x0, double x1, double y0, double y1)> obstacles,
+            List<PendingDonatiLabel> pendingLabels)
+        {
+            if (st == null) return;
+            var diger = new List<(double x0, double x1, double y0, double y1)>();
+            for (int i = 0; i < obstacles.Count; i++)
+                if (i < st.ObsStart || i >= st.ObsEnd) diger.Add(obstacles[i]);
+            var kendiEtiket = pendingLabels.GetRange(st.LabelStart, st.LabelEnd - st.LabelStart);
+
+            using (doc.LockDocument())
+            using (var tr = db.TransactionManager.StartTransaction())
+            {
+                var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
+                var btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
+                ObjectId yaziStyleId = GetOrCreateYaziBeykentTextStyle(tr, db);
+                string okuLyr = EnsureLayer(tr, db, LayerDonatiOku, DonatiOkuAci, LineWeight.LineWeight020);
+                string halkaLyr = EnsureDonatiHalkasiLayer(tr, db);
+                ObjectId okuDimStyleId = EnsureDonatiOkuDimStyle(tr, db, yaziStyleId);
+
+                double okuAlong = DrawDonatiOkuAcikliklari(
+                    tr, btr, st.Outer, st.IsY, st.Bands, st.BarSegs, st.PitEdges,
+                    kendiEtiket, okuLyr, halkaLyr, okuDimStyleId, diger);
+
+                DrawAksOlculeri(tr, db, btr, st.IsY, st.Bands, st.BarSegs, okuAlong);
+
+                if (!double.IsNaN(okuAlong))
+                {
+                    // Oku hattı + aks ölçüsü izi: sonraki grupların oku seçimi ve etiketler için engel
+                    double lo = double.MaxValue, hi = double.MinValue;
+                    foreach (CoverRect b in st.Bands)
+                    {
+                        lo = Math.Min(lo, st.IsY ? b.X0 : b.Y0);
+                        hi = Math.Max(hi, st.IsY ? b.X1 : b.Y1);
+                    }
+                    double d = AksOlcuOfsetCm + 12.0;
+                    if (st.IsY) obstacles.Add((lo, hi, okuAlong - d, okuAlong + 6.0));
+                    else obstacles.Add((okuAlong - 6.0, okuAlong + d, lo, hi));
+                }
+
+                tr.Commit();
+            }
+        }
+
+        /// <summary>Donatı oku hattı ile paralel başka donatı/ölçü arasında istenen boşluk (cm).</summary>
+        private const double OkuAyrimCm = 25.0;
+
+        /// <summary>1. aşama: bant çubukları, gönye ve etiket kuyruğu; oku çizilmez.</summary>
+        private static BandGroupState DrawBandBars(
+            Document doc, Database db, Editor ed, CoverRect outer, List<CoverRect> bands,
+            bool isY, IList<int> caps, IList<double> araliks,
+            List<(double x0, double x1, double y0, double y1)> obstacles,
+            List<PendingDonatiLabel> pendingLabels)
+        {
             double paspayi = RadyeTemelDonatiSettings.PaspayiCm;
             if (paspayi < 0) paspayi = 0;
+            var st = new BandGroupState
+            {
+                Outer = outer, Bands = bands, IsY = isY,
+                ObsStart = obstacles.Count, LabelStart = pendingLabels.Count
+            };
 
             using (doc.LockDocument())
             using (var tr = db.TransactionManager.StartTransaction())
@@ -587,20 +638,15 @@ namespace ST4Yardimci
 
                 // Ana dış çerçeve (outer) çizilmez — yalnız stok bantlar kalır.
                 ObjectId yaziStyleId = GetOrCreateYaziBeykentTextStyle(tr, db);
-                string okuLyr = EnsureLayer(tr, db, LayerDonatiOku, DonatiOkuAci, LineWeight.LineWeight020);
-                string halkaLyr = EnsureDonatiHalkasiLayer(tr, db);
-                ObjectId okuDimStyleId = EnsureDonatiOkuDimStyle(tr, db, yaziStyleId);
-                if (obstacles == null)
-                    obstacles = new List<(double x0, double x1, double y0, double y1)>();
-                if (pendingLabels == null)
-                    pendingLabels = new List<PendingDonatiLabel>();
 
-                var barSegs = new List<DonatiOkuSeg>();
-                var pitEdgeCoords = new List<double>(); // çukur/TEMEL kenarları (ölçü ekseni)
+                var barSegs = st.BarSegs;
+                var pitEdgeCoords = st.PitEdges; // çukur/TEMEL kenarları (ölçü ekseni)
 
                 for (int b = 0; b < bands.Count; b++)
                 {
                     CoverRect band = bands[b];
+                    int capMm = caps[b];
+                    double aralik = araliks[b];
                     // Stok bant dikdörtgeni çizilmez — yalnız donatı + ölçü
 
                     double adetAxis = isY ? band.Width : band.Height;
@@ -625,14 +671,126 @@ namespace ST4Yardimci
                         band.Width, band.Height);
                 }
 
-                DrawDonatiOkuAcikliklari(
-                    tr, btr, outer, isY, bands, barSegs, pitEdgeCoords,
-                    pendingLabels, okuLyr, halkaLyr, okuDimStyleId);
+                // Gönyesiz çubuğun aks ölçüsü (X: altında, Y: sağında) — oku hattı buna da yaklaşmasın
+                foreach (DonatiOkuSeg s in barSegs)
+                {
+                    if (s.Hooked) continue;
+                    double a0 = Math.Min(s.Along0, s.Along1), a1 = Math.Max(s.Along0, s.Along1);
+                    double d = AksOlcuOfsetCm + 12.0;
+                    if (isY) obstacles.Add((s.Fixed, s.Fixed + d, a0, a1));
+                    else obstacles.Add((a0, a1, s.Fixed - d, s.Fixed));
+                }
 
                 tr.Commit();
             }
+            st.ObsEnd = obstacles.Count;
+            st.LabelEnd = pendingLabels.Count;
+            return st;
+        }
 
-            return bands.Count;
+        private const string LayerAks = "AKS CIZGISI (BEYKENT)";
+        private const string LayerOlcu = "OLCU (BEYKENT)";
+        private const string DimStyleAksKacik = "ILAVE_OLCU";
+        private const double AksOlcuOfsetCm = 15.0;
+        private const double AksMaxUzaklikCm = 2000.0;
+
+        /// <summary>
+        /// Yer ölçüsü (ILAVE_OLCU): gönyesiz ilave çubuk uçlarının ve donatı oku hattının
+        /// akslardan kaçıklığı. Aralıkta aks varsa uç→aks→uç zinciri, yoksa en yakın aksa.
+        /// </summary>
+        private static void DrawAksOlculeri(
+            Transaction tr, Database db, BlockTableRecord btr, bool isY,
+            List<CoverRect> bands, List<DonatiOkuSeg> barSegs, double okuAlong)
+        {
+            // Düşey aks: x sabit (y aralığı); yatay aks: y sabit (x aralığı)
+            var dusey = new List<(double c, double lo, double hi)>();
+            var yatay = new List<(double c, double lo, double hi)>();
+            foreach (ObjectId id in btr)
+            {
+                var ent = tr.GetObject(id, OpenMode.ForRead) as Entity;
+                if (ent == null || !LayerEquals(ent.Layer, LayerAks)) continue;
+                Point3d p, q;
+                if (ent is Line ln) { p = ln.StartPoint; q = ln.EndPoint; }
+                else if (ent is Polyline pl && pl.NumberOfVertices == 2) { p = pl.GetPoint3dAt(0); q = pl.GetPoint3dAt(1); }
+                else continue;
+                if (Math.Abs(p.X - q.X) < 0.5)
+                    dusey.Add((0.5 * (p.X + q.X), Math.Min(p.Y, q.Y), Math.Max(p.Y, q.Y)));
+                else if (Math.Abs(p.Y - q.Y) < 0.5)
+                    yatay.Add((0.5 * (p.Y + q.Y), Math.Min(p.X, q.X), Math.Max(p.X, q.X)));
+            }
+            if (dusey.Count == 0 && yatay.Count == 0) return;
+
+            string lyr = EnsureLayer(tr, db, LayerOlcu, 14, LineWeight.LineWeight020);
+            ObjectId styleId = BaDimensionStyles.Ensure(tr, db, DimStyleAksKacik);
+
+            // Çubuk: X çubuğu düşey akslarla, Y çubuğu yatay akslarla; ölçü çubuğun 15 cm altında / sağında.
+            var cubukAks = isY ? yatay : dusey;
+            if (barSegs != null)
+            {
+                foreach (DonatiOkuSeg s in barSegs)
+                {
+                    if (s.Hooked) continue;
+                    List<double> pts = AksZinciri(cubukAks, s.Along0, s.Along1, s.Fixed);
+                    PlaceAksZinciri(tr, db, btr, lyr, styleId, pts, !isY, s.Fixed,
+                        isY ? s.Fixed + AksOlcuOfsetCm : s.Fixed - AksOlcuOfsetCm);
+                }
+            }
+
+            // Donatı oku hattı: bantların dış kenarları, oku hattına dik akslarla; hattın 15 cm sağında / altında.
+            if (double.IsNaN(okuAlong) || bands == null || bands.Count == 0) return;
+            double lo = double.MaxValue, hi = double.MinValue;
+            foreach (CoverRect b in bands)
+            {
+                lo = Math.Min(lo, isY ? b.X0 : b.Y0);
+                hi = Math.Max(hi, isY ? b.X1 : b.Y1);
+            }
+            var okuAks = isY ? dusey : yatay;
+            List<double> okuPts = AksZinciri(okuAks, lo, hi, okuAlong);
+            PlaceAksZinciri(tr, db, btr, lyr, styleId, okuPts, isY, okuAlong,
+                isY ? okuAlong - AksOlcuOfsetCm : okuAlong + AksOlcuOfsetCm);
+        }
+
+        /// <summary>[a,b] uçları + aradaki akslar; arada aks yoksa en yakın aks (≤ 20 m). Aks, fixed konumunu kesmeli.</summary>
+        private static List<double> AksZinciri(List<(double c, double lo, double hi)> akslar, double a, double b, double fixedCoord)
+        {
+            var pts = new List<double> { a, b };
+            double near = double.NaN, nearD = double.MaxValue;
+            bool icerde = false;
+            foreach (var k in akslar)
+            {
+                if (fixedCoord < k.lo - 100.0 || fixedCoord > k.hi + 100.0) continue;
+                if (k.c > a + 0.5 && k.c < b - 0.5) { AddUniqueFixed(pts, k.c); icerde = true; continue; }
+                double d = k.c <= a ? a - k.c : k.c - b;
+                if (d < nearD) { nearD = d; near = k.c; }
+            }
+            if (!icerde)
+            {
+                if (double.IsNaN(near) || nearD > AksMaxUzaklikCm) return null;
+                AddUniqueFixed(pts, near);
+            }
+            pts.Sort();
+            return pts;
+        }
+
+        private static void PlaceAksZinciri(
+            Transaction tr, Database db, BlockTableRecord btr, string layer, ObjectId styleId,
+            List<double> pts, bool alongX, double originCoord, double lineCoord)
+        {
+            if (pts == null || pts.Count < 2) return;
+            for (int i = 0; i < pts.Count - 1; i++)
+            {
+                double p = pts[i], q = pts[i + 1];
+                if (q - p < MinDonatiOkuGapCm) continue;
+                RotatedDimension dim = alongX
+                    ? new RotatedDimension(0.0, new Point3d(p, originCoord, 0), new Point3d(q, originCoord, 0),
+                        new Point3d(0.5 * (p + q), lineCoord, 0), "", styleId)
+                    : new RotatedDimension(Math.PI * 0.5, new Point3d(originCoord, p, 0), new Point3d(originCoord, q, 0),
+                        new Point3d(lineCoord, 0.5 * (p + q), 0), "", styleId);
+                dim.Layer = layer;
+                btr.AppendEntity(dim);
+                tr.AddNewlyCreatedDBObject(dim, true);
+                BaDimensionStyles.Apply(tr, db, dim, styleId, DimStyleAksKacik);
+            }
         }
 
         /// <summary>Bant yüksekliği / aralık → uçlar dahil adet (⌊H/s⌋+1) — etiket için.</summary>
@@ -936,6 +1094,10 @@ namespace ST4Yardimci
             List<(double x0, double x1, double y0, double y1)> obstacles)
         {
             if (hi < lo + 1.0) return preferred;
+            // Bant kenarı = donatı oku ucu: çubuk kenara oturmasın (mümkünse ≥20 cm içeride)
+            double kenarPay = Math.Min(20.0, 0.25 * (hi - lo));
+            lo += kenarPay;
+            hi -= kenarPay;
             preferred = Math.Max(lo, Math.Min(hi, preferred));
 
             double best = preferred;
@@ -1165,10 +1327,12 @@ namespace ST4Yardimci
             {
                 double len = segs[s].b - segs[s].a;
                 if (len < MinSegAfterTrimCm) continue;
-                bool trimL = segs[s].a > band.X0 + 0.5;
-                bool trimR = segs[s].b < band.X1 - 0.5;
+                bool trimL = segs[s].a > band.X0 + 0.5 || EndAtTemelEdge(outer, pits, true, y, segs[s].a, true, paspayi);
+                bool trimR = segs[s].b < band.X1 - 0.5 || EndAtTemelEdge(outer, pits, true, y, segs[s].b, false, paspayi);
                 bool hookL = doGonye && trimL;
                 bool hookR = doGonye && trimR;
+                // Etiket boyu: düz parça + gerçek gönyeler (çizimde max gönye)
+                len += (hookL ? GonyeYaziBoyu(gonyeLen) : 0) + (hookR ? GonyeYaziBoyu(gonyeLen) : 0);
                 DrawHorizontalBar(tr, btr, donatiLyr, segs[s].a, segs[s].b, y,
                     hookL, hookR, gonyeLen, isUst);
                 AddBarSegmentObstacle(obstacles, horizontal: true, segs[s].a, segs[s].b, y);
@@ -1178,7 +1342,8 @@ namespace ST4Yardimci
                     {
                         Along0 = segs[s].a,
                         Along1 = segs[s].b,
-                        Fixed = y
+                        Fixed = y,
+                        Hooked = hookL || hookR
                     });
                 }
                 if (pendingLabels != null)
@@ -1222,10 +1387,12 @@ namespace ST4Yardimci
             {
                 double len = segs[s].b - segs[s].a;
                 if (len < MinSegAfterTrimCm) continue;
-                bool trimBot = segs[s].a > band.Y0 + 0.5;
-                bool trimTop = segs[s].b < band.Y1 - 0.5;
+                bool trimBot = segs[s].a > band.Y0 + 0.5 || EndAtTemelEdge(outer, pits, false, x, segs[s].a, true, paspayi);
+                bool trimTop = segs[s].b < band.Y1 - 0.5 || EndAtTemelEdge(outer, pits, false, x, segs[s].b, false, paspayi);
                 bool hookBot = doGonye && trimBot;
                 bool hookTop = doGonye && trimTop;
+                // Etiket boyu: düz parça + gerçek gönyeler (çizimde max gönye)
+                len += (hookBot ? GonyeYaziBoyu(gonyeLen) : 0) + (hookTop ? GonyeYaziBoyu(gonyeLen) : 0);
                 DrawVerticalBar(tr, btr, donatiLyr, x, segs[s].a, segs[s].b,
                     hookBot, hookTop, gonyeLen, isUst);
                 AddBarSegmentObstacle(obstacles, horizontal: false, segs[s].a, segs[s].b, x);
@@ -1235,7 +1402,8 @@ namespace ST4Yardimci
                     {
                         Along0 = segs[s].a,
                         Along1 = segs[s].b,
-                        Fixed = x
+                        Fixed = x,
+                        Hooked = hookBot || hookTop
                     });
                 }
                 if (pendingLabels != null)
@@ -1260,6 +1428,40 @@ namespace ST4Yardimci
                 n++;
             }
             return n;
+        }
+
+        /// <summary>
+        /// Çubuk ucu TEMEL dış kenarına veya çukur kenarına paspayı mesafesinde mi
+        /// (zarf kutusu paspayı çekilmiş geldiğinde bant kesmesi olmadan da gönye gerekir).
+        /// </summary>
+        private static bool EndAtTemelEdge(
+            List<Point2d> outer, List<List<Point2d>> pits,
+            bool horizontal, double fixedCoord, double end, bool isStart, double paspayi)
+        {
+            double tol = paspayi + 3.0;
+            if (outer != null && outer.Count >= 3)
+            {
+                var chords = horizontal ? HorizontalChords(outer, fixedCoord) : VerticalChords(outer, fixedCoord);
+                for (int i = 0; i < chords.Count; i++)
+                {
+                    double d = isStart ? end - chords[i].a : chords[i].b - end;
+                    if (d >= -0.5 && d <= tol) return true;
+                }
+            }
+            if (pits != null)
+            {
+                for (int p = 0; p < pits.Count; p++)
+                {
+                    var ch = horizontal ? HorizontalChords(pits[p], fixedCoord) : VerticalChords(pits[p], fixedCoord);
+                    for (int c = 0; c < ch.Count; c++)
+                    {
+                        // Başlangıç ucu çukurun sağında/üstünde, bitiş ucu solunda/altında
+                        double d = isStart ? end - ch[c].b : ch[c].a - end;
+                        if (d >= -0.5 && d <= tol) return true;
+                    }
+                }
+            }
+            return false;
         }
 
         private static void FlushPendingDonatiLabels(
@@ -1339,8 +1541,16 @@ namespace ST4Yardimci
         private const double IlaveGonyeLabelHeightCm = 8.0;
         private const double BendRadiusCm = 3.0;
 
+        /// <summary>Yazı/boy hesabı için gerçek gönye (yükseklik − 2×paspayı); çizim max gönye ile yapılır.</summary>
+        private static double GonyeYaziBoyu(double cizimGonye)
+        {
+            double real = RadyeTemelDonatiSettings.RealGonyeBoyuCm;
+            return real > 0.5 ? real : cizimGonye;
+        }
+
         /// <summary>
-        /// Gönye boyu yazısı (yazı kutusu gönyeye dik 4 cm dışarı).
+        /// Gönye boyu yazısı (yazı kutusu gönyeye dik 4 cm, donatı tarafında).
+        /// Dış taraf paspayı/TEMEL kenarı ötesinde perde-kolon altında kalıyordu.
         /// Yatay donatı → düşey yazı; düşey donatı → yatay yazı.
         /// </summary>
         private static void PlaceIlaveGonyeLenLabel(
@@ -1351,7 +1561,7 @@ namespace ST4Yardimci
             double gonyeLen, bool isUst)
         {
             if (gonyeLen < 0.5) return;
-            string text = ((int)Math.Round(gonyeLen)).ToString(CultureInfo.InvariantCulture);
+            string text = ((int)Math.Round(GonyeYaziBoyu(gonyeLen))).ToString(CultureInfo.InvariantCulture);
             Point2d tip = HookTip2d(
                 horizontalBar ? new Point2d(endS, fixedCoord) : new Point2d(fixedCoord, endS),
                 horizontalBar, isUst, gonyeLen);
@@ -1360,7 +1570,7 @@ namespace ST4Yardimci
                 : new Point3d(0.5 * (fixedCoord + tip.X), endS, 0);
 
             double ang = horizontalBar ? Math.PI / 2.0 : 0.0;
-            int outS = isStart ? -1 : 1;
+            int outS = isStart ? 1 : -1; // donatı tarafı
 
             var t = new DBText();
             t.SetDatabaseDefaults();
@@ -1772,30 +1982,7 @@ namespace ST4Yardimci
 
         private static ObjectId GetOrCreateYaziBeykentTextStyle(Transaction tr, Database db)
         {
-            var txtTable = (TextStyleTable)tr.GetObject(db.TextStyleTableId, OpenMode.ForRead);
-            if (txtTable.Has(TextStyleYazi))
-                return txtTable[TextStyleYazi];
-
-            txtTable.UpgradeOpen();
-            var rec = new TextStyleTableRecord { Name = TextStyleYazi };
-            try
-            {
-                rec.Font = new Autodesk.AutoCAD.GraphicsInterface.FontDescriptor(
-                    "Bahnschrift Light Condensed", false, false, 0, 0);
-            }
-            catch
-            {
-                try
-                {
-                    rec.Font = new Autodesk.AutoCAD.GraphicsInterface.FontDescriptor(
-                        "Arial", false, false, 0, 0);
-                }
-                catch { }
-            }
-            try { rec.TextSize = 0.0; } catch { }
-            txtTable.Add(rec);
-            tr.AddNewlyCreatedDBObject(rec, true);
-            return rec.ObjectId;
+            return BaDimensionStyles.EnsureYazi(tr, db);
         }
 
         /// <summary>
@@ -2539,14 +2726,15 @@ namespace ST4Yardimci
         /// Çukur varsa örn. üst→çukur / çukur yüksekliği / çukur→alt (3 ölçü).
         /// Hat: tüm çubukları uçtan ≥40 cm keser; X’te mümkünse etiket sağı.
         /// </summary>
-        private static void DrawDonatiOkuAcikliklari(
+        private static double DrawDonatiOkuAcikliklari(
             Transaction tr, BlockTableRecord btr,
             CoverRect outer, bool isY, List<CoverRect> bands,
             List<DonatiOkuSeg> barSegs, List<double> pitEdgeCoords,
             List<PendingDonatiLabel> pendingLabels,
-            string okuLayer, string halkaLayer, ObjectId dimStyleId)
+            string okuLayer, string halkaLayer, ObjectId dimStyleId,
+            List<(double x0, double x1, double y0, double y1)> digerEngeller = null)
         {
-            if (bands == null || bands.Count == 0) return;
+            if (bands == null || bands.Count == 0) return double.NaN;
             if (barSegs == null) barSegs = new List<DonatiOkuSeg>();
 
             var pts = new List<double>();
@@ -2568,7 +2756,7 @@ namespace ST4Yardimci
                 for (int i = 0; i < pitEdgeCoords.Count; i++)
                     AddUniqueFixed(pts, pitEdgeCoords[i]);
             }
-            if (pts.Count < 2) return;
+            if (pts.Count < 2) return double.NaN;
             pts.Sort();
 
             // Tarama aralığı: tüm çubuk uçlarını kapsasın (trim/TEMEL parçaları dahil)
@@ -2583,6 +2771,8 @@ namespace ST4Yardimci
             if (isY)
             {
                 double dimY = PickDimLineAlongAllBars(barSegs, spanLo, spanHi, preferHigh: false);
+                dimY = OkuHattiniAyir(barSegs, dimY, spanLo, spanHi, pts[0], pts[pts.Count - 1],
+                    horizontalLine: true, digerEngeller, double.NegativeInfinity);
                 var hitFixes = CollectHitFixes(barSegs, dimY);
 
                 for (int i = 0; i < pts.Count - 1; i++)
@@ -2600,6 +2790,7 @@ namespace ST4Yardimci
                 }
 
                 DrawDonatiOkuHitCircles(tr, btr, halkaLayer, hitFixes, dimY, fixedIsX: true);
+                return dimY;
             }
             else
             {
@@ -2620,6 +2811,10 @@ namespace ST4Yardimci
                         dimX = labelRight;
                 }
 
+                dimX = OkuHattiniAyir(barSegs, dimX, spanLo, spanHi, pts[0], pts[pts.Count - 1],
+                    horizontalLine: false, digerEngeller,
+                    dimX >= labelRight - 0.5 ? labelRight : double.NegativeInfinity);
+
                 var hitFixes = CollectHitFixes(barSegs, dimX);
                 for (int i = 0; i < pts.Count - 1; i++)
                 {
@@ -2636,7 +2831,56 @@ namespace ST4Yardimci
                 }
 
                 DrawDonatiOkuHitCircles(tr, btr, halkaLayer, hitFixes, dimX, fixedIsX: false);
+                return dimX;
             }
+        }
+
+        /// <summary>
+        /// Oku hattını başka grubun paralel donatısından / ölçüsünden / oku hattından ayırır.
+        /// Hattın izi: oku + aks ölçüsü (yatay hat: altında, düşey hat: sağında) ± OkuAyrimCm.
+        /// Aynı sayıda çubuğu kesen, engelle örtüşmesi en az ve ilk konuma en yakın konum seçilir.
+        /// </summary>
+        private static double OkuHattiniAyir(
+            List<DonatiOkuSeg> segs, double current, double spanLo, double spanHi,
+            double extLo, double extHi, bool horizontalLine,
+            List<(double x0, double x1, double y0, double y1)> engeller, double minC)
+        {
+            if (engeller == null || engeller.Count == 0 || segs == null || segs.Count == 0) return current;
+            double olcu = AksOlcuOfsetCm + 12.0;
+            double Skor(double c)
+            {
+                // Yatay hat: ölçü altta → [c-olcu-ayrım, c+ayrım]; düşey hat: ölçü sağda → [c-ayrım, c+olcu+ayrım]
+                double s0 = horizontalLine ? c - olcu - OkuAyrimCm : c - OkuAyrimCm;
+                double s1 = horizontalLine ? c + OkuAyrimCm : c + olcu + OkuAyrimCm;
+                double sc = 0;
+                foreach (var o in engeller)
+                {
+                    double q0 = horizontalLine ? o.y0 : o.x0, q1 = horizontalLine ? o.y1 : o.x1;
+                    if (q1 <= s0 || q0 >= s1) continue;
+                    double a0 = horizontalLine ? o.x0 : o.y0, a1 = horizontalLine ? o.x1 : o.y1;
+                    double ov = Math.Min(a1, extHi) - Math.Max(a0, extLo);
+                    if (ov > 0) sc += ov;
+                }
+                return sc;
+            }
+
+            double best = current;
+            double bestScore = Skor(current);
+            if (bestScore < 1e-3) return current;
+            int need = CountUniqueFixedSafeHits(segs, current);
+            for (double c = spanLo; c <= spanHi + 1e-6; c += CleanShiftStepCm)
+            {
+                if (c < minC) continue;
+                if (CountUniqueFixedSafeHits(segs, c) < need) continue;
+                double sc = Skor(c);
+                if (sc + 1e-6 < bestScore
+                    || (Math.Abs(sc - bestScore) < 1e-6 && Math.Abs(c - current) < Math.Abs(best - current)))
+                {
+                    bestScore = sc;
+                    best = c;
+                }
+            }
+            return best;
         }
 
         private static List<double> CollectHitFixes(List<DonatiOkuSeg> barSegs, double along)
@@ -2763,43 +3007,10 @@ namespace ST4Yardimci
             catch { }
         }
 
-        /// <summary>DONATI HALKASI (BEYKENT): sarı, Continuous, 0.30.</summary>
+        /// <summary>DONATI HALKASI (BEYKENT): katalog (sarı, kesikli, 0.30).</summary>
         private static string EnsureDonatiHalkasiLayer(Transaction tr, Database db)
         {
-            var lt = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
-            if (lt.Has(LayerDonatiHalkasi))
-            {
-                // Mevcut katmanı Continuous + sarı yap (Dashed kalmasın)
-                try
-                {
-                    var existing = (LayerTableRecord)tr.GetObject(lt[LayerDonatiHalkasi], OpenMode.ForWrite);
-                    existing.Color = Color.FromColorIndex(ColorMethod.ByAci, DonatiHalkasiAci);
-                    existing.LineWeight = LineWeight.LineWeight030;
-                    var ltt = (LinetypeTable)tr.GetObject(db.LinetypeTableId, OpenMode.ForRead);
-                    if (ltt.Has("Continuous"))
-                        existing.LinetypeObjectId = ltt["Continuous"];
-                }
-                catch { }
-                return LayerDonatiHalkasi;
-            }
-
-            lt.UpgradeOpen();
-            var rec = new LayerTableRecord
-            {
-                Name = LayerDonatiHalkasi,
-                Color = Color.FromColorIndex(ColorMethod.ByAci, DonatiHalkasiAci),
-                LineWeight = LineWeight.LineWeight030
-            };
-            try
-            {
-                var ltt = (LinetypeTable)tr.GetObject(db.LinetypeTableId, OpenMode.ForRead);
-                if (ltt.Has("Continuous"))
-                    rec.LinetypeObjectId = ltt["Continuous"];
-            }
-            catch { }
-
-            lt.Add(rec);
-            tr.AddNewlyCreatedDBObject(rec, true);
+            BeykentKatmanYukle.Ensure(tr, db, LayerDonatiHalkasi, DonatiHalkasiAci, LineWeight.LineWeight030, true);
             return LayerDonatiHalkasi;
         }
 
@@ -2813,17 +3024,7 @@ namespace ST4Yardimci
 
         private static string EnsureLayer(Transaction tr, Database db, string name, short aci, LineWeight lw)
         {
-            var lt = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
-            if (lt.Has(name)) return name;
-            lt.UpgradeOpen();
-            var rec = new LayerTableRecord
-            {
-                Name = name,
-                Color = Color.FromColorIndex(ColorMethod.ByAci, aci),
-                LineWeight = lw
-            };
-            lt.Add(rec);
-            tr.AddNewlyCreatedDBObject(rec, true);
+            BeykentKatmanYukle.Ensure(tr, db, name, aci, lw);
             return name;
         }
     }

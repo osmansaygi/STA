@@ -6,10 +6,10 @@ using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
 namespace ST4PlanIdCiz
 {
     /// <summary>Kiriş açılım formuyla aynı düzen: Antetli/Antetsiz. Sürekli temel kat seçmez.</summary>
-    internal sealed class SurekliTemelAcilimForm : Form
+    internal sealed class SurekliTemelAcilimForm : Beykent.Monolit.MonolitForm
     {
-        private static bool _sonAntetli = true;
-        private readonly RadioButton _antetli;
+        private static bool _sonAntetli = true, _sonBirlestir = true;
+        private readonly RadioButton _antetli, _birlestir;
         public KirisAcilimSecenekleri Secenekler { get; private set; }
 
         internal static bool TryShow(out KirisAcilimSecenekleri secenekler)
@@ -32,8 +32,8 @@ namespace ST4PlanIdCiz
             MaximizeBox = MinimizeBox = false;
             ShowInTaskbar = false;
             Font = new Font("Segoe UI", 9f);
-            BackColor = AcadPaletteTheme.Bg;
-            ForeColor = AcadPaletteTheme.Text;
+            BackColor = Beykent.Monolit.StandardFormTheme.Bg;
+            ForeColor = Beykent.Monolit.StandardFormTheme.Text;
 
             var drawing = new GroupBox
             {
@@ -49,6 +49,13 @@ namespace ST4PlanIdCiz
             drawing.Controls.AddRange(new Control[] { _antetli, plain });
             Controls.Add(drawing);
 
+            // Birleştir: aynı hizadaki (orta çizgileri buluşan) temeller tek açılım. Ayrı: her temel kendi açılımı.
+            var temelGrup = new GroupBox { Text = "Temeller", Left = 16, Top = 92, Width = 388, Height = 56, ForeColor = ForeColor };
+            _birlestir = new RadioButton { Text = "Aynı hizadakileri birleştir", Left = 18, Top = 22, Width = 180, Checked = _sonBirlestir };
+            var ayri = new RadioButton { Text = "Her temel ayrı", Left = 198, Top = 22, Width = 150, Checked = !_sonBirlestir };
+            temelGrup.Controls.AddRange(new Control[] { _birlestir, ayri });
+            Controls.Add(temelGrup);
+
             Controls.Add(new Label
             {
                 Text = "Beton, kolon, donatı ve etriye açılımları.\nMontaj altta, düz donatı üstte çizilir.",
@@ -62,14 +69,24 @@ namespace ST4PlanIdCiz
             var cancel = new Button { Text = "İptal", Left = 314, Top = 160, Width = 90, Height = 30, DialogResult = DialogResult.Cancel };
             draw.Click += (s, e) =>
             {
-                Secenekler = new KirisAcilimSecenekleri { Antetli = _antetli.Checked, SeciliKatNo = null };
+                Secenekler = new KirisAcilimSecenekleri { Antetli = _antetli.Checked, SeciliKatNo = null,
+                    TemelBirlestir = _birlestir.Checked };
                 _sonAntetli = _antetli.Checked;
+                _sonBirlestir = _birlestir.Checked;
                 DialogResult = DialogResult.OK;
                 Close();
             };
             Controls.AddRange(new Control[] { draw, cancel });
             AcceptButton = draw;
             CancelButton = cancel;
+
+            // Kompakt, içerik odaklı form düzeni.
+            var ui = BeginCompact(340);
+            ui.Section("Çizim düzeni · 1/25").Options(_antetli, plain);
+            ui.Section("Temeller").Options(_birlestir, ayri);
+            ui.Section(null).Hint("Montaj altta; düz donatı üstte çizilir.");
+            ui.Footer(draw, cancel);
+            ui.Finish();
         }
     }
 }

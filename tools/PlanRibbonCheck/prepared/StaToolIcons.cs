@@ -1,0 +1,268 @@
+using System;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
+using System.IO;
+using System.Reflection;
+using System.Windows.Forms;
+using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
+namespace ST4PlanIdCiz {
+    internal static class StaToolIcons
+    {
+        private static readonly Color Gray = Color.FromArgb(0x66, 0x66, 0x66);
+        /// <summary>AutoCAD ACI 94 ≈ RGB(153,204,51).</summary>
+        private static readonly Color Accent = Color.FromArgb(153, 204, 51);
+        private static readonly Color Light = Color.FromArgb(0xC8, 0xCD, 0xD4);
+
+        /// <summary>
+        /// %LocalAppData%\ST4Icons\KOMUT.png varsa onu kullanır (32×32’ye sığdırır).
+        /// AutoCAD’den PNG aktarımı için; panel yeniden açılınca okunur.
+        /// </summary>
+        static Image TryUserOverride(string cmd)
+        {
+            if (string.IsNullOrWhiteSpace(cmd)) return null;
+            try
+            {
+                string path = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "ST4Icons",
+                    cmd.Trim().ToUpperInvariant() + ".png");
+                if (!File.Exists(path)) return null;
+                byte[] bytes = File.ReadAllBytes(path);
+                using (var ms = new MemoryStream(bytes))
+                using (var src = Image.FromStream(ms))
+                    return Fit32(src);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        static Image TryEmbedded(string cmd)
+        {
+            if (string.IsNullOrWhiteSpace(cmd)) return null;
+            try
+            {
+                string res = "ST4PlanIdCiz.Icons.sta_" + cmd.Trim().ToLowerInvariant() + ".png";
+                using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(res))
+                {
+                    if (stream == null) return null;
+                    using (var src = Image.FromStream(stream))
+                        return new Bitmap(src);
+                }
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        static Bitmap Fit32(Image src)
+        {
+            var dst = new Bitmap(32, 32, PixelFormat.Format32bppArgb);
+            using (var g = Graphics.FromImage(dst))
+            {
+                g.Clear(Color.Transparent);
+                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                g.DrawImage(src, new Rectangle(0, 0, 32, 32));
+            }
+            return dst;
+        }
+
+        public static Image ForCommand(string cmd)
+        {
+            Image user = TryUserOverride(cmd);
+            if (user != null) return user;
+            Image monolit = StaMonolitIcons.TryLoad(cmd);
+            if (monolit != null) return monolit;
+            Image embedded = TryEmbedded(cmd);
+            if (embedded != null) return embedded;
+            if (string.IsNullOrEmpty(cmd)) return GlyphPlan();
+            string c = cmd.ToUpperInvariant();
+            if (c.Contains("KALIP")) return GlyphPlan();
+            if (c.Contains("KOLON") && c.Contains("DUSEY")) return GlyphColumnElev();
+            if (c.Contains("KOLON")) return GlyphColumn();
+            if (c.Contains("TEMEL") || c.Contains("DONATI") && c.Contains("TEMEL")) return GlyphFoundation();
+            if (c.Contains("TEMELDONATI") || c.StartsWith("RD")) return GlyphFoundation();
+            if (c.Contains("ISKELE") && c.Contains("KESIT")) return GlyphScaffoldSection();
+            if (c.Contains("ISKELE")) return GlyphScaffold();
+            if (c.Contains("GORUNUS")) return GlyphSection();
+            if (c.Contains("KESIT")) return GlyphSection();
+            if (c.Contains("KATMAN")) return GlyphLayers();
+            if (c.Contains("METRAJ")) return GlyphTable();
+            if (c.Contains("KIRIS")) return GlyphBeam();
+            if (c.Contains("KAPAMA") || c.Contains("PERDE")) return GlyphWall();
+            if (c.Contains("MANTAR") || c.Contains("DOSEME")) return GlyphPlan();
+            if (c.Contains("REVIZE") || c.Contains("DATA") || c.Contains("PLANID") || c.Contains("DENEME"))
+                return GlyphGear();
+            return GlyphPlan();
+        }
+
+        private static Bitmap NewBmp()
+        {
+            var b = new Bitmap(32, 32);
+            using (var g = Graphics.FromImage(b))
+            {
+                g.Clear(Color.Transparent);
+                g.SmoothingMode = SmoothingMode.None;
+                g.PixelOffsetMode = PixelOffsetMode.Half;
+            }
+            return b;
+        }
+
+        private static void Rect(Graphics g, int x, int y, int w, int h, Color c)
+        {
+            using (var br = new SolidBrush(c))
+                g.FillRectangle(br, x, y, w, h);
+        }
+
+        private static Image GlyphPlan()
+        {
+            var b = NewBmp();
+            using (var g = Graphics.FromImage(b))
+            {
+                Rect(g, 6, 6, 20, 20, Gray);
+                Rect(g, 8, 8, 16, 16, Color.FromArgb(40, 45, 52));
+                Rect(g, 10, 14, 12, 2, Accent);
+                Rect(g, 14, 10, 2, 12, Accent);
+            }
+            return b;
+        }
+
+        private static Image GlyphColumn()
+        {
+            var b = NewBmp();
+            using (var g = Graphics.FromImage(b))
+            {
+                Rect(g, 11, 5, 10, 22, Gray);
+                Rect(g, 13, 7, 6, 18, Accent);
+            }
+            return b;
+        }
+
+        private static Image GlyphColumnElev()
+        {
+            var b = NewBmp();
+            using (var g = Graphics.FromImage(b))
+            {
+                Rect(g, 8, 4, 16, 24, Gray);
+                Rect(g, 10, 6, 4, 20, Accent);
+                Rect(g, 18, 6, 4, 20, Accent);
+            }
+            return b;
+        }
+
+        private static Image GlyphFoundation()
+        {
+            var b = NewBmp();
+            using (var g = Graphics.FromImage(b))
+            {
+                Rect(g, 12, 6, 8, 10, Gray);
+                Rect(g, 6, 16, 20, 8, Gray);
+                Rect(g, 8, 18, 16, 4, Accent);
+            }
+            return b;
+        }
+
+        private static Image GlyphScaffold()
+        {
+            var b = NewBmp();
+            using (var g = Graphics.FromImage(b))
+            {
+                Rect(g, 7, 5, 2, 22, Gray);
+                Rect(g, 23, 5, 2, 22, Gray);
+                Rect(g, 7, 10, 18, 2, Accent);
+                Rect(g, 7, 18, 18, 2, Accent);
+            }
+            return b;
+        }
+
+        private static Image GlyphScaffoldSection()
+        {
+            var b = NewBmp();
+            using (var g = Graphics.FromImage(b))
+            {
+                Rect(g, 6, 6, 20, 2, Gray);
+                Rect(g, 6, 15, 20, 2, Gray);
+                Rect(g, 6, 24, 20, 2, Gray);
+                Rect(g, 15, 6, 2, 20, Accent);
+            }
+            return b;
+        }
+
+        private static Image GlyphSection()
+        {
+            var b = NewBmp();
+            using (var g = Graphics.FromImage(b))
+            {
+                Rect(g, 5, 8, 22, 16, Gray);
+                Rect(g, 7, 10, 18, 12, Color.FromArgb(40, 45, 52));
+                Rect(g, 5, 14, 22, 2, Accent);
+            }
+            return b;
+        }
+
+        private static Image GlyphLayers()
+        {
+            var b = NewBmp();
+            using (var g = Graphics.FromImage(b))
+            {
+                Rect(g, 6, 8, 20, 4, Light);
+                Rect(g, 6, 14, 20, 4, Gray);
+                Rect(g, 6, 20, 20, 4, Accent);
+            }
+            return b;
+        }
+
+        private static Image GlyphTable()
+        {
+            var b = NewBmp();
+            using (var g = Graphics.FromImage(b))
+            {
+                Rect(g, 6, 6, 20, 20, Gray);
+                Rect(g, 8, 8, 16, 4, Accent);
+                Rect(g, 8, 14, 16, 2, Light);
+                Rect(g, 8, 18, 16, 2, Light);
+                Rect(g, 8, 22, 16, 2, Light);
+            }
+            return b;
+        }
+
+        private static Image GlyphBeam()
+        {
+            var b = NewBmp();
+            using (var g = Graphics.FromImage(b))
+            {
+                Rect(g, 5, 12, 22, 8, Gray);
+                Rect(g, 7, 14, 18, 4, Accent);
+            }
+            return b;
+        }
+
+        private static Image GlyphWall()
+        {
+            var b = NewBmp();
+            using (var g = Graphics.FromImage(b))
+            {
+                Rect(g, 8, 5, 16, 22, Gray);
+                Rect(g, 10, 7, 4, 18, Accent);
+                Rect(g, 18, 7, 4, 18, Accent);
+            }
+            return b;
+        }
+
+        private static Image GlyphGear()
+        {
+            var b = NewBmp();
+            using (var g = Graphics.FromImage(b))
+            {
+                Rect(g, 12, 6, 8, 20, Gray);
+                Rect(g, 6, 12, 20, 8, Gray);
+                Rect(g, 13, 13, 6, 6, Accent);
+            }
+            return b;
+        }
+    }
+}

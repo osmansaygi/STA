@@ -3345,6 +3345,9 @@ namespace ST4PlanIdCiz
             public double OffsetY;
             public Envelope Envelope;
             public Geometry TemelGeom;
+            /// <summary>Plan altı yazı bloğunun üst Y'si (aks balonlarının altı) ve orta X'i.</summary>
+            public double AltYaziY;
+            public double AltYaziX;
         }
 
         /// <summary>
@@ -3440,6 +3443,13 @@ namespace ST4PlanIdCiz
                             double temelBaslikYTop = yBottomBalloonTemel - Temel50BaslikAltAksBalonBoslukCm * fa;
                             layMinY = Math.Min(layMinY, temelBaslikYTop - 30.0 * fa - 100.0 * fa);
                         }
+                        else if (copyIndex == 1)
+                        {
+                            // TEMELDONATI 2. plan altı: ana donatı yazısı (5 satır) için antette yer.
+                            double fa = TemelFoundationAnnotMul;
+                            double yaziYTop = yBottomBalloonTemel - Temel50BaslikAltAksBalonBoslukCm * fa;
+                            layMinY = Math.Min(layMinY, yaziYTop - 5 * 40.0 * fa - 50.0 * fa);
+                        }
 
                         if (!antetInit)
                         {
@@ -3477,7 +3487,9 @@ namespace ST4PlanIdCiz
                                 OffsetX = offsetX,
                                 OffsetY = offsetY,
                                 Envelope = env,
-                                TemelGeom = temelUnion
+                                TemelGeom = temelUnion,
+                                AltYaziY = yBottomBalloonTemel - Temel50BaslikAltAksBalonBoslukCm * TemelFoundationAnnotMul,
+                                AltYaziX = offsetX + (firstFloorAxisExt.Xmin + firstFloorAxisExt.Xmax) / 2.0
                             });
                         }
                     }
@@ -3864,45 +3876,21 @@ namespace ST4PlanIdCiz
             }
         }
 
+        /// <summary>
+        /// BEYKENT katman tablosu: katman ortak ayarda (KATMANYUKLE formu) varsa ayar değeriyle, yoksa verilen değerlerle oluşturulur.
+        /// Mevcut katmanın renk / çizgi tipi / kalınlığı değiştirilmez; yalnız açılır (ayarda Renk zorla işaretliyse rengi çekilir).
+        /// </summary>
         private static void EnsurePlanLayer(Transaction tr, Database db, string layerName, int colorIndex, LineWeight lineWeight, bool useDashed = false, int? layerTransparencyPercent = null)
         {
-            var lt = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
-            if (lt.Has(layerName))
+            if (string.IsNullOrWhiteSpace(layerName)) return;
+            BeykentOrtak.BeykentStilUygula.KatmanHazirla(tr, db, new BeykentOrtak.KatmanAyar
             {
-                // BEYKENT katman tablosu: mevcut katmanın renk / çizgi tipi / kalınlığı değiştirilmez.
-                var existing = (LayerTableRecord)tr.GetObject(lt[layerName], OpenMode.ForRead);
-                if (existing.IsOff)
-                {
-                    try { existing.UpgradeOpen(); existing.IsOff = false; } catch { }
-                }
-                return;
-            }
-            lt.UpgradeOpen();
-            var rec = new LayerTableRecord
-            {
-                Name = layerName,
-                Color = Color.FromColorIndex(ColorMethod.ByAci, (short)colorIndex),
-                LineWeight = lineWeight
-            };
-            lt.Add(rec);
-            tr.AddNewlyCreatedDBObject(rec, true);
-            if (layerTransparencyPercent.HasValue)
-            {
-                int tp = layerTransparencyPercent.Value;
-                if (tp < 0) tp = 0;
-                if (tp > 90) tp = 90;
-                rec.Transparency = new Transparency((byte)tp);
-            }
-            if (useDashed)
-            {
-                var ltt = (LinetypeTable)tr.GetObject(db.LinetypeTableId, OpenMode.ForRead);
-                if (ltt.Has("DASHED"))
-                    rec.LinetypeObjectId = ltt["DASHED"];
-                else if (ltt.Has("Dashed"))
-                    rec.LinetypeObjectId = ltt["Dashed"];
-            }
-            // Cizimde gorunurluk: sablon / onceki oturumda kapatilmis olabilir.
-            try { rec.IsOff = false; } catch { /* eski surum */ }
+                Ad = layerName,
+                Aci = (short)colorIndex,
+                Kalinlik = (int)lineWeight,
+                CizgiTipi = useDashed ? "DASHED" : "Continuous",
+                Saydamlik = layerTransparencyPercent ?? 0
+            });
         }
 
         /// <summary>
@@ -10609,6 +10597,7 @@ namespace ST4PlanIdCiz
                     var existing = (DimStyleTableRecord)tr.GetObject(id, OpenMode.ForWrite);
                     if (!yaziId.IsNull) existing.Dimtxsty = yaziId;
                     ApplyAksPlanOlcuDimStyleArrowsAndSize(existing, dimTextHeightCm, lineGeomScale);
+                    BeykentOrtak.BeykentStilUygula.OlcuFarkiniUygula(tr, db, existing);
                 }
                 catch { }
                 return id;
@@ -10629,6 +10618,7 @@ namespace ST4PlanIdCiz
             try { newRec.Dimtofl = true; } catch { }
             try { newRec.Dimscale = 1.0; } catch { }
             ApplyAksPlanOlcuDimStyleArrowsAndSize(newRec, dimTextHeightCm, lineGeomScale);
+            BeykentOrtak.BeykentStilUygula.OlcuFarkiniUygula(tr, db, newRec);
 
             dst.UpgradeOpen();
             ObjectId newDimId = dst.Add(newRec);
@@ -10662,6 +10652,7 @@ namespace ST4PlanIdCiz
             try { newRec.Dimtofl = true; } catch { }
             try { newRec.Dimscale = 1.0; } catch { }
             ApplyAksPlanOlcuDimStyleArrowsAndSize(newRec, dimTextHeightCm, lineGeomScale);
+            BeykentOrtak.BeykentStilUygula.OlcuFarkiniUygula(tr, db, newRec);
             dst.UpgradeOpen();
             ObjectId newPlanDimId = dst.Add(newRec);
             tr.AddNewlyCreatedDBObject(newRec, true);
@@ -10685,57 +10676,19 @@ namespace ST4PlanIdCiz
                 rec.Dimtdec = 1;
                 rec.Dimzin = 8;
                 if (!yaziId.IsNull) rec.Dimtxsty = yaziId;
+                BeykentOrtak.BeykentStilUygula.OlcuFarkiniUygula(tr, db, rec);
             }
             catch { }
             return id;
         }
 
+        /// <summary>Etriye ölçü yazısı (varsayılan genişlik 0.7); yoksa KATMANYUKLE ayarıyla oluşturulur, varsa dokunulmaz.</summary>
         private static ObjectId GetOrCreateEtriyeOlcuYaziTextStyle(Transaction tr, Database db)
-        {
-            var txtTable = (TextStyleTable)tr.GetObject(db.TextStyleTableId, OpenMode.ForRead);
-            if (txtTable.Has(EtriyeOlcuYaziStyleName))
-                return txtTable[EtriyeOlcuYaziStyleName];
-            var rec = new TextStyleTableRecord { Name = EtriyeOlcuYaziStyleName };
-            try
-            {
-                rec.Font = new Autodesk.AutoCAD.GraphicsInterface.FontDescriptor("Bahnschrift Light Condensed", false, false, 0, 0);
-            }
-            catch
-            {
-                try { rec.Font = new Autodesk.AutoCAD.GraphicsInterface.FontDescriptor("Arial", false, false, 0, 0); } catch { }
-            }
-            try { rec.TextSize = 0.0; } catch { }
-            try { rec.XScale = 0.7; } catch { }
-            txtTable.UpgradeOpen();
-            ObjectId newId = txtTable.Add(rec);
-            tr.AddNewlyCreatedDBObject(rec, true);
-            txtTable.DowngradeOpen();
-            return newId;
-        }
+            => BeykentOrtak.BeykentStilUygula.YaziStili(tr, db, EtriyeOlcuYaziStyleName, false);
 
-        /// <summary>Çizimdeki tüm metin ve ölçü yazıları için ortak stil: "YAZI (BEYKENT)".</summary>
+        /// <summary>Çizimdeki tüm metin ve ölçü yazıları için ortak stil: "YAZI (BEYKENT)"; yoksa KATMANYUKLE ayarıyla oluşturulur.</summary>
         private static ObjectId GetOrCreateYaziBeykentTextStyle(Transaction tr, Database db)
-        {
-            var txtTable = (TextStyleTable)tr.GetObject(db.TextStyleTableId, OpenMode.ForRead);
-            if (txtTable.Has(YaziBeykentTextStyleName)) return txtTable[YaziBeykentTextStyleName];
-
-            var rec = new TextStyleTableRecord { Name = YaziBeykentTextStyleName };
-            try
-            {
-                rec.Font = new Autodesk.AutoCAD.GraphicsInterface.FontDescriptor("Bahnschrift Light Condensed", false, false, 0, 0);
-            }
-            catch
-            {
-                try { rec.Font = new Autodesk.AutoCAD.GraphicsInterface.FontDescriptor("Arial", false, false, 0, 0); } catch { }
-            }
-            try { rec.TextSize = 0.0; } catch { }
-            try { rec.XScale = 1.0; } catch { }
-            txtTable.UpgradeOpen();
-            ObjectId id = txtTable.Add(rec);
-            tr.AddNewlyCreatedDBObject(rec, true);
-            txtTable.DowngradeOpen();
-            return id;
-        }
+            => BeykentOrtak.BeykentStilUygula.YaziStili(tr, db, YaziBeykentTextStyleName, false);
 
         private static string DimStyleNameWith25Suffix(string baseName)
         {
@@ -15786,6 +15739,8 @@ namespace ST4PlanIdCiz
                 TemelPlanCopyLayout copy = copyLayouts[i];
                 copy.OffsetX += dx;
                 copy.OffsetY += dy;
+                copy.AltYaziX += dx;
+                copy.AltYaziY += dy;
                 if (copy.Envelope != null)
                     copy.Envelope = new Envelope(copy.Envelope.MinX + dx, copy.Envelope.MaxX + dx, copy.Envelope.MinY + dy, copy.Envelope.MaxY + dy);
                 if (copy.TemelGeom != null && !copy.TemelGeom.IsEmpty)

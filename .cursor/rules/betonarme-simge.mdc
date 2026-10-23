@@ -1,15 +1,17 @@
 ---
-description: Betonarme Tool simge çizgisi — kullanıcı 15.10.2026 ince çizgiyi onayladı
+description: Yardımcı ve ST4 ID panellerinde mevcut ve yeni komutlar için onaylı Monolit simge standardı
 alwaysApply: true
 ---
 
-# Betonarme Tool simgeleri
+# Monolit simge standardı
 
-Kullanıcı bu çizgi kalınlığını onayladı («güzel»). Simge değişince kalınlığa geri dönme.
+Kullanıcı Yardımcı ve ST4 ID için Monolit'i onayladı ve bundan sonraki yeni komutlar için de aynı tarzda simgeler üretilmesini istedi. Bu tercih önceki ince beyaz/yeşil çizgisel simge tercihinin yerini alır.
 
-- Üretim: `tools/GenPanelIcons/Program.cs`, yalnız BA: `dotnet run -c Release -- BA`
-- Tuval **64×64**, `ScaleTransform(2)`. Koordinatlar 32’lik uzayda kalır.
-- Kalem (32 uzayında): beyaz **0.45**, yeşil **0.50**, soluk **0.40**. Düz uç, gönye birleşim.
-- Palet `PictureBox` **Zoom** (CenterImage 64 px’i keser).
-- PNG: `ST4_Yardimci/Icons/ba_*.png`. Değişince `ST4_Yardimci` derle; gömülü simge DLL ile gelir.
-- STA simgelerine dokunma; kullanıcı yalnız Betonarme Tool dedi.
+- Her yeni panel komutuyla birlikte, yaptığı işi anlatan kendine özgü bir Monolit simgesi üret ve paneldeki komut eşlemesine ekle.
+- Görsel dil: sıcak fildişi beton, kobalt mavi donatı/çelik, turuncu işlevsel vurgu; tutarlı izometrik görünüm, belirgin siluet, şeffaf PNG.
+- 28–32 pikselde anlaşılır olacak şekilde ayrıntıları sade tut; yazı, karmaşık arka plan ve simgeler arası taşma kullanma.
+- Mevcut onaylı referanslar: `ST4_Yardimci/Icons/monolit_atlas.png`, `ST4_Plan_ID_Ciz/Icons/sta_monolit_atlas.png`.
+- Yükleyiciler: `ST4_Yardimci/BaCommandIcons.cs` ve `ST4_Plan_ID_Ciz/StaMonolitIcons.cs`; ST4 ID kişisel simge önceliği `ToolPaletteUi.cs` içindedir.
+- Yeni komut için atlas veya ayrı gömülü kaynak eklerken mevcut komutların simge eşlemelerini kaydırma. Mevcut atlası sırf yeni bir simge eklemek için yeniden üretme.
+- Kişisel simge önceliğini ve Monolit/Klasik seçimini koru. Yalnız simge işi için çizim ve donatı hesaplama kodunu değiştirme.
+- Çıktıyı gerçek panel boyutunda kontrol et, ilgili eklentiyi derle. Örnek doğrulamalar: `tools/MonolitSmoke`, `tools/StaMonolitSmoke`.

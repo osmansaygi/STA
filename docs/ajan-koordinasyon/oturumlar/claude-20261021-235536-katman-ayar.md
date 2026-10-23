@@ -1,0 +1,11 @@
+# Claude Code — KATMANYUKLE 3 sekmeli ayar formu + ortak katman/stil ayar dosyası
+- Ajan: Claude Code / bu sohbet (Zımbalama oturumundan başlatılan yan oturum)
+- Güncelleme: 2026-10-22 00:25 (Europe/Istanbul)
+- Durum: tamamlandı
+- Görev: KATMANYUKLE 3 sekmeli form (katman / ölçü stili / yazı stili); ayar JSON (%APPDATA%\BEYKENT\katman-stil.json); Kaydet + Yükle; Yardımcı ve Plan merkezi oluşturma noktaları ayara bağlandı. Doğrudan renk zorlayan diğer yerler yalnız listelendi (docs/modul-durum/ST4_Plan_ID_Ciz.md).
+- Kullanıcı onayı: "TAMAM YAPALIM OZAMAN" (Zımbalama oturumu aracılığıyla).
+- Ayrılanlar: yok (serbest bırakıldı).
+- Değişen: Ortak/BeykentStil/BeykentStilAyar.cs, BeykentStilUygula.cs (yeni, iki projeye link'li); ST4_Yardimci/BeykentKatmanYukle.cs, BaDimensionStyles.cs, KatmanAyarForm.cs (yeni), CommandEntry.cs (yalnız KATMANYUKLE açıklaması), ST4_Yardimci.csproj; ST4_Plan_ID_Ciz/PlanIdDrawingManager.cs (EnsurePlanLayer, ölçü/yazı stili getter'ları), PlanIdDrawingManager.Zimbalama.cs (ZimOlcuStil), ST4_Plan_ID_Ciz.csproj; .cursor/rules/beykent-katman-tablosu.mdc; docs/modul-durum/ST4_Yardimci.md, ST4_Plan_ID_Ciz.md.
+- Not: PlanIdDrawingManager.cs Cursor radye-devam kaydında (beklemede); kullanıcı onayıyla yalnız katman/stil metotları değişti.
+- Doğrulama: Debug/net48 Yardımcı 0/0 `NETLOAD\ST4_Yardimci_20261022_002238.dll`; Plan 0/0 `NETLOAD\ST4_Plan_ID_Ciz_20261022_002240.dll`. Yardımcı net10 (2027) izole kopyada 0/0 (dağıtım klasörüne yazılmadı). JSON gidiş-dönüş/eksik alan testi PASS (scratch konsol). Verify-Project pwsh yok, koşulmadı. AutoCAD canlı deneme yok.
+- Açık: AutoCAD'de form ve Yükle denemesi; listelenen doğrudan renk zorlayan yerlerin kademeli bağlanması.

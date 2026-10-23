@@ -31,6 +31,7 @@ namespace ST4Yardimci
         public static double MinFarkCm { get; set; } = 0.5;
         public static bool OnizlemeMesaji { get; set; } = true;
         public static List<string> Katmanlar { get; } = new List<string>();
+        public static List<string> CizimKatmanlar { get; } = new List<string>();
 
         static bool _loaded;
 
@@ -48,6 +49,7 @@ namespace ST4Yardimci
             MinFarkCm = BaIni.GetD(m, "MinFarkCm", MinFarkCm);
             OnizlemeMesaji = BaIni.GetB(m, "OnizlemeMesaji", OnizlemeMesaji);
             ReplaceKatmanlar(SplitKatmanlar(BaIni.Get(m, "Katmanlar", "")));
+            ReplaceCizimKatmanlar(SplitKatmanlar(BaIni.Get(m, "CizimKatmanlar", "")));
         }
 
         public static void Save()
@@ -61,7 +63,8 @@ namespace ST4Yardimci
                 "SadeceDonatiKatmani=" + BaIni.B(SadeceDonatiKatmani),
                 "MinFarkCm=" + BaIni.N(MinFarkCm),
                 "OnizlemeMesaji=" + BaIni.B(OnizlemeMesaji),
-                "Katmanlar=" + JoinKatmanlar());
+                "Katmanlar=" + JoinKatmanlar(),
+                "CizimKatmanlar=" + string.Join("|", CizimKatmanlar));
         }
 
         public static void SetKatmanlar(IEnumerable<string> names)
@@ -114,6 +117,56 @@ namespace ST4Yardimci
             }
         }
 
+        public static void SetCizimKatmanlar(IEnumerable<string> names)
+        {
+            EnsureLoaded();
+            ReplaceCizimKatmanlar(names);
+            Save();
+        }
+
+        public static bool AddCizimKatman(string name)
+        {
+            EnsureLoaded();
+            if (string.IsNullOrWhiteSpace(name)) return false;
+            string t = name.Trim();
+            foreach (string e in CizimKatmanlar)
+                if (string.Equals(e, t, StringComparison.OrdinalIgnoreCase))
+                    return false;
+            CizimKatmanlar.Add(t);
+            Save();
+            return true;
+        }
+
+        public static bool RemoveCizimKatman(string name)
+        {
+            EnsureLoaded();
+            if (string.IsNullOrWhiteSpace(name)) return false;
+            bool removed = false;
+            for (int i = CizimKatmanlar.Count - 1; i >= 0; i--)
+            {
+                if (string.Equals(CizimKatmanlar[i], name.Trim(), StringComparison.OrdinalIgnoreCase))
+                {
+                    CizimKatmanlar.RemoveAt(i);
+                    removed = true;
+                }
+            }
+            if (removed) Save();
+            return removed;
+        }
+
+        static void ReplaceCizimKatmanlar(IEnumerable<string> names)
+        {
+            CizimKatmanlar.Clear();
+            if (names == null) return;
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string n in names)
+            {
+                if (string.IsNullOrWhiteSpace(n)) continue;
+                string t = n.Trim();
+                if (seen.Add(t)) CizimKatmanlar.Add(t);
+            }
+        }
+
         static IEnumerable<string> SplitKatmanlar(string raw)
         {
             if (string.IsNullOrWhiteSpace(raw)) yield break;
@@ -138,7 +191,7 @@ namespace ST4Yardimci
     }
 
     /// <summary>Modeless form — toplu L= güncelleme.</summary>
-    internal sealed class DonatiBoyuForm : Form
+    internal sealed class DonatiBoyuForm : Beykent.Monolit.MonolitForm
     {
         private static DonatiBoyuForm _instance;
 
@@ -147,6 +200,7 @@ namespace ST4Yardimci
         private readonly TextBox _txtFi;
         private readonly ComboBox _cmbLFormat;
         private readonly ListBox _lstLayers;
+        private readonly ListBox _lstDrawingLayers;
         private readonly CheckBox _chkOnizleme;
 
         static readonly OlcekItem[] Olcekler =
@@ -170,7 +224,8 @@ namespace ST4Yardimci
                 _instance.LoadFromSettings();
                 _instance.Visible = true;
                 _instance.BringToFront();
-            }
+            }
+
             BaFormSession.Attach("DONATIBOYU", _instance);
             BaFormSession.EndPick("DONATIBOYU");
         }
@@ -193,7 +248,7 @@ namespace ST4Yardimci
                     _instance.BeginInvoke(new Action(HideTemporarily));
                     return;
                 }
-                
+
                 BaFormSession.BeginPick("DONATIBOYU");
                 _instance.Visible = false;
             }
@@ -237,6 +292,7 @@ namespace ST4Yardimci
                     return;
                 }
                 FillList(_instance._lstLayers, DonatiBoyuSettings.Katmanlar);
+                FillList(_instance._lstDrawingLayers, DonatiBoyuSettings.CizimKatmanlar);
             }
             catch { }
         }
@@ -250,8 +306,8 @@ namespace ST4Yardimci
             ShowInTaskbar = false;
             MinimizeBox = false;
             MaximizeBox = false;
-            BackColor = AcadPaletteTheme.Bg;
-            ForeColor = AcadPaletteTheme.Text;
+            BackColor = Beykent.Monolit.StandardFormTheme.Bg;
+            ForeColor = Beykent.Monolit.StandardFormTheme.Text;
             Font = new SdFont("Segoe UI", 8.5f);
             KeyPreview = true;
 
@@ -269,7 +325,7 @@ namespace ST4Yardimci
                 Text = "5cm katlarına yuvarla",
                 Location = new Point(10, y + 1),
                 AutoSize = true,
-                ForeColor = AcadPaletteTheme.Text,
+                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
                 BackColor = Color.Transparent,
                 Checked = DonatiBoyuSettings.Yuvarlama == DonatiBoyuYuvarlama.BesCm
             };
@@ -285,8 +341,8 @@ namespace ST4Yardimci
                 MaxLength = 6,
                 TextAlign = HorizontalAlignment.Center,
                 BorderStyle = BorderStyle.FixedSingle,
-                BackColor = AcadPaletteTheme.InputBg,
-                ForeColor = AcadPaletteTheme.Text
+                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
+                ForeColor = Beykent.Monolit.StandardFormTheme.Text
             };
             Controls.Add(_txtFi);
             y += 26;
@@ -304,8 +360,8 @@ namespace ST4Yardimci
             {
                 Location = new Point(10, y),
                 Size = new Size(300, 78),
-                BackColor = AcadPaletteTheme.InputBg,
-                ForeColor = AcadPaletteTheme.Text,
+                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
+                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
                 BorderStyle = BorderStyle.FixedSingle,
                 IntegralHeight = false,
                 SelectionMode = SelectionMode.MultiExtended
@@ -325,12 +381,39 @@ namespace ST4Yardimci
             Controls.Add(btnRem);
             y += 30;
 
+            Controls.Add(MkLabel("Donatı çizimi katmanı", 10, y + 2, 280));
+            y += 18;
+            _lstDrawingLayers = new ListBox
+            {
+                Location = new Point(10, y),
+                Size = new Size(300, 78),
+                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
+                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
+                BorderStyle = BorderStyle.FixedSingle,
+                IntegralHeight = false,
+                SelectionMode = SelectionMode.MultiExtended
+            };
+            Controls.Add(_lstDrawingLayers);
+            y += 82;
+            FillList(_lstDrawingLayers, DonatiBoyuSettings.CizimKatmanlar);
+
+            var btnDrawingAdd = MkButton("Katman ekle", 10, y, 96, false);
+            var btnDrawingDel = MkButton("Listeden kaldır", 110, y, 100, false);
+            var btnDrawingRem = MkButton("Katman kaldır", 214, y, 96, false);
+            btnDrawingAdd.Click += (s, e) => StartDrawingLayerPick(true);
+            btnDrawingDel.Click += (s, e) => RemoveSelectedDrawingLayers();
+            btnDrawingRem.Click += (s, e) => StartDrawingLayerPick(false);
+            Controls.Add(btnDrawingAdd);
+            Controls.Add(btnDrawingDel);
+            Controls.Add(btnDrawingRem);
+            y += 30;
+
             _chkOnizleme = new CheckBox
             {
                 Text = "Komut satırında özet yaz",
                 Location = new Point(10, y),
                 AutoSize = true,
-                ForeColor = AcadPaletteTheme.Text,
+                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
                 BackColor = Color.Transparent,
                 Checked = DonatiBoyuSettings.OnizlemeMesaji
             };
@@ -363,6 +446,18 @@ namespace ST4Yardimci
                     Screen.PrimaryScreen.WorkingArea.Top + 60);
             }
             catch { StartPosition = FormStartPosition.CenterScreen; }
+
+            // Kompakt, içerik odaklı form düzeni.
+            var ui = BeginCompact(340);
+            ui.Tip(_chkOnizleme, _chkOnizleme.Text); _chkOnizleme.Text = "Özet yaz";
+            ui.Section("Etiket düzeni").Field("Donatı ölçeği", _cmbOlcek).Field("Çap işareti / boy etiketi", _txtFi, _cmbLFormat)
+                .Choices(_chkYuvarla, _chkOnizleme);
+            ui.Tabs(132,
+                ui.Page("Etiket katmanları", p => p.Layers(_lstLayers, btnAdd, btnDel, btnRem)),
+                ui.Page("Çizim katmanları", p => p.Layers(_lstDrawingLayers, btnDrawingAdd, btnDrawingDel, btnDrawingRem)));
+
+            ui.Footer(btnRun, btnClose);
+            ui.Finish();
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -388,6 +483,7 @@ namespace ST4Yardimci
             SelectString(_cmbLFormat, DonatiBoyuSettings.LEtiketFormati);
             _chkOnizleme.Checked = DonatiBoyuSettings.OnizlemeMesaji;
             FillList(_lstLayers, DonatiBoyuSettings.Katmanlar);
+            FillList(_lstDrawingLayers, DonatiBoyuSettings.CizimKatmanlar);
         }
 
         private void PushSettings()
@@ -403,6 +499,7 @@ namespace ST4Yardimci
                 DonatiBoyuSettings.LEtiketFormati = fmt;
             DonatiBoyuSettings.OnizlemeMesaji = _chkOnizleme.Checked;
             DonatiBoyuSettings.SetKatmanlar(CollectList(_lstLayers));
+            DonatiBoyuSettings.SetCizimKatmanlar(CollectList(_lstDrawingLayers));
         }
 
         private void OnRun(object sender, EventArgs e)
@@ -444,6 +541,36 @@ namespace ST4Yardimci
             {
                 DonatiBoyuSettings.RemoveKatman(name);
                 _lstLayers.Items.Remove(name);
+            }
+            PushSettings();
+        }
+
+        private void StartDrawingLayerPick(bool add)
+        {
+            try
+            {
+                var doc = AcApp.DocumentManager.MdiActiveDocument;
+                if (doc == null) return;
+                PushSettings();
+                HideTemporarily();
+                doc.SendStringToExecute(add ? "DONATIBOYUCIZIMKATMANEKLE " : "DONATIBOYUCIZIMKATMANKALDIR ", true, false, false);
+            }
+            catch { }
+        }
+
+        private void RemoveSelectedDrawingLayers()
+        {
+            if (_lstDrawingLayers.SelectedItems.Count == 0) return;
+            var toRemove = new List<string>();
+            foreach (object o in _lstDrawingLayers.SelectedItems)
+            {
+                if (o is string s && !string.IsNullOrWhiteSpace(s))
+                    toRemove.Add(s);
+            }
+            foreach (string name in toRemove)
+            {
+                DonatiBoyuSettings.RemoveCizimKatman(name);
+                _lstDrawingLayers.Items.Remove(name);
             }
             PushSettings();
         }
@@ -511,7 +638,7 @@ namespace ST4Yardimci
             Location = new Point(x, y),
             AutoSize = false,
             Size = new Size(w, 18),
-            ForeColor = AcadPaletteTheme.TextMuted,
+            ForeColor = Beykent.Monolit.StandardFormTheme.TextMuted,
             BackColor = Color.Transparent
         };
 
@@ -523,13 +650,13 @@ namespace ST4Yardimci
                 Location = new Point(x, y),
                 Size = new Size(w, 26),
                 FlatStyle = FlatStyle.Flat,
-                BackColor = AcadPaletteTheme.BgAlt,
-                ForeColor = accent ? AcadPaletteTheme.Accent : AcadPaletteTheme.Text,
+                BackColor = Beykent.Monolit.StandardFormTheme.BgAlt,
+                ForeColor = accent ? Beykent.Monolit.StandardFormTheme.Accent : Beykent.Monolit.StandardFormTheme.Text,
                 Cursor = Cursors.Hand,
                 Font = new SdFont("Segoe UI", 8f)
             };
-            b.FlatAppearance.BorderColor = AcadPaletteTheme.InputBorder;
-            b.FlatAppearance.MouseOverBackColor = AcadPaletteTheme.BgHover;
+            b.FlatAppearance.BorderColor = Beykent.Monolit.StandardFormTheme.InputBorder;
+            b.FlatAppearance.MouseOverBackColor = Beykent.Monolit.StandardFormTheme.BgHover;
             return b;
         }
 
@@ -538,8 +665,8 @@ namespace ST4Yardimci
             Location = new Point(x, y),
             Size = new Size(w, 22),
             DropDownStyle = ComboBoxStyle.DropDownList,
-            BackColor = AcadPaletteTheme.InputBg,
-            ForeColor = AcadPaletteTheme.Text,
+            BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
+            ForeColor = Beykent.Monolit.StandardFormTheme.Text,
             FlatStyle = FlatStyle.Flat
         };
 

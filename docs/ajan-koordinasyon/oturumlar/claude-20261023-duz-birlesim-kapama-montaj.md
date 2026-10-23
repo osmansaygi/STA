@@ -1,0 +1,17 @@
+# Claude — sürekli temel: düz birleşimi, kapama perde, montaj etiketi, kesit ölçüleri, simetri
+- Ajan: Claude / bu sohbet
+- Güncelleme: 2026-10-23 17:30 (Europe/Istanbul)
+- Durum: tamamlandı — rezervasyon yok
+- İş 1 (14:00): düz birleşimi aynı adet/çap, kapama perde yazısı her açıklık 10 cm, kesit alt etiketi 15 cm aşağı, TMX paylaşımlı okuma. Değişen: SurekliTemelDonatiGorunus.cs, SurekliTemelGorunus.cs, KirisAcilim.Kesit.cs, SurekliTemelAcilim.cs.
+- İş 2 (14:35): kolon adı üstte/filiz altta (SurekliTemelGorunus.cs), temel kesit TEMEL katmanı + kesit köşelerinden ölçüler (KirisAcilim.Kesit.cs).
+- İş 3 (14:55): kesit donatı simetrisi (KirisAcilim.Kesit.cs KirisKesitSiraXleri; kiriş kesitleri de), temel açılım gönye yazısı büküme yakın (KirisAcilim.cs). docs/modul-durum/ST4_Plan_ID_Ciz.SurekliGorunus.md, NETLOAD/OKU.txt.
+- İş 4 (15:05): dağıtma 1200 parça + son parça kalan (SurekliTemelDonatiGorunus.cs), kesit dağıtma aralığı 35 (KirisAcilim.Kesit.cs).
+- İş 5 (15:25): temel kirişi kotu (KirisAcilim.Kesit.cs, SurekliTemelDonatiGorunus.cs), antet üstü temel hatılı detayı (SurekliTemelGorunus.cs, ST4_Plan_ID_Ciz.csproj bağlantıları, yeni YardimciTemelHatiliBaglanti.cs, ST4_Yardimci/TemelHatiliRunner.cs DrawTipler girişi).
+- İş 6 (15:45): kot ölçülerden ≥15 cm (KirisAcilim.Kesit.cs, SurekliTemelDonatiGorunus.cs), antet satır hizası gövde üstü (SurekliTemelGorunus.cs).
+- İş 7 (15:58): hatıl donatısı TMX/GPR (SurekliTemelAcilim.cs SurekliTemelHatilDonatiOku, SurekliTemelGorunus.cs; ST4_Yardimci/TemelHatiliRunner.cs yatayAdetOverride + DrawTipler donatı alanları).
+- İş 8 (16:15): hatıl boyları temel planı parçalarından, etiket "TH (en/yük.)" (SurekliTemelGorunus.cs; ST4_Yardimci/TemelHatiliRunner.cs isteğe bağlı Ad/thAdi; Yardımcı davranışı aynı).
+- İş 9 (16:33): hatıl tablosu eş boylar birleşik (SurekliTemelGorunus.cs; boylar sıralı).
+- İş 10 (17:10): temel görünüşü montaj etiketi 2 cm üstte (KirisAcilim.cs).
+- İş 11 (17:30): temel kesitleri arası 60 cm (KirisAcilim.Kesit.cs).
+- Doğrulama: RunAll arb27 + arb48 6/6. Teslim NETLOAD/AutoCAD2027/ST4_Plan_ID_Ciz_2027_20261023_172809/ ve NETLOAD/Legacy-net48/ST4_Plan_ID_Ciz_20261023_172922.dll. Canlı AutoCAD yok.
+- Açık: CK'da tek açıklıklı 17ø20 L=1290 DÜZ (kullanıcı: şimdilik kalsın).

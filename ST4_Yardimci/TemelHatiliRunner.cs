@@ -263,6 +263,50 @@ namespace ST4Yardimci
             }
         }
 
+        /// <summary>
+        /// Plan ID (SUREKLITEMELACILIMLARI) girişi: TEMELHATILIPLAN ile aynı detay + adet/boy tablosu, tipler soldan sağa.
+        /// Paspayı/döşeme TemelHatiliSettings'ten; tip başına temel üst kotu ve (verilmişse, 0 değilse) STA4CAD donatısı:
+        /// dikey çap/aralık, yatay çap ve yüz başına yatay adet. Ad: plan etiketi (ör. "TH (20/125)"), yoksa TH-nn.
+        /// Dönüş: en sağ x (tip yoksa origin.X), enUst: detay üstü.
+        /// </summary>
+        internal static double DrawTipler(Transaction tr, Database db, Point3d origin,
+            IList<(int No, double W, double H, double TemelH, double TemelUstKotCm, List<double> LengthsCm,
+                double DikeyCapMm, double DikeyAralikCm, double YatayCapMm, int YatayAdet, string Ad)> tipler,
+            List<string> notlar, out double enUst)
+        {
+            double x = origin.X, enSag = origin.X;
+            enUst = origin.Y;
+            if (tipler == null || tipler.Count == 0) return enSag;
+            var drawer = new Drawer(tr, db);
+            foreach (var tip in tipler)
+            {
+                if (!TryValidateDims(tip.TemelH, tip.W, tip.H, out string why))
+                {
+                    notlar?.Add(string.Format(CultureInfo.InvariantCulture, "TH-{0:D2} ({1}/{2}) atlandı: {3}", tip.No, tip.W, tip.H, why));
+                    continue;
+                }
+                TemelHatiliSettings.TemelUstKotuCm = tip.TemelUstKotCm;
+                if (tip.DikeyCapMm > 0) TemelHatiliSettings.DikeyCapMm = tip.DikeyCapMm;
+                if (tip.DikeyAralikCm > 0) TemelHatiliSettings.DikeyAralikCm = tip.DikeyAralikCm;
+                if (tip.YatayCapMm > 0) TemelHatiliSettings.YatayCapMm = tip.YatayCapMm;
+                string title = !string.IsNullOrWhiteSpace(tip.Ad)
+                    ? tip.Ad.Trim() + " DETAYI 1:25"
+                    : string.Format(CultureInfo.InvariantCulture, "TH-{0} ({1}/{2}) DETAYI 1:25",
+                    tip.No.ToString("D2", CultureInfo.InvariantCulture), tip.W, tip.H);
+                int duseyAdet = ComputeDuseyAdet(SumLengthsCm(tip.LengthsCm), TemelHatiliSettings.DikeyAralikCm);
+                drawer.DrawKalip(new Point3d(x, origin.Y, 0), out double rightEdgeX, out string yatayEtiketOnEk, out double detailTopY,
+                    temelHOverride: tip.TemelH, hatilWOverride: tip.W, hatilHOverride: tip.H,
+                    detailTitle: title, duseyAdetOverride: duseyAdet,
+                    yatayAdetOverride: tip.YatayAdet > 0 ? tip.YatayAdet : (int?)null);
+                double tableRightX = drawer.DrawAdetVeBoylar(rightEdgeX, origin.Y, detailTopY, tip.No, tip.LengthsCm, yatayEtiketOnEk, tip.Ad);
+                notlar?.Add(title);
+                enUst = Math.Max(enUst, detailTopY);
+                enSag = Math.Max(rightEdgeX, tableRightX);
+                x = enSag + SGlobal(PlanTipArasiCm);
+            }
+            return enSag;
+        }
+
         private static double SGlobal(double realCm) => realCm * Scale;
 
         private static double SumLengthsCm(IList<double> lengthsCm)
@@ -1110,7 +1154,8 @@ namespace ST4Yardimci
                 double? hatilWOverride = null,
                 double? hatilHOverride = null,
                 string detailTitle = null,
-                int? duseyAdetOverride = null)
+                int? duseyAdetOverride = null,
+                int? yatayAdetOverride = null)
             {
                 rightEdgeX = origin.X;
                 yatayEtiketOnEk = null;
@@ -1191,6 +1236,7 @@ namespace ST4Yardimci
                 double xCL = xBarL + rDot;
                 double xCR = xBarR - rDot;
                 var yatayYs = new List<double>();
+                double yatayAralikCm = TemelHatiliSettings.YatayAralikCm;
                 if (yKutuTop - yBarBot > 2.0 * rDot + 1.0)
                 {
                     yatayYs.Add(yKutuUstKesit);
@@ -1199,7 +1245,16 @@ namespace ST4Yardimci
                 if (yBarTop - yKutuTop > 2.0 * rDot + 0.5)
                 {
                     yatayYs.Add(yUstGonyeKesit);
-                    AddYatayDonatiFillYs(yatayYs, yUstGonyeKesit, yKutuUstKesit, TemelHatiliSettings.YatayAralikCm);
+                    if (yatayAdetOverride.HasValue && yatayAdetOverride.Value >= 1)
+                    {
+                        // Plan ID / STA4CAD: hatıl içinde yüz başına adet verilmiş; üst gönyeden kutu üstüne eşit aralık.
+                        int nYatay = yatayAdetOverride.Value;
+                        double spanYatay = yUstGonyeKesit - yKutuUstKesit;
+                        for (int i = 1; i < nYatay; i++) yatayYs.Add(yUstGonyeKesit - i * spanYatay / nYatay);
+                        yatayAralikCm = spanYatay / nYatay / Scale;
+                    }
+                    else
+                        AddYatayDonatiFillYs(yatayYs, yUstGonyeKesit, yKutuUstKesit, TemelHatiliSettings.YatayAralikCm);
                 }
                 double stepXTemel = S(YatayKesitKopyaAralikCm);
                 double stepXSub = S(SubasmanKesitKopyaAralikCm);
@@ -1230,7 +1285,7 @@ namespace ST4Yardimci
                 if (hatilUstAdet > 0)
                 {
                     int dia = (int)Math.Round(TemelHatiliSettings.YatayCapMm, MidpointRounding.AwayFromZero);
-                    int sCode = (int)Math.Round(TemelHatiliSettings.YatayAralikCm, MidpointRounding.AwayFromZero);
+                    int sCode = (int)Math.Round(yatayAralikCm, MidpointRounding.AwayFromZero);
                     if (dia < 1) dia = 1;
                     if (sCode < 1) sCode = 1;
                     yatayEtiketOnEk = string.Format(CultureInfo.InvariantCulture,
@@ -1376,10 +1431,13 @@ namespace ST4Yardimci
             /// </summary>
             public double DrawAdetVeBoylar(
                 double detailRightX, double yDetailBot, double yDetailTop,
-                int thNo, IList<double> lengthsCm, string yatayEtiketOnEk)
+                int thNo, IList<double> lengthsCm, string yatayEtiketOnEk, string thAdi = null)
             {
                 int adet = lengthsCm != null ? lengthsCm.Count : 0;
-                string adetLine = string.Format(CultureInfo.InvariantCulture,
+                // thAdi: Plan ID temel planı etiketi (ör. "TH (20/125)"); yoksa TH-nn.
+                string adetLine = !string.IsNullOrWhiteSpace(thAdi)
+                    ? string.Format(CultureInfo.InvariantCulture, "{0} ADET {1}", adet, thAdi.Trim())
+                    : string.Format(CultureInfo.InvariantCulture,
                     "{0} ADET TH-{1}",
                     adet,
                     thNo.ToString("D2", CultureInfo.InvariantCulture));
@@ -2044,29 +2102,7 @@ namespace ST4Yardimci
         private static void EnsureLayer(Transaction tr, Database db, string name, short aci, LineWeight lw,
             bool dashed, int? transparencyPercent = null)
         {
-            var lt = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
-            if (lt.Has(name)) return;
-            lt.UpgradeOpen();
-            var rec = new LayerTableRecord
-            {
-                Name = name,
-                Color = Color.FromColorIndex(ColorMethod.ByAci, aci),
-                LineWeight = lw
-            };
-            if (dashed)
-            {
-                ObjectId dashId = EnsureDashedLinetype(tr, db);
-                if (!dashId.IsNull) rec.LinetypeObjectId = dashId;
-            }
-            if (transparencyPercent.HasValue)
-            {
-                int tp = transparencyPercent.Value;
-                if (tp < 0) tp = 0;
-                if (tp > 90) tp = 90;
-                rec.Transparency = new Transparency((byte)tp);
-            }
-            lt.Add(rec);
-            tr.AddNewlyCreatedDBObject(rec, true);
+            BeykentKatmanYukle.Ensure(tr, db, name, aci, lw, dashed);
         }
 
         private static ObjectId EnsureDashedLinetype(Transaction tr, Database db)
@@ -2091,31 +2127,7 @@ namespace ST4Yardimci
 
         private static ObjectId GetOrCreateYaziStyle(Transaction tr, Database db)
         {
-            var txtTable = (TextStyleTable)tr.GetObject(db.TextStyleTableId, OpenMode.ForRead);
-            if (txtTable.Has(TextStyleYazi))
-                return txtTable[TextStyleYazi];
-
-            var rec = new TextStyleTableRecord { Name = TextStyleYazi };
-            try
-            {
-                rec.Font = new Autodesk.AutoCAD.GraphicsInterface.FontDescriptor(
-                    "Bahnschrift Light Condensed", false, false, 0, 0);
-            }
-            catch
-            {
-                try
-                {
-                    rec.Font = new Autodesk.AutoCAD.GraphicsInterface.FontDescriptor(
-                        "Arial", false, false, 0, 0);
-                }
-                catch { }
-            }
-            try { rec.TextSize = 0.0; } catch { }
-            try { rec.XScale = 1.0; } catch { }
-            txtTable.UpgradeOpen();
-            ObjectId id = txtTable.Add(rec);
-            tr.AddNewlyCreatedDBObject(rec, true);
-            return id;
+            return BaDimensionStyles.EnsureYazi(tr, db);
         }
     }
 }

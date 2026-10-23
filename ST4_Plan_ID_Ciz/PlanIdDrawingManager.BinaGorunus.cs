@@ -767,32 +767,8 @@ namespace ST4PlanIdCiz
             }
         }
 
-        /// <summary>
-        /// Geçersiz poligonda Buffer(0) OverlayNG yığınını taşırıp AutoCAD'i kapatır.
-        /// Önce 0,01 cm ızgara, o da yetmezse GeometryFixer. Geçerli girdi aynen kalır.
-        /// </summary>
-        private static Geometry PrepareForOverlay(Geometry g)
-        {
-            if (g == null || g.IsEmpty) return g;
-            try
-            {
-                if (g.IsValid) return g;
-            }
-            catch { }
-            var reduced = ReducePrecisionSafe(g, 100.0);
-            if (reduced != null && !reduced.IsEmpty)
-            {
-                try { if (reduced.IsValid) return reduced; } catch { }
-                g = reduced;
-            }
-            try
-            {
-                var fixedG = NetTopologySuite.Geometries.Utilities.GeometryFixer.Fix(g);
-                if (fixedG != null && !fixedG.IsEmpty) return fixedG;
-            }
-            catch { }
-            return g;
-        }
+        /// <summary>Geçerli girdi aynen; geçersizde Buffer(0) yok — <see cref="NtsOverlaySafe.PrepareForOverlay"/>.</summary>
+        private static Geometry PrepareForOverlay(Geometry g) => NtsOverlaySafe.PrepareForOverlay(g);
 
         private static Geometry BinaGorunusPolygonal(Geometry g)
         {

@@ -1,0 +1,546 @@
+﻿OTOMATIK YUKLEME — AUTOCAD 2027 / 23.10.2026
+AutoCAD 2027 acilisinda GUNCEL_2027 icindeki en son Plan ve Yardimci DLL'i kendiliginden yuklenir
+(%APPDATA%\Autodesk\ApplicationPlugins\ST4_GUNCEL_2027.bundle; kaynak tools\GuncelOtoYukle2027, kaldirmak icin Kaldir.ps1).
+Elle NETLOAD yapmayin; ayni DLL iki kez yuklenmesin.
+
+GÜNCEL — BEYKENT PLAN SEKMESİ / AUTOCAD 2027 / 23.10.2026
+
+Tek yükleme adresi: NETLOAD/GUNCEL_2027 (masaüstü GUNCEL DLL kısayolu).
+Yardımcı: ST4_Yardimci_2027_20261023_213059.dll — DOSEMEDONATI: uzak etiketli uzun konsol (D1-19/D1-05) kot devamı + önceki düzeltmeler (21:31).
+Plan: ST4_Plan_ID_Ciz_2027_20261023_205205.dll — BEYKENT sekmesi, 6 grup / 19 komut.
+AutoCAD'i yeniden başlatın; bu iki güncel DLL'yi birer kez NETLOAD edin.
+Sekmeyi seçmek: BEYKENT. Gizlemek: BEYKENTKAPAT. Eski Plan paleti: STAPANEL (elle).
+Test/derleme/Core Console geçti; canlı UI kontrolü kullanıcıda.
+
+Aşağıdaki tarihli kayıtlar eski teslim geçmişidir.
+----------------------------------------------
+GÜNCEL — MERDIVEN KİRİŞ GENİŞLİK/YÜKSEKLİK / AUTOCAD 2027 / 23.10.2026 20:22
+
+Masaüstündeki GUNCEL DLL - AutoCAD 2027 kısayolu aynı NETLOAD/GUNCEL_2027 klasörünü açar.
+Yardımcı: ST4_Yardimci_2027_20261023_201748.dll (net10/2027).
+Plan: ST4_Plan_ID_Ciz_2027_20261023_190204.dll (aynı dosya/hash).
+AutoCAD'i kapatıp açın; yeni Yardımcı DLL'yi tek kez NETLOAD ile seçin.
+
+MERDIVEN: kiriş genişliği plandaki iki yüzden (ayrı çizgi kenarlar dahil), yükseklik kesişen kirişin etiketinden (25/50) alınır.
+Core Console 2027 sentetik plan testi COMPLETE; canlı AutoCAD denenmedi.
+
+---- önceki teslim ----
+GÜNCEL — GENEL BAKIM / AUTOCAD 2027 / 23.10.2026 20:00
+
+Masaüstündeki GUNCEL DLL - AutoCAD 2027 kısayolu aynı NETLOAD/GUNCEL_2027 klasörünü açar.
+Yardımcı: ST4_Yardimci_2027_20261023_195648.dll (net10/2027).
+Plan: ST4_Plan_ID_Ciz_2027_20261023_190204.dll (aynı dosya/hash).
+AutoCAD'i kapatıp açın; yeni Yardımcı DLL'yi tek kez NETLOAD ile seçin.
+
+Home'daki dört grup korunur, eski Yardımcı yan paneli kapalıdır.
+Yerel bağımlılık çözümleyici yanlış sürüm/anahtar/kültür DLL'sini artık yüklemez.
+Çizim/hesap kaynakları değişmedi: 168 korunan üretim kaynağı/proje hash'i aynı.
+Genel Verify tüm kontroller PASS; Ribbon/2027 açılış ve Core Console tekrar çizim testi COMPLETE.
+Yardımcı 2027 analizli derleme: 0 hata/0 uyarı. Plan analizli derleme: 0 hata/4 mevcut uyarı (dağıtılmadı).
+Canlı AutoCAD UI denenmedi; bütün native çökmelerin çözümü olduğu iddia edilmez.
+
+Bakım kaydı: docs/modul-durum/ST4_Bakim.md.
+Eski çıktı/günlükler doğrulanmış ZIP arşivinde korunur.
+
+---- önceki teslim ----
+GÜNCEL — ESKİ YARDIMCI YAN PANELİ KAPALI / AUTOCAD 2027 / 23.10.2026 19:43
+
+Aynı masaüstü kısayolu → NETLOAD/GUNCEL_2027.
+Yardımcı: ST4_Yardimci_2027_20261023_194250.dll (net10/2027).
+Plan: ST4_Plan_ID_Ciz_2027_20261023_190204.dll (değişmedi).
+
+AutoCAD'i tamamen kapatıp açın; bu yeni Yardımcı DLL'yi NETLOAD ile yükleyin.
+Eski BETONARME TOOL yan paneli açılışta görünmez; BAPANEL, BETONARMETOOL, ST4LISP de açmaz.
+Home'daki Ölçü / Detay / Donatı / Genel Düzenleme grupları korunur.
+Eski panelin kodu ve ayarları daha sonra geri açılabilmesi için korunur.
+
+0 hata/0 uyarı derleme; startup (2027 panel=0, legacy panel=1) ve Ribbon testleri PASS.
+Core Console: üç alias arayüz hostunu yüklemeden tamamlandı; iki modül + sürekli temel tekrar COMPLETE.
+Canlı kullanıcı AutoCAD'ine DLL yüklenmedi. net48/ofis/setup değişmedi.
+
+---- önceki teslim ----
+GÜNCEL — YARDIMCI HOME GRUPLARI / AUTOCAD 2027 / 23.10.2026 19:30
+
+Masaüstündeki "GUNCEL DLL - AutoCAD 2027" kısayolu → aynı GUNCEL_2027 klasörü.
+Yardımcı: ST4_Yardimci_2027_20261023_192711.dll
+Plan: ST4_Plan_ID_Ciz_2027_20261023_190204.dll (değişmedi).
+
+AutoCAD'i tamamen kapatıp açın; Yardımcı DLL'yi tek kez NETLOAD edin.
+Home'un mevcut gruplarının sağına Ölçü / Detay / Donatı / Genel Düzenleme eklenir.
+Küçük 16px simge + yazı; üç satır, toplam 20 mevcut Yardımcı komutu. Katman Yükle Genel Düzenleme'dedir.
+BARIBBON: grupları göster/yeniden kur. BARIBBONKAPAT: yalnız bu dört grubu gizle.
+Yeni sekme ve kalıcı CUI değişikliği yok. Mevcut BAPANEL korunur.
+Plan'ı ayrıca kullanacaksanız aynı klasördeki güncel Plan DLL'sini yükleyin.
+
+0 hata/0 uyarı net10 derleme; gerçek AdWindows bileşenleriyle grup/komut/tekrar/yaşam döngüsü testleri geçti.
+Core Console'da iki modül birlikte NETLOAD + sürekli temel tekrar çizimi COMPLETE.
+Canlı AutoCAD Home arayüzü henüz denenmedi; genel Verify eski BeykentOrtak fixture hatasında durur.
+
+---- önceki teslim ----
+GÜNCEL YARDIMCI + PLAN — AUTOCAD 2027 — TEK SEÇİM KLASÖRÜ
+
+C:\Users\BEYKENT\Documents\CURSOR\Osman_donusum\NETLOAD\GUNCEL_2027
+Masaüstündeki veya proje kökündeki "GUNCEL DLL - AutoCAD 2027" kısayolu bu klasörü açar.
+
+AutoCAD'i kapatıp açtıktan sonra NETLOAD ile yalnız şu iki dosyayı yükleyin:
+1. ST4_Yardimci_2027_20261023_173637.dll
+2. ST4_Plan_ID_Ciz_2027_20261023_190204.dll
+Dosya filtresine ST4*.dll yazarsanız sadece bu iki dosya görünür.
+Diğer DLL'ler bağımlılıktır, ayrı NETLOAD yapılmaz.
+
+İki modül de net10/2027; aynı klasörden birlikte NETLOAD Core Console'da doğrulandı.
+Canlı AutoCAD arayüzü/bütün komutlar denenmedi; önceki sistemsel .NET kararsızlığı ayrı açık konudur.
+Sonraki teslimler tools/Publish-CurrentNetload2027.ps1 ile aynı klasörde güncellenir (pwsh gerekir).
+
+Aşağıdaki tarihli klasör adresleri önceki teslim kayıtlarıdır; güncel seçim yukarıdadır.
+---- önceki teslim ----
+NETLOAD — KOLON APLİKASYON: KESİT DEĞİŞEREK DEVAM EDEN KOLON NOTU / 23.10.2026 19:05
+
+AUTOCAD 2027: GUNCEL_2027\ST4_Plan_ID_Ciz_2027_20261023_190204.dll (aynısı AutoCAD2027\ST4_Plan_ID_Ciz_2027_20261023_190204\).
+- Üstte farklı isimle kesit alanına binen kolon/perde devam sayılır (CK S1-40 → SC-39): not "kolon kesiti üst katta değişiyor" (önce "devam etmiyor"). Diğer 80 not aynı.
+185209 tools\netload-yedek\20261023_eski\ içinde. Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+NETLOAD — KOLONDUSEY: POLİGON AÇILIMI FİNİŞ GÖNYESİ KOL KALINLIĞINDAN / 23.10.2026 19:05
+
+AUTOCAD 2027: GUNCEL_2027\ST4_Plan_ID_Ciz_2027_20261023_185209.dll (aynısı AutoCAD2027\ST4_Plan_ID_Ciz_2027_20261023_185209\).
+- Poligon kolon açılımında üstte biten çubuğun gönyesi kol kalınlığına göre (CK S1-40: 92 → 22 + 30, L=440 → 370).
+- 18:47 SUREKLITEMELACILIMLARI çökmesi: sürekli temel kodu değişmedi; aynı imza 17:33 DONATIMETRAJ çökmesinde de var. Core Console'da KOLONDUSEY + sürekli temel 3×2 tur çökmedi.
+184250 tools\netload-yedek\20261023_eski\ içinde. Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+NETLOAD — KOLONDUSEY: KİRİŞE OTURAN KOLON, POLİGON→PERDE KESİT DEĞİŞİMİ / 23.10.2026 18:45
+
+AUTOCAD 2027: GUNCEL_2027\ST4_Plan_ID_Ciz_2027_20261023_184250.dll (aynısı AutoCAD2027\ST4_Plan_ID_Ciz_2027_20261023_184250\).
+Yardımcı değişmedi (173637). net48 derlenmedi.
+- Temele inmeyip alt kat kirişine oturan kolon (CK S1-53/S1-54): kiriş temel gibi çizilir (KİRİŞ etiketi, KIRIS katmanı), filiz kancası kirişe, etriye kiriş içinde.
+- Poligon kolon üstüne kesit değişerek farklı isimli perde/kolon binince (CK S1-40 → SC-39): kol görünüşlerinde üst kesit dışındaki donatı gönye, içindekiler 1/6, eşleşmeyen üst donatıya ek filiz; açılım tam kesitle sayılır. Çatıda SC-39 S-38 ile gruplanmaz.
+172809 tools\netload-yedek\20261023_eski\ içinde. Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+NETLOAD — TEMEL KESİTLERİ ARASI DARALDI / 23.10.2026 17:30
+
+AUTOCAD 2027: C:\Users\BEYKENT\Documents\CURSOR\Osman_donusum\NETLOAD\AutoCAD2027\ST4_Plan_ID_Ciz_2027_20261023_172809\ST4_Plan_ID_Ciz_2027_20261023_172809.dll
+(temiz AutoCAD oturumunda; klasördeki bağımlılıklarla).
+net48: NETLOAD\Legacy-net48\ST4_Plan_ID_Ciz_20261023_172922.dll — AutoCAD 2027'de yüklenmez.
+- SUREKLITEMELACILIMLARI: temel kesitleri arasında komşu dış ölçü çizgileri arası 60 cm (ampatmansız dar kesitlerde solda gövde etiketi). Ampatmanlı kesit adımı 505→497, ampatmansız 304→254. Kiriş kesitleri değişmedi.
+- Önceki teslimdeki montaj etiketi (çubuğun 2 cm üstü) bu sürümde de var.
+Önceki sürümler tools\netload-yedek\20261023_eski\ içinde. Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+NETLOAD — TEMEL GÖRÜNÜŞÜ MONTAJ ETİKETİ ÇUBUĞUN 2 CM ÜSTÜNDE / 23.10.2026 17:10
+
+AUTOCAD 2027: C:\Users\BEYKENT\Documents\CURSOR\Osman_donusum\NETLOAD\AutoCAD2027\ST4_Plan_ID_Ciz_2027_20261023_170754\ST4_Plan_ID_Ciz_2027_20261023_170754.dll
+(temiz AutoCAD oturumunda; klasördeki bağımlılıklarla).
+net48 (Legacy-net48) bu teslimde GÜNCELLENMEDİ: derleyici makine kararsızlığıyla çöktü; Legacy-net48\ST4_Plan_ID_Ciz_20261023_163210.dll bir önceki sürüm (2027'de yüklenmez).
+- SUREKLITEMELACILIMLARI görünüşü: montaj donatı etiketi montaj çubuğunun 2 cm (nihai) üstünde, gövde içinde (önce altında, grobetona taşıyordu). Kiriş açılımı değişmedi.
+Önceki 2027 sürümleri tools\netload-yedek\20261023_eski\AutoCAD2027\ içinde. Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+NETLOAD — 23.10.2026 ÇÖKME DÜZELTMESİ: AUTOCAD 2027 / net48 AYRIMI
+
+AutoCAD 2027 için yalnız şu DLL'yi temiz AutoCAD oturumunda NETLOAD ile yükleyin:
+C:\Users\BEYKENT\Documents\CURSOR\Osman_donusum\NETLOAD\AutoCAD2027\ST4_Plan_ID_Ciz_2027_20261023_163103\ST4_Plan_ID_Ciz_2027_20261023_163103.dll
+
+23.10 16:35 çökme dökümünde AutoCAD 2027'ye yanlış net48 163210 DLL'nin yüklendiği görüldü.
+Kökteki bu DLL/PDB bağımlılıklarıyla Legacy-net48 klasörüne ayrıldı. Gelecek Plan net48 derlemeleri de yalnız Legacy-net48'e kopyalanır.
+Legacy-net48 yalnız .NET Framework AutoCAD içindir; 2027'de yüklenmez.
+2027 DLL değiştirilmedi; güncel çizim/donatı kodu korunur. Eski/yeni DLL aynı oturuma yüklenmez.
+Açılışta ST4 yüklenmeden de bir .NET çökmesi kaydedildi; bu dağıtım düzeltmesi onun çözüldüğünü kanıtlamaz.
+
+Aşağıdaki eski teslim notlarının NETLOAD kökü yolları tarihsel kayıttır; güncel seçim yukarıdadır.
+---- önceki teslim ----
+NETLOAD — TEMEL HATILI TABLOSUNDA EŞ BOYLAR BİRLEŞİK / 23.10.2026 16:33
+
+AUTOCAD 2027: NETLOAD\AutoCAD2027\ST4_Plan_ID_Ciz_2027_20261023_163103\ST4_Plan_ID_Ciz_2027_20261023_163103.dll (bunu yükleyin; klasördeki bağımlılıklarla). AutoCAD'i kapatıp açtıktan sonra yükleyin.
+Diğer sürümler (net48): NETLOAD\ST4_Plan_ID_Ciz_20261023_163210.dll — AutoCAD 2027'de YÜKLEMEYİN (yüklenirse çizim sonunda çöker).
+- SUREKLITEMELACILIMLARI temel hatılı tablosu: aynı L'deki bütün yatay çubuklar tek satır (ör. 6x2x7ø10/18 L=460); boylar büyükten küçüğe. Yardımcı değişmedi.
+Önceki sürümler tools\netload-yedek\20261023_eski\ içinde. Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+
+NETLOAD — TEMEL HATILI BOYLARI VE ETİKETİ TEMEL PLANINDAN / 23.10.2026 16:15
+
+AUTOCAD 2027: NETLOAD\AutoCAD2027\ST4_Plan_ID_Ciz_2027_20261023_160919\ST4_Plan_ID_Ciz_2027_20261023_160919.dll (bunu yükleyin; klasördeki bağımlılıklarla).
+Diğer sürümler (net48): NETLOAD\ST4_Plan_ID_Ciz_20261023_161132.dll — AutoCAD 2027'de YÜKLEMEYİN.
+ÖNEMLİ: Yeni DLL'i AutoCAD'i kapatıp açtıktan sonra yükleyin.
+- SUREKLITEMELACILIMLARI temel hatılı detayı: boylar temel planındaki hatıl çizimi gibi (şerit − kolon/perde, her parça ayrı boy); başlık ve tablo plan etiketiyle "TH (20/125)".
+  A_TFL düşey adet 2×550 = 1100 (STA4CAD 1094; önce 1238).
+- Yardımcı TEMELHATILI komutu değişmedi (yalnız Plan ID'nin kullandığı isteğe bağlı girişler eklendi).
+Önceki sürümler tools\netload-yedek\20261023_eski\ içinde. Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+
+NETLOAD — TEMEL HATILI DONATISI STA4CAD'DEN, KOT/HİZA / 23.10.2026 15:58
+
+AUTOCAD 2027: NETLOAD\AutoCAD2027\ST4_Plan_ID_Ciz_2027_20261023_155507\ST4_Plan_ID_Ciz_2027_20261023_155507.dll (bunu yükleyin; klasördeki bağımlılıklarla).
+Diğer sürümler (net48): NETLOAD\ST4_Plan_ID_Ciz_20261023_155623.dll — AutoCAD 2027'de YÜKLEMEYİN.
+ÖNEMLİ: Yeni DLL'i AutoCAD'i kapatıp açtıktan sonra yükleyin. Aynı oturumda NETLOAD edilen yeni DLL eski komutların yerine geçmez.
+- Temel hatılı detayı donatısı STA4CAD'den: TMX (dikey çap/aralık, yatay çap, yüz başına yatay adet), TMX yoksa GPR "HATIL:" satırı; ikisi de yoksa Yardımcı TEMELHATILI ayarı.
+- Kot ölçülerden ≥15 cm, hatıllı/hatılsız açılımlar aynı hizada (önceki teslimden).
+Önceki sürümler tools\netload-yedek\20261023_eski\ içinde. Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+
+NETLOAD — KOT ÖLÇÜLERDEN UZAK, HATILLI/HATILSIZ AÇILIMLAR AYNI HİZADA / 23.10.2026 15:45
+
+AUTOCAD 2027: NETLOAD\AutoCAD2027\ST4_Plan_ID_Ciz_2027_20261023_153553\ST4_Plan_ID_Ciz_2027_20261023_153553.dll (bunu yükleyin; klasördeki bağımlılıklarla).
+net48 bu teslimde GÜNCELLENMEDİ (derleyici makine kararsızlığı nedeniyle çöktü); kökteki ST4_Plan_ID_Ciz_20261023_152258.dll bir önceki sürümdür — AutoCAD 2027'de zaten YÜKLEMEYİN.
+- Temel kirişi kotu etriye/mesnet ölçülerinin uzatma çizgilerinden en az 15 cm uzakta (Ln·3/4'e en yakın temiz yer; kısa açıklıkta sağda/solda).
+- Antet yerleşiminde satır hizası temel gövdesinin üst yüzü: temel hatılı olan ve olmayan açılımlar aynı hizada.
+Önceki sürümler tools\netload-yedek\20261023_eski\ içinde. Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+
+NETLOAD — TEMEL KİRİŞİ KOTU, ANTET ÜSTÜ TEMEL HATILI DETAYI / 23.10.2026 15:25
+
+AUTOCAD 2027: NETLOAD\AutoCAD2027\ST4_Plan_ID_Ciz_2027_20261023_151850\ST4_Plan_ID_Ciz_2027_20261023_151850.dll (bunu yükleyin; klasördeki bağımlılıklarla).
+Diğer sürümler (net48): NETLOAD\ST4_Plan_ID_Ciz_20261023_152258.dll — AutoCAD 2027'de YÜKLEMEYİN.
+- SUREKLITEMELACILIMLARI: her temel kirişinin (kolonlar arası) Ln·3/4'ünde, temel üst yüzünde kiriş açılımındaki klasik kot.
+- Sürekli temel hatılı varsa antetin üstüne Yardımcı TEMELHATILI ile aynı detay + adet/boy tablosu (TH-01, TH-02 … en/yükseklik/temel tipine göre).
+  Donatı, paspayı ve döşeme kalınlığı Yardımcı TEMELHATILI formunda kayıtlı değerlerden (temelhatili.ini) alınır.
+Önceki sürümler tools\netload-yedek\20261023_eski\ içinde. Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+
+NETLOAD — DAĞITMA DONATISI 12 M PARÇA, KESİTTE 35 CM ARALIK / 23.10.2026 15:05
+
+AUTOCAD 2027: NETLOAD\AutoCAD2027\ST4_Plan_ID_Ciz_2027_20261023_150346\ST4_Plan_ID_Ciz_2027_20261023_150346.dll (bunu yükleyin; klasördeki bağımlılıklarla).
+Diğer sürümler (net48): NETLOAD\ST4_Plan_ID_Ciz_20261023_150436.dll — AutoCAD 2027'de YÜKLEMEYİN.
+- Dağıtma açılımı: 1200 cm'yi aşan boy 1200'lük parçalar, son parça kalan boy (eşit bölme kalktı; bindirme ve ölçüsü aynı).
+- Temel kesitinde ampatman dağıtma çubukları arası en çok 35 cm (önce 30).
+Önceki sürümler tools\netload-yedek\20261023_eski\ içinde. Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+
+NETLOAD — KESİT DONATI SİMETRİSİ, TEMEL GÖNYE YAZISI / 23.10.2026 14:55
+
+AUTOCAD 2027: NETLOAD\AutoCAD2027\ST4_Plan_ID_Ciz_2027_20261023_145205\ST4_Plan_ID_Ciz_2027_20261023_145205.dll (bunu yükleyin; klasördeki bağımlılıklarla).
+Diğer sürümler (net48): NETLOAD\ST4_Plan_ID_Ciz_20261023_145353.dll — AutoCAD 2027'de YÜKLEMEYİN.
+- Kesitlerde (temel ve kiriş) ara çubuklar ayna açıklıklara çift, tek kalan ortadaki açıklığa: donatı mümkün olduğunca simetrik.
+- Sürekli temel açılımında gönye boy yazısı büküme yakın (kol boyunun 1/4'ü); kiriş açılımı değişmedi.
+Önceki sürümler tools\netload-yedek\20261023_eski\ içinde. Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+
+NETLOAD — SÜREKLİ TEMEL: KOLON/FİLİZ YAZISI, TEMEL KESİT KATMANI VE ÖLÇÜLERİ / 23.10.2026 14:35
+
+AUTOCAD 2027: NETLOAD\AutoCAD2027\ST4_Plan_ID_Ciz_2027_20261023_143159\ST4_Plan_ID_Ciz_2027_20261023_143159.dll (bunu yükleyin; klasördeki bağımlılıklarla).
+Diğer sürümler (net48): NETLOAD\ST4_Plan_ID_Ciz_20261023_143403.dll — AutoCAD 2027'de YÜKLEMEYİN.
+- Görünüşte kolon adı üstte, filiz yazısı altta.
+- Temel kesit çizgisi TEMEL (BEYKENT) katmanında (önce KIRIS).
+- Temel kesit ölçüleri kesit köşelerinden; ampatmanlı yanda iki sıra (ampatman + gövde, dışta toplam), ampatman yoksa sağda tek toplam. Altta toplam genişlik; ampatman varsa üstte ampatman ve gövde genişlikleri.
+Önceki sürümler tools\netload-yedek\20261023_eski\ içinde. Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+
+NETLOAD — SÜREKLİ TEMEL: DÜZ BİRLEŞİMİ, KAPAMA PERDE YAZISI, MONTAJ ETİKETİ / 23.10.2026 14:00
+
+AUTOCAD 2027: NETLOAD\AutoCAD2027\ST4_Plan_ID_Ciz_2027_20261023_135953\ST4_Plan_ID_Ciz_2027_20261023_135953.dll (bunu yükleyin; klasördeki bağımlılıklarla).
+Diğer sürümler (net48): NETLOAD\ST4_Plan_ID_Ciz_20261023_135913.dll — AutoCAD 2027'de YÜKLEMEYİN.
+- Aynı adet ve çaptaki komşu açıklık düzleri, birleşik boy (gönyelerle) 1200 cm'yi geçmiyorsa tek çubuk.
+- KAPAMA PERDE yazısı perdenin kolonlar arası her açıklığına, 10 cm.
+- Temel kesitinde alt (montaj) donatı etiketi 15 cm aşağıda, grobetonun altında.
+- STA4CAD açıkken kilitli TMX artık paylaşımlı okunur (önce sessizce okunamıyordu).
+Önceki sürümler tools\netload-yedek\20261023_eski\ içinde. Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+
+NETLOAD — SÜREKLİ TEMEL: MESNET ETRİYE YAZISI HİZASI / 23.10.2026 03:25
+
+AUTOCAD 2027: NETLOAD\AutoCAD2027\ST4_Plan_ID_Ciz_2027_20261023_032149\ST4_Plan_ID_Ciz_2027_20261023_032149.dll (bunu yükleyin; klasördeki bağımlılıklarla).
+Diğer sürümler (net48): NETLOAD\ST4_Plan_ID_Ciz_20261023_032254.dll — AutoCAD 2027'de YÜKLEMEYİN.
+Mesnet içi etriye yazıları açıklık etriye yazılarıyla aynı Y hizasında (önce ~5 cm yukarıdaydı).
+Önceki 2027 ve net48 sürümleri tools\netload-yedek\20261022_eski\ içinde. Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+
+NETLOAD — AUTOCAD 2027 İÇİN PLAN ID (ÇÖKME DÜZELTMESİ) / 23.10.2026 03:15
+
+AutoCAD 2027 kullanıyorsanız NETLOAD kökündeki ST4_Plan_ID_Ciz_*.dll (net48) YÜKLEMEYİN.
+Bu makinede yalnız AutoCAD 2027 kurulu. net48 Plan ID 2027'de (.NET 10) SUREKLITEMELACILIMLARI sonunda Transaction.Commit sırasında bellek bozulmasıyla göçüyordu (0xc0000005, il_objectAppended).
+
+YÜKLE: NETLOAD\AutoCAD2027\ST4_Plan_ID_Ciz_2027_20261023_031104\ST4_Plan_ID_Ciz_2027_20261023_031104.dll (net10.0-windows, AutoCAD 2027 API).
+Klasördeki NetTopologySuite/PdfPig bağımlılıkları aynı klasörden yüklenir; dosyaları ayırmayın. Temiz AutoCAD oturumunda yükleyin (önceki net48 yüklüyse AutoCAD'i kapatıp açın).
+İçerik 030357 ile aynı (çizim çıktısı net48 ile birebir). Core Console 6 senaryo + 8 tekrar COMPLETE; canlı AutoCAD denemesi kullanıcıda.
+Not: ST4_Yardimci_20261022_181324.dll de net48'dir; 2027 için Yardımcı'nın 2027 derlemesi ayrıca gerekir.
+
+---- önceki teslim ----
+
+NETLOAD — SÜREKLİ TEMEL: MESNET İÇİ ETRİYE + 75 CM ÇIKINTI / 23.10.2026 03:05
+
+PLAN ID: ST4_Plan_ID_Ciz_20261023_030357.dll (Debug/net48). Önceki 024946 tools\netload-yedek\20261022_eski\ içinde.
+Kolon/saplama mesnetlerinin içinde de etriye (yüzlerden 5 cm içeriden, komşu açıklıkların orta aralığıyla) ve adet yazısı ("2x17ø8/11 L=287").
+Kolon, hatıl ve perde çıkıntıları temel üstünden 75 cm (1/25; önce 60).
+Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+
+NETLOAD — SÜREKLİ TEMEL: DAĞITMA SATIRI 50 CM, İZDÜŞÜM UZAMASI / 23.10.2026 02:51
+
+PLAN ID: ST4_Plan_ID_Ciz_20261023_024946.dll (Debug/net48). Önceki 024023 tools\netload-yedek\20261022_eski\ içinde.
+Dağıtma açılımı alt ilavenin 50 cm (1/25) altında (önce 80). Dağıtma olan görünüşlerde izdüşüm çizgileri 50 cm daha uzun.
+Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+
+NETLOAD — SÜREKLİ TEMEL: DAĞITMA EN KÜÇÜK ÇAP + AMPATMAN ADEDİ / 23.10.2026 02:42
+
+PLAN ID: ST4_Plan_ID_Ciz_20261023_024023.dll (Debug/net48). Önceki 023134 tools\netload-yedek\20261022_eski\ içinde.
+Dağıtma çapı: TMX/GPR'de dağıtma alanı yok; projedeki en küçük çap, etriye dahil (CK Ø8). Bindirme en az 30 cm.
+Ampatman açılımında adet: U'lar ampatman boyunca (mesnetler dahil, uçlarda 5 cm) aralıkla dizilir, açıklığına göre kesite sayılır; aynı harfli kesitler toplanır ("67ø12/15 L=200 AMPATMAN").
+Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+
+NETLOAD — SÜREKLİ TEMEL: DAĞITMA DONATISI AÇILIMI / 23.10.2026 02:33
+
+PLAN ID: ST4_Plan_ID_Ciz_20261023_023134.dll (Debug/net48). Önceki 022748 tools\netload-yedek\20261022_eski\ içinde.
+Ampatmanlı temellerin görünüşünde alt ilave satırının altında dağıtma açılımı: ampatman boyunca uçlarda 5 cm örtü, 1200 cm'yi aşan boy eşit parçalar, bindirme Konum II ℓb (≥30 cm, CK Ø12: 45) ölçülü; "6ø12 L=1020 DAĞITMA".
+Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+
+NETLOAD — SÜREKLİ TEMEL: AMPATMAN DAĞITMA DONATISI / 23.10.2026 02:30
+
+PLAN ID: ST4_Plan_ID_Ciz_20261023_022748.dll (Debug/net48). Önceki 021430 tools\netload-yedek\20261022_eski\ içinde.
+Ampatmanlı kesitlerde her kanatta U bacak ucu ve alt köşesinde sabit dağıtma çubuğu; bacakta ve alt kolda gövde alt sırasına kadar aralık en çok 30 cm. Çap: sürekli temellerin en küçük boyuna çapı (CK Ø12). Yazı "6ø12 dağ.".
+Dağıtma çubuklarının boyuna açılımı/metrajı yok. Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+
+NETLOAD — SÜREKLİ TEMEL: AMPATMAN U DONATI KATMANINDA, R=2 / 23.10.2026 02:16
+
+PLAN ID: ST4_Plan_ID_Ciz_20261023_021430.dll (Debug/net48). Önceki 015752 tools\netload-yedek\20261022_eski\ içinde.
+Ampatman U donatısı kesitte ve açılımda DONATI (BEYKENT) katmanında, alt köşeler 1/25 çizimde 2 cm yarıçaplı.
+Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+
+NETLOAD — SÜREKLİ TEMEL: AMPATMAN U DONATISI / 23.10.2026 01:59
+
+PLAN ID: ST4_Plan_ID_Ciz_20261023_015752.dll (Debug/net48). Önceki 011328 tools\netload-yedek\20261022_eski\ içinde.
+Ampatmanlı temel kesitlerinde U donatısı (5 cm paspay) ve çap/aralık yazısı; açılımı etriye açılımının altında (bacak, taban, L, AMPATMAN).
+Çap/aralık TMX 150/152, GPR yedeği "ø12/15 amp.". Ampatman uç boyuna çubukları henüz yok.
+Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+
+NETLOAD — SÜREKLİ TEMEL: MONTAJ BİNDİRME ÖLÇÜSÜ MONTAJ ÜSTÜNDE / 23.10.2026 01:15
+
+PLAN ID: ST4_Plan_ID_Ciz_20261023_011328.dll (Debug/net48). Önceki 010452 tools\netload-yedek\20261022_eski\ içinde.
+Montaj açılımındaki bindirme ölçüsü düz şeridi yerine montaj çubuklarının 8 cm üstünde. Kiriş açılımı değişmedi.
+Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+
+NETLOAD — SÜREKLİ TEMEL: İLAVE KENDİ AÇIKLIĞININ max(Ln/4, ℓb, 50φ) / 23.10.2026 01:06
+
+PLAN ID: ST4_Plan_ID_Ciz_20261023_010452.dll (Debug/net48). Önceki 233809 tools\netload-yedek\20261022_eski\ içinde.
+Mesnet ilavesi her iki yana kolon yüzünden yalnız o açıklığın max(Ln/4, ℓb, 50φ)'si kadar gider; komşu büyük açıklığın Ln/4'ü artık taşınmaz (CK T-1 SB-02: 575 tarafı 222,5 → 144).
+Bu boy açıklıktan uzunsa karşı mesnetten geçip ℓb kenetlenir; değen ilaveler birleşir; temel ucunda sınıra kadar + 50φ gönye (değişmedi).
+Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+
+NETLOAD — SÜREKLİ TEMEL: KISA AÇIKLIK İLAVESİ ℓb KENETİ + MALZEMEDEN ℓb / 22.10.2026 23:40
+
+PLAN ID: ST4_Plan_ID_Ciz_20261022_233809.dll (Debug/net48). Önceki 225536 tools\netload-yedek\20261022_eski\ içinde.
+B: Açıklığı aşan mesnet ilavesi karşı kolon yüzünde kesilmez; karşı mesnedi geçip uzak yüzden en az ℓb komşu açıklığa girer.
+C: Sürekli temelde ℓb ST4 /Materials/ beton-çelik sınıfından (TS 500 9.1, Çizelge 3.1 fctk); okunamazsa C30/B420C ve komut satırında bildirilir. Kiriş açılımı değişmedi.
+Temel ucunda kesilen ilavenin gönyesi de 50φ (odaya sığdığı kadar).
+Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+
+NETLOAD — SÜREKLİ TEMEL: UÇ DONATILARI TEMEL SINIRINA + GÖNYE / 22.10.2026 22:58
+
+PLAN ID: ST4_Plan_ID_Ciz_20261022_225536.dll (Debug/net48). Önceki 225236 tools\netload-yedek\20261022_eski\ içinde.
+Temel ucunda montaj, düz ve ilave temel sınırına (6 cm örtü) gider ve gönyelenir (50φ, yüksekliğe sığdığı kadar; CK T-25 Ø20: 78). Gövde sınıra kadar düz, gönyesiz.
+Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+
+NETLOAD — SÜREKLİ TEMEL: UÇ DONATILARI TEMEL SINIRINA / 22.10.2026 22:55
+
+PLAN ID: ST4_Plan_ID_Ciz_20261022_225236.dll (Debug/net48). Önceki 223047 tools\netload-yedek\20261022_eski\ içinde.
+Temel ucundaki mesnette montaj, düz, gövde ve ilave çubuklar ℓb'de bitmez; temel sınırına (6 cm örtü) kadar düz devam eder. ℓb sığmazsa mevcut gönye kuralı geçerli. Zemin çizgisi 10 cm uzantısı bu sürümde de var.
+Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+
+NETLOAD — SÜREKLİ TEMEL: ZEMİN ÇİZGİSİ UZANTISI 10 CM / 22.10.2026 22:31
+
+PLAN ID: ST4_Plan_ID_Ciz_20261022_223047.dll (Debug/net48). Önceki 213313 tools\netload-yedek\20261022_eski\ içinde.
+Sürekli temel görünüş ve kesitlerinde zemin çizgisi grobeton ucundan 100 cm yerine 10 cm taşar. Temel planı kesitleri değişmedi.
+Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+
+NETLOAD — SÜREKLİ TEMEL: KISA AÇIKLIK DÜZ YOĞUNLUĞU (A) / 22.10.2026 21:34
+
+PLAN ID: ST4_Plan_ID_Ciz_20261022_213313.dll (Debug/net48). Önceki Plan DLL yedekte.
+Komşu düzlerin ℓb uzantıları kısa açıklıkta çakışıyorsa As'ı en büyük takım sürekli geçer (eşitlikte kısa kalan taraf), diğerleri kısa açıklığa girmez.
+Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+
+NETLOAD — SÜREKLİ TEMEL: TEMEL DIŞINA TAŞAN İLAVE GÖNYESİ / 22.10.2026 21:28
+
+PLAN ID: ST4_Plan_ID_Ciz_20261022_212701.dll (Debug/net48). Önceki Plan DLL yedekte.
+Birleşik/geçen ilave temel ucunu aşarsa uçta (6 cm örtü) kesilir ve mevcut kuralla gönyelenir (CK T5 SB-30).
+Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+
+NETLOAD — SÜREKLİ TEMEL: DEĞEN İLAVELER TEK ÇUBUK / 22.10.2026 21:15
+
+PLAN ID: ST4_Plan_ID_Ciz_20261022_211324.dll (Debug/net48). Önceki Plan DLL tools\netload-yedek\20261022_eski\ içinde.
+Aynı yüzde değen/binen ya da arası ≤10 cm komşu mesnet ilaveleri tek çubuk, büyük As (CK T15 SB-77/78 → 4ø20, T14 SB-63/64 → 11ø20).
+Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+
+NETLOAD TEMİZLİĞİ / 22.10.2026 21:10
+
+Klasörde yalnız güncel sürümler var: ST4_Plan_ID_Ciz_20261022_210420.dll ve ST4_Yardimci_20261022_181324.dll (+PDB).
+Eski 24 DLL/PDB silinmedi; tools\netload-yedek\20261022_eski\ klasörüne taşındı.
+
+---- önceki notlar ----
+
+NETLOAD — SÜREKLİ TEMEL: GÖRSEL YERLEŞİM / 22.10.2026 21:05
+
+PLAN ID: ST4_Plan_ID_Ciz_20261022_210420.dll (Debug/net48). 203641 yerine bunu yükleyin.
+Etriye ölçüleri temel üstünde, etriye yazıları ölçülerin üstünde; izdüşüm ve açılımlar 100 cm (nihai) yukarıda; temel adları 18 punto ve görünüş üstünde.
+Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+
+NETLOAD — SÜREKLİ TEMEL: TMX BAŞLANGIÇ İLAVESİ (116/120) / 22.10.2026 20:38
+
+PLAN ID: ST4_Plan_ID_Ciz_20261022_203641.dll (Debug/net48). 202941 yerine bunu yükleyin.
+Mesnet ilavesi = önceki kaydın bitiş (124/128) + sonraki kaydın başlangıç (116/120) alanı (CK T11 SB-40 1ø20, T15 SB-77 4ø20). Temel ilave kenetlenmesi yüzden 50φ, uç gönye tek kol.
+Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+
+NETLOAD — SÜREKLİ TEMEL: GPR KOLON ADIYLA EŞLEME, STA İLAVE/DÜZ BOYLARI, GÖVDE EKSİĞİ / 22.10.2026 20:30
+
+PLAN ID: ST4_Plan_ID_Ciz_20261022_202941.dll (Debug/net48). 200244 yerine bunu yükleyin.
+TMX kayıtları GPR temel statik tablosundaki sol/sağ kolon adlarıyla (yoksa THE koordinatıyla) eşlenir. İlave: komşu net açıklıkların büyüğünün ln/4'ü; düz: iç mesnette ℓb uzatma; uç gönye 50φ; ortak mesnette tek ilave; temel gövde eksiği giderildi.
+Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+
+NETLOAD — SÜREKLİ TEMEL: İLAVE MESNET DÜZELTMESİ, FİLİZ RADYUS, TEMEL İÇİ ETRİYE, GROBETON / 22.10.2026 20:03
+
+PLAN ID: ST4_Plan_ID_Ciz_20261022_200244.dll (Debug/net48). 194038 yerine bunu yükleyin.
+TMX ilavesi kaydın bitiş mesnedine atanır (CK T6: SB-31 2ø12, SB-32 5ø20, SB-33 19ø20, SB-34 13ø20).
+Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+
+NETLOAD — SÜREKLİ TEMEL: KOLON FİLİZLERİ / 22.10.2026 19:41
+
+PLAN ID: ST4_Plan_ID_Ciz_20261022_194038.dll (Debug/net48). 193510 yerine bunu yükleyin.
+Kolon filizi (yalnız kolon; perde/hatıl filizi yok): KOLONDUSEY kuralı, etiket kolonun ilk açılımında, diğerlerinde 'FİLİZ bkz. T-n'.
+Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+
+NETLOAD — SÜREKLİ TEMEL: FORMDA BİRLEŞTİR/AYRI + GÜVENLİ YERLEŞİM / 22.10.2026 19:35
+
+PLAN ID: ST4_Plan_ID_Ciz_20261022_193510.dll (Debug/net48). 185118 yerine bunu yükleyin (temiz AutoCAD oturumu).
+Form: Temeller = Aynı hizadakileri birleştir / Her temel ayrı. Yerleşimde yazı/ölçü GeometricExtents ve çift dönüşüm kaldırıldı.
+Canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+
+NETLOAD — SÜREKLİ TEMEL AÇILIMI: KOLON ARASI BAY / SAPLAMA / PERDE-HATIL ÇIKINTISI / 22.10.2026 18:51
+
+PLAN ID: ST4_Plan_ID_Ciz_20261022_185118.dll (Debug/net48, legacy)
+YARDIMCI: değişmedi, ST4_Yardimci_20261022_181324.dll
+SUREKLITEMELACILIMLARI: hizasız paralel temeller ayrı görünüş (CK T15/T16); her kolon arası ayrı temel kirişi
+ve ayrı kesit (benzerler birleşir); başka temele saplanan uç mesnet; mesnetlerden izdüşüm; temel hatılı ve
+kapama perde 30 cm çıkıntı. Core Console ile denendi; canlı AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+NETLOAD — DONATIMETRAJ ANTET POZ KUTUSU / 22.10.2026 18:13
+
+YARDIMCI: ST4_Yardimci_20261022_181324.dll (Debug/net48, legacy)
+PLAN ID: değişmedi, ST4_Plan_ID_Ciz_20261022_150054.dll
+DONATIMETRAJ Antet seç: tablolu (YATAY) satırlarda poz balonu+numara, normal yoldaki gibi
+sol poz hücresine yatay/düşey ortalanır (IC ANTET çizgileri yalnız antet penceresinden okunur).
+AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+NETLOAD — OTO DONATI X/Y + SEHPA / 22.10.2026 18:06
+
+YARDIMCI: ST4_Yardimci_20261022_180638.dll (Debug/net48, legacy)
+PLAN ID: değişmedi, ST4_Plan_ID_Ciz_20261022_150054.dll
+OTODONATI: üst/alt çap-aralık X ve Y ayrı; manuel yalnız X. Sehpa tiki + Ø kutusu:
+alan boşluk düşülmeden; kot RD etiketi altındaki çiftin üstü, sehpa detayı temel anteti (SheetView) üstüne.
+AutoCAD içinde denenmedi.
+
+---- önceki teslim ----
+NETLOAD — STANDART A AÇIK FORMLAR / 22.10.2026
+
+YARDIMCI: ST4_Yardimci_20261022_150054.dll
+PLAN ID: ST4_Plan_ID_Ciz_20261022_150054.dll
+Hedef: iki modül de Debug/net48 (legacy); net10/2027 teslimi değildir.
+
+Temiz AutoCAD oturumunda NETLOAD ile yukarıdaki iki DLL'yi yükleyin.
+Önceki sürümler de klasörde kalır; bu teslim için 150054 tarihli çifti seçin.
+26 form: daima açık gri zemin, beyaz girişler, yerel Windows düğmeleri,
+standart çerçeveli gruplar. Genel ayarlar alt alta görünür.
+Oto Donatı ve Sehpa Donatı kot girişleri cm; eski metre kayıtları korunur.
+AutoCAD'in koyu/açık seçimi formları değiştirmez.
+
+Önceki DLL/PDB ve OKU yedeği: tools/MonolitFormCheck/onceki-netload-20261022_150054/
+26 gerçek form testi ve kot gidiş-dönüş testleri PASS.
+İki derleme 0 hata/0 uyarı. DLL/PDB kaynak-kopya SHA256 eşit.
+AutoCAD'e otomatik yüklenmedi; canlı AutoCAD ve yüksek DPI denenmedi.
+Genel Verify-Project mevcut BaDimensionStyles/BeykentOrtak başvurusunda durur.
+Ayrıntı: docs/modul-durum/ST4_FormTasarimi.md
+23.10.2026 — BEYKENT Plan sekmesi (4 numaralı öneri)
+Güncel Plan: GUNCEL_2027/ST4_Plan_ID_Ciz_2027_20261023_205205.dll (AutoCAD 2027 / .NET 10).
+Yardımcı: ST4_Yardimci_2027_20261023_204332.dll, Claude son döşeme düzeltmesi aynı SHA256 ile korundu.
+AutoCAD'i yeniden başlatıp bu klasördeki iki güncel DLL'yi yalnız bir kez NETLOAD edin.
+Plan yüklenince BEYKENT sekmesi eklenir; seçmek için BEYKENT, gizlemek için BEYKENTKAPAT.
+Gruplar: Temel / Kolon / Kiriş / Yapı / Detay–İskele / Metraj.
+Eski STA yan paleti otomatik açılmaz; gerekiyorsa STAPANEL ile elle açılır.
+Genel/Ribbon testleri ve Core Console antetli sürekli temel tekrar geçti. Canlı UI testi yapılmadı.
+23.10.2026 23:18 — Açılım kesit konumu (Claude)
+Güncel Plan: GUNCEL_2027/ST4_Plan_ID_Ciz_2027_20261023_231450.dll (AutoCAD 2027 / .NET 10); Yardımcı 213059 aynı.
+KIRISACILIMLARI / SUREKLITEMELACILIMLARI kesit işareti ilave donatı ve bindirme bölgesinden kaçar.
+Core Console CK antetli/antetsiz COMPLETE. Canlı AutoCAD denenmedi.
+23.10.2026 23:30 — Gövde donatısı tahvili (Claude)
+Güncel Plan: GUNCEL_2027/ST4_Plan_ID_Ciz_2027_20261023_232747.dll; Yardımcı 213059 aynı.
+Kiriş/sürekli temel gövde aralığı 12 cm altındaysa projedeki bir üst çapa alan eşdeğer tahvil (ör. 22ø14 h70 → 12ø20). Canlı AutoCAD denenmedi.
+23.10.2026 23:46 — Temel mesnet bindirmesi (Claude)
+Güncel Plan: GUNCEL_2027/ST4_Plan_ID_Ciz_2027_20261023_234413.dll; Yardımcı 213059 aynı.
+SUREKLITEMELACILIMLARI: mesnette düz/montaj en az ℓb biner; aynı hizadaki montaj geniş mesnette de birleşir (≤1200). Canlı AutoCAD denenmedi.
+23.10.2026 23:53 — Kısa açıklık düzü 1200 sınırı (Claude)
+Güncel Plan: GUNCEL_2027/ST4_Plan_ID_Ciz_2027_20261023_235125.dll; Yardımcı 213059 aynı.
+SUREKLITEMELACILIMLARI: kısa açıklığı geçen sürekli düz 1200 cm aşarsa sığan aday seçilir (CK T-5 17ø20 1290 → 8ø20 355). Canlı AutoCAD denenmedi.
+24.10.2026 00:00 — Kısa açıklık komşusu düz birleştirme (Claude)
+Güncel Plan: GUNCEL_2027/ST4_Plan_ID_Ciz_2027_20261023_235900.dll; Yardımcı 213059 aynı.
+Kısa açıklık kuralının dokunduğu bayın diğer ucu da aynı adet/çaplı komşuyla ≤1200 ise birleşir (CK T-5 14ø14 760+250 → 890). Canlı AutoCAD denenmedi.
+24.10.2026 00:09 — Ampatman dağıtma donatısı (Claude)
+Güncel Plan: GUNCEL_2027/ST4_Plan_ID_Ciz_2027_20261024_000758.dll; Yardımcı 213059 aynı.
+Dağıtma eksen aralığı ≤ min(30 cm, As_ana/5 alan aralığı), net boşluk sınırı; CK 100 cm gövdeli temellerde 4ø8 → 6ø8. Madde metni doğrulanmadı; canlı AutoCAD denenmedi.
+24.10.2026 00:17 — Kiriş açılımı: ikinci gönyeyi kaldır tiki (Claude)
+Güncel Plan: GUNCEL_2027/ST4_Plan_ID_Ciz_2027_20261024_001555.dll; Yardımcı 213059 aynı.
+KIRISACILIMLARI formu "İkinci gönyeyi kaldır (düz ve alt ilave)": tik açıksa düz ve alt ilave ikinci gönyesi çizilmez. Canlı AutoCAD/form görünümü denenmedi.
+24.10.2026 00:42 — Kiriş açılımı: kiriş üstü kolon (Claude)
+Güncel Plan: GUNCEL_2027/ST4_Plan_ID_Ciz_2027_20261024_003520.dll; Yardımcı 213059 aynı.
+Kiriş katında olmayan kolon mesnet sayılmaz; kirişe oturan kolon yalnız yukarı kütükle gösterilir, bölgesi sıklaştırılır (CK KZ-67 S1-53/S1-54). Canlı AutoCAD denenmedi.
+24.10.2026 00:53 — Kiriş üstü kolon trimi + filiz, parçalı kiriş gövdesi (Claude)
+Güncel Plan: GUNCEL_2027/ST4_Plan_ID_Ciz_2027_20261024_005245.dll; Yardımcı 213059 aynı.
+Kiriş üst kenarı kiriş üstü kolon altında kesilir; kolon filizi (GPR/SMX) çizilir. Parçalı kirişte gövde yalnız ilk parçayla birleşip kalanı gövdesiz kalmıyor. Canlı AutoCAD denenmedi.
+24.10.2026 01:02 — Kiriş üstü kolon: kesit konumu + kiriş içi kolon etriyesi (Claude)
+Güncel Plan: GUNCEL_2027/ST4_Plan_ID_Ciz_2027_20261024_010034.dll; Yardımcı 213059 aynı.
+Kesit kiriş üstü kolon hizasından geçmez; kolon etriyesi kiriş içinde kısa kenar boyunca gösterilir. Canlı AutoCAD denenmedi.
+24.10.2026 01:10 — Kiriş gövdesi mesnette bindirmez (Claude)
+Güncel Plan: GUNCEL_2027/ST4_Plan_ID_Ciz_2027_20261024_010706.dll; Yardımcı 213059 aynı.
+Kiriş açılımında gövde her mesnette kendi yüzünden max(50φ, ℓb) kadar girer; komşusuyla ℓb bindirmez. Canlı AutoCAD denenmedi.

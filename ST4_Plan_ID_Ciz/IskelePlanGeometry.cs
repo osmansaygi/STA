@@ -307,80 +307,96 @@ namespace ST4PlanIdCiz
             {
                 DBObjectCollection offs = null;
                 try { offs = inner.GetOffsetCurves(dist); } catch { offs = null; }
-                if (offs == null || offs.Count == 0) return;
-                foreach (DBObject o in offs)
+                if (offs == null) return;
+                using (offs)
                 {
-                    if (o is Polyline pl && pl.NumberOfVertices >= 3)
-                        candidatePlines.Add(pl);
+                    foreach (DBObject o in offs)
+                    {
+                        if (o is Polyline pl)
+                            candidatePlines.Add(pl);
+                        else
+                            o?.Dispose();
+                    }
                 }
             }
 
-            // OFFSET outsidePt ile taraf seçer; GetOffsetCurves'ta işaret de tarafı etkiler.
-            // Bu yüzden her iki işareti de aday olarak al.
-            AddCandidates(dFar);
-            AddCandidates(-dFar);
-            if (candidatePlines.Count == 0) return null;
-
-            Polyline best = null;
-            double bestMinDist = double.PositiveInfinity;
-            double bestAbsArea = 0;
-            double bestDotMax = double.NegativeInfinity;
-
-            var innerVerts = LwPolyVertices(inner);
-            if (innerVerts.Count < 3) return null;
-            var pOn = innerVerts[0];
-            var dirUnit = VUnit(VSub(outPt, pOn));
-
-            foreach (var pl in candidatePlines)
+            Polyline result = null;
+            try
             {
-                var verts = LwPolyVertices(pl);
-                if (verts.Count < 3) continue;
+                // OFFSET outsidePt ile taraf seçer; GetOffsetCurves'ta işaret de tarafı etkiler.
+                // Bu yüzden her iki işareti de aday olarak al.
+                AddCandidates(dFar);
+                AddCandidates(-dFar);
+                if (candidatePlines.Count == 0) return null;
 
-                // Aday offset poligonunun outPt'ye en yakın noktası (segmentlere göre).
-                double minDist = double.PositiveInfinity;
-                int n = verts.Count;
-                for (int i = 0; i < n; i++)
+                Polyline best = null;
+                double bestMinDist = double.PositiveInfinity;
+                double bestAbsArea = 0;
+                double bestDotMax = double.NegativeInfinity;
+
+                var innerVerts = LwPolyVertices(inner);
+                if (innerVerts.Count < 3) return null;
+                var pOn = innerVerts[0];
+                var dirUnit = VUnit(VSub(outPt, pOn));
+
+                foreach (var pl in candidatePlines)
                 {
-                    var p1 = verts[i];
-                    var p2 = verts[(i + 1) % n];
-                    // Nokta-segment mesafesi (2D)
-                    var foot = PerpFootOnSeg(outPt, p1, p2);
-                    if (foot.HasValue)
+                    var verts = LwPolyVertices(pl);
+                    if (verts.Count < 3) continue;
+
+                    // Aday offset poligonunun outPt'ye en yakın noktası (segmentlere göre).
+                    double minDist = double.PositiveInfinity;
+                    int n = verts.Count;
+                    for (int i = 0; i < n; i++)
                     {
-                        double d = outPt.DistanceTo(foot.Value);
-                        if (d < minDist) minDist = d;
+                        var p1 = verts[i];
+                        var p2 = verts[(i + 1) % n];
+                        // Nokta-segment mesafesi (2D)
+                        var foot = PerpFootOnSeg(outPt, p1, p2);
+                        if (foot.HasValue)
+                        {
+                            double d = outPt.DistanceTo(foot.Value);
+                            if (d < minDist) minDist = d;
+                        }
+                        else
+                        {
+                            double d = outPt.DistanceTo(p1);
+                            if (d < minDist) minDist = d;
+                        }
                     }
-                    else
+
+                    double absArea = Math.Abs(SignedArea(verts));
+                    // outPt'nin tarif ettiği yön (lisp: pOn + nrm*1000) boyunca pozitif olan taraf.
+                    double dotMax = double.NegativeInfinity;
+                    foreach (var v in verts)
                     {
-                        double d = outPt.DistanceTo(p1);
-                        if (d < minDist) minDist = d;
+                        var dx = v.X - pOn.X;
+                        var dy = v.Y - pOn.Y;
+                        double dot = dx * dirUnit.X + dy * dirUnit.Y; // 2D dot
+                        if (dot > dotMax) dotMax = dot;
+                    }
+
+                    // Öncelik minDist; eşitse daha büyük alanı tercih et.
+                    if (dotMax > bestDotMax + 1e-6 ||
+                        (Math.Abs(dotMax - bestDotMax) <= 1e-6 && (minDist < bestMinDist - 1e-6 ||
+                                                                         (Math.Abs(minDist - bestMinDist) <= 1e-6 && absArea > bestAbsArea))))
+                    {
+                        best = pl;
+                        bestMinDist = minDist;
+                        bestAbsArea = absArea;
+                        bestDotMax = dotMax;
                     }
                 }
 
-                double absArea = Math.Abs(SignedArea(verts));
-                // outPt'nin tarif ettiği yön (lisp: pOn + nrm*1000) boyunca pozitif olan taraf.
-                double dotMax = double.NegativeInfinity;
-                foreach (var v in verts)
-                {
-                    var dx = v.X - pOn.X;
-                    var dy = v.Y - pOn.Y;
-                    double dot = dx * dirUnit.X + dy * dirUnit.Y; // 2D dot
-                    if (dot > dotMax) dotMax = dot;
-                }
-
-                // Öncelik minDist; eşitse daha büyük alanı tercih et.
-                if (dotMax > bestDotMax + 1e-6 ||
-                    (Math.Abs(dotMax - bestDotMax) <= 1e-6 && (minDist < bestMinDist - 1e-6 ||
-                                                                     (Math.Abs(minDist - bestMinDist) <= 1e-6 && absArea > bestAbsArea))))
-                {
-                    best = pl;
-                    bestMinDist = minDist;
-                    bestAbsArea = absArea;
-                    bestDotMax = dotMax;
-                }
+                result = best;
+                return result;
             }
-
-            return best;
+            finally
+            {
+                // Only the selected curve is transferred to the caller.
+                foreach (var candidate in candidatePlines)
+                    if (!ReferenceEquals(candidate, result)) candidate.Dispose();
+            }
         }
     }
 }

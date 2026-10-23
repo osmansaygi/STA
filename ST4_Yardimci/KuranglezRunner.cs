@@ -54,7 +54,7 @@ namespace ST4Yardimci
         const string LayerEtiket = "ETIKET CIZGISI (BEYKENT)";
         const string LayerYazi = "YAZI (BEYKENT)";
         const string LayerOlcu = "OLCU (BEYKENT)";
-        const string LayerKot = "KOT CIZGI (BEYKENT)";
+        const string LayerKot = "KOT CIZGISI (BEYKENT)";
         const string LayerKotYazi = "KOT YAZI (BEYKENT)";
         const string LayerKesit = "KESIT SINIRI (BEYKENT)";
         const string LayerKesitIsmi = "KESIT ISMI (BEYKENT)";
@@ -127,9 +127,9 @@ namespace ST4Yardimci
                 var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
                 _btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
                 EnsureLayers();
-                _yazi = Style("YAZI (BEYKENT)");
-                _donYazi = Style("DONATI YAZISI (BEYKENT)");
-                _kotStyle = Style("KOT (BEYKENT)");
+                _yazi = BaDimensionStyles.EnsureYazi(tr, db);
+                _donYazi = _yazi;
+                _kotStyle = _yazi;
                 _dimStyle = ResolveOrCreatePlanOlcuDonati25();
             }
 
@@ -1326,13 +1326,6 @@ namespace ST4Yardimci
                 _tr.AddNewlyCreatedDBObject(e, true);
             }
 
-            ObjectId Style(string name)
-            {
-                var tst = (TextStyleTable)_tr.GetObject(_db.TextStyleTableId, OpenMode.ForRead);
-                if (tst.Has(name)) return tst[name];
-                return _db.Textstyle;
-            }
-
             void EnsureLayers()
             {
                 ObjectId dashed = FindOrLoadDashed();
@@ -1343,7 +1336,7 @@ namespace ST4Yardimci
                 Layer(LayerDoseme, 2, LineWeight.LineWeight030, false, dashed);
                 Layer(LayerDonati, 4, LineWeight.LineWeight040, false, dashed);
                 Layer(LayerDonatiIzi, 8, LineWeight.LineWeight025, false, dashed);
-                Layer(LayerEtriye, 5, LineWeight.LineWeight035, false, dashed);
+                Layer(LayerEtriye, 150, LineWeight.LineWeight035, false, dashed);
                 Layer(LayerYaziDon, 3, LineWeight.LineWeight020, false, dashed);
                 Layer(LayerEtiket, 64, LineWeight.LineWeight015, false, dashed);
                 Layer(LayerYazi, 4, LineWeight.LineWeight020, false, dashed);
@@ -1361,18 +1354,7 @@ namespace ST4Yardimci
 
             void Layer(string name, short aci, LineWeight lw, bool dashed, ObjectId dashId)
             {
-                var lt = (LayerTable)_tr.GetObject(_db.LayerTableId, OpenMode.ForRead);
-                if (lt.Has(name)) return;
-                lt.UpgradeOpen();
-                var rec = new LayerTableRecord
-                {
-                    Name = name,
-                    Color = Color.FromColorIndex(ColorMethod.ByAci, aci),
-                    LineWeight = lw
-                };
-                if (dashed && !dashId.IsNull) rec.LinetypeObjectId = dashId;
-                lt.Add(rec);
-                _tr.AddNewlyCreatedDBObject(rec, true);
+                BeykentKatmanYukle.Ensure(_tr, _db, name, aci, lw, dashed);
             }
 
             ObjectId FindOrLoadDashed()

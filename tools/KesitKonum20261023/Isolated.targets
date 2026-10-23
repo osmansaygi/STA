@@ -1,0 +1,10 @@
+<Project>
+  <Target Name="ExcludeSharedGeneratedSources" BeforeTargets="CoreCompile">
+    <ItemGroup>
+      <Compile Remove="obj\**\*.cs;bin\**\*.cs;$(MSBuildProjectDirectory)\obj\**\*.cs;$(MSBuildProjectDirectory)\bin\**\*.cs" />
+    </ItemGroup>
+  </Target>
+  <!-- Import after the project's targets: never touch another session's NETLOAD. -->
+  <Target Name="CopyToNetloadFolder" />
+  <Target Name="CopyYatayKot" />
+</Project>

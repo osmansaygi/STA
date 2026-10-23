@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
@@ -51,6 +51,7 @@ namespace ST4Yardimci
         private const double XKotCenter = 2288.64717020909;
 
         private const double DuPerCm = 2.0;
+        private const double AcilimTextGapDu = 2 * DuPerCm;
         /// <summary>Hatıl üstü.</summary>
         private const double Y0 = 1516.388795085607;
         /// <summary>Hatıl altı / perde (üst temel) üstü.</summary>
@@ -529,9 +530,9 @@ namespace ST4Yardimci
                 // Donatı numaraları etiket yerleşiminden sonra eklenir.
                 try { DrawOlculer(tr, ms); }
                 catch { }
-                try { PlacePieceLabels(tr, ms); }
-                catch { }
                 try { EnsureSabitDonatiDots(tr, ms); }
+                catch { }
+                try { PlacePieceLabels(tr, ms); }
                 catch { }
                 // Donatı numaraları şimdilik kapalı; sabit noktalar ve hesap kimlikleri korunur.
                 if (DetayBaslik) FinishSingleDetail(tr, ms);
@@ -840,25 +841,7 @@ namespace ST4Yardimci
 
             private static void EnsureStyledLayer(Transaction tr, Database db, string name, short aci, LineWeight lw, int? transparencyPercent)
             {
-                var lt = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
-                if (lt.Has(name)) return;
-                lt.UpgradeOpen();
-                var rec = new LayerTableRecord
-                {
-                    Name = name,
-                    Color = Color.FromColorIndex(ColorMethod.ByAci, aci),
-                    LineWeight = lw
-                };
-                lt.Add(rec);
-                tr.AddNewlyCreatedDBObject(rec, true);
-                if (transparencyPercent.HasValue)
-                {
-                    int tp = transparencyPercent.Value;
-                    if (tp < 0) tp = 0;
-                    if (tp > 90) tp = 90;
-                    try { rec.Transparency = new Transparency((byte)tp); }
-                    catch { }
-                }
+                BeykentKatmanYukle.Ensure(tr, db, name, aci, lw);
             }
 
             /// <summary>Grobeton dış çizgisi. Alt kenar iki topuk arasında, YGro.</summary>
@@ -1130,29 +1113,12 @@ namespace ST4Yardimci
 
             private static void EnsureKotLayer(Transaction tr, Database db, string name)
             {
-                var lt = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
-                if (lt.Has(name)) return;
-                lt.UpgradeOpen();
-                var rec = new LayerTableRecord
-                {
-                    Name = name,
-                    Color = Color.FromColorIndex(ColorMethod.ByAci, 7),
-                    LineWeight = LineWeight.LineWeight020
-                };
-                lt.Add(rec);
-                tr.AddNewlyCreatedDBObject(rec, true);
+                BeykentKatmanYukle.Ensure(tr, db, name, 7, LineWeight.LineWeight020);
             }
 
             private static ObjectId EnsureYaziStyle(Transaction tr, Database db)
             {
-                var tst = (TextStyleTable)tr.GetObject(db.TextStyleTableId, OpenMode.ForRead);
-                if (tst.Has(TextStyleYazi))
-                    return tst[TextStyleYazi];
-                tst.UpgradeOpen();
-                var rec = new TextStyleTableRecord { Name = TextStyleYazi };
-                tst.Add(rec);
-                tr.AddNewlyCreatedDBObject(rec, true);
-                return rec.ObjectId;
+                return BaDimensionStyles.EnsureYazi(tr, db);
             }
 
             private void MapEntity(Entity ent)
@@ -1650,10 +1616,14 @@ namespace ST4Yardimci
                         double od = (pos.X - mx2) * nx + (pos.Y - my2) * ny;
                         if (od < 0) { nx = -nx; ny = -ny; }
                     }
-                    SeatBoxOffEdge(tx, ms.Database, mx2, my2, nx, ny, 8.0);
+                    double angle = Math.Atan2(gy, gx);
+                    if (angle > Math.PI / 2) angle -= Math.PI;
+                    if (angle <= -Math.PI / 2) angle += Math.PI;
+                    tx.Rotation = angle;
+                    SeatBoxOffEdge(tx, ms.Database, mx2, my2, nx, ny, AcilimTextGapDu);
                 }
                 PlaceWallHookLabels(tr, ms);
-                PlaceYatayUstLabels(tr, ms);
+                PlaceYatayAcilimLabels(tr, ms);
                 PlaceSideAcilimTexts(tr, ms);
                 PlaceSectionEtiket(tr, ms);
             }
@@ -1665,51 +1635,6 @@ namespace ST4Yardimci
                 double xLo = XOutL - DSide - 40.0;
                 double xHi = XOutR + DW + DSide + 40.0;
                 double yCut = Y4 + Dy4 - 30.0;
-                var walls = new List<Polyline>();
-                var horizs = new List<Polyline>();
-                foreach (ObjectId id in ms)
-                {
-                    if (!id.IsValid || id.IsErased) continue;
-                    if (!(tr.GetObject(id, OpenMode.ForRead, false) is Polyline pl) || pl.IsErased) continue;
-                    if (!IsRebarGeom(pl) || pl.NumberOfVertices < 4) continue;
-                    bool outside = false;
-                    double minY = double.MaxValue;
-                    for (int i = 0; i < pl.NumberOfVertices; i++)
-                    {
-                        Point2d p = pl.GetPoint2dAt(i);
-                        if (p.X < xLo || p.X > xHi) outside = true;
-                        if (p.Y < minY) minY = p.Y;
-                    }
-                    if (outside || minY < yCut) continue;
-                    if (BarIsWall(pl))
-                    {
-                        walls.Add(pl);
-                        continue;
-                    }
-                    if (!TryLongHoriz(pl, out _, out _, out _, out double hLen) || hLen < 150.0)
-                        continue;
-                    horizs.Add(pl);
-                }
-                Polyline altBar = null;
-                double altY = double.MaxValue;
-                foreach (Polyline pl in horizs)
-                {
-                    if (!TryLongHoriz(pl, out double hy, out _, out _, out _)) continue;
-                    if (hy >= altY) continue;
-                    altY = hy;
-                    altBar = pl;
-                }
-                Polyline ustBar = null;
-                double ustY = double.MaxValue;
-                foreach (Polyline pl in horizs)
-                {
-                    if (pl == altBar || HooksUp(pl)) continue;
-                    if (!TryLongHoriz(pl, out double hy, out _, out _, out _)) continue;
-                    if (hy <= altY + 2.0 || hy >= ustY) continue;
-                    ustY = hy;
-                    ustBar = pl;
-                }
-
                 string ustTok = TemelCekuruSettings.CapSlash(TemelCekuruSettings.UstCapMm, TemelCekuruSettings.UstAralikCm);
                 string altTok = TemelCekuruSettings.CapSlash(TemelCekuruSettings.AltCapMm, TemelCekuruSettings.AltAralikCm);
                 string horizUst = UstAdet.ToString(System.Globalization.CultureInfo.InvariantCulture) + ustTok;
@@ -1734,44 +1659,78 @@ namespace ST4Yardimci
                     list.Add(tx);
                 }
 
-                Database db = ms.Database;
                 DBText ustTx = TakeCenter(bag, horizUst, cx);
                 DBText altTx = TakeCenter(bag, horizAlt, cx);
-                double pitCx = (MapPt(new Point3d(XInnerL, Y2, 0)).X + MapPt(new Point3d(XInnerR, Y2, 0)).X) * 0.5;
-                if (ustBar != null && ustTx != null && TryLongHoriz(ustBar, out double uy, out _, out _, out _))
-                    SeatMaxY(ustTx, db, pitCx, uy - 8.0);
-                if (altBar != null && altTx != null && TryLongHoriz(altBar, out double ay, out _, out _, out _))
-                    SeatMinY(altTx, db, pitCx, ay + 8.0);
+                if (ustTx != null)
+                    PlaceSectionGroup(tr, ms, ustTx, PhysicalDot(6), PhysicalDot(13), UstAdet, 0, -10);
+                if (altTx != null)
+                    PlaceSectionGroup(tr, ms, altTx, PhysicalDot(7), PhysicalDot(16), AltAdet, 0, 10);
 
-                var left = new List<Polyline>();
-                var right = new List<Polyline>();
-                foreach (Polyline w in walls)
-                {
-                    if (VertX(w) < cx) left.Add(w);
-                    else right.Add(w);
-                }
-                left.Sort((a, b) => VertX(a).CompareTo(VertX(b)));
-                right.Sort((a, b) => VertX(b).CompareTo(VertX(a)));
                 DBText icL = TakeSide(bag, vertIc, cx, true);
                 DBText icR = TakeSide(bag, vertIcR, cx, false);
                 DBText disL = TakeSide(bag, vertDis, cx, true);
                 DBText disR = TakeSide(bag, vertDisR, cx, false);
-                Polyline inL = left.Count >= 2 ? left[left.Count - 1] : null;
-                Polyline inR = right.Count >= 2 ? right[right.Count - 1] : null;
-                if (left.Count >= 1 && disL != null)
-                    SeatAlongBar(disL, db, VertX(left[0]) + 8.0, VertMidY(left[0]), false);
-                if (icL != null)
-                    SeatAlongBar(icL, db,
-                        (inL != null ? VertX(inL) : MapPt(new Point3d(XInnerL, Y1, 0)).X) - 8.0,
-                        inL != null ? VertMidY(inL) : (left.Count >= 1 ? VertMidY(left[0]) : Y1 + Dy1 - 80.0),
-                        true);
-                if (right.Count >= 1 && disR != null)
-                    SeatAlongBar(disR, db, VertX(right[0]) - 8.0, VertMidY(right[0]), true);
-                if (icR != null)
-                    SeatAlongBar(icR, db,
-                        (inR != null ? VertX(inR) : MapPt(new Point3d(XInnerR, Y1, 0)).X) + 8.0,
-                        inR != null ? VertMidY(inR) : (right.Count >= 1 ? VertMidY(right[0]) : Y1 + Dy1 - 80.0),
-                        false);
+                if (disL != null) PlaceSectionGroup(tr, ms, disL, NamedDot(3), NamedDot(7), DisAdet, -15, 0);
+                if (icL != null) PlaceSectionGroup(tr, ms, icL, NamedDot(2), NamedDot(6), IcAdet, -10, 0);
+                if (disR != null) PlaceSectionGroup(tr, ms, disR, NamedDot(12), NamedDot(16), SideAdet(true, true), 15, 0);
+                if (icR != null) PlaceSectionGroup(tr, ms, icR, NamedDot(9), NamedDot(13), SideAdet(false, true), 10, 0);
+            }
+
+            // The reference DWG labels dot rows, rather than the adjacent continuous bars.
+            private void PlaceSectionGroup(Transaction tr, BlockTableRecord ms, DBText text,
+                Point3d start, Point3d end, int count, double dx, double dy)
+            {
+                if (count <= 0) { text.Erase(); return; }
+                bool vertical = dx != 0;
+                var dots = new List<Point3d>();
+                foreach (ObjectId id in ms)
+                {
+                    if (!id.IsValid || id.IsErased) continue;
+                    if (!(tr.GetObject(id, OpenMode.ForRead) is Entity entity) || !TryDotCenter(entity, out Point3d dot)) continue;
+                    if (entity.Layer.IndexOf("DONATI", StringComparison.OrdinalIgnoreCase) < 0) continue;
+                    double cross = vertical ? Math.Abs(dot.X - start.X) : Math.Abs(dot.Y - start.Y);
+                    double t = vertical ? dot.Y : dot.X;
+                    double lo = vertical ? Math.Min(start.Y, end.Y) : Math.Min(start.X, end.X);
+                    double hi = vertical ? Math.Max(start.Y, end.Y) : Math.Max(start.X, end.X);
+                    if (cross > NamedDotTolerance || t < lo - NamedDotTolerance || t > hi + NamedDotTolerance) continue;
+                    // Inner groups exclude their junction; outer groups include the intermediate corner.
+                    if (vertical)
+                    {
+                        bool corner = false;
+                        for (int number = 1; number <= 16; number++)
+                            if (PhysicalDot(number).DistanceTo(dot) < NamedDotTolerance)
+                            {
+                                bool outerJunction = Math.Abs(dx) == 15
+                                    && dot.DistanceTo(start) > NamedDotTolerance && dot.DistanceTo(end) > NamedDotTolerance;
+                                corner = !outerJunction; break;
+                            }
+                        if (corner) continue;
+                    }
+                    if (!dots.Exists(p => p.DistanceTo(dot) < NamedDotTolerance)) dots.Add(dot);
+                }
+                double center = vertical ? (start.Y + end.Y) / 2 : (start.X + end.X) / 2;
+                dots.Sort((a, b) => Math.Abs((vertical ? a.Y : a.X) - center).CompareTo(Math.Abs((vertical ? b.Y : b.X) - center)));
+                if (dots.Count > count) dots.RemoveRange(count, dots.Count - count);
+                dots.Sort((a, b) => (vertical ? a.Y : a.X).CompareTo(vertical ? b.Y : b.X));
+                if (dots.Count == 0) return;
+                const string layer = "ETIKET CIZGISI (BEYKENT)";
+                EnsureKotLayer(tr, ms.Database, layer);
+                var offset = new Vector3d(dx, dy, 0);
+                Point3d first = dots[0] + offset, last = dots[dots.Count - 1] + offset;
+                void LineTo(Point3d a, Point3d b)
+                {
+                    if (a.DistanceTo(b) < NamedDotTolerance) return;
+                    var line = new Line(a, b) { Layer = layer, ColorIndex = 256 };
+                    ms.AppendEntity(line); tr.AddNewlyCreatedDBObject(line, true);
+                }
+                LineTo(first, last);
+                foreach (Point3d dot in dots) LineTo(dot, dot + offset);
+                double x = (first.X + last.X) / 2, y = (first.Y + last.Y) / 2;
+                text.Rotation = vertical ? Math.PI / 2 : 0;
+                const double labelGap = 1 * DuPerCm;
+                if (vertical) SeatBoxOffEdge(text, ms.Database, x, y, Math.Sign(dx), 0, labelGap);
+                else if (dy < 0) SeatMaxY(text, ms.Database, x, y - labelGap);
+                else SeatMinY(text, ms.Database, x, y + labelGap);
             }
 
             private static DBText TakeCenter(Dictionary<string, List<DBText>> bag, string key, double cx)
@@ -1934,9 +1893,9 @@ namespace ST4Yardimci
                     double vmy = (v0.Y + v1.Y) * 0.5;
                     bool hookBottom = (h0.Y + h1.Y) * 0.5 < vmy;
                     bool gonyeTop = (g0.Y + g1.Y) * 0.5 > vmy;
-                    SeatNumber(tr, ms, nums, used, left, cx, vLen, new Point3d(vx + 14.0, vmy, 0));
-                    SeatNumber(tr, ms, nums, used, left, cx, hLen, new Point3d((h0.X + h1.X) * 0.5, (h0.Y + h1.Y) * 0.5 + (hookBottom ? -14.0 : 14.0), 0));
-                    SeatNumber(tr, ms, nums, used, left, cx, gLen, new Point3d((g0.X + g1.X) * 0.5, (g0.Y + g1.Y) * 0.5 + (gonyeTop ? -14.0 : 14.0), 0));
+                    SeatNumber(tr, ms, nums, used, left, cx, vLen, new Point3d(vx + 14.0, vmy, 0), true);
+                    SeatNumber(tr, ms, nums, used, left, cx, hLen, new Point3d((h0.X + h1.X) * 0.5, (h0.Y + h1.Y) * 0.5, 0), normalY: hookBottom ? -1 : 1);
+                    SeatNumber(tr, ms, nums, used, left, cx, gLen, new Point3d((g0.X + g1.X) * 0.5, (g0.Y + g1.Y) * 0.5, 0), normalY: gonyeTop ? 1 : -1);
                     bool dis = IsOuterWall(bar, bars, cx);
                     foreach (DBText tag in tags)
                     {
@@ -1946,7 +1905,7 @@ namespace ST4Yardimci
                         bool tagDis = ts.IndexOf("DIŞ", StringComparison.Ordinal) >= 0;
                         if (tagDis != dis) continue;
                         used.Add(tag);
-                        SeatAlongBar(tag, ms.Database, vx - 8.0, vmy, edgeIsRight: true);
+                        SeatAlongBar(tag, ms.Database, vx - AcilimTextGapDu, vmy, edgeIsRight: true);
                         break;
                     }
                 }
@@ -2018,7 +1977,7 @@ namespace ST4Yardimci
                 return Math.Sqrt(dx * dx + dy * dy);
             }
 
-            private static void SeatNumber(Transaction tr, BlockTableRecord ms, List<DBText> nums, HashSet<DBText> used, bool left, double cx, double segLen, Point3d at)
+            private static void SeatNumber(Transaction tr, BlockTableRecord ms, List<DBText> nums, HashSet<DBText> used, bool left, double cx, double segLen, Point3d at, bool vertical = false, int normalY = 0)
             {
                 DBText best = null;
                 double bestD = double.MaxValue;
@@ -2035,7 +1994,11 @@ namespace ST4Yardimci
                 }
                 if (best == null) return;
                 used.Add(best);
-                MoveTextCenter(best, ms.Database, at);
+                best.Rotation = vertical ? Math.PI / 2 : 0;
+                if (vertical) SeatBoxOffEdge(best, ms.Database, at.X - 14, at.Y, 1, 0, AcilimTextGapDu);
+                else if (normalY > 0) SeatMinY(best, ms.Database, at.X, at.Y + AcilimTextGapDu);
+                else if (normalY < 0) SeatMaxY(best, ms.Database, at.X, at.Y - AcilimTextGapDu);
+                else MoveTextCenter(best, ms.Database, at);
             }
 
             private static void MoveTextCenter(DBText tx, Database db, Point3d center)
@@ -2109,9 +2072,9 @@ namespace ST4Yardimci
             }
 
             /// <summary>
-            /// Alt açılımdaki üst donatı: gönye yazısı kancanın iç kenarında, boy yazısı çubuğun hemen altında.
+            /// Alt açılımlar: donatı etiketi üstte, düz boy altta; gönye yazıları düşey kola paralel.
             /// </summary>
-            private void PlaceYatayUstLabels(Transaction tr, BlockTableRecord ms)
+            private void PlaceYatayAcilimLabels(Transaction tr, BlockTableRecord ms)
             {
                 double yCut = Y4 + Dy4 - 20.0;
                 double xLo = XOutL - DSide - 40.0;
@@ -2132,7 +2095,6 @@ namespace ST4Yardimci
                     }
                     if (minY >= yCut) continue;
                     if (maxX < xLo || minX > xHi) continue;
-                    if (HooksUp(pl)) continue;
                     if (!TryLongHoriz(pl, out _, out _, out _, out double hLen) || hLen < 150.0) continue;
                     bars.Add(pl);
                 }
@@ -2140,31 +2102,33 @@ namespace ST4Yardimci
                 int gCm = GonyeCm();
                 var calls = new List<DBText>();
                 var gonye = new List<DBText>();
+                var lengths = new List<DBText>();
                 foreach (ObjectId id in ms)
                 {
                     if (!id.IsValid || id.IsErased) continue;
                     if (!(tr.GetObject(id, OpenMode.ForWrite, false) is DBText tx) || tx.IsErased) continue;
                     if (tx.Position.Y > yCut + 40.0) continue;
                     string s = (tx.TextString ?? "").Trim();
-                    if (s.IndexOf("ÜST", StringComparison.Ordinal) >= 0
-                        && s.IndexOf("L=", StringComparison.Ordinal) >= 0
-                        && s.IndexOf("DİKEY", StringComparison.Ordinal) < 0)
+                    if (IsYatayAcilim(s, out _) && s.IndexOf("DİKEY", StringComparison.Ordinal) < 0)
                     {
                         calls.Add(tx);
                         continue;
                     }
                     if (ParseCm(tx) == gCm) gonye.Add(tx);
+                    if (ParseCm(tx) > 0) lengths.Add(tx);
                 }
                 var used = new HashSet<DBText>();
                 foreach (Polyline pl in bars)
                 {
-                    if (!TryLongHoriz(pl, out double hy, out double x0, out double x1, out _)) continue;
+                    if (!TryLongHoriz(pl, out double hy, out double x0, out double x1, out double mainLength)) continue;
+                    bool upper = !HooksUp(pl);
                     double midX = (x0 + x1) * 0.5;
                     DBText call = null;
                     double callD = double.MaxValue;
                     foreach (DBText tx in calls)
                     {
                         if (used.Contains(tx)) continue;
+                        if (!IsYatayAcilim(tx.TextString, out bool isUpper) || isUpper != upper) continue;
                         if (tx.Position.X < x0 - 80.0 || tx.Position.X > x1 + 80.0) continue;
                         double d = Math.Abs(tx.Position.X - midX) + Math.Abs(tx.Position.Y - hy);
                         if (d < callD) { callD = d; call = tx; }
@@ -2172,7 +2136,20 @@ namespace ST4Yardimci
                     if (call != null)
                     {
                         used.Add(call);
-                        SeatMaxY(call, ms.Database, midX, hy - 8.0);
+                        SeatMinY(call, ms.Database, midX, hy + AcilimTextGapDu);
+                    }
+                    DBText length = null;
+                    double lengthDistance = double.MaxValue;
+                    foreach (DBText tx in lengths)
+                    {
+                        if (used.Contains(tx) || Math.Abs(ParseCm(tx) * DuPerCm - mainLength) > 12) continue;
+                        double d = Math.Abs(tx.Position.X - midX) + Math.Abs(tx.Position.Y - hy);
+                        if (d < lengthDistance) { lengthDistance = d; length = tx; }
+                    }
+                    if (length != null)
+                    {
+                        used.Add(length);
+                        SeatMaxY(length, ms.Database, midX, hy - AcilimTextGapDu);
                     }
                     int n = pl.NumberOfVertices;
                     int leftSeg = -1, rightSeg = -1;
@@ -2189,13 +2166,13 @@ namespace ST4Yardimci
                         if (mx > rightX) { rightX = mx; rightSeg = i; }
                     }
                     if (leftSeg >= 0)
-                        SeatInnerGonye(pl, leftSeg, gonye, used, ms.Database, x0, x1, inward: 1.0);
+                        SeatAcilimGonye(pl, leftSeg, gonye, used, ms.Database, inward: upper ? -1.0 : 1.0);
                     if (rightSeg >= 0 && rightSeg != leftSeg)
-                        SeatInnerGonye(pl, rightSeg, gonye, used, ms.Database, x0, x1, inward: -1.0);
+                        SeatAcilimGonye(pl, rightSeg, gonye, used, ms.Database, inward: upper ? -1.0 : 1.0);
                 }
             }
 
-            private static void SeatInnerGonye(Polyline pl, int seg, List<DBText> texts, HashSet<DBText> used, Database db, double x0, double x1, double inward)
+            private static void SeatAcilimGonye(Polyline pl, int seg, List<DBText> texts, HashSet<DBText> used, Database db, double inward)
             {
                 Point2d a = pl.GetPoint2dAt(seg);
                 Point2d b = pl.GetPoint2dAt(seg + 1);
@@ -2206,14 +2183,13 @@ namespace ST4Yardimci
                 foreach (DBText tx in texts)
                 {
                     if (used.Contains(tx)) continue;
-                    if (tx.Position.X <= x0 + 12.0 || tx.Position.X >= x1 - 12.0) continue;
                     double d = Math.Abs(tx.Position.X - hx) + Math.Abs(tx.Position.Y - hy);
                     if (d < bestD) { bestD = d; best = tx; }
                 }
                 if (best == null) return;
                 used.Add(best);
-                best.Rotation = 0;
-                SeatBoxOffEdge(best, db, hx, hy, inward, 0, 8.0);
+                best.Rotation = Math.PI / 2;
+                SeatBoxOffEdge(best, db, hx, hy, inward, 0, AcilimTextGapDu);
             }
 
             /// <summary>
@@ -2320,7 +2296,7 @@ namespace ST4Yardimci
                     vx = vx / n - mx;
                     vy = vy / n - my;
                     if (nx * vx + ny * vy > 0) { nx = -nx; ny = -ny; }
-                    SeatBoxOffEdge(texts[pair.T], ms.Database, mx, my, nx, ny, 8.0);
+                    SeatBoxOffEdge(texts[pair.T], ms.Database, mx, my, nx, ny, AcilimTextGapDu);
                 }
             }
 

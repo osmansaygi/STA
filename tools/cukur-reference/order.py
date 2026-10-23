@@ -1,0 +1,2 @@
+from pathlib import Path
+p=Path('ST4_Yardimci/TemelCekuruRunner.cs');s=p.read_text(encoding='utf-8-sig');s=s.replace('                try { PlacePieceLabels(tr, ms); }\n                catch { }\n                try { EnsureSabitDonatiDots(tr, ms); }\n                catch { }','                try { EnsureSabitDonatiDots(tr, ms); }\n                catch { }\n                try { PlacePieceLabels(tr, ms); }\n                catch { }');p.write_text(s,encoding='utf-8-sig')

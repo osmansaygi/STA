@@ -1,0 +1,39 @@
+Use case: ui-mockup. The reference is an existing approved Monolit icon sprite atlas, STYLE REFERENCE only. Make a matching PRODUCTION PNG SPRITE ATLAS, transparent alpha background, of exactly TWENTY FOUR individual structural-engineering AutoCAD command icons. Four equal columns and SIX equal rows, total aspect ratio 2:3. Perfect rigid cell alignment, icon centers at exact centers of all cells, each icon fully within middle 72% of cell width and height, generous transparent gutters so absolutely NO neighboring silhouettes overlap. ALL 24 cells occupied. No titles, no text, no numbers, no captions, no frames, no grid lines, no backdrop, no opaque shadows, no visible checkerboard baked into image. Match the reference's beautiful isometric sculptural miniatures: warm ivory concrete/stone, saturated cobalt blue steel rebar and surfaces, vivid orange meaningful highlights. Same camera angle, same apparent size, crisp compact geometry, 32px readability. Simpler than architectural illustrations: max 3-5 major elements each, no fine textures, no microscopic annotations. Important: output is image assets, not a poster. Do NOT repeat the previous atlas contents; use exactly these engineering concepts in EXACT reading order:
+
+ROW 1, left to right:
+1 FORMWORK PLAN 1:50: compact ivory L-shaped plan perimeter, two interior ivory beam ribs, cobalt plan sheet beneath, orange dimension ticks.
+2 COLUMN APPLICATION PLAN 1:50: compact ivory square base plan slab carrying four short square columns at corners, cobalt plan grid and one orange marked corner column. Top-down isometric view, clearly a plan.
+3 COLUMN VERTICAL REINFORCEMENT: one tall ivory column section on tiny footing, exposed cobalt vertical rods at upper half, three orange stirrup hoops, narrow tall silhouette.
+4 FOUNDATION PLAN 1:50: four ivory square pad footings joined in square arrangement by low cobalt tie beams, tiny orange corner marks.
+
+ROW 2:
+5 RAFT REINFORCEMENT PLAN: solid ivory rectangular thick slab, three cobalt rods underneath and two orange crossing rods above.
+6 FORMWORK PLAN 1:100: ivory compact rectangular room perimeter with central ivory crossbeam on cobalt sheet, orange corner dimension marks; same family as row1icon1 but clearly distinct geometry.
+7 COLUMN APPLICATION PLAN 1:100: compact square ivory plan slab carrying six tiny square columns along two sides, cobalt layout lines and an orange central marked column.
+8 FOUNDATION PLAN 1:100: ivory long strip footing plan with two crossing cobalt foundation strips forming T plan and orange reinforcement ends.
+
+ROW 3:
+9 SCAFFOLD PLAN: four cobalt upright scaffold poles seen isometrically, short ivory work platform atop, orange horizontal cross-brace, compact open frame.
+10 SCAFFOLD SECTION: narrow upright cobalt scaffolding elevation with two stacked ivory decks and one orange diagonal crossbrace.
+11 STRUCTURAL PLAN IDENTIFICATION: ivory rolled plan with cobalt plan outline and one large orange location pin at a plan corner, no writing.
+12 COLUMN DATA: ivory data sheet with three bold cobalt horizontal rows beside a small ivory upright column and one orange header stripe; no actual text.
+
+ROW 4:
+13 STRUCTURAL SECTION: ivory U-shaped section frame on base, cobalt slab cross-section crossing horizontally, orange diagonal cutting plane marker.
+14 CLEAN DRAWING LAYERS: three offset ivory/cobalt thin stacked plan sheets, orange small eraser removing corner of upper sheet, clearly cleaning rather than download arrow.
+15 TWO-FLOOR SIMPLE PREVIEW: ivory simple open two-level frame with two small floor slabs, cobalt columns and orange play triangle beside frame.
+16 MUSHROOM SLAB: one central ivory column with broad flared capital supporting a single wide thin ivory slab, cobalt slab edge and small orange reinforcement accent; distinct mushroom structural profile.
+
+ROW 5:
+17 CLOSURE WALL DETAIL: one long ivory reinforced concrete wall standing on thin footing, exposed three cobalt vertical reinforcement rods on one side, two orange horizontal bars on face; NO rectangular opening, this is wall reinforcement.
+18 REVISE COLUMN: short ivory square column surrounded by cobalt reinforcement cage and a bold orange curved circular revision arrow at side.
+19 BUILDING EXTERIOR ELEVATION: simple ivory three-storey facade with six cobalt windows in two columns and orange roofline, frontal view.
+20 BUILDING SECTION: three-storey ivory building sliced open showing three ivory slabs, cobalt core and one orange vertical section stripe, no exterior windows; distinct from exterior elevation.
+
+ROW 6:
+21 BEAM REBAR DEVELOPMENT: one horizontal long cobalt hooked reinforcement bar, two orange stirrup rectangles around it, tiny ivory cut beam stub at one end; clear long horizontal silhouette.
+22 EDIT BEAM: short ivory horizontal beam with cobalt exposed bar and one orange small pencil resting diagonally on end.
+23 EDIT FOUNDATION BEAM: ivory low footing with raised short ivory foundation tie beam on it, cobalt horizontal reinforcement and one orange pencil; wider heavier base than previous icon.
+24 QUANTITY TAKEOFF: ivory paper schedule sheet with cobalt 3x3 table grid and orange bent rebar symbol beside, no writing.
+
+All 24 distinct meaningful icons, coherent professionally designed family, exact ordered 4x6 grid, actual transparency.

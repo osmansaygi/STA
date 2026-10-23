@@ -23,7 +23,7 @@ namespace ST4Yardimci
         private const string DimStyleDonatiOku = "DONATI OKU (BEYKENT)";
         private const string TextStyleYazi = "YAZI (BEYKENT)";
 
-        private const short DonatiOkuAci = 242;
+        private const short DonatiOkuAci = 150;
         private const short DonatiHalkasiAci = 2;
         private const double CircleDiaCm = 4.0;
         private const double CircleWidthCm = 4.0;
@@ -235,7 +235,7 @@ namespace ST4Yardimci
             Point3d a, Point3d b, Vector3d dir, double len,
             List<double> hitT, List<Point3d> hitPts)
         {
-            var probe = new LineSegment2d(new Point2d(a.X, a.Y), new Point2d(b.X, b.Y));
+            using var probe = new LineSegment2d(new Point2d(a.X, a.Y), new Point2d(b.X, b.Y));
             double minX = Math.Min(a.X, b.X) - 1.0;
             double maxX = Math.Max(a.X, b.X) + 1.0;
             double minY = Math.Min(a.Y, b.Y) - 1.0;
@@ -283,12 +283,12 @@ namespace ST4Yardimci
                     {
                         Point3d s = pl.GetPoint3dAt(i);
                         Point3d e = pl.GetPoint3dAt((i + 1) % n);
-                        var edge = new LineSegment2d(new Point2d(s.X, s.Y), new Point2d(e.X, e.Y));
+                        using var edge = new LineSegment2d(new Point2d(s.X, s.Y), new Point2d(e.X, e.Y));
                         pts = edge.IntersectWith(probe);
                     }
                     else
                     {
-                        CircularArc2d arc = pl.GetArcSegment2dAt(i);
+                        using CircularArc2d arc = pl.GetArcSegment2dAt(i);
                         if (arc != null)
                             pts = arc.IntersectWith(probe);
                     }
@@ -306,7 +306,7 @@ namespace ST4Yardimci
             try
             {
                 if (s.GetDistanceTo(e) < 1e-6) return;
-                var edge = new LineSegment2d(s, e);
+                using var edge = new LineSegment2d(s, e);
                 AddHits(edge.IntersectWith(probe), origin, dir, len, hitT, hitPts);
             }
             catch { }
@@ -320,7 +320,7 @@ namespace ST4Yardimci
             try
             {
                 Point3d mid = arc.GetPointAtParameter((arc.StartParam + arc.EndParam) * 0.5);
-                var arc2d = new CircularArc2d(
+                using var arc2d = new CircularArc2d(
                     new Point2d(arc.StartPoint.X, arc.StartPoint.Y),
                     new Point2d(mid.X, mid.Y),
                     new Point2d(arc.EndPoint.X, arc.EndPoint.Y));
@@ -336,7 +336,7 @@ namespace ST4Yardimci
         {
             try
             {
-                var arc2d = new CircularArc2d(new Point2d(c.Center.X, c.Center.Y), c.Radius);
+                using var arc2d = new CircularArc2d(new Point2d(c.Center.X, c.Center.Y), c.Radius);
                 AddHits(arc2d.IntersectWith(probe), origin, dir, len, hitT, hitPts);
             }
             catch { }
@@ -456,48 +456,13 @@ namespace ST4Yardimci
 
         private static string EnsureLayer(Transaction tr, Database db, string name, short aci, LineWeight lw)
         {
-            var lt = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
-            if (lt.Has(name)) return name;
-            lt.UpgradeOpen();
-            var rec = new LayerTableRecord
-            {
-                Name = name,
-                Color = Color.FromColorIndex(ColorMethod.ByAci, aci),
-                LineWeight = lw
-            };
-            try
-            {
-                var ltt = (LinetypeTable)tr.GetObject(db.LinetypeTableId, OpenMode.ForRead);
-                if (ltt.Has("Continuous"))
-                    rec.LinetypeObjectId = ltt["Continuous"];
-            }
-            catch { }
-            lt.Add(rec);
-            tr.AddNewlyCreatedDBObject(rec, true);
+            BeykentKatmanYukle.Ensure(tr, db, name, aci, lw);
             return name;
         }
 
         private static ObjectId GetOrCreateYaziBeykentTextStyle(Transaction tr, Database db)
         {
-            var txtTable = (TextStyleTable)tr.GetObject(db.TextStyleTableId, OpenMode.ForRead);
-            if (txtTable.Has(TextStyleYazi))
-                return txtTable[TextStyleYazi];
-
-            txtTable.UpgradeOpen();
-            var rec = new TextStyleTableRecord { Name = TextStyleYazi };
-            try
-            {
-                rec.Font = new Autodesk.AutoCAD.GraphicsInterface.FontDescriptor("Bahnschrift Light Condensed", false, false, 0, 0);
-            }
-            catch
-            {
-                try { rec.Font = new Autodesk.AutoCAD.GraphicsInterface.FontDescriptor("Arial", false, false, 0, 0); }
-                catch { }
-            }
-            try { rec.TextSize = 0.0; } catch { }
-            txtTable.Add(rec);
-            tr.AddNewlyCreatedDBObject(rec, true);
-            return rec.ObjectId;
+            return BaDimensionStyles.EnsureYazi(tr, db);
         }
 
         /// <summary>

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="NetTopologySuite" Version="2.6.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\..\ST4_Plan_ID_Ciz\TemelIlaveKutuBol.cs" />
+    <Compile Include="..\..\ST4_Plan_ID_Ciz\NtsOverlaySafe.cs" />
+    <Compile Include="Program.cs" />
+  </ItemGroup>
+</Project>

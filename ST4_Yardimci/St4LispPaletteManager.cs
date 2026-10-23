@@ -59,6 +59,11 @@ namespace ST4Yardimci
 
         public static void Show()
         {
+            if (!BaHomeRibbonCatalog.LegacyPaletteEnabled)
+            {
+                DisposePalette();
+                return;
+            }
             try
             {
                 LoadPrefs();
@@ -147,6 +152,7 @@ namespace ST4Yardimci
 
         public static void Shutdown()
         {
+            _suppressSave = true;
             // AutoCAD kapanırken PaletteSet.Dock yerel çubuğu ölü oluyor.
             // IsFloating erişim ihlali catch ile yakalanmaz, süreç düşer.
             // Son bilinen yerleşim yazılır; yerli palete dokunulmaz.
@@ -581,9 +587,19 @@ namespace ST4Yardimci
             };
             _menu = new ContextMenuStrip();
             _menu.Items.Add(_mnuHideLabels);
+            var iconMenu = new ToolStripMenuItem("Simge tasarımı");
+            var monolitItem = new ToolStripMenuItem("Monolit");
+            var classicItem = new ToolStripMenuItem("Klasik");
+            monolitItem.Click += (s, e) => { BaCommandIcons.SetMonolit(true); ReloadIcons(); };
+            classicItem.Click += (s, e) => { BaCommandIcons.SetMonolit(false); ReloadIcons(); };
+            iconMenu.DropDownItems.Add(monolitItem);
+            iconMenu.DropDownItems.Add(classicItem);
+            _menu.Items.Add(iconMenu);
             _menu.Opening += (s, e) =>
             {
                 _mnuHideLabels.Checked = St4LispPaletteManager.HideLabels;
+                monolitItem.Checked = BaCommandIcons.UseMonolit;
+                classicItem.Checked = !BaCommandIcons.UseMonolit;
             };
             ContextMenuStrip = _menu;
 
@@ -610,6 +626,20 @@ namespace ST4Yardimci
 
             Controls.Add(_table);
             ApplyHideLabels(St4LispPaletteManager.HideLabels);
+        }
+
+        private void ReloadIcons()
+        {
+            for (int i = 0; i < _labels.Length; i++)
+            {
+                if (_labels[i]?.Parent is Panel row && row.Controls[0] is PictureBox pic)
+                {
+                    var tool = BaCommandIcons.Tools[i];
+                    Image old = pic.Image;
+                    pic.Image = BaCommandIcons.Load(tool.Cmd, tool.Resource);
+                    old?.Dispose();
+                }
+            }
         }
 
         public void ApplyHideLabels(bool hide)

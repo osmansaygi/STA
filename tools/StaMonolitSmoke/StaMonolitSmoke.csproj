@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+ <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0-windows</TargetFramework><UseWindowsForms>true</UseWindowsForms><EnableDefaultCompileItems>false</EnableDefaultCompileItems><NuGetAudit>false</NuGetAudit></PropertyGroup>
+ <ItemGroup>
+  <Compile Include="Program.cs"/>
+  <Compile Include="../../ST4_Plan_ID_Ciz/StaMonolitIcons.cs" Link="StaMonolitIcons.cs"/>
+  <Compile Include="../../ST4_Plan_ID_Ciz/ToolPaletteUi.cs" Link="ToolPaletteUi.cs"/>
+  <Compile Include="../../ST4_Plan_ID_Ciz/AcadPaletteTheme.cs" Link="AcadPaletteTheme.cs"/>
+  <Reference Include="AcMgd"><HintPath>C:/Program Files/Autodesk/AutoCAD 2027/acmgd.dll</HintPath><Private>false</Private></Reference>
+  <Reference Include="AcCoreMgd"><HintPath>C:/Program Files/Autodesk/AutoCAD 2027/accoremgd.dll</HintPath><Private>false</Private></Reference>
+  <Reference Include="AcDbMgd"><HintPath>C:/Program Files/Autodesk/AutoCAD 2027/acdbmgd.dll</HintPath><Private>false</Private></Reference>
+  <EmbeddedResource Include="../../ST4_Plan_ID_Ciz/Icons/*.png"><LogicalName>ST4PlanIdCiz.Icons.%(Filename)%(Extension)</LogicalName></EmbeddedResource>
+ </ItemGroup>
+</Project>

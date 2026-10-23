@@ -1,0 +1,11 @@
+# Sürekli temel donatısını yeniden açma
+- Ajan: Codex / bu sohbet
+- Güncelleme: 2026-10-20 (Europe/Istanbul)
+- Durum: tamamlandı
+- Görev: kullanıcı beton görünüşünü onayladı; donatı/etriye/etiket/açılımları düzeltilmiş geometriyi koruyarak yeniden çiz.
+- Ayrılan dosyalar/kaynaklar: yok. Değişen: ST4_Plan_ID_Ciz/PlanIdDrawingManager.SurekliTemelAcilim.cs; ST4_Plan_ID_Ciz/PlanIdDrawingManager.SurekliTemelGorunus.cs; ST4_Plan_ID_Ciz/PlanIdDrawingManager.SurekliTemelDonatiGorunus.cs (yeni); ST4_Plan_ID_Ciz/SurekliTemelAcilimForm.cs; tools/SurekliTemelViewCheck/**; docs/modul-durum/ST4_Plan_ID_Ciz.SurekliGorunus.md; bu kayıt.
+- Çıktılar: tools/SurekliTemelViewCheck/build ve obj izole; önceki açık yeniden derle/eskileri sil talimatıyla NETLOAD Plan DLL/PDB dağıtımı ve temizliği. Eski kiriş kaydındaki ortak kaynaklar/bin/obj düzenlenmeyecek. Canlı AutoCAD'e yükleme yok.
+- Yöntem: beton görünüşü aynı kalır; mevcut TMX/GPR okuyucu ve donatı çizicileri yeni istasyonlara bağlanır; kiriş beton çizim yoluna geri dönülmez.
+- Sonuç: mevcut TMX/GPR kaydı, bay ataması ve donatı/kesit çizicileri onaylı geometri istasyonlarına bağlandı. Montaj/düz/ilave/gövde/etriye, etiket ve açılımlar açık. T54 gibi tek kolonlu uçlar dahil. Yerleşim gerçek sınırlarla; dış ankraj düzeltilen beton ucunda, net açıklık kolon yüzünde.
+- Doğrulama: net48 0 hata/0 uyarı; Verify-Project dört PASS. MS_OTP_01 antetli/antetsiz COMPLETE: tüm 58 temel kaynak verisi, 1959 donatı nesnesi/1358 etriye/2183 etiket, tek kolon etiketi. T42/T45 eşit uçlar, 188 kolon desteği ve genişlikler PASS. Aynı DB'de tekrar komut, eski nesneleri değiştirmeme PASS. Sentetik verisiz 0 donatı, AKDAG GPR yedek kaynağı COMPLETE. ST4/TMX/GPR hash aynı. DXF önizlemeleri incelendi.
+- Dağıtım: NETLOAD/ST4_Plan_ID_Ciz_20261020_013208.dll ve PDB; kaynak/dağıtım SHA256 aynı. Önceki 005637 DLL/PDB silindi. Canlı AutoCAD'e yüklenmedi, kullanıcı oturumunda donatılı görsel onay açık.

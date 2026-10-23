@@ -179,9 +179,9 @@ namespace ST4PlanIdCiz
             if (parcalar.Count == 0) return heat;
             if (heat != null && !heat.IsEmpty) parcalar.Add(heat);
             Geometry birlesik;
-            try { birlesik = CascadedPolygonUnion.Union(parcalar); }
+            try { birlesik = NtsOverlaySafe.CascadedUnionSafe(parcalar); }
             catch { birlesik = gf.BuildGeometry(parcalar); }
-            try { birlesik = birlesik.Buffer(0); } catch { }
+            birlesik = NtsOverlaySafe.FixIfInvalid(birlesik);
             return birlesik ?? heat;
         }
 
@@ -213,11 +213,10 @@ namespace ST4PlanIdCiz
             if (temel == null || temel.IsEmpty) return extra;
             try
             {
-                Geometry clip = temel;
-                try { clip = clip.Buffer(0); } catch { }
+                Geometry clip = NtsOverlaySafe.PrepareForOverlay(temel);
                 if (clip == null || clip.IsEmpty) return extra;
                 Geometry cut = extra.Intersection(clip);
-                try { cut = cut.Buffer(0); } catch { }
+                cut = NtsOverlaySafe.FixIfInvalid(cut);
                 return DropTinyParts(cut, 80);
             }
             catch
@@ -469,8 +468,10 @@ namespace ST4PlanIdCiz
                 }
             }
             if (geoms.Count == 0) return null;
-            Geometry u = geoms.Count == 1 ? geoms[0] : CascadedPolygonUnion.Union(geoms);
-            try { u = u.Buffer(0); } catch { }
+            Geometry u = geoms.Count == 1
+                ? NtsOverlaySafe.PrepareForOverlay(geoms[0])
+                : NtsOverlaySafe.CascadedUnionSafe(geoms);
+            u = NtsOverlaySafe.FixIfInvalid(u);
             double cell = Math.Max(Math.Abs(b) * pw / (double)cols, Math.Abs(d) * ph / (double)rows);
             if (cell < 4) cell = 4;
             try { u = u.Buffer(cell * 0.9).Buffer(-cell * 0.85); } catch { }
@@ -1712,8 +1713,10 @@ namespace ST4PlanIdCiz
                 }
             }
             if (geoms.Count == 0) return null;
-            Geometry u = geoms.Count == 1 ? geoms[0] : CascadedPolygonUnion.Union(geoms);
-            try { u = u.Buffer(0); } catch { }
+            Geometry u = geoms.Count == 1
+                ? NtsOverlaySafe.PrepareForOverlay(geoms[0])
+                : NtsOverlaySafe.CascadedUnionSafe(geoms);
+            u = NtsOverlaySafe.FixIfInvalid(u);
             double sm = Math.Max(cellW, cellH);
             try { u = u.Buffer(sm * 0.6).Buffer(-sm * 0.55); } catch { }
             try { u = DouglasPeuckerSimplifier.Simplify(u, sm * 1.25); } catch { }

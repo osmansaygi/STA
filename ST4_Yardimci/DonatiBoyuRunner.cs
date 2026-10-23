@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text.RegularExpressions;
@@ -40,6 +40,12 @@ namespace ST4Yardimci
             if (DonatiBoyuSettings.Katmanlar.Count == 0)
             {
                 ed.WriteMessage("\nDONATIBOYU: Donatı etiketi katmanı ekleyin.");
+                return;
+            }
+
+            if (DonatiBoyuSettings.CizimKatmanlar.Count == 0)
+            {
+                ed.WriteMessage("\nDONATIBOYU: Önce Donatı çizimi katmanı ekleyin.");
                 return;
             }
 
@@ -91,7 +97,7 @@ namespace ST4Yardimci
                     }
                     else if (ent is Line || ent is Polyline || ent is Polyline2d)
                     {
-                        if (IsMetrajBalloon(ent)) continue;
+                        if (!DrawingLayerOk(ent.Layer) || IsMetrajBalloon(ent)) continue;
                         if (ent is Curve c)
                             bars.Add(c);
                     }
@@ -292,7 +298,7 @@ namespace ST4Yardimci
             {
                 var ent = tr.GetObject(id, OpenMode.ForRead) as Entity;
                 if (ent == null || ent.IsErased) continue;
-                if (IsMetrajBalloon(ent)) continue;
+                if (!DrawingLayerOk(ent.Layer) || IsMetrajBalloon(ent)) continue;
                 if (ent is Line || ent is Polyline || ent is Polyline2d)
                 {
                     if (ent is Curve c)
@@ -324,6 +330,12 @@ namespace ST4Yardimci
             {
                 return false;
             }
+        }
+
+        private static bool DrawingLayerOk(string layer)
+        {
+            return DonatiBoyuSettings.CizimKatmanlar.Exists(
+                name => string.Equals(name, layer, StringComparison.OrdinalIgnoreCase));
         }
 
         private static bool LabelLayerOk(string layer)

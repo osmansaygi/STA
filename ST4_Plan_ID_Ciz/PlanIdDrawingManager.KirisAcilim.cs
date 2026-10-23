@@ -127,6 +127,24 @@ namespace ST4PlanIdCiz
         private readonly List<double> _kirisAcilimIzdusumXs = new List<double>();
         /// <summary>Montaj bindirme aralıkları (dünya X); izdüşüm yerine bunlar ölçülendirilir.</summary>
         private readonly List<(double X0, double X1)> _kirisAcilimMontajBindirmeXs = new List<(double, double)>();
+        /// <summary>Kiriş üstü kolon filizi için ST4 yolu/editör (GPR/SMX kolon donatısı bir kez, gerektiğinde okunur).</summary>
+        private string _kirisAcilimSt4Path;
+        private Editor _kirisAcilimEd;
+        private bool _kirisFilizHazir;
+        /// <summary>Kolon (kat no, kolon no) → filiz adedinin yazıldığı kiriş adı (metrajda çift sayılmasın).</summary>
+        private readonly Dictionary<(int, int), string> _kirisFilizSahibi = new Dictionary<(int, int), string>();
+        /// <summary>Kiriş açılımı formu seçeneği: düz ve alt ilave donatıda ikinci gönye (c kolu) çizilmez.</summary>
+        private bool _kirisAltIkinciGonyeKaldir;
+        /// <summary>Şu an çizilen çubukta ikinci gönye bastırılıyor mu (<see cref="IkinciGonyeKapsami"/>).</summary>
+        private bool _ikinciGonyeBastir;
+
+        private sealed class IkinciGonyeKapsami : IDisposable
+        {
+            private readonly PlanIdDrawingManager _m;
+            private readonly bool _eski;
+            public IkinciGonyeKapsami(PlanIdDrawingManager m, bool bastir) { _m = m; _eski = m._ikinciGonyeBastir; m._ikinciGonyeBastir = _eski || bastir; }
+            public void Dispose() => _m._ikinciGonyeBastir = _eski;
+        }
         private const double KirisAcilimIzdusumBoyCm = 160.0;
         /// <summary>Açılım uzantı / bindirme ölçüsünün donatıdan uzaklığı (cm, 2× öncesi).</summary>
         private const double KirisAcilimAcilimOlcuUzakCm = 8.0;
@@ -149,11 +167,13 @@ namespace ST4PlanIdCiz
             if (capMm <= 0 || lnNetCm <= 0) return 0;
             double c = KirisAcilimUstSurekliOran * lnNetCm;
             double phi50 = KirisAcilimUstIlavePhi * capMm / 10.0;
-            double lb = (ust ? KirisAcilimLbPhiKonumI : KirisAcilimLbPhiKonumII) * capMm / 10.0;
-            double taban = (phi50 > lb ? phi50 : lb) - (hkCm > 0 ? hkCm : 0);
+            double lb = (ust ? _lbPhiKonumI : _lbPhiKonumII) * capMm / 10.0;
+            // Temelde (STA4CAD) 50φ/lb mesnet yüzünden ölçülür; mesnet genişliği düşülmez (CK T15 SB-77: 25+99).
+            double taban = (phi50 > lb ? phi50 : lb) - (!_surekliTemelAcilim && hkCm > 0 ? hkCm : 0);
             if (taban > c) c = taban;
             if (c < 0) c = 0;
-            return KirisAcilimYuvarla(c);
+            // Temelde (STA4CAD) yan parçalar yuvarlanmaz; açılım boyu toplamdan yuvarlanır.
+            return _surekliTemelAcilim ? c : KirisAcilimYuvarla(c);
         }
 
         /// <summary>Çubuk konum sınıfı: serbest üst yüzden 30 cm'den fazla aşağıda veya eğimli ise II, değilse I.</summary>
@@ -252,6 +272,9 @@ namespace ST4PlanIdCiz
             public int EtriyeCap;
             public int EtriyeOrtaCm;
             public int EtriyeSikCm;
+            /// <summary>Sürekli temel ampatman U donatısı (TMX 150/152, GPR "ø12/15 amp."); kirişte 0.</summary>
+            public int AmpCap;
+            public int AmpAralikCm;
         }
 
         public bool DrawKirisAcilimlari(Database db, Editor ed, Point3d insert, string st4Path)
@@ -271,6 +294,8 @@ namespace ST4PlanIdCiz
                 ed?.WriteMessage("\nKIRISACILIMLARI: Model okunamadi.");
                 return false;
             }
+            _kirisAltIkinciGonyeKaldir = !_surekliTemelAcilim && secenekler?.AltIkinciGonyeKaldir == true;
+            _kirisAcilimSt4Path = st4Path; _kirisAcilimEd = ed; _kirisFilizHazir = false; _kirisFilizSahibi.Clear();
 
             var floors = new List<FloorInfo>();
             if (_surekliTemelAcilim)
@@ -812,6 +837,19 @@ namespace ST4PlanIdCiz
             KirisAcilimTani("SUPPORTS_OK floor=" + floor.FloorNo);
             var gorunus = KirisAcilimCollectKesitGorunus(floor.FloorNo, chain, ucTipi);
             var etriyeSaplamalari = KirisAcilimCollectSaplanan(floor.FloorNo, chain);
+            // Kiriş üstü kolon: mesnet değil; yukarı kütük ve saplama gibi sık etriye bölgesi (yüzlerden h/2).
+            var ustKolonlar = KirisAcilimKirisUstuKolonlar(floor, chain);
+            _kirisUstuKolonAraliklari.Clear();
+            foreach (var uk in ustKolonlar)
+            {
+                _kirisUstuKolonAraliklari.Add((uk.X0, uk.X1));
+                double ukTop = KirisAcilimKotAt(chain, 0, m - 1, 0.5 * (uk.X0 + uk.X1));
+                double ukH = chain.Where(s => 0.5 * (uk.X0 + uk.X1) >= s.X0 - 0.5 && 0.5 * (uk.X0 + uk.X1) <= s.X1 + 0.5)
+                    .Select(s => s.Beam.HeightCm).DefaultIfEmpty(chain[0].Beam.HeightCm).First();
+                KirisAcilimAddSaplama(etriyeSaplamalari, -uk.ColumnNo, uk.X0, uk.X1, ukTop + KirisAcilimKutupCm, ukTop - ukH, false, false, false);
+                ortakUst = Math.Max(ortakUst, ukTop + KirisAcilimKutupCm);
+                if (ukTop + KirisAcilimKutupCm + 28.0 > maxY) maxY = ukTop + KirisAcilimKutupCm + 28.0;
+            }
             KirisAcilimKesitTakimBaslat();
             foreach (var spm in gorunus)
             {
@@ -918,6 +956,15 @@ namespace ST4PlanIdCiz
                     TrimTop = spT.ExtendUp,
                     TrimBot = spT.ExtendDown
                 });
+            }
+            // Kiriş üstü kolon: kiriş üst kenarı kolon altında kesilir (kolon–kiriş birleşimi).
+            foreach (var uk in ustKolonlar)
+            {
+                double ukMid = 0.5 * (uk.X0 + uk.X1);
+                double ukTop = yShift + KirisAcilimKotAt(chain, 0, m - 1, ukMid);
+                double ukH = chain.Where(s => ukMid >= s.X0 - 0.5 && ukMid <= s.X1 + 0.5)
+                    .Select(s => s.Beam.HeightCm).DefaultIfEmpty(chain[0].Beam.HeightCm).First();
+                kolonTrim.Add(new KirisAcilimKolonTrim { X0 = x0 + uk.X0, X1 = x0 + uk.X1, YBot = ukTop - ukH, YTop = ukTop, TrimTop = true, TrimBot = false });
             }
             foreach (KirisAcilimSaplama iz in gorunus)
             {
@@ -1040,6 +1087,23 @@ namespace ST4PlanIdCiz
                             KirisAcilimKolonYaz(tr, ms, db, ustKat, sp.ColumnNo, 0.5 * (xL + xR), yShift + ortakUst, ust: true);
                     }
                 }
+            }
+            // Kiriş üstü kolon: yalnız yukarı kütük, kesim sınırı ve üst kat adı; izdüşüm/mesnet ölçüsü yok.
+            foreach (var uk in ustKolonlar)
+            {
+                double xL = x0 + uk.X0, xR = x0 + uk.X1;
+                double yTopL = yShift + KirisAcilimKotAt(chain, 0, m - 1, uk.X0);
+                double yTopR = yShift + KirisAcilimKotAt(chain, 0, m - 1, uk.X1);
+                double yCut = yShift + ortakUst;
+                KirisAcilimCizgi(tr, ms, xL, yTopL, xL, yCut, LayerKolon);
+                KirisAcilimCizgi(tr, ms, xR, yTopR, xR, yCut, LayerKolon);
+                KirisAcilimKesitSiniri(tr, ms, xL, xR, yCut, 0);
+                double ukMid = 0.5 * (uk.X0 + uk.X1);
+                var ukSpan = chain.FirstOrDefault(s => ukMid >= s.X0 - 0.5 && ukMid <= s.X1 + 0.5) ?? chain[0];
+                double yTopM = yShift + KirisAcilimKotAt(chain, 0, m - 1, ukMid);
+                bool filiz = KirisAcilimKirisUstuFiliz(tr, ms, db, uk.UstKat, uk.ColumnNo, xL, xR, yTopM, yTopM - ukSpan.Beam.HeightCm, yCut,
+                    KirisAcilimEtiket(ukSpan.Beam, pad));
+                KirisAcilimKolonYaz(tr, ms, db, uk.UstKat, uk.ColumnNo, 0.5 * (xL + xR), yCut + (filiz ? SurekliGorunusFilizliKolonAdiDy : 0.0), ust: true);
             }
 
             KirisAcilimMesnetLnOlcu(tr, ms, db, chain, sup, gorunus, x0,
@@ -1209,8 +1273,8 @@ namespace ST4PlanIdCiz
             DrawBeamLabel(tr, ms, db, new Point3d(xAnaEt, yAnaUst, 0), lbl, 5.0, 0.0, KirisAcilimDonatiYaziLayer, useMiddleCenter: true);
             KirisAcilimYaziKutusuUstune(tr, yAnaUst);
             // Gövde dahil: gönye + ana kol boy etiketleri.
-            KirisAcilimAcilimGonyeYazi(tr, ms, db, ac, solIlk0, solIlk1, gonyeSol);
-            KirisAcilimAcilimGonyeYazi(tr, ms, db, ac, sagIlk0, sagIlk1, gonyeSag);
+            KirisAcilimAcilimGonyeYazi(tr, ms, db, ac, solIlk0, solIlk1, gonyeSol, bukumI1: true);
+            KirisAcilimAcilimGonyeYazi(tr, ms, db, ac, sagIlk0, sagIlk1, gonyeSag, bukumI1: false);
             if (gonyeli && anaKolBoy >= 3.0)
             {
                 string anaLbl = Math.Round(anaKolBoy).ToString("0", CultureInfo.InvariantCulture);
@@ -1275,7 +1339,7 @@ namespace ST4PlanIdCiz
 
         private void KirisAcilimAcilimGonyeYazi(
             Transaction tr, BlockTableRecord ms, Database db,
-            List<Point2d> ac, int i0, int i1, double boy)
+            List<Point2d> ac, int i0, int i1, double boy, bool bukumI1)
         {
             if (tr == null || ms == null || db == null || ac == null) return;
             if (i0 < 0 || i1 < 0 || i1 >= ac.Count || boy < 2.0) return;
@@ -1283,6 +1347,17 @@ namespace ST4PlanIdCiz
             var b = ac[i1];
             double mx = 0.5 * (a.X + b.X);
             double my = 0.5 * (a.Y + b.Y);
+            if (_surekliTemelAcilim)
+            {
+                // Sürekli temel: uç gönyeleri çaprazlaştığından yazı büküme yakın, kol boyunun 1/4'ünde
+                // (kısa kolda büküm yayına binmesin diye en az 5, en çok kol ortası).
+                var bukum = bukumI1 ? b : a;
+                var uc = bukumI1 ? a : b;
+                double kol = bukum.GetDistanceTo(uc);
+                double t = kol < 1e-6 ? 0.5 : Math.Min(0.5, Math.Max(0.25, 5.0 / kol));
+                mx = bukum.X + (uc.X - bukum.X) * t;
+                my = bukum.Y + (uc.Y - bukum.Y) * t;
+            }
             double ang = Math.Atan2(b.Y - a.Y, b.X - a.X);
             if (ang > Math.PI * 0.5) ang -= Math.PI;
             if (ang < -Math.PI * 0.5) ang += Math.PI;
@@ -2105,7 +2180,9 @@ namespace ST4PlanIdCiz
             double alt = h - KirisAcilimDuzPaspayiCm;
             int gorunen = (m.GovdeAdet + 1) / 2;
             if (gorunen < 1) gorunen = 1;
-            bool yutuldu = govdeYutulan != null && govdeYutulan.Contains(beam.BeamId);
+            // Temel bay klonları aynı BeamId'yi taşır; yutulma nesne başınadır (CK T14 son iki açıklık).
+            bool yutuldu = _surekliTemelAcilim ? _surekliGovdeYutulanBay.Contains(beam)
+                : govdeYutulan != null && govdeYutulan.Contains(beam.BeamId);
             if (!yutuldu)
             {
                 int son0 = i0;
@@ -2115,6 +2192,10 @@ namespace ST4PlanIdCiz
                 {
                     if (!KirisAcilimKomsuAralik(chain, son0, son1, false, out int j0, out int j1)) break;
                     if (chain[j0]?.Beam == null || !montaj.TryGetValue(chain[j0].Beam, out KirisAcilimMontajBilgi karsi)) break;
+                    // Parçalı kiriş (aynı BeamId, ayrı kayıt; CK KZ-67 S1-54/S1-53 akslarında) tek run çizilir ve yutulma
+                    // BeamId ile işaretlenir: komşu aralık run'ın tamamıdır, yoksa yalnız ilk parça birleşip kalanı gövdesiz kalır.
+                    if (!_surekliTemelAcilim)
+                        while (j1 + 1 < chain.Count && chain[j1 + 1]?.Beam != null && chain[j1 + 1].Beam.BeamId == chain[j0].Beam.BeamId) j1++;
                     if (!KirisAcilimGovdeAyniDuzen(beam, m, chain[j0].Beam, karsi, kotRef, chain[j0].Kot0, chain[j1].Kot1, chain[son1].Kot1))
                         break;
                     bool sigar = true;
@@ -2132,7 +2213,8 @@ namespace ST4PlanIdCiz
                         }
                     }
                     if (!sigar) break;
-                    if (govdeYutulan != null) govdeYutulan.Add(chain[j0].Beam.BeamId);
+                    if (_surekliTemelAcilim) _surekliGovdeYutulanBay.Add(chain[j0].Beam);
+                    else if (govdeYutulan != null) govdeYutulan.Add(chain[j0].Beam.BeamId);
                     son0 = j0;
                     son1 = j1;
                 }
@@ -2250,18 +2332,18 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>Gövde kenetlenmesi: 50φ ve lb'den büyük olan.</summary>
-        private static double KirisAcilimGovdeBoy(double phiCm, double usttenCm)
+        private double KirisAcilimGovdeBoy(double phiCm, double usttenCm)
         {
             if (phiCm <= 0) return 0;
             bool konumI = usttenCm <= KirisAcilimKonumIIUsttenCm;
-            double lb = (konumI ? KirisAcilimLbPhiKonumI : KirisAcilimLbPhiKonumII) * phiCm;
+            double lb = (konumI ? _lbPhiKonumI : _lbPhiKonumII) * phiCm;
             double phi50 = KirisAcilimUstIlavePhi * phiCm;
             return phi50 > lb ? phi50 : lb;
         }
 
         /// <summary>
-        /// Gövde ucunun X'i. Ara ve aynı düzende bindirme mesnet ortasında.
-        /// Ara ve farklı düzende kendi yüzünden boy kadar diğer tarafa. Kenarda paspayına kadar, yetmezse gönye.
+        /// Gövde ucunun X'i. Ara mesnette kendi yüzünden boy (max(50φ, ℓb)) kadar diğer tarafa; temelde aynı düzende
+        /// bindirme mesnet ortasında. Kenarda paspayına kadar, yetmezse gönye.
         /// </summary>
         private bool KirisAcilimGovdeUc(
             List<KirisAcilimSpan> chain, int i0, int i1,
@@ -2303,7 +2385,8 @@ namespace ST4PlanIdCiz
                 double yuzKarsi = x0 + (sola ? d1 : d0);
                 double ucKarsi = x0 + (sola ? d0 : d1);
                 double orta = 0.5 * (xYuz + yuzKarsi);
-                if (ayni)
+                // Kirişte gövde komşusuyla ℓb bindirmez; her çubuk kendi yüzünden kenetlenme boyu kadar girer (temelde ortada bindirir).
+                if (ayni && _surekliTemelAcilim)
                     xUc = sola ? orta - boy * 0.5 : orta + boy * 0.5;
                 else
                     xUc = sola ? xYuz - boy : xYuz + boy;
@@ -2315,7 +2398,8 @@ namespace ST4PlanIdCiz
             double hk = KirisAcilimMesnetHk(chain, i0, i1, sup, gorunus, sola);
             double sigar = hk - p;
             if (sigar < 0) sigar = 0;
-            double gir = boy < sigar ? boy : sigar;
+            // Temel kenarında gövde de ℓb'de kalmaz, temel sınırına kadar gider.
+            double gir = boy < sigar && !_surekliTemelAcilim ? boy : sigar;
             if (gir < 0.5)
                 xUc = sola ? xYuz + p : xYuz - p;
             else
@@ -2445,11 +2529,20 @@ namespace ST4PlanIdCiz
             int luAdet, luCap, laAdet, laCap, ruAdet, ruCap, raAdet, raCap;
             if (_surekliTemelAcilim)
             {
-                // Temelde sol/sağ KMX uç eşlemesi yok; her mesnete mevcut ilave slotu uygulanır.
-                SurekliTemelIlavePick(mSol, true, out luAdet, out luCap);
-                SurekliTemelIlavePick(mSol, false, out laAdet, out laCap);
-                SurekliTemelIlavePick(mSag, true, out ruAdet, out ruCap);
-                SurekliTemelIlavePick(mSag, false, out raAdet, out raCap);
+                // Temel: bay kaydı görünüş sırasında Sol* = sol mesnet, Sag* = sağ mesnet ilavesi
+                // (SurekliTemelIlaveMesneteAta; TMX ilavesi kaydın bitiş mesnedindedir).
+                luAdet = mSol.SolUstAdet; luCap = mSol.SolUstCap;
+                laAdet = mSol.SolAltAdet; laCap = mSol.SolAltCap;
+                ruAdet = mSag.SagUstAdet; ruCap = mSag.SagUstCap;
+                raAdet = mSag.SagAltAdet; raCap = mSag.SagAltCap;
+                // Ortak mesnetin çubuğu iki yana da uzanır; soldaki açıklık sağ ucunda çizdiyse burada tekrar çizilmez.
+                if (KirisAcilimKomsuAralik(chain, i0, i1, true, out _, out int jSol)
+                    && chain[jSol].Beam != null && ilave.TryGetValue(chain[jSol].Beam, out var mKomsu)
+                    && (mKomsu.Adet > 0 || mKomsu.DuzAdet > 0 || mKomsu.EtriyeCap > 0))
+                {
+                    if (mKomsu.SagUstAdet == luAdet && mKomsu.SagUstCap == luCap) luAdet = 0;
+                    if (mKomsu.SagAltAdet == laAdet && mKomsu.SagAltCap == laCap) laAdet = 0;
+                }
             }
             else
             {
@@ -2477,10 +2570,20 @@ namespace ST4PlanIdCiz
 
             double hkSol = KirisAcilimMesnetHk(chain, i0, i1, sup, gorunus, true);
             double hkSag = KirisAcilimMesnetHk(chain, i0, i1, sup, gorunus, false);
-            double luU = KirisAcilimIlaveYuzdenCm(lnNet, hkSol, luCap, true);
-            double laU = KirisAcilimIlaveYuzdenCm(lnNet, hkSol, laCap, false);
-            double ruU = KirisAcilimIlaveYuzdenCm(lnNet, hkSag, ruCap, true);
-            double raU = KirisAcilimIlaveYuzdenCm(lnNet, hkSag, raCap, false);
+            // Kiriş ve temel: her taraf kendi net açıklığının ln/4'ü (temelde komşu büyük açıklık taşınmaz).
+            double lnSol = lnNet, lnSag = lnNet;
+            double luU = KirisAcilimIlaveYuzdenCm(lnSol, hkSol, luCap, true);
+            double laU = KirisAcilimIlaveYuzdenCm(lnSol, hkSol, laCap, false);
+            double ruU = KirisAcilimIlaveYuzdenCm(lnSag, hkSag, ruCap, true);
+            double raU = KirisAcilimIlaveYuzdenCm(lnSag, hkSag, raCap, false);
+            if (_surekliTemelAcilim)
+            {
+                // Açıklığı aşan ilave karşı mesnedi geçip uzak yüzünden ℓb kenetlenir (karşı yüzde kesilmez).
+                double genSag = i1 + 1 < sup.Length ? Math.Max(0, sup[i1 + 1].X1 - sup[i1 + 1].X0) : 0;
+                double genSol = i0 < sup.Length ? Math.Max(0, sup[i0].X1 - sup[i0].X0) : 0;
+                luU = SurekliTemelIlaveKarsiKes(luU, lnNet, genSag, luCap, true); laU = SurekliTemelIlaveKarsiKes(laU, lnNet, genSag, laCap, false);
+                ruU = SurekliTemelIlaveKarsiKes(ruU, lnNet, genSol, ruCap, true); raU = SurekliTemelIlaveKarsiKes(raU, lnNet, genSol, raCap, false);
+            }
 
             double UstY(double x)
             {
@@ -2542,7 +2645,11 @@ namespace ST4PlanIdCiz
                 if (karsiSpan.Beam == null || !ilave.TryGetValue(karsiSpan.Beam, out var karsi)) return null;
                 int adet, cap;
                 if (_surekliTemelAcilim)
-                    SurekliTemelIlavePick(karsi, ust, out adet, out cap);
+                {
+                    // Soldaki komşunun sağ ucu / sağdaki komşunun sol ucu aynı mesnettir.
+                    adet = ust ? (sola ? karsi.SagUstAdet : karsi.SolUstAdet) : (sola ? karsi.SagAltAdet : karsi.SolAltAdet);
+                    cap = ust ? (sola ? karsi.SagUstCap : karsi.SolUstCap) : (sola ? karsi.SagAltCap : karsi.SolAltCap);
+                }
                 else
                 {
                     bool baslangic = (sola ? karsiSpan.Cross1 : karsiSpan.Cross0) == karsiSpan.Beam.StartAxisId;
@@ -2558,10 +2665,16 @@ namespace ST4PlanIdCiz
                 if (Math.Abs(kendiKot - karsiKot) <= 0.5) return null;
                 return kendiKot > karsiKot ? 10.0 : -10.0;
             }
-            KirisAcilimIlaveCubuk(tr, ms, db, xSolUst, xYuzSol, xLu, UstY, true, true, hkSol, h, luAdet, luCap, KirisAcilimRenkIlaveUst, odaSolUst, hSolUst, solSerbest, sagSerbest, odaSagUst, h, solUstKonsol, hSolUstKonsol, KotFarkiKay(true, true));
-            KirisAcilimIlaveCubuk(tr, ms, db, xSolAlt, xYuzSol, xLa, AltY, true, false, hkSol, h, laAdet, laCap, KirisAcilimRenkIlaveAlt, odaSolAlt, hSolAlt, solSerbest, sagSerbest, odaSagAlt, h, solAltKonsol, hSolAltKonsol, KotFarkiKay(true, false));
-            KirisAcilimIlaveCubuk(tr, ms, db, xSagUst, xYuzSag, xRu, UstY, false, true, hkSag, h, ruAdet, ruCap, KirisAcilimRenkIlaveUst, odaSagUst, hSagUst, sagSerbest, solSerbest, odaSolUst, h, sagUstKonsol, hSagUstKonsol, KotFarkiKay(false, true));
-            KirisAcilimIlaveCubuk(tr, ms, db, xSagAlt, xYuzSag, xRa, AltY, false, false, hkSag, h, raAdet, raCap, KirisAcilimRenkIlaveAlt, odaSagAlt, hSagAlt, sagSerbest, solSerbest, odaSolAlt, h, sagAltKonsol, hSagAltKonsol, KotFarkiKay(false, false));
+            // Temel: birbirine değen (≤10 cm) komşu mesnet ilaveleri tek çubuk, büyük As (SurekliTemelIlaveBirlestir);
+            // beton sınırında kesilen uç mevcut kuralla gönyelenir.
+            (bool LuIc, bool LuDis, bool LaIc, bool LaDis, bool RuIc, bool RuDis, bool RaIc, bool RaDis) tg = default;
+            if (_surekliTemelAcilim && i0 == i1)
+                SurekliTemelIlaveUygula(chain[i0].Beam, x0, ref luAdet, ref laAdet, ref ruAdet, ref raAdet,
+                    ref xLu, ref xLa, ref xRu, ref xRa, ref xSolUst, ref xSolAlt, ref xSagUst, ref xSagAlt, out tg);
+            KirisAcilimIlaveCubuk(tr, ms, db, xSolUst, xYuzSol, xLu, UstY, true, true, hkSol, h, luAdet, luCap, KirisAcilimRenkIlaveUst, odaSolUst, hSolUst, solSerbest, sagSerbest || tg.LuIc, odaSagUst, h, solUstKonsol || tg.LuDis, hSolUstKonsol, KotFarkiKay(true, true));
+            KirisAcilimIlaveCubuk(tr, ms, db, xSolAlt, xYuzSol, xLa, AltY, true, false, hkSol, h, laAdet, laCap, KirisAcilimRenkIlaveAlt, odaSolAlt, hSolAlt, solSerbest, sagSerbest || tg.LaIc, odaSagAlt, h, solAltKonsol || tg.LaDis, hSolAltKonsol, KotFarkiKay(true, false));
+            KirisAcilimIlaveCubuk(tr, ms, db, xSagUst, xYuzSag, xRu, UstY, false, true, hkSag, h, ruAdet, ruCap, KirisAcilimRenkIlaveUst, odaSagUst, hSagUst, sagSerbest, solSerbest || tg.RuIc, odaSolUst, h, sagUstKonsol || tg.RuDis, hSagUstKonsol, KotFarkiKay(false, true));
+            KirisAcilimIlaveCubuk(tr, ms, db, xSagAlt, xYuzSag, xRa, AltY, false, false, hkSag, h, raAdet, raCap, KirisAcilimRenkIlaveAlt, odaSagAlt, hSagAlt, sagSerbest, solSerbest || tg.RaIc, odaSolAlt, h, sagAltKonsol || tg.RaDis, hSagAltKonsol, KotFarkiKay(false, false));
         }
 
         /// <summary>Tek başına konsol: bir uç serbest, sabit uçta devam eden kiriş yok.</summary>
@@ -2709,6 +2822,13 @@ namespace ST4PlanIdCiz
 
             double yakin = sola ? d1 : d0;
             double uzak = sola ? d0 : d1;
+            if (_surekliTemelAcilim)
+            {
+                int ks = sola ? j0 : j1 + 1;
+                double gen = ks >= 0 && ks < sup.Length ? Math.Max(0, sup[ks].X1 - sup[ks].X0) : 0;
+                ext = SurekliTemelIlaveKarsiKes(ext, Math.Abs(uzak - yakin), gen, capMm, ust);
+                if (ext > Math.Abs(uzak - yakin) + 0.5) uzak = sola ? double.MinValue : double.MaxValue;
+            }
             double hedef = sola ? yakin - ext : yakin + ext;
             if (sola)
             {
@@ -2722,6 +2842,18 @@ namespace ST4PlanIdCiz
             double xHedef = x0 + hedef;
             if (sola) return xHedef < xYuz ? xHedef : xYuz;
             return xHedef > xYuz ? xHedef : xYuz;
+        }
+
+        /// <summary>
+        /// Temel ilavesi açıklığı aşarsa karşı yüzde kesilmez (moment yine en büyük, TS 500 7.3):
+        /// karşı mesnedi geçer ve uzak yüzünden en az ℓb komşu açıklığa girer; daha uzunsa kendi boyu kalır.
+        /// STA4CAD CK T14 SB-63'ü karşı yüzde (151 cm) keser; burada bilerek ayrılır.
+        /// </summary>
+        private double SurekliTemelIlaveKarsiKes(double ext, double lnNet, double karsiMesnetGenislik, int capMm, bool ust)
+        {
+            if (ext <= lnNet) return ext;
+            double gec = lnNet + karsiMesnetGenislik + SurekliTemelLbCm(capMm, ust);
+            return ext > gec ? ext : gec;
         }
 
         /// <summary>Çubuk kotu komşu kirişin içinde, her iki yüzden paspayı kadar içeride mi.</summary>
@@ -2822,9 +2954,10 @@ namespace ST4PlanIdCiz
             c = 0;
             if (phiCm <= 0 && !serbest) return;
             if (roomCm < 1.0) roomCm = 1.0;
-            if (!serbest && duzGiris)
+            // Temel: ℓb mesnede sığsa da çubuk temel sınırına (örtü kadar içeri) gider ve gönyelenir.
+            if (!serbest && duzGiris && !_surekliTemelAcilim)
             {
-                double lbDuz = (ust ? KirisAcilimLbPhiKonumI : KirisAcilimLbPhiKonumII) * phiCm;
+                double lbDuz = (ust ? _lbPhiKonumI : _lbPhiKonumII) * phiCm;
                 double ihtiyac = KirisAcilimUstIlavePhi * phiCm;
                 if (lbDuz > ihtiyac) ihtiyac = lbDuz;
                 double sigar = hkCm - KirisAcilimMontajPaspayiCm;
@@ -2841,17 +2974,21 @@ namespace ST4PlanIdCiz
                 double bSerbest = KirisAcilimKonsolGonyeMinCm;
                 double hYariSerbest = yukseklikCm * 0.5;
                 if (hYariSerbest > bSerbest) bSerbest = hYariSerbest;
+                // Temel ucunda kesilen çubuk da mesnetli uçla aynı 50φ gönyeyi alır (odaya sığdığı kadar).
+                if (_surekliTemelAcilim && KirisAcilimUstIlavePhi * phiCm > bSerbest) bSerbest = KirisAcilimUstIlavePhi * phiCm;
                 b = bSerbest < roomCm ? bSerbest : roomCm;
                 double bSerbestR = KirisAcilimYuvarlaYukari(b);
                 if (bSerbestR <= roomCm + 0.05) b = bSerbestR;
                 return;
             }
-            double lb = (ust ? KirisAcilimLbPhiKonumI : Math.Max(KirisAcilimLbPhiKonumII, KirisAcilimUstIlavePhi)) * phiCm;
+            double lb = (ust ? _lbPhiKonumI : Math.Max(_lbPhiKonumII, KirisAcilimUstIlavePhi)) * phiCm;
             double phiMin = KirisAcilimKenarDuseyPhi * phiCm;
             double bMin = phiMin;
             if (KirisAcilimGonyeMinCm > bMin) bMin = KirisAcilimGonyeMinCm;
             double hYari = yukseklikCm * 0.5;
             if (hYari > bMin) bMin = hYari;
+            // Temel uç gönyesi STA4CAD'de 50φ (CK T6 2Ø12: 180+60; T14 1Ø14: 180+70); oda yetmezse odada kalır.
+            if (_surekliTemelAcilim && KirisAcilimUstIlavePhi * phiCm > bMin) bMin = KirisAcilimUstIlavePhi * phiCm;
             double aMax = hkCm - KirisAcilimMontajPaspayiCm;
             if (aMax < 0) aMax = 0;
             a = aMax;
@@ -2861,6 +2998,8 @@ namespace ST4PlanIdCiz
             if (b < 1.0) b = roomCm < bMin ? roomCm : bMin;
             double bR = KirisAcilimYuvarlaYukari(b);
             if (bR <= roomCm + 0.05) b = bR;
+            // Temel: tek gönye kolu (50φ, odaya sığdığı kadar; CK T15 4Ø20: 124+76), ikinci kol yok.
+            if (_surekliTemelAcilim) return;
             if (a + b + 0.5 < lb)
             {
                 c = lb - a - b;
@@ -2889,6 +3028,12 @@ namespace ST4PlanIdCiz
             double yuk = yukseklikCm > 1.0 ? yukseklikCm : h;
             if (serbest) hk = 0;
             KirisAcilimGonyeHesap(capMm / 10.0, ust, hk, oda, yuk, serbest, duzGiris, out double a, out double b, out double c);
+            if (_ikinciGonyeBastir && c > 0)
+            {
+                // Form: düz/alt ilave ikinci gönyesini kaldır.
+                KirisAcilimTani(string.Format(CultureInfo.InvariantCulture, "IKINCI_GONYE_KALDIR cap={0} a={1:0.#} b={2:0.#} c={3:0.#}", capMm, a, b, c));
+                c = 0;
+            }
             if (a < 1.0 && b < 1.0) return 0;
             // İlave yalnız çizimde 3 cm içeride. a ve b kısalır; açılım boyuna geri yazılır.
             double kay = ilave ? KirisAcilimIlaveAyirCm : 0.0;
@@ -2941,7 +3086,7 @@ namespace ST4PlanIdCiz
                 && KirisAcilimKomsuAralik(chain, i0, i1, sola, out int j0, out int j1)
                 && KirisAcilimDevamYuzu(chain, i0, i1, sup, gorunus, yShift, sola, y, out double devamYuzu))
             {
-                double boy = Math.Max(KirisAcilimLbPhiKonumII, KirisAcilimUstIlavePhi) * capMm / 10.0;
+                double boy = Math.Max(_lbPhiKonumII, KirisAcilimUstIlavePhi) * capMm / 10.0;
                 double hedef = xYuz + (sola ? -boy : boy);
                 KirisAcilimKolonYuzu(chain, j0, j1, sup, out double n0, out double n1);
                 KirisAcilimNumaraAraligi(chain, j0, j1, n0, n1, gorunus, out double d0, out double d1);
@@ -2984,6 +3129,7 @@ namespace ST4PlanIdCiz
         {
             if (adet <= 0 || cap <= 0 || yAt == null) return;
             if (Math.Abs(xIc - xYuz) < 1.0 && Math.Abs(xDis - xYuz) < 1.0 && !serbestDis) return;
+            using var ikinciGonye = new IkinciGonyeKapsami(this, _kirisAltIkinciGonyeKaldir && !ust);
             List<Point2d> Noktalar(bool gorunus)
             {
                 // Görünüşteki ayırma payı imalat açılımının geometrisine girmez.
@@ -3143,7 +3289,8 @@ namespace ST4PlanIdCiz
             while (g0 < runs.Count)
             {
                 int g1 = g0;
-                while (g1 + 1 < runs.Count && KirisAcilimMontajAyniHiza(runs[g1], runs[g1 + 1]))
+                // Temelde geniş mesnet (ör. CK T-23 440 cm) aynı hizadaki montajı ayırmaz: tek grup birleşir ya da ℓb bindirir.
+                while (g1 + 1 < runs.Count && KirisAcilimMontajAyniHiza(runs[g1], runs[g1 + 1], !_surekliTemelAcilim))
                     g1++;
                 KirisAcilimMontajGrupCiz(tr, ms, db, chain, x0, yShift, sup, gorunus, runs, g0, g1);
                 for (int r = g0; r <= g1; r++)
@@ -3231,7 +3378,7 @@ namespace ST4PlanIdCiz
             if (yBar > nTop - p || yBar < nBot + p) return;
 
             double phi = run.Cap / 10.0;
-            double boy = Math.Max(KirisAcilimUstIlavePhi * phi, KirisAcilimLbPhiKonumI * phi);
+            double boy = Math.Max(KirisAcilimUstIlavePhi * phi, _lbPhiKonumI * phi);
             KirisAcilimKolonYuzu(chain, j0, j1, sup, out double n0, out double n1);
             KirisAcilimNumaraAraligi(chain, j0, j1, n0, n1, gorunus, out double d0, out double d1);
             double ucKarsi = x0 + (sola ? d0 : d1);
@@ -3249,18 +3396,18 @@ namespace ST4PlanIdCiz
             }
         }
 
-        private static bool KirisAcilimMontajAyniHiza(KirisAcilimMontajRun a, KirisAcilimMontajRun b)
+        private static bool KirisAcilimMontajAyniHiza(KirisAcilimMontajRun a, KirisAcilimMontajRun b, bool aralikSiniri = true)
         {
-            if (b.XL - a.XR > 200.0) return false;
+            if (aralikSiniri && b.XL - a.XR > 200.0) return false;
             if (Math.Abs(a.H - b.H) > 2.0) return false;
             return Math.Abs(a.YR - b.YL) <= 2.0;
         }
 
         /// <summary>Montaj bindirmesi: konum I lb, yukarı 5 cm katı.</summary>
-        private static double KirisAcilimMontajBindirme(int capMm)
+        private double KirisAcilimMontajBindirme(int capMm)
         {
             if (capMm <= 0) return KirisAcilimYuvarlamaCm;
-            double lb = KirisAcilimLbPhiKonumI * (capMm / 10.0);
+            double lb = _lbPhiKonumI * (capMm / 10.0);
             double r = KirisAcilimYuvarlaYukari(lb);
             return r >= KirisAcilimYuvarlamaCm ? r : KirisAcilimYuvarlamaCm;
         }
@@ -3289,7 +3436,7 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>Çap değişiminde ek: büyük As, küçük kirişin Ln/2 kenarına lb girer. Kiriş doluysa diğerine kayar.</summary>
-        private static void KirisAcilimMontajAsEk(
+        private void KirisAcilimMontajAsEk(
             List<KirisAcilimMontajRun> runs, bool[] birlesen, int i,
             out int hedef, out double lb, out double lap0, out double lap1)
         {
@@ -3490,8 +3637,11 @@ namespace ST4PlanIdCiz
             if (tr == null || ms == null || db == null || _kirisAcilimMontajBindirmeXs.Count == 0) return;
             if (_kirisAcilimKesimY > 1e8) return;
             ObjectId stil = GetOrCreatePlanOlcuDimStyle(tr, db, 10.0, 1.0, "PLAN_OLCU_25");
-            double yBar = _kirisAcilimKesimY - KirisAcilimMontajAcilimCm;
-            double yDim = yBar - KirisAcilimMontajSasirtmaCm - KirisAcilimAcilimOlcuUzakCm;
+            // Temelde montaj açılımı düz şeridinde; ölçü montaj çubuklarının hemen üstünde.
+            double yBar = _kirisAcilimKesimY - SurekliAcilimMontajAsagiCm;
+            double yDim = _surekliTemelAcilim
+                ? yBar + KirisAcilimAcilimOlcuUzakCm
+                : yBar - KirisAcilimMontajSasirtmaCm - KirisAcilimAcilimOlcuUzakCm;
             for (int i = 0; i < _kirisAcilimMontajBindirmeXs.Count; i++)
             {
                 double a = _kirisAcilimMontajBindirmeXs[i].X0;
@@ -4328,7 +4478,9 @@ namespace ST4PlanIdCiz
             string lbl = run.Adet.ToString(CultureInfo.InvariantCulture) + "\u00F8" + run.Cap.ToString(CultureInfo.InvariantCulture) + " (mon)";
             double xm = 0.5 * (run.XL + run.XR);
             double yUst = 0.5 * (run.YL + run.YR) + KirisAcilimMontajPaspayiCm;
-            KirisAcilimGorunusEtiket(tr, ms, db, xm, 0.5 * (run.YL + run.YR), lbl, true);
+            // Temelde montaj alt yüzde: etiket çubuğun 2 cm (nihai) üstünde, gövde içinde; kirişte eski yer.
+            KirisAcilimGorunusEtiket(tr, ms, db, xm, 0.5 * (run.YL + run.YR), lbl, KirisAcilimMontajUstYuz,
+                _surekliTemelAcilim ? SurekliMontajEtiketBoslukCm : KirisGorunusEtiketBoslukCm);
         }
 
         private void KirisAcilimMontajDonatiYedek(
@@ -4380,7 +4532,8 @@ namespace ST4PlanIdCiz
             KirisAcilimKesitDonatiKaydet(pts, m.Adet, m.Cap, "mon");
             string lbl = m.Adet.ToString(CultureInfo.InvariantCulture) + "\u00F8" + m.Cap.ToString(CultureInfo.InvariantCulture) + " (mon)";
             double xm = 0.5 * (xA + xB);
-            KirisAcilimGorunusEtiket(tr, ms, db, xm, 0.5 * (yA + yB), lbl, montajUst);
+            KirisAcilimGorunusEtiket(tr, ms, db, xm, 0.5 * (yA + yB), lbl, montajUst,
+                _surekliTemelAcilim ? SurekliMontajEtiketBoslukCm : KirisGorunusEtiketBoslukCm);
         }
 
         /// <summary>
@@ -4396,6 +4549,7 @@ namespace ST4PlanIdCiz
         {
             BeamInfo beam = chain[i0].Beam;
             if (beam == null || montaj == null || !montaj.TryGetValue(beam, out KirisAcilimMontajBilgi m)) return;
+            using var ikinciGonye = new IkinciGonyeKapsami(this, _kirisAltIkinciGonyeKaldir);
             KirisAcilimKonsolUclari(chain, i0, i1, ucTipi, gorunus, x0, out bool solSerbestOn, out bool sagSerbestOn, out _, out _);
             if (KirisAcilimKonsolTekBasina(chain, i0, i1, solSerbestOn, sagSerbestOn))
             {
@@ -4427,6 +4581,21 @@ namespace ST4PlanIdCiz
             KirisAcilimKonsolUclari(chain, i0, i1, ucTipi, gorunus, x0, out bool solSerbest, out bool sagSerbest, out double xSolGonye, out double xSagGonye);
             double xSol = solSerbest ? xSolGonye : xA;
             double xSag = sagSerbest ? xSagGonye : xB;
+            if (_surekliTemelAcilim)
+            {
+                // Temel üst (düz) donatısı iç mesnette yüzden ℓb (konum I) kadar komşu açıklığa uzanır (STA4CAD).
+                double lbDuz = KirisAcilimYuvarlaYukari(_lbPhiKonumI * m.DuzCap / 10.0);
+                if (!solSerbest && i0 > 0) xSol = Math.Max(x0 + chain[i0 - 1].X0, xA - lbDuz);
+                if (!sagSerbest && i1 + 1 < chain.Count) xSag = Math.Min(x0 + chain[i1 + 1].X1, xB + lbDuz);
+                // Kısa açıklık düz yoğunluğu (SurekliTemelDuzKisaAciklik): sürekli takım geçer, diğerleri yüzde biter.
+                if (i0 == i1 && _surekliDuzIptal.Contains(beam)) return;
+                // Birleşik grupta da: sol uç ilk bayın, sağ uç son bayın kuralı (grup içinde sabit uç olmaz).
+                if (_surekliDuzUc.TryGetValue((beam, false), out double duzSol)) xSol = x0 + duzSol;
+                if (chain[i1].Beam != null && _surekliDuzUc.TryGetValue((chain[i1].Beam, true), out double duzSag)) xSag = x0 + duzSag;
+                // Mesnette komşu düzle en az ℓb bindirme (SurekliTemelDuzMesnetBindirme).
+                if (_surekliDuzMesnetUc.TryGetValue((beam, false), out double bSol)) xSol = x0 + bSol;
+                if (chain[i1].Beam != null && _surekliDuzMesnetUc.TryGetValue((chain[i1].Beam, true), out double bSag)) xSag = x0 + bSag;
+            }
             var pts = new List<Point2d>();
             KirisAcilimUcNokta(pts, chain, i0, i1, sup, gorunus, x0, yShift, true, xSol, yA, duzUst, hkSol, h, m.DuzCap, false, xSag, solSerbest);
             pts.Add(new Point2d(xSol, yA));
@@ -4516,8 +4685,11 @@ namespace ST4PlanIdCiz
             return 0;
         }
 
+        /// <summary>Görünüş donatı etiketi ↔ çubuk boşluğu (2× öncesi): genel 1,5 (nihai 3 cm); temel montajı 1 (nihai 2 cm).</summary>
+        private const double KirisGorunusEtiketBoslukCm = 3.0 / 2.0, SurekliMontajEtiketBoslukCm = 2.0 / 2.0;
+
         private void KirisAcilimGorunusEtiket(Transaction tr, BlockTableRecord ms, Database db,
-            double x, double donatiY, string text, bool asagida)
+            double x, double donatiY, string text, bool asagida, double bosluk = KirisGorunusEtiketBoslukCm)
         {
             DrawBeamLabel(tr, ms, db, new Point3d(x, donatiY, 0), text, 5, 0, KirisAcilimDonatiYaziLayer, useMiddleCenter: true);
             if (_lastBeamLabelId.IsNull) return;
@@ -4525,7 +4697,7 @@ namespace ST4PlanIdCiz
             if (label == null) return;
             Extents3d ext;
             try { ext = label.GeometricExtents; } catch { return; }
-            double dy = asagida ? donatiY - 3.0 / 2.0 - ext.MaxPoint.Y : donatiY + 3.0 / 2.0 - ext.MinPoint.Y;
+            double dy = asagida ? donatiY - bosluk - ext.MaxPoint.Y : donatiY + bosluk - ext.MinPoint.Y;
             double y0 = ext.MinPoint.Y + dy, y1 = ext.MaxPoint.Y + dy;
             double dx = KirisAcilimEtiketYatayKaydir(ext.MinPoint.X, ext.MaxPoint.X, y0, y1, _kirisGorunusEtiketKutulari);
             label.TransformBy(Matrix3d.Displacement(new Vector3d(dx, dy, 0)));
@@ -5418,6 +5590,9 @@ namespace ST4PlanIdCiz
                 bool found = false;
                 double blo = 0, bhi = 0;
                 ColumnAxisInfo matchedCol = null;
+                // Kiriş katında kesiti olmayan kolon kirişin altında değildir (ör. CK KZ-67 üstüne oturan S1-53/S1-54):
+                // mesnet sayılmaz; başka katın/ColumnId'nin kesiti yanlış genişlik (180) ve alt/üst kütük veriyordu.
+                FloorInfo kirisKati = _surekliTemelAcilim ? null : _model.Floors?.Find(f => f != null && f.FloorNo == floorNo);
                 foreach (var col in _model.Columns)
                 {
                     if (col == null) continue;
@@ -5432,6 +5607,12 @@ namespace ST4PlanIdCiz
                         hit = true;
                     }
                     if (!hit || hi - lo <= 2.0) continue;
+                    if (kirisKati != null && !HasColumnOnFloor(kirisKati, col))
+                    {
+                        KirisAcilimTani(string.Format(CultureInfo.InvariantCulture,
+                            "MESNET_KOLON_KATTA_YOK floor={0} kolon={1} beam={2} lo={3:0.#} hi={4:0.#}", floorNo, col.ColumnNo, hostBeam.BeamId, lo, hi));
+                        continue;
+                    }
                     double d = Math.Abs(0.5 * (lo + hi));
                     if (d < best)
                     {
@@ -5463,6 +5644,131 @@ namespace ST4PlanIdCiz
                 return true;
             }
             return false;
+        }
+
+        /// <summary>
+        /// Kirişin üstüne oturan kolonlar: kiriş katında kesiti yok, hemen üst katta var ve alt kotu kiriş üstünde (±15 cm).
+        /// Zincir X aralığı (üst kat kesitiyle), kolon no ve üst kat. Mesnet değildir; görünüşte yalnız yukarı kütük.
+        /// </summary>
+        private List<(double X0, double X1, int ColumnNo, FloorInfo UstKat)> KirisAcilimKirisUstuKolonlar(FloorInfo floor, List<KirisAcilimSpan> chain)
+        {
+            var list = new List<(double X0, double X1, int ColumnNo, FloorInfo UstKat)>();
+            if (_surekliTemelAcilim || floor == null || chain == null || chain.Count == 0 || _model?.Columns == null || _model.Floors == null) return list;
+            FloorInfo ust = null;
+            foreach (var f in _model.Floors)
+                if (f != null && f.ElevationM > floor.ElevationM + 0.02 && (ust == null || f.ElevationM < ust.ElevationM)) ust = f;
+            if (ust == null) return list;
+            double baseCm = (_model.BuildingBaseKotu + floor.ElevationM) * 100.0;
+            foreach (var col in _model.Columns)
+            {
+                if (col == null || HasColumnOnFloor(floor, col) || !HasColumnOnFloor(ust, col)) continue;
+                if (!_axisService.TryIntersect(col.AxisXId, col.AxisYId, out Point2d axisNode)) continue;
+                if (!TryKirisAcilimColumnAbsCm(ust.FloorNo, col, out double altCm, out _)) continue;
+                for (int i = 0; i < chain.Count; i++)
+                {
+                    var span = chain[i];
+                    Vector2d v = span.World1 - span.World0;
+                    double len = v.Length;
+                    if (len < 1.0) continue;
+                    Vector2d u = v / len;
+                    double t = (axisNode - span.World0).DotProduct(u);
+                    if (t < -1.0 || t > len + 1.0) continue;
+                    var origin = span.World0 + u * Math.Max(0, Math.Min(len, t));
+                    if (!TryKirisAcilimColumnInterval(ust.FloorNo, col, axisNode, origin, u, span.Beam, out double lo, out double hi) || hi - lo <= 2.0) continue;
+                    double s = Math.Max(0, Math.Min(len, t));
+                    double x0 = span.X0 + s + lo, x1 = span.X0 + s + hi;
+                    double top = baseCm + KirisAcilimKotAt(chain, i, i, 0.5 * (x0 + x1));
+                    if (Math.Abs(altCm - top) > 15.0) continue;
+                    KirisAcilimTani(string.Format(CultureInfo.InvariantCulture,
+                        "KIRIS_USTU_KOLON floor={0} kolon={1} beam={2} x={3:0.#}~{4:0.#}", floor.FloorNo, col.ColumnNo, span.Beam.BeamId, x0, x1));
+                    list.Add((x0, x1, col.ColumnNo, ust));
+                    break;
+                }
+            }
+            return list;
+        }
+
+        /// <summary>
+        /// Kiriş üstü kolon filizi (temel açılımı SurekliGorunusKolonFiliz ile aynı kural): GPR kolon betonarme, yoksa .SMX;
+        /// kiriş altından 5 cm yukarıda biter, alt kanca 12φ ve a+b ≥ 0,75ℓb; kolonun iki yüzünde birer temsilî çubuk,
+        /// kütük kesiminde biter. Veri yoksa çizmez. Aynı kolonun adedi yalnız ilk kirişte, diğerinde "FİLİZ bkz." yazılır.
+        /// </summary>
+        private bool KirisAcilimKirisUstuFiliz(Transaction tr, BlockTableRecord ms, Database db, FloorInfo ustKat, int colNo,
+            double xL, double xR, double yTop, double yBot, double yCut, string kirisAd)
+        {
+            if (ustKat == null || xR - xL < 12.0 || yTop - yBot < 10.0) return false;
+            if (!_kirisFilizHazir)
+            {
+                _kirisFilizHazir = true;
+                try { PrepareKolonApplicationRebar(_kirisAcilimSt4Path, _kirisAcilimEd); }
+                catch (System.Exception ex) { _kirisAcilimEd?.WriteMessage("\nKolon filiz donatısı okunamadı: {0}", ex.Message); }
+            }
+            int fi = _model.Floors.IndexOf(ustKat);
+            if (fi < 0) return false;
+            string raw = KolonDuseyKatGprDonati(fi, colNo);
+            if (!KolonDonatiTableDrawer.TryParseKolonKesitDuseyDonatiByDia(raw, out var byDia) || byDia.Count == 0)
+                return false; // Veri yoksa adet/çap uydurulmaz.
+            double zBot = yBot + 5.0, a = yTop - zBot;
+            var parcalar = new List<string>();
+            double kanca = 0;
+            foreach (var kv in byDia)
+            {
+                int dia = kv.Key >= 6 ? kv.Key : 14;
+                double lb = Ts500KenetlenmeLbCm(dia, _rebarFckMPa, _rebarFykMPa);
+                double b = CeilTo5Cm(12.0 * dia / 10.0);
+                if (a + b < 0.75 * lb) b = CeilTo5Cm(Math.Max(b, 0.75 * lb - a));
+                kanca = Math.Max(kanca, b);
+                parcalar.Add(string.Format(CultureInfo.InvariantCulture, "{0}ø{1}", kv.Value, dia));
+            }
+            double mid = 0.5 * (xL + xR);
+            bool ice = 2.0 * kanca < xR - xL - 12.0;
+            const double rBend = 2.0, k90 = 0.41421356237;
+            foreach (double xb in new[] { xL + 5.0, xR - 5.0 })
+            {
+                double dir = (xb < mid ? 1.0 : -1.0) * (ice ? 1.0 : -1.0);
+                AppendDonatiPline(tr, ms, new[]
+                {
+                    new Point2d(xb + dir * kanca, zBot),
+                    new Point2d(xb + dir * rBend, zBot),
+                    new Point2d(xb, zBot + rBend),
+                    new Point2d(xb, yCut)
+                }, new[] { 0.0, dir > 0 ? -k90 : k90, 0.0, 0.0 }, KirisAcilimDonatiLayer);
+            }
+            KirisAcilimKirisIciKolonEtriye(tr, ms, fi, ustKat.FloorNo, colNo, xL, xR, yTop, zBot);
+            var key = (ustKat.FloorNo, colNo);
+            string yazi;
+            if (_kirisFilizSahibi.TryGetValue(key, out string sahip)) yazi = "FİLİZ bkz. " + sahip;
+            else { _kirisFilizSahibi[key] = kirisAd; yazi = string.Join(" + ", parcalar) + " FİLİZ"; }
+            DrawBeamLabel(tr, ms, db, new Point3d(mid, yCut + SurekliGorunusFilizYaziDy, 0), yazi, 4, 0,
+                KirisAcilimDonatiYaziLayer, useMiddleCenter: true);
+            KirisAcilimTani(string.Format(CultureInfo.InvariantCulture, "KIRIS_USTU_FILIZ kolon={0} kat={1} {2} kanca={3:0} a={4:0}", colNo, ustKat.FloorNo, yazi, kanca, a));
+            return true;
+        }
+
+        /// <summary>
+        /// Kiriş içi kiriş üstü kolon etriyesi (temel içi etriye SurekliGorunusTemelIciEtriye ile aynı kural, TBDY 2018 7.3.4.1):
+        /// kiriş üstünden aşağı kolon kısa kenarı kadar, filiz alt ucunda durur; aralık sarılma s_max, GPR sık aralığı küçükse o.
+        /// </summary>
+        private void KirisAcilimKirisIciKolonEtriye(Transaction tr, BlockTableRecord ms, int fi, int floorNo, int colNo,
+            double xL, double xR, double yTop, double zCover)
+        {
+            if (_kolonDuseyGpr == null || !KolonDonatiTableDrawer.TryGetKolonBetonarmeCell(
+                    _kolonDuseyGpr, _model.Floors, fi, colNo, out _, out string donati, out string etRaw))
+                return;
+            int sid = ResolveColumnSectionId(floorNo, colNo);
+            if (sid <= 0 || !_model.ColumnDimsBySectionId.TryGetValue(sid, out var dim)) return;
+            double shortCm = Math.Min(dim.W, dim.H);
+            if (shortCm < 10.0) return;
+            int diaLong = 14;
+            KolonDonatiTableDrawer.SumKolonKesitDuseyDonatiAdet(donati, out int d);
+            if (d >= 6) diaLong = d;
+            ParseKolonEtriyeAralikCm(etRaw, out _, out double sGprConf, out bool tekAralikGpr);
+            double sUse = TbdY2018KolonSarilmaSMaxCm(shortCm, diaLong);
+            if (!tekAralikGpr) sUse = Math.Min(sUse, sGprConf);
+            int sCm = Math.Max(5, (int)Math.Floor(sUse + 1e-6));
+            double zEnd = Math.Max(yTop - shortCm, zCover);
+            for (double z = yTop; z >= zEnd - 0.05; z -= sCm)
+                KirisAcilimCizgi(tr, ms, xL + 4.0, z, xR - 4.0, z, LayerEtriye);
         }
 
         private void KirisAcilimColumnExtend(

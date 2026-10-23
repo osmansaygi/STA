@@ -19,6 +19,45 @@ namespace ST4PlanIdCiz
         private Dictionary<BeamInfo, ContinuousFoundationInfo> _surekliTemelCfByBeam;
         /// <summary>GPR+TMX sırasıyla her kolon-arası (bay) donatı kaydı.</summary>
         private List<SurekliTemelSpanKayit> _surekliTemelSpanKayitlar;
+        /// <summary>ℓb/φ (Konum I/II). Kiriş açılımında sabit C30/B420C; sürekli temelde ST4 malzemesinden.</summary>
+        private double _lbPhiKonumI = KirisAcilimLbPhiKonumI;
+        private double _lbPhiKonumII = KirisAcilimLbPhiKonumII;
+
+        /// <summary>ST4 /Materials/ satırından ℓb/φ; okunamazsa C30/B420C kabulü bildirilir.</summary>
+        private void SurekliTemelLbAyarla(string st4Path, Editor ed)
+        {
+            bool okundu = TryReadSt4MaterialGrades(st4Path, out double fck, out double fyk);
+            if (!okundu) { fck = 30.0; fyk = 420.0; }
+            _lbPhiKonumII = Ts500LbPhiKonumII(fck, fyk);
+            _lbPhiKonumI = 1.4 * _lbPhiKonumII;
+            ed?.WriteMessage(string.Format(CultureInfo.InvariantCulture,
+                "\nSUREKLITEMELACILIMLARI: {0}C{1:0}, fyk={2:0} MPa → ℓb Konum II {3:0.##}φ, Konum I {4:0.##}φ.",
+                okundu ? "" : "ST4 malzemesi okunamadı, kabul ", fck, fyk, _lbPhiKonumII, _lbPhiKonumI));
+        }
+
+        /// <summary>TS 500 9.1.2a: max(0,12·fyd/fctd, 20); fctk Çizelge 3.1 (ara sınıf 0,35√fck), γ 1,15/1,50.</summary>
+        private static double Ts500LbPhiKonumII(double fck, double fyk)
+        {
+            double fctk;
+            switch ((int)Math.Round(fck))
+            {
+                case 16: fctk = 1.4; break;
+                case 18: fctk = 1.5; break;
+                case 20: fctk = 1.6; break;
+                case 25: fctk = 1.8; break;
+                case 30: fctk = 1.9; break;
+                case 35: fctk = 2.1; break;
+                case 40: fctk = 2.2; break;
+                case 45: fctk = 2.3; break;
+                case 50: fctk = 2.5; break;
+                default: fctk = 0.35 * Math.Sqrt(fck); break;
+            }
+            double k = 0.12 * (fyk / 1.15) / (fctk / 1.5);
+            return k > 20.0 ? k : 20.0;
+        }
+
+        /// <summary>Sürekli temel çubuğunun ℓb'si (cm): üst yüz Konum I, alt yüz Konum II.</summary>
+        private double SurekliTemelLbCm(int capMm, bool ust) => (ust ? _lbPhiKonumI : _lbPhiKonumII) * capMm / 10.0;
 
         private sealed class SurekliTemelSpanKayit
         {
@@ -26,6 +65,17 @@ namespace ST4PlanIdCiz
             public double L_m;
             public bool UcStub;
             public KirisAcilimMontajBilgi Bilgi;
+            /// <summary>THE analiz uç koordinatları (m) ve düğüm no (0 = serbest uç).</summary>
+            public bool Koordinatli;
+            public Point2d P1, P2;
+            public int N1, N2;
+            /// <summary>GPR temel statik satırındaki sol/sağ mesnet kolon adı (ör. SB-55); kolonsuz düğümde null.</summary>
+            public string SolKolon, SagKolon;
+            /// <summary>
+            /// TMX başlangıç düğümü ilavesi: 116/118 alt, 120/122 üst (Bilgi.Sol* = 124/128 bitiş düğümü).
+            /// CK T11 SB-40 1Ø20 ve T15 SB-77 4Ø20 yalnız burada; önceki uç kaydı 0.
+            /// </summary>
+            public int BasAltAdet, BasAltCap, BasUstAdet, BasUstCap;
         }
 
         /// <summary>Kirişte montaj üstte; sürekli temelde montaj altta.</summary>
@@ -56,6 +106,7 @@ namespace ST4PlanIdCiz
             _surekliTemelAcilim = true;
             try
             {
+                SurekliTemelLbAyarla(path, ed);
                 _surekliTemelBeams = BuildSurekliTemelSyntheticBeams(out _surekliTemelCfByBeam);
                 // Onaylı beton/kolon geometrisi korunur; donatı bu istasyonlara bağlanır.
                 return DrawSurekliTemelGorunusleri(db, ed, insert, path, options);
@@ -63,6 +114,8 @@ namespace ST4PlanIdCiz
             finally
             {
                 _surekliTemelAcilim = false;
+                _lbPhiKonumI = KirisAcilimLbPhiKonumI;
+                _lbPhiKonumII = KirisAcilimLbPhiKonumII;
                 _surekliTemelBeams = null;
                 _surekliTemelCfByBeam = null;
                 _surekliTemelSpanKayitlar = null;
@@ -138,6 +191,7 @@ namespace ST4PlanIdCiz
         {
             var map = new Dictionary<BeamInfo, KirisAcilimMontajBilgi>();
             _surekliTemelSpanKayitlar = SurekliTemelLoadSpanKayitlar(st4Path);
+            _surekliDagitmaCap = SurekliTemelEnKucukCap(_surekliTemelSpanKayitlar);
             if (_surekliTemelBeams == null) return map;
 
             // Tn başına ilk anlamlı (en uzun) span → CF yedek.
@@ -164,6 +218,30 @@ namespace ST4PlanIdCiz
                     map[beam] = bil;
             }
             return map;
+        }
+
+        /// <summary>
+        /// Ampatman dağıtma çubuğu çapı (mm). TMX/GPR'de dağıtma alanı yok (CK: 158/160/162 etriye ø10/20/10'dur);
+        /// projede kullanılan en küçük çap, etriye dahil.
+        /// </summary>
+        private int _surekliDagitmaCap;
+
+        private static int SurekliTemelEnKucukCap(List<SurekliTemelSpanKayit> kayitlar)
+        {
+            int min = 0;
+            void Al(int adet, int cap) { if (adet > 0 && cap >= 6 && (min == 0 || cap < min)) min = cap; }
+            if (kayitlar == null) return 0;
+            foreach (var k in kayitlar)
+            {
+                var b = k.Bilgi;
+                Al(b.Adet, b.Cap); Al(b.DuzAdet, b.DuzCap); Al(b.GovdeAdet, b.GovdeCap);
+                Al(b.SolUstAdet, b.SolUstCap); Al(b.SolAltAdet, b.SolAltCap);
+                Al(b.SagUstAdet, b.SagUstCap); Al(b.SagAltAdet, b.SagAltCap);
+                Al(k.BasAltAdet, k.BasAltCap); Al(k.BasUstAdet, k.BasUstCap);
+                Al(b.AmpAralikCm, b.AmpCap);
+                Al(b.EtriyeOrtaCm, b.EtriyeCap);
+            }
+            return min;
         }
 
         private static Dictionary<int, List<SurekliTemelSpanKayit>> GroupSpansByT(List<SurekliTemelSpanKayit> all)
@@ -296,6 +374,7 @@ namespace ST4PlanIdCiz
         {
             var list = new List<SurekliTemelSpanKayit>();
             var tmx = SurekliTemelReadTmx(st4Path);
+            var tmxBas = SurekliTemelReadTmxBaslangicIlave(st4Path);
             var gprMeta = SurekliTemelParseGprSpanMeta(st4Path);
             if (gprMeta.Count == 0 && tmx.Count > 0)
                 gprMeta = SurekliTemelParseStatikSpanMeta(st4Path, tmx.Count);
@@ -307,18 +386,37 @@ namespace ST4PlanIdCiz
                 var bytes = File.ReadAllBytes(thePath);
                 if (bytes.Length == n * 700) analysis = bytes;
             }
+            // Kolon adları yalnız TEMEL STATİK tablosunda: betonarme metni kullanılsa da aynı sıradan alınır.
+            var adlar = SurekliTemelParseStatikSpanMeta(st4Path, n);
             for (int i = 0; i < n; i++)
             {
                 var kay = new SurekliTemelSpanKayit();
                 if (analysis != null)
-                    kay.UcStub = BitConverter.ToInt16(analysis, i * 700 + 10) == 0
-                        || BitConverter.ToInt16(analysis, i * 700 + 12) == 0;
+                {
+                    kay.N1 = BitConverter.ToInt16(analysis, i * 700 + 10);
+                    kay.N2 = BitConverter.ToInt16(analysis, i * 700 + 12);
+                    kay.UcStub = kay.N1 == 0 || kay.N2 == 0;
+                    kay.P1 = new Point2d(BitConverter.ToSingle(analysis, i * 700 + 32), BitConverter.ToSingle(analysis, i * 700 + 36));
+                    kay.P2 = new Point2d(BitConverter.ToSingle(analysis, i * 700 + 40), BitConverter.ToSingle(analysis, i * 700 + 44));
+                    kay.Koordinatli = !double.IsNaN(kay.P1.X + kay.P1.Y + kay.P2.X + kay.P2.Y)
+                        && Math.Abs(kay.P1.X) < 1e5 && Math.Abs(kay.P2.X) < 1e5 && Math.Abs(kay.P1.Y) < 1e5 && Math.Abs(kay.P2.Y) < 1e5;
+                }
                 if (i < gprMeta.Count)
                 {
                     kay.TNo = gprMeta[i].TNo;
                     kay.L_m = gprMeta[i].L_m;
                 }
-                if (i < tmx.Count && tmx.Count == gprMeta.Count) kay.Bilgi = tmx[i];
+                if (i < adlar.Count && (kay.TNo == 0 || adlar[i].TNo == kay.TNo))
+                {
+                    kay.SolKolon = adlar[i].SolKolon;
+                    kay.SagKolon = adlar[i].SagKolon;
+                }
+                if (i < tmx.Count && tmx.Count == gprMeta.Count)
+                {
+                    kay.Bilgi = tmx[i];
+                    if (i < tmxBas.Count)
+                        (kay.BasAltAdet, kay.BasAltCap, kay.BasUstAdet, kay.BasUstCap) = tmxBas[i];
+                }
                 else if (i < gprMeta.Count) kay.Bilgi = gprMeta[i].Bilgi;
                 if (kay.TNo < 1 && i < tmx.Count)
                 {
@@ -336,6 +434,7 @@ namespace ST4PlanIdCiz
             public int TNo;
             public double L_m;
             public KirisAcilimMontajBilgi Bilgi;
+            public string SolKolon, SagKolon;
         }
 
         // Bazı projelerin GPR'sinde yalnız TEMEL STATİK tablosu bulunur.
@@ -367,9 +466,99 @@ namespace ST4PlanIdCiz
                 double length = Math.Sqrt(dx * dx + dy * dy);
                 if (double.IsNaN(length) || double.IsInfinity(length) || length > 10000)
                     return new List<SurekliTemelGprSpanMeta>();
-                result.Add(new SurekliTemelGprSpanMeta { TNo = tNo, L_m = length });
+                // Satırın ilk hücresi "GGGGGG   SB-55" (sol mesnet kolonu), son hücresi sağ mesnet kolonu;
+                // kolon olmayan analiz düğümünde boştur. TMX/THE kaydıyla aynı sıradadır.
+                string[] cells = line.Split(new[] { '│', '|', 'í' });
+                string sol = null, sag = null;
+                if (cells.Length > 2)
+                {
+                    var ms = Regex.Match(cells[1], @"G+\s+(\S+)");
+                    if (ms.Success) sol = ms.Groups[1].Value;
+                    for (int c = cells.Length - 1; c > 1; c--)
+                    {
+                        string v = cells[c].Trim();
+                        if (v.Length == 0) continue;
+                        if (Regex.IsMatch(v, @"^[^\d\s.,+\-=]")) sag = v;
+                        break;
+                    }
+                }
+                result.Add(new SurekliTemelGprSpanMeta { TNo = tNo, L_m = length, SolKolon = sol, SagKolon = sag });
             }
             return result.Count == count ? result : new List<SurekliTemelGprSpanMeta>();
+        }
+
+        /// <summary>TMX başlangıç düğümü ilavesi (alt 116/118, üst 120/122); kayıt sırası SurekliTemelReadTmx ile aynı.</summary>
+        private static List<(int AltA, int AltC, int UstA, int UstC)> SurekliTemelReadTmxBaslangicIlave(string st4Path)
+        {
+            var list = new List<(int, int, int, int)>();
+            if (string.IsNullOrEmpty(st4Path)) return list;
+            string path = Path.ChangeExtension(st4Path, ".TMX");
+            if (!File.Exists(path)) path = Path.ChangeExtension(st4Path, ".tmx");
+            if (!File.Exists(path)) return list;
+            byte[] data;
+            try { data = File.ReadAllBytes(path); }
+            catch { return list; }
+            for (int o = 0; o + 250 <= data.Length; o += 250)
+                list.Add((BitConverter.ToInt16(data, o + 116), BitConverter.ToInt16(data, o + 118),
+                    BitConverter.ToInt16(data, o + 120), BitConverter.ToInt16(data, o + 122)));
+            return list;
+        }
+
+        /// <summary>
+        /// Temel hatılı donatısı, temel no → (dikey çap mm, dikey aralık cm, yatay çap mm, yüz başına yatay adet).
+        /// TMX kaydı ofset 158/160/162/164 (A_TFL: 10/20/10/7, hatılsız T6'da 0; GPR "HATIL:7ø10(yatay) + ø10/20 (dusey)").
+        /// TMX yoksa ya da temel eşleşmezse GPR satırı. kaynak: "TMX"/"GPR" ya da null.
+        /// </summary>
+        private static Dictionary<int, (int DikeyCap, int DikeyAralik, int YatayCap, int YatayAdet)> SurekliTemelHatilDonatiOku(
+            string st4Path, out string kaynak)
+        {
+            var map = new Dictionary<int, (int, int, int, int)>();
+            kaynak = null;
+            if (string.IsNullOrEmpty(st4Path)) return map;
+            try
+            {
+                string tmx = Path.ChangeExtension(st4Path, ".TMX");
+                if (File.Exists(tmx))
+                {
+                    byte[] data;
+                    using (var fs = new FileStream(tmx, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                    using (var ms = new MemoryStream()) { fs.CopyTo(ms); data = ms.ToArray(); }
+                    const int rec = 250;
+                    int n = data.Length / rec;
+                    var spans = SurekliTemelLoadSpanKayitlar(st4Path);
+                    if (n > 0 && spans.Count == n)
+                        for (int i = 0; i < n; i++)
+                        {
+                            int o = i * rec;
+                            int dc = BitConverter.ToInt16(data, o + 158), da = BitConverter.ToInt16(data, o + 160);
+                            int yc = BitConverter.ToInt16(data, o + 162), yn = BitConverter.ToInt16(data, o + 164);
+                            if (dc <= 0 || da <= 0 || yc <= 0 || yn <= 0 || map.ContainsKey(spans[i].TNo)) continue;
+                            map[spans[i].TNo] = (dc, da, yc, yn);
+                        }
+                    if (map.Count > 0) { kaynak = "TMX"; return map; }
+                }
+                string gpr = Path.ChangeExtension(st4Path, ".GPR");
+                if (!File.Exists(gpr)) return map;
+                string text;
+                using (var fs = new FileStream(gpr, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                using (var sr = new StreamReader(fs, Encoding.GetEncoding(857))) text = sr.ReadToEnd();
+                var baslik = new Regex(@"^\s*T(\d+)\s+M\S*TEMAD\S*\s+TEMEL", RegexOptions.CultureInvariant);
+                var hatil = new Regex(@"HATIL:\s*(\d+)\D(\d+)\(yatay\)\s*\+\s*\D(\d+)/(\d+)\s*\(dusey\)", RegexOptions.CultureInvariant);
+                int t = -1;
+                foreach (string line in text.Split('\n'))
+                {
+                    var mb = baslik.Match(line);
+                    if (mb.Success) { t = int.Parse(mb.Groups[1].Value, CultureInfo.InvariantCulture); continue; }
+                    var mh = hatil.Match(line);
+                    if (!mh.Success || t < 0 || map.ContainsKey(t)) continue;
+                    int I(int g) => int.Parse(mh.Groups[g].Value, CultureInfo.InvariantCulture);
+                    map[t] = (I(3), I(4), I(2), I(1));
+                }
+                if (map.Count > 0) kaynak = "GPR";
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+            return map;
         }
 
         private static List<KirisAcilimMontajBilgi> SurekliTemelReadTmx(string st4Path)
@@ -383,7 +572,16 @@ namespace ST4PlanIdCiz
                 if (!File.Exists(path)) return list;
             }
             byte[] data;
-            try { data = File.ReadAllBytes(path); }
+            // STA4CAD açıkken TMX'i yazmaya kilitli tutar; paylaşımlı okuma.
+            try
+            {
+                using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                using (var ms = new MemoryStream())
+                {
+                    fs.CopyTo(ms);
+                    data = ms.ToArray();
+                }
+            }
             catch { return list; }
             const int rec = 250;
             int n = data.Length / rec;
@@ -409,7 +607,9 @@ namespace ST4PlanIdCiz
                     SagAltCap = 0,
                     EtriyeCap = Read(134),
                     EtriyeOrtaCm = Read(136),
-                    EtriyeSikCm = Read(138)
+                    EtriyeSikCm = Read(138),
+                    AmpCap = Read(150),
+                    AmpAralikCm = Read(152)
                 };
                 if (bil.EtriyeSikCm <= 0) bil.EtriyeSikCm = bil.EtriyeOrtaCm;
                 list.Add(bil); // Boş kayıt da sıra tutar; GPR/THE ile indeks kaymasın.
@@ -452,6 +652,7 @@ namespace ST4PlanIdCiz
             var ilaRx = new Regex(@"(\d+)\s*[°ØøO]\s*(\d+)\s*\(([^)]*ila[^)]*)\)", RegexOptions.IgnoreCase);
             var etrRx = new Regex(@"(?:(\d+)\s*)?[°ØøO]\s*(\d+)\s*/\s*(\d+)(?:\s*/\s*(\d+))?\s*\(\s*etriye",
                 RegexOptions.IgnoreCase);
+            var ampRx = new Regex(@"[°ØøO]\s*(\d+)\s*/\s*(\d+)\s*amp", RegexOptions.IgnoreCase);
 
             int curT = 0;
             bool expectL = false;
@@ -522,6 +723,12 @@ namespace ST4PlanIdCiz
                         bil.EtriyeSikCm = int.Parse(etr.Groups[4].Value, CultureInfo.InvariantCulture);
                     else
                         bil.EtriyeSikCm = bil.EtriyeOrtaCm;
+                }
+                Match amp = ampRx.Match(body);
+                if (amp.Success)
+                {
+                    bil.AmpCap = int.Parse(amp.Groups[1].Value, CultureInfo.InvariantCulture);
+                    bil.AmpAralikCm = int.Parse(amp.Groups[2].Value, CultureInfo.InvariantCulture);
                 }
 
                 list.Add(new SurekliTemelGprSpanMeta { TNo = curT, L_m = L, Bilgi = bil });

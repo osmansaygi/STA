@@ -1,8 +1,14 @@
 # Parapet detayı
 
 Komut: `PARAPET` veya `PARAPETDETAY`. BAPANEL içinde **Parapet Detayı**.
-Formdaki **Manuel çiz** düğmesinden sonra parapet sol yüzü ile döşeme üstünün
+Formdaki **Detayı çiz** düğmesinden sonra parapet sol yüzü ile döşeme üstünün
 kesişim noktası seçilir. ESC işlemi iptal eder. Girdiler `parapet.ini` içinde saklanır.
+
+Form Kesit, Donatı ve Metraj bölümleriyle iki sütunlu, koyu temalı bir düzendedir.
+Çizim düğmesi **Detayı çiz** adını taşır. Düşey/yatay çaplar Ø işaretli açılır
+listelerden seçilir; aralık alanları yanlarındadır. Önceki kayıtlardaki özel çap
+değerleri listede korunur. Kiriş alanları yalnız kiriş seçeneğinde görünür.
+Ayrıntılı açıklamalar alanların üzerinde beklenince araç ipucunda gösterilir.
 
 ## Referans DWG incelemesi
 

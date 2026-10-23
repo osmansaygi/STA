@@ -122,7 +122,20 @@ namespace ST4Yardimci
             }
         }
 
-        private static int InsertTemplate(Transaction tr, Database destDb, string path, Point3d pick)
+        /// <summary>
+        /// OTODONATI sehpası: güncel SehpaDonatiSettings ile şablonu sol-alt köşesi
+        /// <paramref name="bottomLeft"/> olacak biçimde ekler. Şablon yoksa −1.
+        /// </summary>
+        internal static int InsertBottomLeft(Transaction tr, Database destDb, Point3d bottomLeft, out string etiket)
+        {
+            etiket = null;
+            string path = EnsureTempDwg();
+            if (string.IsNullOrEmpty(path)) return -1;
+            ComputeBar(out _, out _, out _, out _, out etiket, out _, out _);
+            return InsertTemplate(tr, destDb, path, bottomLeft, anchorBottom: true);
+        }
+
+        private static int InsertTemplate(Transaction tr, Database destDb, string path, Point3d pick, bool anchorBottom = false)
         {
             var bt = (BlockTable)tr.GetObject(destDb.BlockTableId, OpenMode.ForRead);
             var msDest = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
@@ -177,7 +190,7 @@ namespace ST4Yardimci
                 destDb.WblockCloneObjects(ids, msDest.ObjectId, mapping, DuplicateRecordCloning.Ignore, false);
 
                 var cloned = new List<Entity>();
-                double minX = double.MaxValue, maxY = double.MinValue;
+                double minX = double.MaxValue, maxY = double.MinValue, minY = double.MaxValue;
                 bool any = false;
                 foreach (IdPair pair in mapping)
                 {
@@ -190,6 +203,7 @@ namespace ST4Yardimci
                         Extents3d e = ent.GeometricExtents;
                         if (e.MinPoint.X < minX) minX = e.MinPoint.X;
                         if (e.MaxPoint.Y > maxY) maxY = e.MaxPoint.Y;
+                        if (e.MinPoint.Y < minY) minY = e.MinPoint.Y;
                         any = true;
                     }
                     catch { }
@@ -197,7 +211,8 @@ namespace ST4Yardimci
 
                 if (any && cloned.Count > 0)
                 {
-                    var move = Matrix3d.Displacement(new Vector3d(pick.X - minX, pick.Y - maxY, 0));
+                    double refY = anchorBottom ? minY : maxY;
+                    var move = Matrix3d.Displacement(new Vector3d(pick.X - minX, pick.Y - refY, 0));
                     ObjectId dimStyle = LookUpDimStyle(tr, destDb);
                     foreach (Entity ent in cloned)
                     {

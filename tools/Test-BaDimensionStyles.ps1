@@ -3,6 +3,20 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $source = [IO.File]::ReadAllText((Join-Path $root 'ST4_Yardimci/BaDimensionStyles.cs'))
+$settings = [IO.File]::ReadAllText((Join-Path $root 'Ortak/BeykentStil/BeykentStilAyar.cs'))
+$shared = [IO.File]::ReadAllText((Join-Path $root 'Ortak/BeykentStil/BeykentStilUygula.cs'))
+function Extract-SharedMethod([string]$name) {
+    $match = [regex]::Match($shared, '(?m)^\s*internal static [^\r\n]+\b' + $name + '\(')
+    if (!$match.Success) { throw "Shared style method missing: $name" }
+    $start=$match.Index
+    $open=$shared.IndexOf('{',$start); $depth=1; $end=$open+1
+    while($depth -gt 0) { if($shared[$end] -eq '{'){$depth++}; if($shared[$end] -eq '}'){$depth--}; $end++ }
+    $shared.Substring($start,$end-$start)
+}
+$styleMethods = (@('YaziOzellikYaz','YaziStili','OlcuStiliYapilandir','OlcuStiliYaz') | ForEach-Object { Extract-SharedMethod $_ }) -join "`n"
+$sharedSubset = "namespace BeykentOrtak { internal static class BeykentStilUygula {`n$styleMethods`n} }"
+$usings = ([regex]::Matches(($source+"`n"+$settings+"`n"+$shared), '(?m)^using [^\r\n]+;') | ForEach-Object Value | Sort-Object -Unique) -join "`n"
+$source = $usings + "`n" + [regex]::Replace($source+"`n"+$settings,'(?m)^using [^\r\n]+;\r?\n','') + "`n" + $sharedSubset
 $objectIds = 'Dimtxsty','Dimblk','Dimblk1','Dimblk2','Dimldrblk','Dimltype','Dimltex1','Dimltex2'
 $booleans = 'Dimsah','DimfxlenOn','Dimse1','Dimse2','Dimsd1','Dimsd2','Dimtih','Dimtoh','Dimtofl','Dimtix','Dimsoxd','Dimalt','Dimtol','Dimlim'
 $shorts = 'Dimtad','Dimjust','Dimatfit','Dimtmove','Dimdec','Dimtdec','Dimzin','Dimlunit','Dimaunit','Dimadec','Dimtfill'
@@ -51,7 +65,8 @@ namespace Autodesk.AutoCAD.DatabaseServices {
 '@ + ($properties -join "`n") + @'
  }
  public class TextStyleTableRecord : DBObject {
-  public double TextSize,XScale;
+  public double TextSize,XScale,ObliquingAngle;
+  public string FileName;
   public Autodesk.AutoCAD.GraphicsInterface.FontDescriptor Font;
  }
  public class SymbolTable<T> : DBObject where T:DBObject {
@@ -94,6 +109,10 @@ namespace ST4Yardimci {
   static void Near(double actual,double expected,string label){if(System.Math.Abs(actual-expected)>0.000001)throw new System.Exception(label+": "+actual+" != "+expected);}
   static void Check(bool value,string label){if(!value)throw new System.Exception(label);}
   public static string Run(){
+   // Pin actual production defaults in memory; do not read/write the user's saved settings.
+   var flags=System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Static;
+   typeof(BeykentOrtak.BeykentStilAyar).GetField("_aktif",flags).SetValue(null,BeykentOrtak.BeykentStilAyar.Varsayilan());
+   typeof(BeykentOrtak.BeykentStilAyar).GetField("_sonKontrol",flags).SetValue(null,System.DateTime.UtcNow.AddHours(1));
    var db=new Autodesk.AutoCAD.DatabaseServices.Database();
    var tr=new Autodesk.AutoCAD.DatabaseServices.Transaction(db);
    var table=(Autodesk.AutoCAD.DatabaseServices.DimStyleTable)tr.GetObject(db.DimStyleTableId,Autodesk.AutoCAD.DatabaseServices.OpenMode.ForWrite);

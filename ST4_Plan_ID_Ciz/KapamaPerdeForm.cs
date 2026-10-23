@@ -64,7 +64,7 @@ namespace ST4PlanIdCiz
     /// <summary>
     /// KAPAMADETAY modal form: temel hatılı olsun / olmasın.
     /// </summary>
-    internal sealed class KapamaPerdeForm : Form
+    internal sealed class KapamaPerdeForm : Beykent.Monolit.MonolitForm
     {
         private readonly RadioButton _rbHatiliVar;
         private readonly RadioButton _rbHatiliYok;
@@ -91,8 +91,8 @@ namespace ST4PlanIdCiz
             ShowInTaskbar = false;
             MinimizeBox = false;
             MaximizeBox = false;
-            BackColor = AcadPaletteTheme.Bg;
-            ForeColor = AcadPaletteTheme.Text;
+            BackColor = Beykent.Monolit.StandardFormTheme.Bg;
+            ForeColor = Beykent.Monolit.StandardFormTheme.Text;
             Font = new Font("Segoe UI", 8.5f);
             KeyPreview = true;
             DialogResult = DialogResult.Cancel;
@@ -138,6 +138,13 @@ namespace ST4PlanIdCiz
             {
                 StartPosition = FormStartPosition.CenterScreen;
             }
+
+            // Kompakt, içerik odaklı form düzeni.
+            var ui = BeginCompact(270);
+            _rbHatiliVar.Text = "Hatıllı"; _rbHatiliYok.Text = "Hatılsız";
+            ui.Section("Hatıl durumu").Options(_rbHatiliVar, _rbHatiliYok);
+            ui.Footer(btnCiz, btnIptal);
+            ui.Finish();
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -170,7 +177,7 @@ namespace ST4PlanIdCiz
             Location = new Point(x, y),
             AutoSize = false,
             Size = new Size(w, 18),
-            ForeColor = AcadPaletteTheme.TextMuted,
+            ForeColor = Beykent.Monolit.StandardFormTheme.TextMuted,
             BackColor = Color.Transparent
         };
 
@@ -179,7 +186,7 @@ namespace ST4PlanIdCiz
             Text = text,
             Location = new Point(x, y),
             AutoSize = true,
-            ForeColor = AcadPaletteTheme.Text,
+            ForeColor = Beykent.Monolit.StandardFormTheme.Text,
             BackColor = Color.Transparent,
             Checked = on
         };
@@ -192,12 +199,12 @@ namespace ST4PlanIdCiz
                 Location = new Point(x, y),
                 Size = new Size(w, 26),
                 FlatStyle = FlatStyle.Flat,
-                BackColor = AcadPaletteTheme.BgAlt,
-                ForeColor = accent ? AcadPaletteTheme.Accent : AcadPaletteTheme.Text,
+                BackColor = Beykent.Monolit.StandardFormTheme.BgAlt,
+                ForeColor = accent ? Beykent.Monolit.StandardFormTheme.Accent : Beykent.Monolit.StandardFormTheme.Text,
                 Cursor = Cursors.Hand
             };
-            b.FlatAppearance.BorderColor = AcadPaletteTheme.InputBorder;
-            b.FlatAppearance.MouseOverBackColor = AcadPaletteTheme.BgHover;
+            b.FlatAppearance.BorderColor = Beykent.Monolit.StandardFormTheme.InputBorder;
+            b.FlatAppearance.MouseOverBackColor = Beykent.Monolit.StandardFormTheme.BgHover;
             return b;
         }
     }

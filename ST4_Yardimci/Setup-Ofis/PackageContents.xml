@@ -1,12 +1,12 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <ApplicationPackage
   SchemaVersion="1.0"
   AutodeskProduct="AutoCAD"
   ProductType="Application"
   Name="ST4_Yardimci"
   Description="BETONARME TOOL"
-  AppVersion="2026.10.08.1"
-  FriendlyVersion="2026.10.08.1"
+  AppVersion="2026.10.23.2"
+  FriendlyVersion="2026.10.23.2"
   ProductCode="{E1F7C35A-8B6D-4E2C-B05F-2C9D6E4F7182}"
   UpgradeCode="{A7B3E91C-4D2F-4A8E-9C1B-8E5F2A0B1C3E}">
 

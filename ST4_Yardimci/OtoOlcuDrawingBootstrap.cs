@@ -75,31 +75,18 @@ namespace ST4Yardimci
             if (string.IsNullOrWhiteSpace(name)) return false;
             name = name.Trim();
             var lt = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
-            if (lt.Has(name)) return false;
-
-            lt.UpgradeOpen();
-            var rec = new LayerTableRecord { Name = name };
-
+            bool existed = lt.Has(name);
+            short aci = 7;
+            LineWeight lw = LineWeight.LineWeight020;
             if (string.Equals(name, OtoOlcuSettings.AksOlcuDimLayerName, StringComparison.OrdinalIgnoreCase))
-            {
-                // AKS OLCU (BEYKENT) — magenta ACI 6, Continuous 0.20
-                try { rec.Color = Color.FromColorIndex(ColorMethod.ByAci, 6); } catch { }
-                try { rec.LineWeight = LineWeight.LineWeight020; } catch { }
-            }
+                aci = 6;
             else if (name.IndexOf("OLCU", StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                // OLCU (BEYKENT) → yeşil ACI 3, Continuous 0.30
-                try { rec.Color = Color.FromColorIndex(ColorMethod.ByAci, 3); } catch { }
-                try { rec.LineWeight = LineWeight.LineWeight030; } catch { }
+                aci = 3;
+                lw = LineWeight.LineWeight030;
             }
-            else
-            {
-                try { rec.Color = Color.FromColorIndex(ColorMethod.ByAci, 7); } catch { }
-                try { rec.LineWeight = LineWeight.LineWeight020; } catch { }
-            }
-            lt.Add(rec);
-            tr.AddNewlyCreatedDBObject(rec, true);
-            return true;
+            BeykentKatmanYukle.Ensure(tr, db, name, aci, lw);
+            return !existed && ((LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead)).Has(name);
         }
 
         /// <summary>Yoksa oluşturur; true = yeni oluşturuldu.</summary>

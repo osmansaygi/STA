@@ -56,30 +56,10 @@ namespace ST4Yardimci
                 _tr = tr; _db = db; _origin = origin;
                 _space = (BlockTableRecord)tr.GetObject(db.CurrentSpaceId, OpenMode.ForWrite);
                 foreach (string layer in new[] { Rebar, RebarText, Outline, Slab, Beam, Marks, Measure, Kot, KotText,
-                    "KESIT SINIRI (BEYKENT)", "YAZI (BEYKENT)", Title, Leader, Stirrup, Table, TableTitle }) EnsureLayer(layer);
-                var st = (TextStyleTable)tr.GetObject(db.TextStyleTableId, OpenMode.ForRead);
-                const string name = "YAZI (BEYKENT)";
-                if (st.Has(name)) _style = st[name];
-                else
-                {
-                    st.UpgradeOpen();
-                    var rec = new TextStyleTableRecord { Name = name, FileName = "arial.ttf" };
-                    _style = st.Add(rec); tr.AddNewlyCreatedDBObject(rec, true);
-                }
+                    "KESIT SINIRI (BEYKENT)", "YAZI (BEYKENT)", Title, Leader, Stirrup, Table, TableTitle })
+                    BeykentKatmanYukle.Ensure(tr, db, layer);
+                _style = BaDimensionStyles.EnsureYazi(tr, db);
                 _dim = BaDimensionStyles.Ensure(tr, db, "PLAN_OLCU_DONATI 25");
-            }
-
-            void EnsureLayer(string name)
-            {
-                var lt = (LayerTable)_tr.GetObject(_db.LayerTableId, OpenMode.ForRead);
-                if (lt.Has(name)) return;
-                lt.UpgradeOpen();
-                short aci = (short)(name == Rebar ? 4 : name == Marks ? 8 : name == Measure ? 14
-                    : name == Table ? 152 : name == TableTitle ? 1 : name == RebarText ? 3 : name == Title ? 6 : name == Leader ? 64 : name == Stirrup ? 5 : name == Slab ? 2 : name == Outline ? 230 : 7);
-                var l = new LayerTableRecord { Name = name, Color = Color.FromColorIndex(ColorMethod.ByAci, aci),
-                    LineWeight = name == Rebar ? LineWeight.LineWeight040 : name == Table ? LineWeight.LineWeight030 : name == Stirrup ? LineWeight.LineWeight035 : name == Marks ? LineWeight.LineWeight025
-                        : name == Leader ? LineWeight.LineWeight015 : LineWeight.LineWeight020 };
-                lt.Add(l); _tr.AddNewlyCreatedDBObject(l, true);
             }
 
             Point3d P(double x, double y) => new Point3d(_origin.X + 2*x, _origin.Y + 2*y, _origin.Z);

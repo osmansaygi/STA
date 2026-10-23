@@ -7,6 +7,14 @@ alwaysApply: true
 
 Kullanıcının later (layer) tablosu referanstır. Mevcut çizimde katman varsa renk/çizgi tipi/kalınlık **değiştirilmez**; yoksa oluşturulur.
 
+## Ortak ayar (KATMANYUKLE formu)
+
+- Varsayılan katman / ölçü stili / yazı stili değerleri tek yerde: `Ortak/BeykentStil/BeykentStilAyar.cs` (`Varsayilan()`); Yardımcı ve Plan ID bu dosyayı link'li derler. Yeni (BEYKENT) katmanı veya stil eklerken oraya da ekle.
+- Kullanıcı ayarı: `%APPDATA%\BEYKENT\katman-stil.json` (yoksa DLL yanındaki `katman-stil.json`, o da yoksa varsayılanlar). KATMANYUKLE 3 sekmeli form açar; Kaydet dosyaya yazar, "Kaydet ve Yükle" açık çizimde var olanları da günceller ve ölçüleri yeniden hesaplar. Katman/stil adları formdan değişmez.
+- Komut katmanı: Yardımcı `BeykentKatmanYukle.Ensure`, Plan `EnsurePlanLayer` → `BeykentStilUygula.KatmanHazirla`. Ayarda varsa ayar değeriyle, yoksa çağrıdaki değerle oluşturulur; var olan katmana dokunulmaz, yalnız "Renk zorla" işaretli olanların (varsayılan ETRIYE ve DONATI OKU, ACI 150) rengi çekilir.
+- Ölçü stilleri: Yardımcı `BaDimensionStyles` ayarı tam uygular (her çağrıda). Plan kendi kurallarıyla kurar, yalnız formda varsayılandan farklılaştırılmış alanları uygular (`OlcuFarkiniUygula`). Yazı stilleri: Yardımcı YAZI (BEYKENT)'i her çağrıda ayara çeker; Plan yoksa ayarla oluşturur.
+- Bu ortak yola bağlanmamış, katman rengini/kalınlığını kendi sabitiyle zorlayan yerler (KirisDuzelt, TemelKirisDuzelt, IskeleKesit/Plan, LayerService, KsfTableDrawer, TemelIlavePng/Pdf, TemelIlaveDeneme, BinaGorunus, antet) listesi: `docs/modul-durum/ST4_Plan_ID_Ciz.md` → "Katman/stil ortak ayara bağlanmamış yerler".
+
 ## METRAJ komutu (zorunlu)
 
 - Tablo başlığı (ör. `... BETON/KALIP KEŞİF METRAJI`) → **`METRAJ YAZI (BEYKENT)`** — ACI **60**, Continuous, 0.20 m
@@ -30,13 +38,13 @@ Kullanıcının later (layer) tablosu referanstır. Mevcut çizimde katman varsa
 | DETAY ANTET (BEYKENT) | Continuous 0.40 | mavi |
 | DONATI (BEYKENT) | Continuous 0.40 | cyan |
 | DONATI HALKASI (BEYKENT) | Dashed 0.30 | sarı |
-| DONATI OKU (BEYKENT) | Continuous 0.20 | bordo |
+| DONATI OKU (BEYKENT) | Continuous 0.20 | ACI 150 |
 | DONATI YAZISI (BEYKENT) | Continuous 0.20 | yeşil |
 | DOSEME (BEYKENT) | Continuous 0.30 | sarı |
 | DOSEME ISMI (BEYKENT) | Continuous 0.20 | gri |
 | DOSEME PAFTA (BEYKENT) | Continuous 0.20 | yeşil |
 | DOSEME SINIRI (BEYKENT) | Continuous 0.30 | yeşil |
-| ETRIYE (BEYKENT) | Continuous 0.35 | mavi |
+| ETRIYE (BEYKENT) | Continuous 0.35 | ACI 150 |
 | HASIR (BEYKENT) | Continuous 0.35 | cyan |
 | HASIR CIZGI (BEYKENT) | Continuous 0.20 | kırmızı |
 | HASIR YAZI (BEYKENT) | Continuous 0.20 | yeşil |

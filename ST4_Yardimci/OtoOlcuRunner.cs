@@ -244,7 +244,7 @@ namespace ST4Yardimci
             HashSet<string> layers,
             List<Point3d> hits)
         {
-            var probeSeg = new LineSegment2d(new Point2d(a.X, a.Y), new Point2d(b.X, b.Y));
+            using var probeSeg = new LineSegment2d(new Point2d(a.X, a.Y), new Point2d(b.X, b.Y));
             int onLayer = 0;
             foreach (ObjectId id in btr)
             {
@@ -317,7 +317,7 @@ namespace ST4Yardimci
             {
                 try
                 {
-                    var c2 = new CircularArc2d(
+                    using var c2 = new CircularArc2d(
                         new Point2d(arc.Center.X, arc.Center.Y),
                         arc.Radius,
                         arc.StartAngle,
@@ -337,7 +337,7 @@ namespace ST4Yardimci
             {
                 try
                 {
-                    var c2 = new CircularArc2d(
+                    using var c2 = new CircularArc2d(
                         new Point2d(cir.Center.X, cir.Center.Y),
                         cir.Radius);
                     Point2d[] pts = c2.IntersectWith(probeSeg);
@@ -370,7 +370,7 @@ namespace ST4Yardimci
                         if (pts.Count == 0)
                         {
                             // Plane XY üzerinden
-                            var pln = new Plane(Point3d.Origin, Vector3d.ZAxis);
+                            using var pln = new Plane(Point3d.Origin, Vector3d.ZAxis);
                             curve.IntersectWith(probe, Intersect.OnBothOperands, pln, pts, IntPtr.Zero, IntPtr.Zero);
                         }
                         foreach (Point3d p in pts)
@@ -447,7 +447,8 @@ namespace ST4Yardimci
         {
             try
             {
-                Point2d[] pts = new LineSegment2d(a, b).IntersectWith(probeSeg);
+                using var edge = new LineSegment2d(a, b);
+                Point2d[] pts = edge.IntersectWith(probeSeg);
                 if (pts == null) return;
                 foreach (Point2d p in pts)
                     hits.Add(new Point3d(p.X, p.Y, 0));
@@ -469,11 +470,14 @@ namespace ST4Yardimci
                     {
                         Point3d p0 = pl.GetPoint3dAt(i);
                         Point3d p1 = pl.GetPoint3dAt((i + 1) % n);
-                        pts = new LineSegment2d(new Point2d(p0.X, p0.Y), new Point2d(p1.X, p1.Y))
-                            .IntersectWith(probeSeg);
+                        using var edge = new LineSegment2d(new Point2d(p0.X, p0.Y), new Point2d(p1.X, p1.Y));
+                        pts = edge.IntersectWith(probeSeg);
                     }
                     else
-                        pts = pl.GetArcSegment2dAt(i).IntersectWith(probeSeg);
+                    {
+                        using var arc = pl.GetArcSegment2dAt(i);
+                        pts = arc.IntersectWith(probeSeg);
+                    }
 
                     if (pts == null) continue;
                     foreach (Point2d p in pts)
@@ -523,13 +527,7 @@ namespace ST4Yardimci
         {
             if (string.IsNullOrWhiteSpace(name))
                 name = "0";
-            var lt = (LayerTable)tr.GetObject(db.LayerTableId, OpenMode.ForRead);
-            if (lt.Has(name))
-                return name;
-            lt.UpgradeOpen();
-            var lyr = new LayerTableRecord { Name = name };
-            lt.Add(lyr);
-            tr.AddNewlyCreatedDBObject(lyr, true);
+            BeykentKatmanYukle.Ensure(tr, db, name);
             return name;
         }
     }

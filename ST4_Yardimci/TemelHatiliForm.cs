@@ -67,7 +67,7 @@ namespace ST4Yardimci
     }
 
     /// <summary>Temel Hatılı formu — plandan çiz (sonra) / manuel çiz.</summary>
-    internal sealed class TemelHatiliForm : Form
+    internal sealed class TemelHatiliForm : Beykent.Monolit.MonolitForm
     {
         private static TemelHatiliForm _instance;
 
@@ -138,8 +138,8 @@ namespace ST4Yardimci
             MinimizeBox = false;
             MaximizeBox = false;
             ClientSize = new Size(420, 292);
-            BackColor = AcadPaletteTheme.Bg;
-            ForeColor = AcadPaletteTheme.Text;
+            BackColor = Beykent.Monolit.StandardFormTheme.Bg;
+            ForeColor = Beykent.Monolit.StandardFormTheme.Text;
             Font = new SdFont("Segoe UI", 8.5f);
             KeyPreview = true;
 
@@ -187,6 +187,16 @@ namespace ST4Yardimci
             {
                 StartPosition = FormStartPosition.CenterScreen;
             }
+
+            // Kompakt, içerik odaklı form düzeni.
+            var ui = BeginCompact(350);
+            ui.Tabs(202,
+                ui.Page("Kesit", p => p.Field("Temel yüksekliği · cm", _numTemelH).Field("Temel üst kotu · cm", _numKotu)
+                    .Field("Döşeme kalınlığı · cm", _numDoseme).Field("Hatıl yük. / en · cm", _numHatilH, _numHatilW).Field("Paspayı · cm", _numPas)),
+                ui.Page("Donatı", p => p.Field("Düşey · Ø mm / ara cm", _numDikeyCap, _numDikeyAralik)
+                    .Field("Yatay · Ø mm / ara cm", _numYatayCap, _numYatayAralik)));
+            ui.Footer(btnManuel, btnClose, btnPlan);
+            ui.Finish();
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -280,7 +290,7 @@ namespace ST4Yardimci
                 Location = new Point(x0, y + 3),
                 AutoSize = false,
                 Size = new Size(100, 18),
-                ForeColor = AcadPaletteTheme.TextMuted,
+                ForeColor = Beykent.Monolit.StandardFormTheme.TextMuted,
                 BackColor = Color.Transparent
             };
             Controls.Add(lbl);
@@ -291,7 +301,7 @@ namespace ST4Yardimci
                 Text = unit,
                 Location = new Point(x0 + 162, y + 3),
                 AutoSize = true,
-                ForeColor = AcadPaletteTheme.TextMuted,
+                ForeColor = Beykent.Monolit.StandardFormTheme.TextMuted,
                 BackColor = Color.Transparent
             };
             Controls.Add(u);
@@ -314,12 +324,12 @@ namespace ST4Yardimci
                 Location = new Point(x, y),
                 Size = new Size(w, 26),
                 FlatStyle = FlatStyle.Flat,
-                BackColor = AcadPaletteTheme.BgAlt,
-                ForeColor = accent ? AcadPaletteTheme.Accent : AcadPaletteTheme.Text,
+                BackColor = Beykent.Monolit.StandardFormTheme.BgAlt,
+                ForeColor = accent ? Beykent.Monolit.StandardFormTheme.Accent : Beykent.Monolit.StandardFormTheme.Text,
                 Cursor = Cursors.Hand
             };
-            b.FlatAppearance.BorderColor = AcadPaletteTheme.InputBorder;
-            b.FlatAppearance.MouseOverBackColor = AcadPaletteTheme.BgHover;
+            b.FlatAppearance.BorderColor = Beykent.Monolit.StandardFormTheme.InputBorder;
+            b.FlatAppearance.MouseOverBackColor = Beykent.Monolit.StandardFormTheme.BgHover;
             return b;
         }
 
@@ -333,8 +343,8 @@ namespace ST4Yardimci
                 Maximum = max,
                 Increment = inc,
                 DecimalPlaces = decimals,
-                BackColor = AcadPaletteTheme.InputBg,
-                ForeColor = AcadPaletteTheme.Text,
+                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
+                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
                 BorderStyle = BorderStyle.FixedSingle
             };
             n.Value = Clamp(n, val);

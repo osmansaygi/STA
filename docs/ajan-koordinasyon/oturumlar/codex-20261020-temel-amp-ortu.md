@@ -1,0 +1,11 @@
+# Temel ampatman, kot ve örtü
+- Ajan: Codex / bu sohbet
+- Güncelleme: 2026-10-20 (Europe/Istanbul)
+- Durum: tamamlandı
+- Görev: CK_20827_2_01 projesinde kesitte ampatman; temele değmeyen üst kolonları çıkar; etriye 5 cm/boyuna 6 cm örtü. Ek kullanıcı talebi: TMX'yi incele/anlat, alt/üst ilave ayrımını düzelt; ampatman donatısını şimdilik ekleme.
+- Ayrılan dosya/kaynak: yok. Değişenler: ST4_Plan_ID_Ciz/PlanIdDrawingManager.SurekliTemelGorunus.cs; ST4_Plan_ID_Ciz/PlanIdDrawingManager.SurekliTemelDonatiGorunus.cs; ST4_Plan_ID_Ciz/PlanIdDrawingManager.KirisAcilim.Kesit.cs; ST4_Plan_ID_Ciz/PlanIdDrawingManager.SurekliTemelAcilim.cs; tools/Test-KirisKesit.ps1; tools/SurekliTemelViewCheck/**; docs/modul-durum/ST4_Plan_ID_Ciz.SurekliGorunus.md; bu kayıt.
+- Çıktılar: tools/SurekliTemelViewCheck/build ve obj izole; önceki yeniden derle/eskileri sil talimatıyla NETLOAD Plan DLL/PDB. Eski aktif kiriş kaydına ayrılmış KirisAcilim.cs, Yerlesim.cs ve ortak bin/obj değişmeyecek; canlı DLL yüklenmeyecek.
+- Ek ayrılan dosyalar: ST4_Plan_ID_Ciz/PlanIdDrawingManager.SurekliTemelAcilim.cs (TMX/GPR/THE eşleme ve üst/alt ilave); tools/Test-KirisKesit.ps1 (AsText test dublörü). Yöntem: temele özel kolon kat/kot filtresi ve örtü uyarlaması; ortak kesit yardımcısında isteğe bağlı örtü ve ampatman konturu, kiriş varsayılanları korunur.
+- Sonuç: 18 ampatman kesite gerçek hizasıyla eklendi; kolon destek katı/kotu filtreli (T23 SB43 çıkarıldı, SB44 tutuldu); etriye5/boyuna6 cm. TMX gövde112, alt124, üst128 alanları doğrulandı/düzeltildi. CK statik GPR/THE ile 192 kayıt 31 temele bağlandı; uç kayıtları ayrıldı ve T23 açıklık sırası düzeltildi. Ampatman donatısı eklenmedi.
+- Doğrulama: CK antetli/antetsiz/tekrar, MS/AKDAG/verisiz Core Console COMPLETE; SB43, ampatman alan/hiza/kademe, örtü, alt/üst ve doğru bay verisi PASS. Kaynak ST4/TMX/GPR/THE hash aynı. Verify-Project dört PASS; Test-KirisKesit PASS (ağ güvenlik denetimi/test dublörü uyarıları). Final net48 0 hata/0 uyarı. Bir ara Roslyn FailFast; tekrarı ve son testler başarılı. Kiriş varsayılanları korundu; ayrılmış KirisAcilim.cs ve Yerlesim.cs değiştirilmedi.
+- Dağıtım: NETLOAD/ST4_Plan_ID_Ciz_20261020_020010.dll/PDB; hash kaynakla aynı; önceki 013208 DLL/PDB silindi. Canlı AutoCAD'e yüklenmedi. Ampatman donatısı kullanıcının sonraki tarifini bekler.

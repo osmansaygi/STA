@@ -94,7 +94,7 @@ namespace ST4PlanIdCiz
     /// <summary>
     /// KOLONDUSEY modal form: ölçek + kat alma + kat sınırla.
     /// </summary>
-    internal sealed class KolonDuseyForm : Form
+    internal sealed class KolonDuseyForm : Beykent.Monolit.MonolitForm
     {
         private readonly ComboBox _cmbOlcek;
         private readonly CheckBox _chkTum;
@@ -163,21 +163,21 @@ namespace ST4PlanIdCiz
             ShowInTaskbar = false;
             MinimizeBox = false;
             MaximizeBox = false;
-            BackColor = AcadPaletteTheme.Bg;
-            ForeColor = AcadPaletteTheme.Text;
+            BackColor = Beykent.Monolit.StandardFormTheme.Bg;
+            ForeColor = Beykent.Monolit.StandardFormTheme.Text;
             Font = new SdFont("Segoe UI", 8.5f);
             KeyPreview = true;
             DialogResult = DialogResult.Cancel;
 
-            int y = 10;
+            int y = 74;
             Controls.Add(MkLabel("Ölçek", 12, y + 3, 70));
             _cmbOlcek = new ComboBox
             {
                 Location = new Point(90, y),
                 Size = new Size(160, 22),
                 DropDownStyle = ComboBoxStyle.DropDownList,
-                BackColor = AcadPaletteTheme.InputBg,
-                ForeColor = AcadPaletteTheme.Text,
+                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
+                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
                 FlatStyle = FlatStyle.Flat
             };
             _cmbOlcek.Items.Add("1/50");
@@ -229,6 +229,7 @@ namespace ST4PlanIdCiz
             CancelButton = btnIptal;
             ClientSize = new Size(270, y + 40);
 
+
             try
             {
                 Location = new Point(
@@ -239,6 +240,15 @@ namespace ST4PlanIdCiz
             {
                 StartPosition = FormStartPosition.CenterScreen;
             }
+
+            // Kompakt, içerik odaklı form düzeni.
+            var ui = BeginCompact(300);
+            ui.Section("Çizim").Field("Ölçek", _cmbOlcek);
+            ui.Tip(_chkTum, _chkTum.Text); ui.Tip(_chkAyri, _chkAyri.Text); ui.Tip(_chkBenzer, _chkBenzer.Text);
+            _chkTum.Text = "Tüm katlar"; _chkAyri.Text = "Kat kat"; _chkBenzer.Text = "Benzer katlar";
+            ui.Section("Katların çizimi").Options(_chkTum, _chkAyri, _chkBenzer).Choices(_chkSinirla);
+            ui.Footer(btnCiz, btnIptal);
+            ui.Finish();
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -301,7 +311,7 @@ namespace ST4PlanIdCiz
             Location = new Point(x, y),
             AutoSize = false,
             Size = new Size(w, 18),
-            ForeColor = AcadPaletteTheme.TextMuted,
+            ForeColor = Beykent.Monolit.StandardFormTheme.TextMuted,
             BackColor = Color.Transparent
         };
 
@@ -310,7 +320,7 @@ namespace ST4PlanIdCiz
             Text = text,
             Location = new Point(x, y),
             AutoSize = true,
-            ForeColor = AcadPaletteTheme.Text,
+            ForeColor = Beykent.Monolit.StandardFormTheme.Text,
             BackColor = Color.Transparent,
             Checked = on
         };
@@ -323,18 +333,18 @@ namespace ST4PlanIdCiz
                 Location = new Point(x, y),
                 Size = new Size(w, 26),
                 FlatStyle = FlatStyle.Flat,
-                BackColor = AcadPaletteTheme.BgAlt,
-                ForeColor = accent ? AcadPaletteTheme.Accent : AcadPaletteTheme.Text,
+                BackColor = Beykent.Monolit.StandardFormTheme.BgAlt,
+                ForeColor = accent ? Beykent.Monolit.StandardFormTheme.Accent : Beykent.Monolit.StandardFormTheme.Text,
                 Cursor = Cursors.Hand
             };
-            b.FlatAppearance.BorderColor = AcadPaletteTheme.InputBorder;
-            b.FlatAppearance.MouseOverBackColor = AcadPaletteTheme.BgHover;
+            b.FlatAppearance.BorderColor = Beykent.Monolit.StandardFormTheme.InputBorder;
+            b.FlatAppearance.MouseOverBackColor = Beykent.Monolit.StandardFormTheme.BgHover;
             return b;
         }
     }
 
     /// <summary>Kat sınırla: hangi kat son kat sayılsın.</summary>
-    internal sealed class KolonDuseyKatSinirForm : Form
+    internal sealed class KolonDuseyKatSinirForm : Beykent.Monolit.MonolitForm
     {
         private readonly List<(int fi, string name, double elev)> _items;
         private readonly ComboBox _cmbSon;
@@ -357,8 +367,8 @@ namespace ST4PlanIdCiz
             ShowInTaskbar = false;
             MinimizeBox = false;
             MaximizeBox = false;
-            BackColor = AcadPaletteTheme.Bg;
-            ForeColor = AcadPaletteTheme.Text;
+            BackColor = Beykent.Monolit.StandardFormTheme.Bg;
+            ForeColor = Beykent.Monolit.StandardFormTheme.Text;
             Font = new SdFont("Segoe UI", 8.5f);
             KeyPreview = true;
             DialogResult = DialogResult.Cancel;
@@ -370,7 +380,7 @@ namespace ST4PlanIdCiz
                 Location = new Point(12, y),
                 AutoSize = false,
                 Size = new Size(280, 18),
-                ForeColor = AcadPaletteTheme.TextMuted,
+                ForeColor = Beykent.Monolit.StandardFormTheme.TextMuted,
                 BackColor = Color.Transparent
             });
             y += 22;
@@ -388,7 +398,7 @@ namespace ST4PlanIdCiz
                 Location = new Point(12, y),
                 AutoSize = false,
                 Size = new Size(280, 18),
-                ForeColor = AcadPaletteTheme.TextMuted,
+                ForeColor = Beykent.Monolit.StandardFormTheme.TextMuted,
                 BackColor = Color.Transparent
             });
             y += 28;
@@ -410,6 +420,12 @@ namespace ST4PlanIdCiz
             AcceptButton = btnOk;
             CancelButton = btnCancel;
             ClientSize = new Size(300, y + 40);
+
+            // Kompakt, içerik odaklı form düzeni.
+            var ui = BeginCompact(300);
+            ui.Section(null).Field("Son kat", _cmbSon).Hint("Seçilen kat ve altı çizilir.");
+            ui.Footer(btnOk, btnCancel);
+            ui.Finish();
         }
 
         private void SelectRememberedOrDefault()
@@ -471,8 +487,8 @@ namespace ST4PlanIdCiz
             Location = new Point(x, y),
             Size = new Size(w, 22),
             DropDownStyle = ComboBoxStyle.DropDownList,
-            BackColor = AcadPaletteTheme.InputBg,
-            ForeColor = AcadPaletteTheme.Text,
+            BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
+            ForeColor = Beykent.Monolit.StandardFormTheme.Text,
             FlatStyle = FlatStyle.Flat
         };
 
@@ -484,12 +500,12 @@ namespace ST4PlanIdCiz
                 Location = new Point(x, y),
                 Size = new Size(w, 26),
                 FlatStyle = FlatStyle.Flat,
-                BackColor = AcadPaletteTheme.BgAlt,
-                ForeColor = accent ? AcadPaletteTheme.Accent : AcadPaletteTheme.Text,
+                BackColor = Beykent.Monolit.StandardFormTheme.BgAlt,
+                ForeColor = accent ? Beykent.Monolit.StandardFormTheme.Accent : Beykent.Monolit.StandardFormTheme.Text,
                 Cursor = Cursors.Hand
             };
-            b.FlatAppearance.BorderColor = AcadPaletteTheme.InputBorder;
-            b.FlatAppearance.MouseOverBackColor = AcadPaletteTheme.BgHover;
+            b.FlatAppearance.BorderColor = Beykent.Monolit.StandardFormTheme.InputBorder;
+            b.FlatAppearance.MouseOverBackColor = Beykent.Monolit.StandardFormTheme.BgHover;
             return b;
         }
     }

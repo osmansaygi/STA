@@ -1,0 +1,11 @@
+# Codex çalışma ayarları
+- Ajan: Codex / C# AutoCAD çalışma düzeni
+- Durum: tamamlandı
+- Tarih: 2026-10-18 (Europe/Istanbul)
+- Ayrılan dosyalar: yok
+- Ortak çıktı kaynakları: yok; varsayılan doğrulama yalnız mevcut testleri çalıştırır.
+- Görev: proje model/düşünme varsayılanları; ortak kalıcı çalışma kuralları; tek komutla test doğrulaması.
+- Değişen dosyalar: AGENTS.md; .codex/config.toml; .cursor/rules/csharp-autocad-calisma.mdc; docs/csharp-autocad-calisma.md; tools/Verify-Project.ps1.
+- Sonuç: bu projede GPT-6.1 Sol/high varsayılanı; Türkçe kısa teslim, dar düzeltme, sürüm ayrımı ve kaynak ömrü kontrolleri kalıcılaştırıldı. Mevcut global yapılandırma ve izinler değiştirilmedi.
+- Doğrulama: Verify-Project varsayılan çalışması dört regresyonu başarıyla tamamladı. -Analyze için açık hedef zorunluluğu hata koduyla doğrulandı. Derleme ve analiz seçenekleri eklendi; bu ayar işinde çalıştırılmadı, DLL üretilmedi. git diff --check temiz.
+- Kullanım: yeni sohbet proje model varsayılanlarını alabilir; açık sohbette manuel model seçimi öncelikli olabilir. Cursor mevcut sohbetinde AGENTS.md ve docs/csharp-autocad-calisma.md yeniden okutulmalı.
