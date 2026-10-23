@@ -30,3 +30,12 @@ DPDOSEME.fas
 # *.ST4
 # *.GPR
 # Eski tarihli plan DLL temizligi: scripts\Clean-PlanBinDlls.ps1
+
+# Yeniden üretilebilen yerel çıktılar ve sıkıştırılmış bakım/dağıtım arşivleri
+/_build_tmp/
+/tools/**/build/
+/tools/**/build2027/
+/tools/netload-yedek/
+/NETLOAD/arsiv/
+/tools/ProjectMaintenance20261023/arsiv/
+/tools/ProjectMaintenance20261023/dependency-test-*/

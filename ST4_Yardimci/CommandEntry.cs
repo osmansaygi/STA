@@ -113,14 +113,24 @@ namespace ST4Yardimci
             try
             {
                 if (args == null || string.IsNullOrEmpty(args.Name)) return null;
-                string simple = new AssemblyName(args.Name).Name;
+                var requested = new AssemblyName(args.Name);
+                string simple = requested.Name;
                 if (string.IsNullOrEmpty(simple) || simple.EndsWith(".resources", StringComparison.OrdinalIgnoreCase))
                     return null;
+                if (!string.Equals(Path.GetFileName(simple), simple, StringComparison.Ordinal)) return null;
                 string dir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
                 if (string.IsNullOrEmpty(dir)) return null;
                 string path = Path.Combine(dir, simple + ".dll");
-                if (File.Exists(path))
-                    return Assembly.LoadFrom(path);
+                if (!File.Exists(path)) return null;
+                // Do not bind an unrelated/old DLL merely because its filename matches.
+                // Returning null leaves host/framework resolution to AutoCAD.
+                var candidate = AssemblyName.GetAssemblyName(path);
+                if (!string.Equals(candidate.Name, requested.Name, StringComparison.OrdinalIgnoreCase)
+                    || (requested.Version != null && candidate.Version != requested.Version)
+                    || !string.Equals(candidate.CultureName ?? "", requested.CultureName ?? "", StringComparison.OrdinalIgnoreCase)
+                    || Convert.ToBase64String(candidate.GetPublicKeyToken() ?? new byte[0])
+                        != Convert.ToBase64String(requested.GetPublicKeyToken() ?? new byte[0])) return null;
+                return Assembly.LoadFrom(path);
             }
             catch { }
             return null;
