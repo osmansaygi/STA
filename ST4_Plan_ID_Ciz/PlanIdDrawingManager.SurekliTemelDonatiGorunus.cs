@@ -589,17 +589,67 @@ namespace ST4PlanIdCiz
         /// <summary>Gövde çubuğunca yutulan temel bayları (BeamId tüm baylarda aynı olduğundan nesne ile).</summary>
         private readonly HashSet<BeamInfo> _surekliGovdeYutulanBay = new HashSet<BeamInfo>();
 
+        /// <summary>
+        /// Mesnetler arasında hiç net açıklık kalmıyorsa (ör. HHO_01 T8: iki uç düğümü de 25/290 perde
+        /// SZ-14 içinde) donatı çizilemez. Bu durumda kolon dışına taşan beton uçları konsol açıklığı sınırıdır.
+        /// </summary>
+        private List<SurekliGorunusKolon> SurekliGorunusKonsolMesnetleri(SurekliGorunusTemel t, List<SurekliGorunusKolon> mesnetler)
+        {
+            for (int i = 1; i < mesnetler.Count; i++)
+                if (mesnetler[i].X0 - mesnetler[i - 1].X1 > 1.0) return mesnetler;
+            var gercek = mesnetler.Where(m => m.X1 - m.X0 > 1.0).ToList();
+            if (gercek.Count == 0) return mesnetler;
+            SurekliGorunusParcaAraligi(t, t.Parcalar[0].Plan, out double lo, out double hi);
+            var list = new List<SurekliGorunusKolon>(gercek);
+            double ileri = (t.B - t.A).DotProduct(t.GorunusYonu) >= 0 ? 1.0 : -1.0;
+            foreach (double station in new[] { lo, hi })
+            {
+                if (station > gercek.Min(m => m.X0) - 1.0 && station < gercek.Max(m => m.X1) + 1.0) continue;
+                // Plan noktası temel ekseninde, istasyonun karşılığı (SurekliGorunusIstasyonu tersi).
+                double r = (station - SurekliGorunusIstasyonu(t, t.A)) * ileri;
+                Point2d p = t.A + (t.B - t.A).GetNormal().MultiplyBy(r);
+                list.Add(new SurekliGorunusKolon { Plan = _ntsDrawFactory.CreatePoint(new Coordinate(p.X, p.Y)),
+                    X0 = station, X1 = station });
+                _surekliKonsolUc.Add(Math.Round(station * 10.0));
+            }
+            return list.Count < 2 ? mesnetler : list.OrderBy(c => c.X0).ToList();
+        }
+
+        /// <summary>Konsol uç sınırı istasyonları (×10 yuvarlak): montaj/düz bu uçta paspayla biter.</summary>
+        private readonly HashSet<double> _surekliKonsolUc = new HashSet<double>();
+
+        /// <summary>
+        /// Konsol ucunda mesnet yok; ortak çizici montaj/düzü açıklık ucuna (beton yüzü) götürür.
+        /// Normal temel ucu gibi 6 cm paspay: çubuk çizimi süresince uç istasyonu içeri alınır (etriye/ölçü değişmez).
+        /// </summary>
+        private sealed class SurekliTemelKonsolPaspayi : IDisposable
+        {
+            private const double Paspay = 6.0;
+            private readonly KirisAcilimSpan sol, sag;
+            public SurekliTemelKonsolPaspayi(List<KirisAcilimSpan> chain, int i0, int i1, HashSet<double> konsolUc)
+            {
+                if (i0 == 0 && konsolUc.Contains(Math.Round(chain[0].X0 * 10.0))) { sol = chain[0]; sol.X0 += Paspay; }
+                if (i1 == chain.Count - 1 && konsolUc.Contains(Math.Round(chain[i1].X1 * 10.0))) { sag = chain[i1]; sag.X1 -= Paspay; }
+            }
+            public void Dispose()
+            {
+                if (sol != null) sol.X0 -= Paspay;
+                if (sag != null) sag.X1 += Paspay;
+            }
+        }
+
         // Beton çizicisine dokunmadan, aynı kolon istasyonlarından donatı açıklıkları.
         private List<List<KirisAcilimSpan>> BuildSurekliGorunusDonatiChains(SurekliGorunusTakim takim,
             Dictionary<BeamInfo, KirisAcilimMontajBilgi> donati)
         {
             var spans = new List<KirisAcilimSpan>();
+            _surekliKonsolUc.Clear();
             double baseCm = (_model.BuildingBaseKotu + (SurekliTemelDestekKati()?.ElevationM ?? 0)) * 100.0;
             foreach (var t in takim.Temeller)
             {
                 var parent = _surekliTemelBeams.FirstOrDefault(b => _surekliTemelCfByBeam[b] == t.Kaynak);
                 if (parent == null) continue;
-                var columns = SurekliGorunusMesnetleri(takim, t);
+                var columns = SurekliGorunusKonsolMesnetleri(t, SurekliGorunusMesnetleri(takim, t));
                 var local = new List<KirisAcilimSpan>();
                 bool forward = t.Yon.DotProduct(t.GorunusYonu) > 0;
                 for (int i = 1; i < columns.Count; i++)
@@ -720,19 +770,31 @@ namespace ST4PlanIdCiz
                     if (_surekliDuzGrup.TryGetValue(s.Beam, out var grup))
                     {
                         // Birleşik düz: grup tek çağrıda, büyük As takımıyla (geçici olarak ilk bayın düzü).
-                        KirisAcilimKolonYuzu(chain, i, grup.Son, sup, out double g0, out double g1);
                         var asil = donati[s.Beam];
                         var gecici = asil; gecici.DuzAdet = grup.Adet; gecici.DuzCap = grup.Cap;
                         donati[s.Beam] = gecici;
-                        try { KirisAcilimDuzDonatiYedek(tr, ms, db, chain, i, grup.Son, x, y, g0, g1, donati, sup, gorunus, uc); }
+                        try
+                        {
+                            using (new SurekliTemelKonsolPaspayi(chain, i, grup.Son, _surekliKonsolUc))
+                            {
+                                KirisAcilimKolonYuzu(chain, i, grup.Son, sup, out double g0, out double g1);
+                                KirisAcilimDuzDonatiYedek(tr, ms, db, chain, i, grup.Son, x, y, g0, g1, donati, sup, gorunus, uc);
+                            }
+                        }
                         finally { donati[s.Beam] = asil; }
                     }
                     else if (!_surekliDuzGrupIc.Contains(s.Beam))
-                        KirisAcilimDuzDonatiYedek(tr, ms, db, chain, i, i, x, y, net0, net1, donati, sup, gorunus, uc);
+                        using (new SurekliTemelKonsolPaspayi(chain, i, i, _surekliKonsolUc))
+                        {
+                            KirisAcilimKolonYuzu(chain, i, i, sup, out double d0, out double d1);
+                            KirisAcilimDuzDonatiYedek(tr, ms, db, chain, i, i, x, y, d0, d1, donati, sup, gorunus, uc);
+                        }
                     KirisAcilimGovdeDonati(tr, ms, db, chain, i, i, x, y, net0, net1, donati, sup, gorunus, yutulan);
                     KirisAcilimIlaveDonati(tr, ms, db, chain, i, i, x, y, net0, net1, donati, sup, gorunus, uc);
                 }
-                if (hasData) KirisAcilimMontajBirlesik(tr, ms, db, chain, x, y, sup, donati, gorunus, uc);
+                if (hasData)
+                    using (new SurekliTemelKonsolPaspayi(chain, 0, count - 1, _surekliKonsolUc))
+                        KirisAcilimMontajBirlesik(tr, ms, db, chain, x, y, sup, donati, gorunus, uc);
                 if (hasData)
                 {
                     long mA = KirisYerlesimSonrakiHandle(db);
