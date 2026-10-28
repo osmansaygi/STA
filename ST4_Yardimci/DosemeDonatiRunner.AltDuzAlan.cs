@@ -541,6 +541,8 @@ namespace ST4Yardimci
                 if (!poly.IsEmpty && poly.Area >= 20.0) dest.Add(poly);
                 return;
             }
+            // Yalnız koleksiyona in: tek çizgi/noktada GetGeometryN(0) kendisini döndürür → sonsuz özyineleme (yığın taşması).
+            if (!(geom is GeometryCollection)) return;
             for (int i = 0; i < geom.NumGeometries; i++)
                 CollectPolygons(geom.GetGeometryN(i), dest);
         }
@@ -914,6 +916,7 @@ namespace ST4Yardimci
                 }
                 return;
             }
+            if (!(g is GeometryCollection)) return; // nokta vb.: GetGeometryN(0) kendisi → sonsuz özyineleme
             for (int i = 0; i < g.NumGeometries; i++)
                 CollectLinePieces(g.GetGeometryN(i), dest);
         }
@@ -1851,6 +1854,7 @@ namespace ST4Yardimci
                 }
                 return;
             }
+            if (!(g is GeometryCollection)) return; // çokgen vb.: GetGeometryN(0) kendisi → sonsuz özyineleme
             for (int i = 0; i < g.NumGeometries; i++)
                 CollectChordT(g.GetGeometryN(i), origin, u, ref min, ref max);
         }
@@ -2533,6 +2537,7 @@ namespace ST4Yardimci
             if (geom == null || geom.IsEmpty) return 0;
             if (geom is Polygon poly)
                 return DrawRing(tr, btr, poly.ExteriorRing, layer) ? 1 : 0;
+            if (!(geom is GeometryCollection)) return 0; // çizgi/nokta: GetGeometryN(0) kendisi → sonsuz özyineleme
             int n = 0;
             for (int i = 0; i < geom.NumGeometries; i++)
                 n += DrawExteriorRings(tr, btr, geom.GetGeometryN(i), layer);

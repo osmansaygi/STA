@@ -52,7 +52,8 @@ namespace ST4PlanIdCiz
             return null;
         }
 
-        public static List<Rec> Read(string path)
+        /// <param name="projeGeneliMontaj">true (KALIP50): bir kayıtta montaj varsa tüm döşemelere. false (DENEME2): montaj yalnız kendi kaydında olan döşemeye.</param>
+        public static List<Rec> Read(string path, bool projeGeneliMontaj = true)
         {
             var list = new List<Rec>();
             if (string.IsNullOrEmpty(path) || !File.Exists(path)) return list;
@@ -72,14 +73,18 @@ namespace ST4PlanIdCiz
                 Add(rec.Y, b, o + 24, DosemeDonatiKind.Pilye);
                 Add(rec.Y, b, o + 32, DosemeDonatiKind.SolIlave);
                 Add(rec.Y, b, o + 28, DosemeDonatiKind.SagIlave);
-                if (TryReadBar(b, r * RecordBytes + MontajRecordOffset, DosemeDonatiKind.Montaj, out Bar montaj)
-                    && !projectMontaj.HasValue)
-                    projectMontaj = montaj;
+                if (TryReadBar(b, r * RecordBytes + MontajRecordOffset, DosemeDonatiKind.Montaj, out Bar montaj))
+                {
+                    if (!projeGeneliMontaj)
+                        rec.X.Add(montaj);
+                    else if (!projectMontaj.HasValue)
+                        projectMontaj = montaj;
+                }
                 list.Add(rec);
             }
 
             // Konstrüktif montaj proje geneli: DMX'te en az bir kayıtta varsa tüm döşeme X'ine ekle.
-            if (projectMontaj.HasValue)
+            if (projeGeneliMontaj && projectMontaj.HasValue)
             {
                 Bar m = projectMontaj.Value;
                 for (int i = 0; i < list.Count; i++)

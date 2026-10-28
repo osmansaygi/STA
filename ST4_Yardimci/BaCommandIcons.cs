@@ -66,6 +66,9 @@ namespace ST4Yardimci
             new BaTool("Donatı Oku", "DONATIOKU", "ST4Yardimci.Icons.ba_donatioku.png"),
             new BaTool("Kot Değiştir", "KOTDEGISTIR", "ST4Yardimci.Icons.ba_kotdegistir.png"),
             new BaTool("Katman Yükle", "KATMANYUKLE", "ST4Yardimci.Icons.ba_katmanyukle.png"),
+            // Atlas dışı: Monolit tarzında ayrı 32 px simge (kaynak tools/SehimTablosu20261026).
+            new BaTool("Sehim Tablosu", "SEHIMTABLOSU", "ST4Yardimci.Icons.ba_sehimtablosu.png"),
+            new BaTool("Beton / Kalıp", "BETONKALIP", "ST4Yardimci.Icons.ba_betonkalip.png"),
         };
 
         public static Image Load(string cmd, string resourceName)

@@ -36,6 +36,8 @@ namespace ST4PlanIdCiz
                 catch { }
                 return;
             }
+            // Plan ID / Yardımcı komutlarında 5 sn'yi aşan çizimde "Çiziliyor..." penceresi (Core Console'da kurulmaz).
+            CizimIzleyici.Kur();
             // NETLOAD sırasında PaletteSet açmak (özellikle Yardımcı ile birlikte) AutoCAD'i göçertebilir.
             Application.Idle -= OnIdleShowStaPanel;
 #if AUTOCAD2027
@@ -69,6 +71,7 @@ namespace ST4PlanIdCiz
         public void Terminate()
         {
             try { Application.Idle -= OnIdleShowStaPanel; } catch { }
+            CizimIzleyici.Kaldir();
 #if AUTOCAD2027
             BeykentRibbonManager.Shutdown();
 #endif
@@ -771,6 +774,56 @@ namespace ST4PlanIdCiz
             catch (System.Exception ex)
             {
                 WriteStaCommandError(ed, "DENEME1", ex);
+            }
+        }
+
+        /// <summary>KALIP50ST4 ile aynı 1/50 kalıp planı (ölçü + GPR yazılı donatılı kopya); donatılı kopyaya DENEME1 EKSEN X/Y artıları eklenir.</summary>
+        [CommandMethod("DENEME2")]
+        public void Deneme2KalipEksen()
+        {
+            var doc = Application.DocumentManager.MdiActiveDocument;
+            if (doc == null) return;
+            ApplyStaDefaultDrawingDisplaySettings(doc);
+
+            var ed = doc.Editor;
+            var db = doc.Database;
+
+            if (!RememberedFilePrompt.TryPrompt(ed, "\nDENEME2 icin ST4 Dosyasi Secin",
+                "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
+                return;
+
+            try
+            {
+                ConfigureNtsNextGenOverlay();
+                var parser = new St4Parser();
+                var model = parser.Parse(st4Path);
+                GprYapiAksLabels.TryMergeFromGprBesideSt4(st4Path, model);
+                WriteGprAxisSummary(ed, model);
+                SlabAxesDirections.PopulateCornerAxisDirections(model);
+                var manager = new PlanIdDrawingManager(model);
+                var insRes = ed.GetPoint(new PromptPointOptions("\nDENEME2: En soldaki antet SheetViewOut sol-altinin 50 cm solu: ") { AllowNone = false });
+                if (insRes.Status != PromptStatus.OK) return;
+                // Bu komutun nesneleri: GPR silme ve donatı şerit sınırları yalnız bunlara uygulanır.
+                long startHandle = db.Handseed.Value;
+                // Tek ilerleme çubuğu: plan %0–55, donatı %55–100; sonda toplam süre.
+                using KalipIlerleme ilerleme = KalipIlerleme.BaslatYoksa("DENEME2", ed);
+                KalipIlerleme.Bolum(0.0, 0.55);
+                manager.DrawFormworkPlan50(
+                    db,
+                    ed,
+                    insRes.Value,
+                    st4Path,
+                    KalipPlanScale.Fifty,
+                    completionMessageCmdTag: "DENEME2",
+                    layoutFlags: new Kalip50LayoutFlags(drawDeneme1EksenOnDonatiCopy: true));
+                KalipIlerleme.Bolum(0.55, 1.0);
+                // Plan commit edildi: Yardımcı DOSEMEDONATI çekirdeği çizimdeki kiriş/döşeme/kot/GPR nesnelerini okur.
+                Deneme2DosemeDonati.Run(doc, manager.Deneme2EksenKayitlari, startHandle, manager.Deneme2DmxBySlabId);
+                FinishStaDrawing(doc);
+            }
+            catch (System.Exception ex)
+            {
+                WriteStaCommandError(ed, "DENEME2", ex);
             }
         }
 

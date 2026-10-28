@@ -397,6 +397,14 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>Tüm katlarda en çok döşemeyi kesen hat; merdiven, paralel kiriş ve kolon cezaları durur.</summary>
+        private sealed class BinaKesitCutInputs
+        {
+            public Geometry CutSearchUnion, Occ;
+            public List<Geometry> StairsAll, StorySlabs;
+        }
+
+        private BinaKesitCutInputs _binaKesitCutInputs;
+
         private bool TryFindBinaKesitCut(
             BinaKesitYon yon,
             out double cutPos,
@@ -413,13 +421,27 @@ namespace ST4PlanIdCiz
             aminHint = 0;
             amaxHint = 100;
 
-            Geometry cutSearchUnion = TryMergeKalip50BinaKesitCutSearchUnion();
-            Geometry occ = TryMergeGeometryList(new List<Geometry>
+            // KALIP50: X ve Y kesiti aynı girdileri kullanır; oturumda bir kez kurulur.
+            var girdi = _isKalip50Mode ? _binaKesitCutInputs : null;
+            if (girdi == null)
             {
-                TryMergeFormworkCutOccupancyAllFloors(),
-                TryMergeFoundationOccupancyForKalip50Cut(),
-                cutSearchUnion
-            }.Where(g => g != null && !g.IsEmpty).ToList()) ?? cutSearchUnion;
+                Geometry csu = TryMergeKalip50BinaKesitCutSearchUnion();
+                Geometry oc = TryMergeGeometryList(new List<Geometry>
+                {
+                    TryMergeFormworkCutOccupancyAllFloors(),
+                    TryMergeFoundationOccupancyForKalip50Cut(),
+                    csu
+                }.Where(g => g != null && !g.IsEmpty).ToList()) ?? csu;
+                girdi = new BinaKesitCutInputs { CutSearchUnion = csu, Occ = oc };
+                if (csu != null && !csu.IsEmpty)
+                {
+                    girdi.StairsAll = BuildStairAvoidZonesAllFloors();
+                    girdi.StorySlabs = BuildBinaKesitStorySlabFootprints();
+                }
+                if (_isKalip50Mode) _binaKesitCutInputs = girdi;
+            }
+            Geometry cutSearchUnion = girdi.CutSearchUnion;
+            Geometry occ = girdi.Occ;
 
             if (cutSearchUnion == null || cutSearchUnion.IsEmpty)
                 return false;
@@ -427,9 +449,9 @@ namespace ST4PlanIdCiz
             var ext = GetAksSiniriEnvelope(cutSearchUnion);
             double xmin = ext.Xmin, xmax = ext.Xmax, ymin = ext.Ymin, ymax = ext.Ymax;
             double e = SectionLineExtendCm;
-            var stairsAll = BuildStairAvoidZonesAllFloors();
+            var stairsAll = girdi.StairsAll;
             var refFloor = _model.Floors[0];
-            var storySlabs = BuildBinaKesitStorySlabFootprints();
+            var storySlabs = girdi.StorySlabs;
 
             // alongOrig (0,cut)/(cut,0): A = X veya Y — arka plan U ile aynı mutlak eksen.
             if (yon == BinaKesitYon.X)

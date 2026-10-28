@@ -216,6 +216,8 @@ namespace ST4Yardimci
             public bool LeftIsMesnet, RightIsMesnet;
             /// <summary>DuzOnly ve serbest uç BOŞLUK kenarı (orta delik) — SINIRI konsol değil.</summary>
             public bool FreeEndBosluk;
+            /// <summary>Otomatik (Plan DENEME2): adet çubuğa dik net genişlikten (<see cref="GenislikOf"/>, gerektiğinde hesaplanır); false → eski boy tahmini.</summary>
+            public bool GenislikIste;
         }
 
         public enum DonatiYonu { Serbest, X, Y }
@@ -329,6 +331,159 @@ namespace ST4Yardimci
             }
         }
 
+        /// <summary>
+        /// Plan ID DENEME2: formsuz tek şerit. Form yolu (DOSEMEDONATICIZGISEL) ile aynı: CizgiselMod + verilen yön (X kırmızı / Y mavi GPR).
+        /// Yardımcı komutlarının davranışını değiştirmez; önceki Yon/CizgiselMod geri yüklenir.
+        /// </summary>
+        internal static int PlaceStripAuto(Document doc, Point3d a, Point3d b, DonatiYonu yon, List<string> drawnSlabNames = null,
+            IReadOnlyDictionary<string, AutoSlabSteel> steelBySlabName = null,
+            IReadOnlyList<AutoSlabArea> slabAreas = null,
+            Func<string, Point3d, Point3d, bool> skipSpan = null,
+            List<(string Name, Point3d LeftInner, Point3d RightInner)> drawnSpans = null)
+        {
+            _autoSlabs = slabAreas;
+            _autoSkipSpan = skipSpan;
+            _autoDrawnSpans = drawnSpans;
+            if (doc == null) return 0;
+            DonatiYonu oldYon = Yon;
+            bool oldCizgisel = CizgiselMod;
+            Yon = yon;
+            CizgiselMod = true;
+            _autoDrawnSlabNames = drawnSlabNames;
+            _autoNormalYon = yon;
+            _autoSteel = steelBySlabName;
+            // Proje sol/sağ ilavesi: X'te +X ucu sağ; Y'de bakış +X'ten −X'e, sağ = +Y ucu. Çekirdekte sağ = +u ucu.
+            Vector3d ab = b - a;
+            _autoPlusUIsSag = yon == DonatiYonu.Y
+                ? (ab.Y > 1e-9 || (Math.Abs(ab.Y) <= 1e-9 && ab.X < 0))
+                : (ab.X > 1e-9 || (Math.Abs(ab.X) <= 1e-9 && ab.Y > 0));
+            try { return PlaceAlongVirtualLine(doc, doc.Database, doc.Editor, a, b, ab); }
+            finally
+            {
+                Yon = oldYon;
+                CizgiselMod = oldCizgisel;
+                _autoDrawnSlabNames = null;
+                _autoNormalYon = null;
+                _autoSteel = null;
+                _autoSlabs = null;
+                _autoSkipSpan = null;
+                _autoDrawnSpans = null;
+                _autoGenislikFn = null;
+            }
+        }
+
+        /// <summary>Yalnız <see cref="PlaceStripAuto"/>: (ad, iç yüzler) → true ise açıklık çizilmez (önceki şeritte çizilmiş tekrar).</summary>
+        private static Func<string, Point3d, Point3d, bool> _autoSkipSpan;
+        /// <summary>Yalnız <see cref="PlaceStripAuto"/>: çizilen açıklık (ad, iç yüzler) — kirişsiz komşu döşemeler de kapsanmış sayılır.</summary>
+        private static List<(string Name, Point3d LeftInner, Point3d RightInner)> _autoDrawnSpans;
+
+#pragma warning disable CS0649 // Alanları Plan ID DENEME2 doldurur; Yardımcı derlemesinde atanmaz.
+        /// <summary>Plan DENEME2: ST4 döşeme alanı (aks dörtgeni). Döşeme etiketten değil buradan tanınır.</summary>
+        internal sealed class AutoSlabArea
+        {
+            public Point2d[] Ring;
+            public string Name;
+            public double ThicknessCm;
+            public double? UstKotM;
+            public double MinX, MinY, MaxX, MaxY;
+            public double Area;
+        }
+#pragma warning restore CS0649
+
+        /// <summary>Yalnız <see cref="PlaceStripAuto"/> sırasında dolu (null değilse açıklık/komşu döşeme yalnız bu alanlardan).</summary>
+        private static IReadOnlyList<AutoSlabArea> _autoSlabs;
+
+        /// <summary>Noktayı içeren en küçük ST4 döşeme alanı → etiketli döşeme bilgisi (ad, kalınlık, kot ST4'ten).</summary>
+        private static bool AutoSlabAt(Point3d p, out SlabInfo slab)
+        {
+            slab = new SlabInfo { CapMm = 8, AralikCm = 20, HasLabel = false };
+            AutoSlabArea best = AutoSlabAreaAt(p);
+            if (best == null) return false;
+            slab.HasLabel = true;
+            slab.Name = best.Name;
+            slab.ThicknessCm = best.ThicknessCm > 0 ? best.ThicknessCm : (double?)null;
+            slab.KotM = best.UstKotM;
+            return true;
+        }
+
+        private static AutoSlabArea AutoSlabAreaAt(Point3d p)
+        {
+            if (_autoSlabs == null) return null;
+            AutoSlabArea best = null;
+            foreach (AutoSlabArea a in _autoSlabs)
+            {
+                if (a?.Ring == null || p.X < a.MinX || p.X > a.MaxX || p.Y < a.MinY || p.Y > a.MaxY) continue;
+                bool inside = false;
+                Point2d[] r = a.Ring;
+                for (int i = 0, j = r.Length - 1; i < r.Length; j = i++)
+                {
+                    if ((r[i].Y > p.Y) != (r[j].Y > p.Y)
+                        && p.X < (r[j].X - r[i].X) * (p.Y - r[i].Y) / (r[j].Y - r[i].Y) + r[i].X)
+                        inside = !inside;
+                }
+                if (inside && (best == null || a.Area < best.Area)) best = a;
+            }
+            return best;
+        }
+
+        /// <summary>Plan DENEME2: döşemenin bu yöndeki DMX donatısı (çap mm / aralık cm; 0 = yok) ve ST4 üst kotu.</summary>
+#pragma warning disable CS0649 // Alanları Plan ID DENEME2 doldurur; Yardımcı derlemesinde atanmaz.
+        internal sealed class AutoSlabSteel
+        {
+            public int DuzCap, DuzAr, PilCap, PilAr, SolCap, SolAr, SagCap, SagAr, MonCap, MonAr;
+            /// <summary>ST4 döşeme üst kotu (m); süreklilik (L/4) bununla karar verilir.</summary>
+            public double? UstKotM;
+        }
+#pragma warning restore CS0649
+
+        /// <summary>Yalnız <see cref="PlaceStripAuto"/> sırasında dolu: döşeme adı → DMX donatısı (GPR yazısı okunmaz).</summary>
+        private static IReadOnlyDictionary<string, AutoSlabSteel> _autoSteel;
+        private static bool _autoPlusUIsSag;
+
+        private static AutoSlabSteel AutoSteelFor(SlabInfo slab)
+        {
+            if (_autoSteel == null || string.IsNullOrEmpty(slab.Name)) return null;
+            return _autoSteel.TryGetValue(slab.Name, out AutoSlabSteel s) ? s : null;
+        }
+
+        /// <summary>Çekirdek türü (Sol/Sağ = −u/+u ucu) için DMX çap/aralık.</summary>
+        private static bool AutoSteelOf(SlabInfo slab, GprSteelKind kind, out int cap, out int aralik)
+        {
+            cap = aralik = 0;
+            AutoSlabSteel s = AutoSteelFor(slab);
+            if (s == null) return false;
+            switch (kind)
+            {
+                case GprSteelKind.Duz: cap = s.DuzCap; aralik = s.DuzAr; break;
+                case GprSteelKind.Pilye: cap = s.PilCap; aralik = s.PilAr; break;
+                case GprSteelKind.Montaj: cap = s.MonCap; aralik = s.MonAr; break;
+                case GprSteelKind.SagIlave:
+                    if (_autoPlusUIsSag) { cap = s.SagCap; aralik = s.SagAr; } else { cap = s.SolCap; aralik = s.SolAr; }
+                    break;
+                case GprSteelKind.SolIlave:
+                    if (_autoPlusUIsSag) { cap = s.SolCap; aralik = s.SolAr; } else { cap = s.SagCap; aralik = s.SagAr; }
+                    break;
+            }
+            return cap > 0 && aralik > 0;
+        }
+
+        private static bool AutoSteelRec(SlabInfo slab, GprSteelKind kind, out GprSteelRec rec)
+        {
+            rec = default;
+            if (!AutoSteelOf(slab, kind, out int cap, out int aralik)) return false;
+            rec = new GprSteelRec { CapMm = cap, AralikCm = aralik, Kind = kind, Id = ObjectId.Null };
+            return true;
+        }
+
+        /// <summary>Yalnız <see cref="PlaceStripAuto"/> sırasında dolu: Y şeridinde normal ve yazı yönü tam düşey kuralıyla sabitlenir.</summary>
+        private static DonatiYonu? _autoNormalYon;
+
+        /// <summary>Yalnız <see cref="PlaceStripAuto"/> sırasında dolu: çizilen her açıklığın DOSEME ISMI adı.</summary>
+        private static List<string> _autoDrawnSlabNames;
+
+        /// <summary>Plan ID DENEME2: NTS/geometri derlemelerini bir kez ön yükler (RunInteractive ile aynı kapı).</summary>
+        internal static bool PreloadForAuto(Editor ed) => TryPreloadSlabGeometryAssemblies(ed);
+
         private static int PlaceAlongVirtualLine(
             Document doc,
             Database db,
@@ -337,6 +492,7 @@ namespace ST4Yardimci
             Point3d b,
             Vector3d dir)
         {
+            long tAuto = System.Diagnostics.Stopwatch.GetTimestamp();
             using (doc.LockDocument())
             using (var tr = db.TransactionManager.StartTransaction())
             {
@@ -368,11 +524,12 @@ namespace ST4Yardimci
                 var katSinirAreas = CollectKatSinirAreas(tr, btr);
                 _katSinirClamp = katSinirAreas;
                 if (katSinirAreas.Count > 0)
-                    ed.WriteMessage("\nDOSEMEDONATICIZ: Kat sınırı poligon {0} — dışarı donatı yok.",
+                    AutoMsg(ed, "\nDOSEMEDONATICIZ: Kat sınırı poligon {0} — dışarı donatı yok.",
                         katSinirAreas.Count);
                 // Aynı poligonun iki segmenti / yakın iki çizgi = bir mesnet (kiriş gibi).
                 // Arada DOSEME ISMI varsa küçük konsol — yutma.
                 var supports = PairHitsAsMesnets(tr, btr, rawHits, ed, slabTextsEarly, a, u, closedAreas);
+                AutoTime(5, ref tAuto);
 
                 var edgeHits = new List<HitRec>();
                 CollectIntersections(tr, btr, probeA, probeB, a, u, IsSiniriOrBoslukLayer, edgeHits);
@@ -381,12 +538,13 @@ namespace ST4Yardimci
                 int nEdgeRaw = edgeHits.Count;
                 SuppressSiniriOnMesnet(edgeHits, rawHits, supports);
                 if (nEdgeRaw > 0)
-                    ed.WriteMessage("\nDOSEMEDONATICIZ: Sınır/boşluk kenar {0} (mesnetle üst üste atılan {1}).",
+                    AutoMsg(ed, "\nDOSEMEDONATICIZ: Sınır/boşluk kenar {0} (mesnetle üst üste atılan {1}).",
                         edgeHits.Count, nEdgeRaw - edgeHits.Count);
                 var dividers = BuildDividers(supports, edgeHits);
+                AutoTime(6, ref tAuto);
                 if (dividers.Count < 2)
                 {
-                    ed.WriteMessage("\nDOSEMEDONATICIZ: Geçerli mesnet/sınır çifti yok.");
+                    AutoMsg(ed, "\nDOSEMEDONATICIZ: Geçerli mesnet/sınır çifti yok.");
                     tr.Commit();
                     return 0;
                 }
@@ -399,24 +557,44 @@ namespace ST4Yardimci
                 _kotCache = null;
                 _parkBelow.Clear();
                 _gprTransferred.Clear();
-                EnsureKotCache(tr, btr);
-                ed.WriteMessage("\nDOSEMEDONATICIZ: KOT YAZI cache={0}", _kotCache?.Count ?? 0);
+                // Otomatik (Plan DENEME2): kot ST4'ten, çelik DMX'ten → KOT YAZI / GPR taraması ve NTS hücre modeli gereksiz.
+                bool autoSt4 = _autoSlabs != null;
+                bool autoDmx = autoSt4 && _autoSteel != null;
+                if (!autoSt4)
+                    EnsureKotCache(tr, btr);
+                AutoTime(7, ref tAuto);
+                AutoMsg(ed, "\nDOSEMEDONATICIZ: KOT YAZI cache={0}", _kotCache?.Count ?? 0);
                 var slabTexts = slabTextsEarly;
                 var boundaries = CollectBoundaryCurves(tr, btr);
-                var gprNotes = CollectGprSteelNotes(tr, btr);
-                CollectKirmiziGprCizgileri(tr, btr);
+                AutoTime(8, ref tAuto);
+                List<GprSteelRec> gprNotes;
+                if (autoDmx)
+                {
+                    gprNotes = new List<GprSteelRec>();
+                    _kirmiziGprCizgi = null;
+                }
+                else
+                {
+                    gprNotes = CollectGprSteelNotes(tr, btr);
+                    CollectKirmiziGprCizgileri(tr, btr);
+                }
+                AutoTime(9, ref tAuto);
                 if (EtkinYon != DonatiYonu.Serbest)
-                    ed.WriteMessage("\nDOSEMEDONATICIZ: GPR {0} yazı {1}.",
+                    AutoMsg(ed, "\nDOSEMEDONATICIZ: GPR {0} yazı {1}.",
                         gprNotes.Count, EtkinYon == DonatiYonu.X ? "kırmızı/X" : "mavi/Y");
 
+                AutoTime(0, ref tAuto);
                 AltDuzAlanModel altDuzAlan;
-                try { altDuzAlan = BuildAltDuzAlanModel(tr, btr, a, b); }
+                if (autoSt4)
+                    altDuzAlan = new AltDuzAlanModel { Faces = new List<NetTopologySuite.Geometries.Polygon>() };
+                else try { altDuzAlan = BuildAltDuzAlanModel(tr, btr, a, b); }
                 catch
                 {
                     altDuzAlan = new AltDuzAlanModel { Faces = new List<NetTopologySuite.Geometries.Polygon>() };
                 }
-                ed.WriteMessage("\nDOSEMEDONATICIZ: Mesnet hücresi {0}.",
+                AutoMsg(ed, "\nDOSEMEDONATICIZ: Mesnet hücresi {0}.",
                     altDuzAlan?.Faces?.Count ?? 0);
+                AutoTime(1, ref tAuto);
 
                 var allSpans = new List<SpanRec>();
                 int skippedBos = 0;
@@ -475,9 +653,20 @@ namespace ST4Yardimci
                     bool edgeSpan = leftD.Kind != DividerKind.Mesnet || rightD.Kind != DividerKind.Mesnet;
                     bool touchesSiniri = leftD.Kind == DividerKind.Siniri || rightD.Kind == DividerKind.Siniri;
                     bool fromLabeledFace = false;
-                    if (!TryClassifyGapAsDoseme(
+                    SlabInfo slab;
+                    if (_autoSlabs != null)
+                    {
+                        // Otomatik (Plan DENEME2): ST4 döşeme alanı içinde değilse döşeme değil (boşluk/dış).
+                        if (!AutoSlabAt(Mid(leftInner, rightInner), out slab))
+                        {
+                            skippedBos++;
+                            continue;
+                        }
+                        fromLabeledFace = true;
+                    }
+                    else if (!TryClassifyGapAsDoseme(
                             boundaries, leftInner, rightInner, u, n, closedAreas, slabTexts, gprNotes,
-                            out SlabInfo slab)
+                            out slab)
                         && !TryAcceptEdgeSiniriSlab(
                             boundaries, leftInner, rightInner, u, n, closedAreas, slabTexts, gprNotes,
                             L, edgeSpan, touchesSiniri, out slab))
@@ -488,7 +677,7 @@ namespace ST4Yardimci
                         {
                             skippedBos++;
                             if (inPick)
-                                ed.WriteMessage("\n  Atlandı L={0:0} (kapalı döşeme yok / sınır sızması)", L);
+                                AutoMsg(ed, "\n  Atlandı L={0:0} (kapalı döşeme yok / sınır sızması)", L);
                             continue;
                         }
                         fromLabeledFace = true;
@@ -546,6 +735,9 @@ namespace ST4Yardimci
                     bool freeEndBosluk = duzOnly && (
                         (leftD.Kind == DividerKind.Bosluk && rightD.Kind == DividerKind.Mesnet)
                         || (rightD.Kind == DividerKind.Bosluk && leftD.Kind == DividerKind.Mesnet));
+                    // Otomatik (Plan DENEME2): önceki şeritte çizilmiş döşeme tekrar çizilmez (komşuluk/süreklilik için listede kalır).
+                    if (inPick && _autoSkipSpan != null && _autoSkipSpan(slab.Name ?? string.Empty, leftInner, rightInner))
+                        inPick = false;
 
                     allSpans.Add(new SpanRec
                     {
@@ -575,20 +767,20 @@ namespace ST4Yardimci
                     allSpans, altDuzAlan, slabTexts, gprNotes, boundaries, closedAreas,
                     a, u, n, tPick0, tPick1);
                 if (addedCells > 0)
-                    ed.WriteMessage("\nDOSEMEDONATICIZ: Etiketli hücreden ek açıklık {0}.", addedCells);
+                    AutoMsg(ed, "\nDOSEMEDONATICIZ: Etiketli hücreden ek açıklık {0}.", addedCells);
                 allSpans.Sort((p, q) =>
                     (p.Mid - a).DotProduct(u).CompareTo((q.Mid - a).DotProduct(u)));
 
                 if (allSpans.Count == 0)
                 {
-                    ed.WriteMessage(
+                    AutoMsg(ed, 
                         "\nDOSEMEDONATICIZ: Döşeme açıklığı yok (mesnet {0}, boş/atlanan {1}).",
                         supports.Count, skippedBos);
                     tr.Commit();
                     return 0;
                 }
 
-                ed.WriteMessage(
+                AutoMsg(ed, 
                     "\nDOSEMEDONATICIZ: {0} mesnet, {1} döşeme, boş/atlanan {2}.",
                     supports.Count, allSpans.Count, skippedBos);
 
@@ -599,6 +791,33 @@ namespace ST4Yardimci
                 var drawnSupportLeft = new HashSet<int>();
                 ApplyNormalSlabKotFromArea(allSpans, altDuzAlan, slabTexts);
                 DropDuplicateSlabSpans(allSpans, slabTexts);
+                // Otomatik (Plan DENEME2): adet için dik net genişlik — yalnız çizilen açıklık ve ilave komşuları; değer adet
+                // istendiğinde hesaplanır ve şeritler arası önbellekte tutulur (aynı açıklık ortası + doğrultu).
+                if (autoSt4)
+                {
+                    for (int gi = 0; gi < allSpans.Count; gi++)
+                    {
+                        if (!allSpans[gi].InPick && !(gi > 0 && allSpans[gi - 1].InPick)
+                            && !(gi + 1 < allSpans.Count && allSpans[gi + 1].InPick)) continue;
+                        SpanRec gs = allSpans[gi];
+                        gs.GenislikIste = true;
+                        allSpans[gi] = gs;
+                    }
+                    var nG = n;
+                    var structG = structLayers;
+                    var slabTextsG = slabTexts;
+                    var closedG = closedAreas;
+                    _autoGenislikFn = m =>
+                    {
+                        var key = (Math.Round(m.X, 1), Math.Round(m.Y, 1), Math.Round(Math.Atan2(nG.Y, nG.X), 6));
+                        if (_autoGenislikCache.TryGetValue(key, out double w)) return w;
+                        long tG = System.Diagnostics.Stopwatch.GetTimestamp();
+                        w = AutoGenislikCm(tr, btr, m, nG, structG, slabTextsG, closedG);
+                        AutoTime(10, ref tG);
+                        _autoGenislikCache[key] = w;
+                        return w;
+                    };
+                }
                 Polyline[] spanBounds = CollectSpanBoundaries(allSpans, altDuzAlan, a, u, n);
                 for (int i = 0; spanBounds != null && i < spanBounds.Length && i < allSpans.Count; i++)
                     spanBounds[i] = OwnSlabBoundary(spanBounds[i], allSpans[i], slabTexts);
@@ -607,7 +826,7 @@ namespace ST4Yardimci
                 // BOUNDARY: yalnız mesnet katmanı. Ekran yenilenmez; katmanlar komut bitmeden geri açılır.
                 ObjectId boundaryClayer = ObjectId.Null;
                 List<ObjectId> boundaryHidden = null;
-                if (EtkinYon != DonatiYonu.Serbest)
+                if (EtkinYon != DonatiYonu.Serbest && !autoSt4) // otomatikte BOUNDARY yok → katman gizleme yok
                     boundaryHidden = HideNonMesnetForBoundary(tr, db, out boundaryClayer);
                 try
                 {
@@ -818,6 +1037,12 @@ namespace ST4Yardimci
                         span.BarL, span.BarR,
                         u, n, span.L, Lprev, Lnext, hasPrev, hasNext, pilyeLow,
                         out _, out pilPath);
+                    // Otomatik (DMX): döşemenin bu yönde pilyesi yoksa pilye çizilmez.
+                    if (okPil && _autoSteel != null && !AutoSteelOf(span.Slab, GprSteelKind.Pilye, out _, out _))
+                    {
+                        okPil = false;
+                        pilPath = null;
+                    }
 
                     double topCm = (span.SupportLeft % 2) * StaggerCm + (okPil ? PilyeKirimRiseCm : 0);
                     if (topCm > maxTopAlongNCm) maxTopAlongNCm = topCm;
@@ -843,7 +1068,7 @@ namespace ST4Yardimci
                             }
                         }
                     }
-                    if (EtkinYon != DonatiYonu.Serbest && ownPoly != null && si < ownPoly.Length)
+                    if (EtkinYon != DonatiYonu.Serbest && !autoSt4 && ownPoly != null && si < ownPoly.Length)
                     {
                         // Tohum: alt düz ortası. Önce model yüzü (zoom/ekrandan bağımsız, kıl payı
                         // aralıklar kapalı); yoksa AutoCAD BOUNDARY. Komşu döşeme adını içeren atılır.
@@ -872,8 +1097,19 @@ namespace ST4Yardimci
                     {
                         cap = 8;
                         aralik = 20;
-                        adet = EstimateAdet(Lbar, aralik);
+                        adet = AutoAdet(span, aralik, Lbar);
                         duzGpr = true; // konsol alt sabit — kırmızı değil
+                    }
+                    else if (_autoSteel != null)
+                    {
+                        // Otomatik (DMX): düz çap/aralığı doğrudan döşeme kaydından.
+                        duzCopied = duzGpr = AutoSteelOf(slab, GprSteelKind.Duz, out int dCap, out int dAr);
+                        if (duzGpr)
+                        {
+                            cap = dCap;
+                            aralik = dAr;
+                            adet = AutoAdet(span, aralik, Lbar);
+                        }
                     }
 
                     int pilCap = cap, pilAralik = aralik, pilAdet = adet;
@@ -891,6 +1127,13 @@ namespace ST4Yardimci
                             pilCap = cap;
                             pilAralik = aralik;
                             pilGpr = true;
+                        }
+                        if (_autoSteel != null && AutoSteelOf(slab, GprSteelKind.Pilye, out int pCap, out int pAr))
+                        {
+                            pilCap = pCap;
+                            pilAralik = pAr;
+                            pilAdet = AutoAdet(span, pilAralik, Lbar);
+                            pilCopied = pilGpr = true;
                         }
                     }
                     if (!span.DuzOnly)
@@ -922,19 +1165,24 @@ namespace ST4Yardimci
                             pilMid, missingGprMatch: !pilGpr, pilPark, 0, pilyeOrtada: true);
                     }
 
-                    if (EtkinYon != DonatiYonu.Serbest && !span.DuzOnly
-                        && TryFindGprSteel(slab.GprSteels, Mid(span.LeftInner, span.RightInner),
-                            GprSteelKind.Montaj, out GprSteelRec monGpr,
-                            span.LeftInner, span.RightInner, u))
+                    GprSteelRec monGpr = default;
+                    bool monVar = _autoSteel != null
+                        ? !span.DuzOnly && AutoSteelRec(slab, GprSteelKind.Montaj, out monGpr)
+                        : EtkinYon != DonatiYonu.Serbest && !span.DuzOnly
+                            && TryFindGprSteel(slab.GprSteels, Mid(span.LeftInner, span.RightInner),
+                                GprSteelKind.Montaj, out monGpr,
+                                span.LeftInner, span.RightInner, u);
+                    if (monVar)
                     {
                         double monCm = PilyeKirimRiseCm + 14.0;
                         if (monCm > maxTopAlongNCm) maxTopAlongNCm = monCm;
                         Vector3d monOff = n * monCm;
-                        if (SpanOwnsGprText(monGpr.Pos, si, allSpans, ownPoly))
+                        if (_autoSteel == null && SpanOwnsGprText(monGpr.Pos, si, allSpans, ownPoly))
                             MarkPark(monGpr.Id);
                         int mAdet = monGpr.Adet > 0 ? monGpr.Adet : adet;
                         int mCap = monGpr.CapMm > 0 ? monGpr.CapMm : cap;
                         int mAr = monGpr.AralikCm > 0 ? monGpr.AralikCm : aralik;
+                        if (_autoSteel != null) mAdet = AutoAdet(span, mAr, Lbar);
                         var monPath = new[] { span.BarL + monOff, span.BarR + monOff };
                         DrawLabeledStock(
                             tr, btr, db, monPath, mCap, mAdet, mAr, n, u,
@@ -953,10 +1201,12 @@ namespace ST4Yardimci
                         ? " konsol/sınır"
                         : (hasPrev ? " ←L/4" : " ←gönye") + (hasNext ? " L/4→" : " gönye→");
                     string slabName = string.IsNullOrEmpty(slab.Name) ? "?" : slab.Name;
-                    ed.WriteMessage("\n  Açıklık {0} {1}: L={2:0}{3}{4}{5}",
+                    AutoMsg(ed, "\n  Açıklık {0} {1}: L={2:0}{3}{4}{5}",
                         span.DuzOnly ? "S" : (span.SupportLeft + 1).ToString(),
                         slabName, span.L, dMsg, kotMsg, contMsg);
 
+                    _autoDrawnSlabNames?.Add(slab.Name ?? string.Empty);
+                    _autoDrawnSpans?.Add((slab.Name ?? string.Empty, span.LeftInner, span.RightInner));
                     placed++;
                 }
                 }
@@ -965,6 +1215,7 @@ namespace ST4Yardimci
                     RestoreBoundaryLayers(tr, db, boundaryHidden, boundaryClayer);
                 }
 
+                AutoTime(2, ref tAuto);
                 // İlave üst: çizilen açıklıklara komşu mesnetler; devam = aynı d/kot komşu açıklık
                 var placedKonsolUst = new List<KonsolPlacedBar>();
                 PlaceAllUstIlave(
@@ -1005,13 +1256,127 @@ namespace ST4Yardimci
                     }
                 }
 
-                ed.WriteMessage("\nDOSEMEDONATICIZ: Açıklık poligonu {0} çizildi (kontrol, magenta).",
+                AutoMsg(ed, "\nDOSEMEDONATICIZ: Açıklık poligonu {0} çizildi (kontrol, magenta).",
                     boundN);
                 FlushParkBelow(tr);
+                AutoTime(3, ref tAuto);
 
                 tr.Commit();
+                AutoTime(4, ref tAuto);
                 return placed;
             }
+        }
+
+        /// <summary>Otomatik (Plan DENEME2) şeritte komut satırı bilgi mesajları yazılmaz (yüzlerce satır; canlı AutoCAD'de yavaş).</summary>
+        private static void AutoMsg(Editor ed, string format, params object[] args)
+        {
+            if (_autoNormalYon != null || ed == null) return;
+            ed.WriteMessage(format, args);
+        }
+
+        /// <summary>Otomatik oturum dizini kaydı: yalnız düz veri (ObjectId, katman, sınır kutusu); transaction dışına nesne taşınmaz.</summary>
+        private sealed class AutoEnt
+        {
+            public ObjectId Id;
+            public string Layer;
+            public bool HasExt;
+            public double MinX, MinY, MaxX, MaxY;
+        }
+
+        private static bool _autoIndexOn;
+        private static List<AutoEnt> _autoIndex;
+
+        /// <summary>
+        /// Plan DENEME2: şeritler boyunca model alanı dizini bir kez kurulur; taramalar yalnız ilgili katman/kutudaki nesneleri açar.
+        /// Oturum sırasında taranan katmanlara (mesnet, sınır, boşluk, etiket) yeni nesne eklenmez (yalnız DONATI katmanları).
+        /// </summary>
+        internal static void BeginAutoSession()
+        {
+            _autoIndexOn = true;
+            _autoIndex = null;
+        }
+
+        internal static void EndAutoSession()
+        {
+            _autoIndexOn = false;
+            _autoIndex = null;
+        }
+
+        private static void BuildAutoIndex(Transaction tr, BlockTableRecord btr)
+        {
+            var list = new List<AutoEnt>();
+            foreach (ObjectId id in btr)
+            {
+                if (!(tr.GetObject(id, OpenMode.ForRead) is Entity ent)) continue;
+                var e = new AutoEnt { Id = id, Layer = ent.Layer ?? string.Empty };
+                try
+                {
+                    Extents3d ex = ent.GeometricExtents;
+                    e.MinX = ex.MinPoint.X; e.MinY = ex.MinPoint.Y; e.MaxX = ex.MaxPoint.X; e.MaxY = ex.MaxPoint.Y;
+                    e.HasExt = true;
+                }
+                catch { }
+                list.Add(e);
+            }
+            _autoIndex = list;
+        }
+
+        /// <summary>
+        /// Tarama kimlikleri: otomatik oturumda dizinden katman (ve verilirse çizgi parçası / nokta çevresi kutusu) süzgeciyle;
+        /// aksi halde blok kaydının tamamı (elle DOSEMEDONATI davranışı aynen).
+        /// </summary>
+        private static IEnumerable<ObjectId> ScanIds(Transaction tr, BlockTableRecord btr, Func<string, bool> layerOk,
+            Point3d? segA = null, Point3d? segB = null, Point3d? near = null, double nearR = 0)
+        {
+            if (!_autoIndexOn || layerOk == null)
+            {
+                foreach (ObjectId id in btr) yield return id;
+                yield break;
+            }
+            if (_autoIndex == null) BuildAutoIndex(tr, btr);
+            foreach (AutoEnt e in _autoIndex)
+            {
+                if (e.Id.IsErased || !layerOk(e.Layer)) continue;
+                if (e.HasExt)
+                {
+                    if (segA.HasValue && segB.HasValue && !SegmentHitsBox(segA.Value, segB.Value, e, 2.0)) continue;
+                    if (near.HasValue)
+                    {
+                        Point3d p = near.Value;
+                        if (p.X < e.MinX - nearR || p.X > e.MaxX + nearR || p.Y < e.MinY - nearR || p.Y > e.MaxY + nearR) continue;
+                    }
+                }
+                yield return e.Id;
+            }
+        }
+
+        /// <summary>Parça (a,b) pay kadar büyütülmüş kutuya değiyor mu (Liang–Barsky).</summary>
+        private static bool SegmentHitsBox(Point3d a, Point3d b, AutoEnt e, double pad)
+        {
+            double x0 = e.MinX - pad, y0 = e.MinY - pad, x1 = e.MaxX + pad, y1 = e.MaxY + pad;
+            double dx = b.X - a.X, dy = b.Y - a.Y, t0 = 0, t1 = 1;
+            bool Clip(double p, double q)
+            {
+                if (Math.Abs(p) < 1e-12) return q >= 0;
+                double r = q / p;
+                if (p < 0) { if (r > t1) return false; if (r > t0) t0 = r; }
+                else { if (r < t0) return false; if (r < t1) t1 = r; }
+                return true;
+            }
+            return Clip(-dx, a.X - x0) && Clip(dx, x1 - a.X) && Clip(-dy, a.Y - y0) && Clip(dy, y1 - a.Y);
+        }
+
+        /// <summary>Plan DENEME2 tanı: şerit bölüm süreleri (tarama, NTS model, açıklık, ilave, commit). Null iken ölçülmez.</summary>
+#pragma warning disable CS0649 // Plan ID DENEME2 tanı modunda atar.
+        internal static long[] AutoTimes;
+#pragma warning restore CS0649
+
+        private static void AutoTime(int slot, ref long t0)
+        {
+            if (AutoTimes == null || slot >= AutoTimes.Length) return;
+            long t1 = System.Diagnostics.Stopwatch.GetTimestamp();
+            AutoTimes[slot] += t1 - t0;
+            t0 = t1;
         }
 
         private static HashSet<string> BuildMesnetLayerSet()
@@ -1197,7 +1562,7 @@ namespace ST4Yardimci
             var list = new List<ClosedArea>();
             DosemeDonatiSettings.EnsureLoaded();
             if (DosemeDonatiSettings.KatSinirKatmanlar.Count == 0) return list;
-            foreach (ObjectId id in btr)
+            foreach (ObjectId id in ScanIds(tr, btr, l => DosemeDonatiSettings.ListHas(DosemeDonatiSettings.KatSinirKatmanlar, l)))
             {
                 var ent = tr.GetObject(id, OpenMode.ForRead) as Entity;
                 if (ent == null || !ent.Visible) continue;
@@ -1448,9 +1813,10 @@ namespace ST4Yardimci
                     double width = h1.T - h0.T;
                     bool sameEnt = !h0.EntId.IsNull && h0.EntId == h1.EntId;
                     Point3d mid = Mid(h0.Point, h1.Point);
-                    string label = FindMesnetLabelNear(tr, btr, mid, 80.0);
+                    // Ad yalnız mesaj için; otomatik (Plan DENEME2) modda mesaj yok → tarama atlanır.
+                    string label = _autoNormalYon != null ? null : FindMesnetLabelNear(tr, btr, mid, 80.0);
                     if (!string.IsNullOrEmpty(label))
-                        ed?.WriteMessage("\n  Mesnet {0}: {1} (w={2:0}{3})",
+                        AutoMsg(ed, "\n  Mesnet {0}: {1} (w={2:0}{3})",
                             list.Count + 1, label, width, sameEnt ? " poligon" : "");
                     list.Add(new SupportCluster
                     {
@@ -1465,9 +1831,9 @@ namespace ST4Yardimci
                     continue;
                 }
 
-                string lab1 = FindMesnetLabelNear(tr, btr, h0.Point, 80.0);
+                string lab1 = _autoNormalYon != null ? null : FindMesnetLabelNear(tr, btr, h0.Point, 80.0);
                 if (!string.IsNullOrEmpty(lab1))
-                    ed?.WriteMessage("\n  Mesnet {0}: {1} (tek kenar {2})",
+                    AutoMsg(ed, "\n  Mesnet {0}: {1} (tek kenar {2})",
                         list.Count + 1, lab1, ShortLayer(h0.Layer));
                 list.Add(new SupportCluster
                 {
@@ -1572,20 +1938,13 @@ namespace ST4Yardimci
         {
             string best = null;
             double bestDist = radiusCm;
-            foreach (ObjectId id in btr)
+            foreach (ObjectId id in ScanIds(tr, btr, IsElemanIsmiLayer, near: mid, nearR: radiusCm))
             {
                 var ent = tr.GetObject(id, OpenMode.ForRead) as Entity;
                 if (ent == null) continue;
                 if (!(ent is DBText || ent is MText)) continue;
                 string lyr = ent.Layer ?? "";
-                bool ok =
-                    string.Equals(lyr, LayerKirisIsmi, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(lyr, LayerPerdeIsmi, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(lyr, LayerKolonIsmi, StringComparison.OrdinalIgnoreCase) ||
-                    lyr.IndexOf("KIRIS ISMI", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                    lyr.IndexOf("PERDE ISMI", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                    lyr.IndexOf("KOLON ISMI", StringComparison.OrdinalIgnoreCase) >= 0;
-                if (!ok) continue;
+                if (!IsElemanIsmiLayer(lyr)) continue;
 
                 Point3d pos;
                 string txt;
@@ -1635,10 +1994,21 @@ namespace ST4Yardimci
         /// <summary>
         /// DOSEME SINIRI / KALIP BOSLUK / MERDIVEN / kapalı KIRIS-KOLON-PERDE halkaları.
         /// </summary>
+        private static bool IsElemanIsmiLayer(string lyr)
+        {
+            lyr = lyr ?? "";
+            return string.Equals(lyr, LayerKirisIsmi, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(lyr, LayerPerdeIsmi, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(lyr, LayerKolonIsmi, StringComparison.OrdinalIgnoreCase) ||
+                lyr.IndexOf("KIRIS ISMI", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                lyr.IndexOf("PERDE ISMI", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                lyr.IndexOf("KOLON ISMI", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
         private static List<ClosedArea> CollectClosedAreas(Transaction tr, BlockTableRecord btr)
         {
             var list = new List<ClosedArea>();
-            foreach (ObjectId id in btr)
+            foreach (ObjectId id in ScanIds(tr, btr, l => IsBoslukLayer(l) || IsDosemeSiniriLayer(l) || IsMesnetLayer(l, null)))
             {
                 var ent = tr.GetObject(id, OpenMode.ForRead) as Entity;
                 if (ent == null || !ent.Visible) continue;
@@ -1739,7 +2109,7 @@ namespace ST4Yardimci
         private static List<SlabTextRec> CollectSlabLabelTexts(Transaction tr, BlockTableRecord btr)
         {
             var list = new List<SlabTextRec>();
-            foreach (ObjectId id in btr)
+            foreach (ObjectId id in ScanIds(tr, btr, l => string.Equals(l, LayerDosemeIsmi, StringComparison.OrdinalIgnoreCase) || l.IndexOf("DOSEME ISMI", StringComparison.OrdinalIgnoreCase) >= 0))
             {
                 var ent = tr.GetObject(id, OpenMode.ForRead) as Entity;
                 if (ent == null) continue;
@@ -1881,7 +2251,7 @@ namespace ST4Yardimci
         private static BoundaryIndex CollectBoundaryCurves(Transaction tr, BlockTableRecord btr)
         {
             var index = new BoundaryIndex();
-            foreach (ObjectId id in btr)
+            foreach (ObjectId id in ScanIds(tr, btr, l => IsMesnetLayer(l, null) || IsDosemeSiniriLayer(l) || IsKalipBoslukLayer(l) || IsBoslukLayer(l)))
             {
                 if (!(tr.GetObject(id, OpenMode.ForRead) is Curve c)) continue;
                 if (!c.Visible) continue;
@@ -2230,6 +2600,9 @@ namespace ST4Yardimci
             out SlabInfo slab)
         {
             slab = new SlabInfo { CapMm = 8, AralikCm = 20, HasLabel = false };
+            // Otomatik (Plan DENEME2): döşeme ST4 alanından; etiket/taşkın araması yok.
+            if (_autoSlabs != null)
+                return AutoSlabAt(Mid(leftInner, rightInner), out slab);
             Vector3d along = rightInner - leftInner;
             double len = along.Length;
             if (len < 1e-6) return false;
@@ -3906,6 +4279,8 @@ namespace ST4Yardimci
         private static bool TryGetClassedIlave(SpanRec sp, bool sagSide, out GprSteelRec found)
         {
             found = default;
+            if (_autoSteel != null)
+                return AutoSteelRec(sp.Slab, sagSide ? GprSteelKind.SagIlave : GprSteelKind.SolIlave, out found);
             List<GprSteelRec> notes = sp.Slab.GprSteels;
             if (notes == null || notes.Count == 0) return false;
             GprSteelKind want = sagSide ? GprSteelKind.SagIlave : GprSteelKind.SolIlave;
@@ -3993,6 +4368,7 @@ namespace ST4Yardimci
             ref int adet, ref int cap, ref int aralik)
         {
             DosemeKonsolSettings.ApplySteel(konsolBoyCm, adetRefLenCm, ref adet, ref cap, ref aralik);
+            if (_autoSteel != null) return true; // Otomatik (DMX): konsol program tablosu, eşleşmiş sayılır
             GprSteelKind want = sagSide ? GprSteelKind.SagIlave : GprSteelKind.SolIlave;
             // Konsol döşemesinin kendi üst donatısı (düz/pilye/türsüz) konsol ilavesinin GPR karşılığıdır.
             if (!TryFindGprSteel(notes, near, want, out GprSteelRec g)
@@ -4375,6 +4751,10 @@ namespace ST4Yardimci
         {
             if (!a.HasLabel || !b.HasLabel)
                 return false;
+            // Otomatik (Plan DENEME2): üst kot ST4'ten (çizimdeki KOT YAZI okunmaz).
+            AutoSlabSteel aa = AutoSteelFor(a), bb = AutoSteelFor(b);
+            if (aa != null && bb != null && aa.UstKotM.HasValue && bb.UstKotM.HasValue)
+                return Math.Abs(aa.UstKotM.Value - bb.UstKotM.Value) <= KotMatchTolM;
             if (a.KotM.HasValue && b.KotM.HasValue &&
                 Math.Abs(a.KotM.Value - b.KotM.Value) > KotMatchTolM)
                 return false;
@@ -4659,7 +5039,7 @@ namespace ST4Yardimci
             {
                 try
                 {
-                    ed?.WriteMessage(
+                    AutoMsg(ed, 
                         "\nDOSEMEDONATI: NetTopologySuite yuklenemedi ({0}). AutoCAD'i kapatip Setup-Ofis\\Kur.cmd ile yeniden kurun.",
                         ex.Message);
                 }
@@ -4672,6 +5052,89 @@ namespace ST4Yardimci
         {
             if (aralikCm <= 0) return 1;
             return Math.Max(1, (int)Math.Round(clearLenCm / aralikCm) + 1);
+        }
+
+        /// <summary>
+        /// Otomatik (Plan DENEME2) adet: STA4CAD ka1 çizimiyle aynı kural — ⌈çubuğa dik net genişlik / aralık⌉
+        /// (OR_OTP_A/B/C karşılaştırması). Genişlik yoksa eski boy tahmini.
+        /// </summary>
+        private static int AutoAdet(SpanRec sp, int aralikCm, double eskiRefLenCm)
+        {
+            double w = aralikCm > 0 ? GenislikOf(sp) : 0;
+            if (w <= 0) return EstimateAdet(eskiRefLenCm, aralikCm);
+            return Math.Max(1, (int)Math.Ceiling(w / aralikCm - 1e-3));
+        }
+
+        /// <summary>Genişlik ışını: döşeme aks dörtgeni köşegeninin 2 katı + bu pay (cm); çok kısa ışın mesnet eşlemesini değiştiriyor.</summary>
+        private const double AutoGenislikIsinPayCm = 500.0;
+
+        /// <summary>Yalnız <see cref="PlaceStripAuto"/> şeridi sırasında dolu: açıklık ortası → dik net genişlik (önbellekli).</summary>
+        private static Func<Point3d, double> _autoGenislikFn;
+        /// <summary>Plan DENEME2 çalışması boyunca (şeritler arası) genişlik önbelleği; yapı geometrisi şeritler arasında değişmez.</summary>
+        private static readonly Dictionary<(double, double, double), double> _autoGenislikCache = new Dictionary<(double, double, double), double>();
+
+        /// <summary>Plan DENEME2 sürücüsü çalışma başında/sonunda çağırır.</summary>
+        internal static void AutoGenislikOnbellekTemizle() => _autoGenislikCache.Clear();
+
+        private static double GenislikOf(SpanRec sp)
+        {
+            if (!sp.GenislikIste || _autoGenislikFn == null) return 0;
+            return _autoGenislikFn(sp.Mid);
+        }
+
+        /// <summary>
+        /// Otomatik (Plan DENEME2): açıklık ortasından n doğrultusunda mesnet/sınır iç yüzleri arası net genişlik;
+        /// ST4 döşeme aks dörtgeninin aynı kesitiyle sınırlanır (kirişsiz komşuya taşmasın). Bulunamazsa 0.
+        /// </summary>
+        private static double AutoGenislikCm(Transaction tr, BlockTableRecord btr, Point3d mid, Vector3d n,
+            HashSet<string> structLayers, List<SlabTextRec> slabTexts, List<ClosedArea> closedAreas)
+        {
+            try
+            {
+                // Işın döşeme boyutuna göre (2 × köşegen + pay): 1 × köşegen + 2 m OR_OTP_A konsol döşemede mesnet eşlemesini değiştirmişti.
+                AutoSlabArea area = AutoSlabAreaAt(mid);
+                double ext = area?.Ring != null
+                    ? Math.Min(ProbeExtendCm, 2.0 * Math.Sqrt(Math.Pow(area.MaxX - area.MinX, 2) + Math.Pow(area.MaxY - area.MinY, 2)) + AutoGenislikIsinPayCm)
+                    : ProbeExtendCm;
+                Point3d pA = mid - n * ext, pB = mid + n * ext;
+                var raw = new List<HitRec>();
+                CollectIntersections(tr, btr, pA, pB, pA, n, structLayers, raw);
+                raw.Sort((p, q) => p.T.CompareTo(q.T));
+                DedupHitsNear(raw, 0.5);
+                var sup = PairHitsAsMesnets(tr, btr, raw, null, slabTexts, pA, n, closedAreas);
+                var edge = new List<HitRec>();
+                CollectIntersections(tr, btr, pA, pB, pA, n, IsSiniriOrBoslukLayer, edge);
+                edge.Sort((p, q) => p.T.CompareTo(q.T));
+                DedupHitsNear(edge, 0.5);
+                SuppressSiniriOnMesnet(edge, raw, sup);
+                var dv = BuildDividers(sup, edge);
+                double t = ext, lo = double.NaN, hi = double.NaN;
+                for (int i = 0; i + 1 < dv.Count; i++)
+                    if (dv[i].TMax <= t + 1.0 && dv[i + 1].TMin >= t - 1.0) { lo = dv[i].TMax; hi = dv[i + 1].TMin; break; }
+                if (double.IsNaN(lo)) return 0;
+                if (area?.Ring != null)
+                {
+                    // Aks dörtgeni kesiti (aks–aks ≥ net); net aralık bunun dışına taşıyorsa kırp.
+                    double rLo = double.NegativeInfinity, rHi = double.PositiveInfinity;
+                    Point2d[] r = area.Ring;
+                    for (int i = 0, j = r.Length - 1; i < r.Length; j = i++)
+                    {
+                        double ex = r[i].X - r[j].X, ey = r[i].Y - r[j].Y;
+                        double den = n.X * ey - n.Y * ex;
+                        if (Math.Abs(den) < 1e-9) continue;
+                        double wx = r[j].X - pA.X, wy = r[j].Y - pA.Y;
+                        double s = (wx * ey - wy * ex) / den;      // ışın parametresi
+                        double k = (wx * n.Y - wy * n.X) / den;    // kenar parametresi
+                        if (k < -1e-9 || k > 1 + 1e-9) continue;
+                        if (s <= t && s > rLo) rLo = s;
+                        if (s >= t && s < rHi) rHi = s;
+                    }
+                    if (!double.IsInfinity(rLo) && rLo > lo) lo = rLo;
+                    if (!double.IsInfinity(rHi) && rHi < hi) hi = rHi;
+                }
+                return hi - lo > 1.0 ? hi - lo : 0;
+            }
+            catch { return 0; }
         }
 
         private static string FormatLabel(int adet, int capMm, int aralikCm, double boyCm, bool upper)
@@ -4747,6 +5210,9 @@ namespace ST4Yardimci
         private static double ReadableTextAngle(Vector3d along)
         {
             double ang = Math.Atan2(along.Y, along.X);
+            // Plan DENEME2 Y şeridi: tam düşeyde (±0,5°) yazı hep aşağıdan yukarı (90°); eğikte çekirdek okunur açı.
+            if (_autoNormalYon == DonatiYonu.Y && AutoYNearVertical(along))
+                return Math.PI / 2.0;
             if (ang > Math.PI / 2.0 + 1e-9) ang -= Math.PI;
             if (ang <= -Math.PI / 2.0 + 1e-9) ang += Math.PI;
             return ang;
@@ -4758,7 +5224,7 @@ namespace ST4Yardimci
         /// </summary>
         private static Vector3d BarUpNormal(Vector3d along)
         {
-            Vector3d n = StabilizeUpNormal(along);
+            Vector3d n = StabilizeUpNormalCore(along);
             if (EtkinYon != DonatiYonu.Y) return n;
             double ang = Math.Atan2(along.Y, along.X);
             if (ang > Math.PI / 2.0 + 1e-9)
@@ -4770,6 +5236,49 @@ namespace ST4Yardimci
         /// Pilye +n (yukarı), düz −n (altında). Çizgi yönünden bağımsız: n mümkünse +Y'ye bakar.
         /// </summary>
         private static Vector3d StabilizeUpNormal(Vector3d along)
+        {
+            Vector3d n = StabilizeUpNormalCore(along);
+            // Plan DENEME2 Y şeridi: yalnız tam düşeyde (±0,5°) açı yuvarlaması tarafı çevirmesin → −X (ilave solda).
+            // 90°'den büyük/küçük eğik Y çekirdek kuralıyla (90° üstü diğer tarafa). GPR okuması (BarUpNormal) çekirdek normali.
+            if (_autoNormalYon == DonatiYonu.Y && AutoYNearVertical(along) && n.X > 1e-9)
+                n = -n;
+            return n;
+        }
+
+        /// <summary>
+        /// Plan DENEME2: otomatik şeritte alt düz çubuğun şerit çizgisine göre kayması (cm, WCS vektörü): −n × <see cref="DuzBelowPilyeCm"/>
+        /// (<see cref="StabilizeUpNormal"/> ile aynı taraf; mesnet kademesi 5 cm hariç). Çizgi yönünün işaretinden bağımsız.
+        /// </summary>
+        internal static Vector3d AutoAltDuzKaymasi(Vector3d along, DonatiYonu yon)
+        {
+            Vector3d n = StabilizeUpNormalCore(along);
+            if (yon == DonatiYonu.Y && AutoYNearVertical(along) && n.X > 1e-9)
+                n = -n;
+            return -n * DuzBelowPilyeCm;
+        }
+
+        /// <summary>
+        /// Plan DENEME2 1/5 hizasının ölçüldüğü çubuğun şerit çizgisine göre kayması: genelde alt düz (<see cref="AutoAltDuzKaymasi"/>);
+        /// 90° üstü eğik Y'de (n sağa, ilave hedef kenar tarafında) mesnet ilavesi: +n × (kademe + pilye kırımı + <see cref="UstIlaveAboveTopCm"/>).
+        /// </summary>
+        internal static Vector3d AutoHizaKaymasi(Vector3d along, DonatiYonu yon)
+        {
+            Vector3d n = StabilizeUpNormalCore(along);
+            if (yon == DonatiYonu.Y && !AutoYNearVertical(along) && n.X > 1e-9)
+                return n * (StaggerCm + PilyeKirimRiseCm + UstIlaveAboveTopCm);
+            return AutoAltDuzKaymasi(along, yon);
+        }
+
+        private const double AutoYDuseyTolRad = 0.5 * Math.PI / 180.0;
+
+        private static bool AutoYNearVertical(Vector3d along)
+        {
+            double ang = Math.Atan2(along.Y, along.X);
+            double d = Math.Abs(Math.Abs(ang) - Math.PI / 2.0);
+            return d <= AutoYDuseyTolRad;
+        }
+
+        private static Vector3d StabilizeUpNormalCore(Vector3d along)
         {
             Vector3d u = along.GetNormal();
             Vector3d n = u.CrossProduct(Vector3d.ZAxis);
@@ -5454,6 +5963,7 @@ namespace ST4Yardimci
                 bool ilaveGpr = ApplyKonsolSteelWithGprGate(
                     span.Slab.GprSteels, Mid(tip, mainEnd), sagSide,
                     span.L, Lbar, ref adet, ref cap, ref aralik);
+                if (_autoSteel != null && GenislikOf(span) > 0) adet = AutoAdet(span, aralik, Lbar);
 
                 Vector3d off = KonsolOff(tip, mainEnd);
                 tip = KonsolTipInsideKatSinir(tip, mainEnd, off, n);
@@ -5801,6 +6311,8 @@ namespace ST4Yardimci
                 int endSpan,
                 bool gprMatched)
             {
+                // Otomatik (DMX): iki yanda da ilave kaydı olmayan mesnete ilave çizilmez.
+                if (_autoSteel != null && !gprMatched) return;
                 segs.Add(new IlaveSeg
                 {
                     Start = start, End = end, GonyeStart = gonyeStart, GonyeEnd = gonyeEnd,
@@ -5834,6 +6346,15 @@ namespace ST4Yardimci
             bool PickIlaveSteel(SpanRec sp, bool sagSide, double adetRefLen, out int adet, out int cap, out int aralik)
             {
                 PickSteel(sp, out adet, out cap, out aralik);
+                if (_autoSteel != null)
+                {
+                    if (!AutoSteelOf(sp.Slab, sagSide ? GprSteelKind.SagIlave : GprSteelKind.SolIlave, out int iCap, out int iAr))
+                        return false;
+                    cap = iCap;
+                    aralik = iAr;
+                    adet = AutoAdet(sp, aralik, Math.Max(adetRefLen, 1));
+                    return true;
+                }
                 Point3d near = sagSide ? sp.RightInner : sp.LeftInner;
                 return TryApplyGprIlaveSteel(sp.Slab.GprSteels, near, sagSide, adetRefLen, ref adet, ref cap, ref aralik);
             }
@@ -5843,6 +6364,20 @@ namespace ST4Yardimci
                 out int adet, out int cap, out int aralik)
             {
                 PickSteel(sp, out adet, out cap, out aralik);
+                if (_autoSteel != null)
+                {
+                    // Konsol her zaman gerekli: program tablosu; DMX ilavesi As ≥ program ise o.
+                    DosemeKonsolSettings.ApplySteel(konsolBoy, adetRefLen, ref adet, ref cap, ref aralik);
+                    if (GenislikOf(sp) > 0) adet = AutoAdet(sp, aralik, adetRefLen);
+                    if (AutoSteelOf(sp.Slab, sagSide ? GprSteelKind.SagIlave : GprSteelKind.SolIlave, out int kCap, out int kAr)
+                        && AsPerMeterCm2(kCap, kAr) + 1e-9 >= AsPerMeterCm2(cap, aralik))
+                    {
+                        cap = kCap;
+                        aralik = kAr;
+                        adet = AutoAdet(sp, aralik, Math.Max(adetRefLen, 1));
+                    }
+                    return true;
+                }
                 Point3d near = sagSide ? sp.RightInner : sp.LeftInner;
                 return ApplyKonsolSteelWithGprGate(
                     sp.Slab.GprSteels, near, sagSide, konsolBoy, adetRefLen,
@@ -5976,6 +6511,8 @@ namespace ST4Yardimci
                     if (win.CapMm > 0) cp = win.CapMm;
                     if (win.AralikCm > 0) ar = win.AralikCm;
                     if (win.Adet > 0) ad = win.Adet;
+                    else if (ar > 0 && _autoSteel != null)
+                        ad = AutoAdet(asL >= asR ? leftSp.Value : rightSp.Value, ar, Math.Max(Ll, Lr) * 0.25);
                     else if (ar > 0)
                         ad = Math.Max(1, (int)Math.Round(Math.Max(Ll, Lr) * 0.25 / ar) + 1);
                     MarkPark(gL.Id);
@@ -6175,7 +6712,7 @@ namespace ST4Yardimci
             List<HitRec> hits)
         {
             using var probeSeg = MakeProbeSeg(a, b);
-            foreach (ObjectId id in btr)
+            foreach (ObjectId id in ScanIds(tr, btr, layerOk, segA: a, segB: b))
             {
                 if (!(tr.GetObject(id, OpenMode.ForRead) is Entity ent))
                     continue;

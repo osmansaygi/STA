@@ -67,6 +67,14 @@
     <Compile Include="..\ST4_Yardimci\BaIni.cs" Link="Yardimci\BaIni.cs" />
     <Compile Include="..\ST4_Yardimci\OtoOlcuDimFactory.cs" Link="Yardimci\OtoOlcuDimFactory.cs" />
   </ItemGroup>
+  <!-- DENEME2 döşeme donatısı: Yardımcı DOSEMEDONATI çizicisi aynen (köprü YardimciDosemeDonatiBaglanti.cs). -->
+  <ItemGroup>
+    <Compile Include="..\ST4_Yardimci\DosemeDonatiRunner.cs" Link="Yardimci\DosemeDonatiRunner.cs" />
+    <Compile Include="..\ST4_Yardimci\DosemeDonatiRunner.AltDuzAlan.cs" Link="Yardimci\DosemeDonatiRunner.AltDuzAlan.cs" />
+    <Compile Include="..\ST4_Yardimci\DosemeDonatiSettings.cs" Link="Yardimci\DosemeDonatiSettings.cs" />
+    <Compile Include="..\ST4_Yardimci\DosemeKonsolSettings.cs" Link="Yardimci\DosemeKonsolSettings.cs" />
+    <Compile Include="..\ST4_Yardimci\NtsOverlaySafe.cs" Link="Yardimci\NtsOverlaySafe.cs" />
+  </ItemGroup>
 
   <ItemGroup>
     <!-- DWG: DxfIn DXF bazi sembol tablolarinda eInvalidSymbolTableName verebilir; ReadDwgFile ile acilir. -->

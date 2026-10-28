@@ -33,15 +33,20 @@ namespace ST4PlanIdCiz
                 new Tool("KIRISACILIMLARI", "Kiriş\nAçılımı"),
                 new Tool("KIRISDUZELT", "Kiriş\nDüzelt")),
             new Group("YAPI", "Yapı",
+                new Tool("ST4PLANID", "ST4 Plan\nID"),
                 new Tool("KALIP50ST4", "Kalıp\n1/50"),
                 new Tool("KALIP100ST4", "Kalıp\n1/100"),
                 new Tool("BINAGORUNUS", "Bina\nGörünüşü"),
-                new Tool("BINAKESITI", "Bina\nKesiti")),
+                new Tool("BINAKESITI", "Bina\nKesiti"),
+                new Tool("SERBESTKESIT", "Serbest\nKesit")),
             new Group("DETAY", "Detay / İskele",
                 new Tool("KAPAMADETAY", "Kapama\nDetayı"),
                 new Tool("ISKELECIZ", "İskele\nPlanı"),
                 new Tool("ISKELEKESIT", "İskele\nKesiti")),
-            new Group("METRAJ", "Metraj", new Tool("METRAJ", "Metraj"))
+            new Group("METRAJ", "Metraj", new Tool("METRAJ", "Metraj")),
+            new Group("DENEME", "Deneme",
+                new Tool("DENEME1", "Kalıp\nDeneme"),
+                new Tool("DENEME2", "Kalıp\nDeneme 2"))
         };
 
         internal static bool Contains(string command)

@@ -610,6 +610,38 @@ namespace ST4Yardimci
             DonatiOkuRunner.RunInteractive();
         }
 
+        /// <summary>STA4CAD projesinden TEMEL, SUBASMAN ve kat kat beton (m³) / kalıp (m²) metraj tablosu.</summary>
+        [CommandMethod("BETONKALIP", CommandFlags.Modal)]
+        public void BetonKalip()
+        {
+            if (!GateIdle()) return;
+            BetonKalipRunner.Run();
+        }
+
+        /// <summary>Diyalogsuz sürüm (betik): ST4 yolu, kırılım (Eleman/Kat), köşe noktası.</summary>
+        [CommandMethod("-BETONKALIP", CommandFlags.Modal)]
+        public void BetonKalipKomutSatiri()
+        {
+            if (!GateIdle()) return;
+            BetonKalipRunner.RunKomutSatiri();
+        }
+
+        /// <summary>STA4CAD projesinden seçilen katın kiriş/döşeme uzun süreli sehim tablosu (mm).</summary>
+        [CommandMethod("SEHIMTABLOSU", CommandFlags.Modal)]
+        public void SehimTablosu()
+        {
+            if (!GateIdle()) return;
+            SehimTablosuRunner.Run();
+        }
+
+        /// <summary>Diyalogsuz sürüm (betik): ST4 yolu, kat kodu, köşe noktası.</summary>
+        [CommandMethod("-SEHIMTABLOSU", CommandFlags.Modal)]
+        public void SehimTablosuKomutSatiri()
+        {
+            if (!GateIdle()) return;
+            SehimTablosuRunner.RunKomutSatiri();
+        }
+
         [CommandMethod("DONATIMETRAJ")]
         public void DonatiMetraj()
         {

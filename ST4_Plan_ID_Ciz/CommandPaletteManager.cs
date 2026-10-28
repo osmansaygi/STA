@@ -280,11 +280,13 @@ namespace ST4PlanIdCiz
         private static readonly (string label, string cmd)[] AltDeneme =
         {
             ("Deneme1 (ilk 2 kat, sade)", "DENEME1"),
+            ("Kalıp Deneme 2 (donatılı + eksen)", "DENEME2"),
             ("Mantar D\u00f6\u015feme", "MANTARDOSEME"),
             ("Kapama Perde", "KAPAMADETAY"),
             ("Kolon Revize", "KOLONREVIZE"),
             ("Bina G\u00f6r\u00fcn\u00fc\u015f\u00fc", "BINAGORUNUS"),
             ("Bina Kesiti", "BINAKESITI"),
+            ("Serbest Kesit (hat göster)", "SERBESTKESIT"),
             ("Kiriş Açılımları", "KIRISACILIMLARI"),
             ("Sürekli Temel Açılımları", "SUREKLITEMELACILIMLARI"),
         };

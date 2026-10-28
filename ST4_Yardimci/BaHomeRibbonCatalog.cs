@@ -35,7 +35,7 @@ namespace ST4Yardimci
                 "TEMELDETAY", "KURANGLEZ", "PERDEBOSLUK", "SEHPADONATI"),
             new Group("DONATI", "Donatı", "DOSEMEDONATI", "OTODONATI", "HASIRDONATI", "RADYEILAVE"),
             new Group("GENEL", "Genel Düzenleme", "DONATIBOYU", "DONATIADET", "DONATIOKU",
-                "KOTDEGISTIR", "DONATIMETRAJ", "KATMANYUKLE")
+                "KOTDEGISTIR", "DONATIMETRAJ", "BETONKALIP", "SEHIMTABLOSU", "KATMANYUKLE")
         };
     }
 }

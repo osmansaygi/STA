@@ -230,6 +230,44 @@ namespace ST4PlanIdCiz
         /// <summary>Kesit hattının mutlaka üzerinden geçmesi gereken dolu alan (döşeme/kiriş/perde/kolon + temelde temeller).</summary>
         private Geometry BuildCutOccupancyUnion(FloorInfo floor, bool isFoundationPlan)
         {
+            if (!_isKalip50Mode || floor == null) return BuildCutOccupancyUnionCore(floor, isFoundationPlan);
+            if (_cutOccupancyByFloor == null) _cutOccupancyByFloor = new Dictionary<(int, bool), Geometry>();
+            var key = (floor.FloorNo, isFoundationPlan);
+            if (_cutOccupancyByFloor.TryGetValue(key, out Geometry cached)) return cached;
+            Geometry g = BuildCutOccupancyUnionCore(floor, isFoundationPlan);
+            _cutOccupancyByFloor[key] = g;
+            return g;
+        }
+
+        /// <summary>KALIP50 oturumu: kesit doluluk birleşimi ve kesit hattı arama skorları kat başına bir kez (kopyalar ve antet çapası aynı sonucu kullanır).</summary>
+        private Dictionary<(int, bool), Geometry> _cutOccupancyByFloor;
+        private Dictionary<(int FloorNo, bool Temel, bool Dikey, double Xmin, double Xmax, double Ymin, double Ymax, double E), CutSearchMemo> _cutSearchMemo;
+
+        private sealed class CutSearchMemo
+        {
+            public Geometry Occ, Union;
+            public double BestX;
+            public List<(double y, double key)> Scored;
+        }
+
+        private CutSearchMemo GetCutSearchMemo(bool dikey, FloorInfo floor, double xmin, double xmax, double ymin, double ymax, double e, Geometry occ, bool isFoundationPlan, Geometry structuralUnion,
+            out (int, bool, bool, double, double, double, double, double) key)
+        {
+            key = (floor?.FloorNo ?? int.MinValue, isFoundationPlan, dikey, xmin, xmax, ymin, ymax, e);
+            if (!_isKalip50Mode || floor == null || _cutSearchMemo == null) return null;
+            // Geometri kimliği aynı değilse (önbelleksiz yol) yeniden hesapla.
+            return _cutSearchMemo.TryGetValue(key, out var m) && ReferenceEquals(m.Occ, occ) && ReferenceEquals(m.Union, structuralUnion) ? m : null;
+        }
+
+        private void PutCutSearchMemo((int, bool, bool, double, double, double, double, double) key, FloorInfo floor, CutSearchMemo m)
+        {
+            if (!_isKalip50Mode || floor == null) return;
+            if (_cutSearchMemo == null) _cutSearchMemo = new Dictionary<(int, bool, bool, double, double, double, double, double), CutSearchMemo>();
+            _cutSearchMemo[key] = m;
+        }
+
+        private Geometry BuildCutOccupancyUnionCore(FloorInfo floor, bool isFoundationPlan)
+        {
             var geoms = new List<Geometry>();
             var factory = _ntsDrawFactory;
             try
@@ -274,6 +312,41 @@ namespace ST4PlanIdCiz
             }
         }
 
+        private sealed class OccupancyIndex
+        {
+            public NetTopologySuite.Geometries.Prepared.IPreparedGeometry Prepared;
+            public NetTopologySuite.Operation.Distance.IndexedFacetDistance Facets;
+        }
+
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Geometry, OccupancyIndex> _occupancyIndex =
+            new System.Runtime.CompilerServices.ConditionalWeakTable<Geometry, OccupancyIndex>();
+
+        /// <summary>
+        /// <c>occ.Contains(pt) || occ.Intersects(pt) || occ.Distance(pt) &lt; 2</c> ile aynı karar; hazırlanmış geometri + indeksli kenar mesafesi
+        /// (dışarıdaki noktada mesafe aynı nokta-doğru parçası hesabıdır). İndeks kurulamazsa eski yol.
+        /// </summary>
+        private static bool OccupancyHit(Geometry occ, Point pt)
+        {
+            OccupancyIndex ix;
+            if (!_occupancyIndex.TryGetValue(occ, out ix))
+            {
+                ix = new OccupancyIndex();
+                try
+                {
+                    ix.Prepared = NetTopologySuite.Geometries.Prepared.PreparedGeometryFactory.Prepare(occ);
+                    ix.Facets = new NetTopologySuite.Operation.Distance.IndexedFacetDistance(occ);
+                }
+                catch { ix.Prepared = null; ix.Facets = null; }
+                _occupancyIndex.AddOrUpdate(occ, ix);
+            }
+            if (ix.Prepared != null)
+            {
+                try { return ix.Prepared.Intersects(pt) || ix.Facets.Distance(pt) < 2.0; }
+                catch { }
+            }
+            return occ.Contains(pt) || occ.Intersects(pt) || occ.Distance(pt) < 2.0;
+        }
+
         /// <summary>Dikey hat (x sabit): boyunca örnekleme; eleman üzerinde kalma oranı ve en uzun ardışık segment.</summary>
         private static (double frac, double longestRun) SampleVerticalOnOccupancy(Geometry occ, double x, double ymin, double ymax)
         {
@@ -285,7 +358,7 @@ namespace ST4PlanIdCiz
             {
                 double yy = ymin + (ymax - ymin) * i / n;
                 var pt = factory.CreatePoint(new Coordinate(x, yy));
-                bool inside = occ.Contains(pt) || occ.Intersects(pt) || occ.Distance(pt) < 2.0;
+                bool inside = OccupancyHit(occ, pt);
                 if (inside) { hit++; run++; if (run > bestRun) bestRun = run; }
                 else run = 0;
             }
@@ -302,7 +375,7 @@ namespace ST4PlanIdCiz
             {
                 double xx = xmin + (xmax - xmin) * i / n;
                 var pt = factory.CreatePoint(new Coordinate(xx, y));
-                bool inside = occ.Contains(pt) || occ.Intersects(pt) || occ.Distance(pt) < 2.0;
+                bool inside = OccupancyHit(occ, pt);
                 if (inside) { hit++; run++; if (run > bestRun) bestRun = run; }
                 else run = 0;
             }
@@ -724,6 +797,8 @@ namespace ST4PlanIdCiz
             double halfW = Math.Max(60.0, SectionStripHalfWidthCm * 1.2);
             GetCutLineSearchBoundsFromStructure(xmin, xmax, ymin, ymax, structuralUnion, out double xLo, out double xHi, out _, out _, out double cxPrefer, out _);
             if (xHi <= xLo) return (xmin + xmax) * 0.5;
+            var memo = GetCutSearchMemo(true, floor, xmin, xmax, ymin, ymax, e, occ, isFoundationPlan, structuralUnion, out var memoKey);
+            if (memo != null) return memo.BestX;
             double step = Math.Max(40.0, (xHi - xLo) / 48.0);
             double bestX = cxPrefer;
             double bestKey = double.NegativeInfinity;
@@ -747,6 +822,7 @@ namespace ST4PlanIdCiz
             }
 
             for (double x = xLo; x <= xHi + 1e-6; x += step) consider(x);
+            PutCutSearchMemo(memoKey, floor, new CutSearchMemo { Occ = occ, Union = structuralUnion, BestX = bestX });
             return bestX;
         }
 
@@ -781,19 +857,24 @@ namespace ST4PlanIdCiz
             double step = Math.Max(40.0, (yHi - yLo) / 48.0);
             double minSep = Math.Max(20.0, step * 0.51);
             var tanH = new Vector2d(1, 0);
-            var scored = new List<(double y, double key)>();
-
-            for (double y = yLo; y <= yHi + 1e-6; y += step)
+            var memo = GetCutSearchMemo(false, floor, xmin, xmax, ymin, ymax, e, occ, isFoundationPlan, structuralUnion, out var memoKey);
+            List<(double y, double key)> scored = memo?.Scored;
+            if (scored == null)
             {
-                var (frac, lng) = SampleHorizontalOnOccupancy(occ, y, xmin, xmax);
-                Geometry strip = HorizontalCutStripPoly(gf, y, xmin, xmax, e, halfW);
-                double par = ParallelSpanAxisPenalty(strip, tanH, floor, isFoundationPlan);
-                double stair = StairPenaltyHorizontal(y, xmin, xmax, e, stairs);
-                double colLong = SlenderColumnLongAxisCutPenaltyHorizontal(y, xmin, xmax, e, floor, isFoundationPlan);
-                double axisClr = ParallelColumnAxisClearancePenaltyHorizontal(y);
-                double polyCol = isFoundationPlan ? FoundationPolygonColumnCutPenaltyHorizontal(y, xmin, xmax, e, floor) : 0;
-                double key = frac * 900.0 + lng * 320.0 - stair - par - colLong - axisClr - polyCol - Math.Abs(y - cyPrefer) * 0.02;
-                scored.Add((y, key));
+                scored = new List<(double y, double key)>();
+                for (double y = yLo; y <= yHi + 1e-6; y += step)
+                {
+                    var (frac, lng) = SampleHorizontalOnOccupancy(occ, y, xmin, xmax);
+                    Geometry strip = HorizontalCutStripPoly(gf, y, xmin, xmax, e, halfW);
+                    double par = ParallelSpanAxisPenalty(strip, tanH, floor, isFoundationPlan);
+                    double stair = StairPenaltyHorizontal(y, xmin, xmax, e, stairs);
+                    double colLong = SlenderColumnLongAxisCutPenaltyHorizontal(y, xmin, xmax, e, floor, isFoundationPlan);
+                    double axisClr = ParallelColumnAxisClearancePenaltyHorizontal(y);
+                    double polyCol = isFoundationPlan ? FoundationPolygonColumnCutPenaltyHorizontal(y, xmin, xmax, e, floor) : 0;
+                    double key = frac * 900.0 + lng * 320.0 - stair - par - colLong - axisClr - polyCol - Math.Abs(y - cyPrefer) * 0.02;
+                    scored.Add((y, key));
+                }
+                PutCutSearchMemo(memoKey, floor, new CutSearchMemo { Occ = occ, Union = structuralUnion, Scored = scored });
             }
 
             foreach (var t in scored.OrderByDescending(t => t.key).ThenBy(t => Math.Abs(t.y - cyPrefer)))
@@ -852,11 +933,15 @@ namespace ST4PlanIdCiz
             double xmin = ext.Xmin, xmax = ext.Xmax, ymin = ext.Ymin, ymax = ext.Ymax;
             double fa = (isFoundationPlan || _kalipPlanScale == KalipPlanScale.Hundred) ? TemelFoundationAnnotMul : 1.0;
             double e = SectionLineExtendCm * fa;
+            _ksT0 = System.Diagnostics.Stopwatch.GetTimestamp();
             Geometry occ = BuildCutOccupancyUnion(floor, isFoundationPlan);
+            KsT(0);
 
             // Her zaman: yatay kesit çizgisi → KESİT 1-1 üstte; dikey kesit → KESİT 2-2 solda
             double xvCut = FindBestVerticalCutX(floor, xmin, xmax, ymin, ymax, e, occ, isFoundationPlan, floorStructuralUnion);
+            KsT(1);
             double yhCut = FindBestHorizontalCutY(floor, xmin, xmax, ymin, ymax, e, occ, isFoundationPlan, floorStructuralUnion);
+            KsT(2);
 
             Point2d topA = new Point2d(xmin - e, yhCut);
             Point2d topB = new Point2d(xmax + e, yhCut);
@@ -870,6 +955,7 @@ namespace ST4PlanIdCiz
 
             var colExtra = GetColumnTableExtraData(floor);
             DrawSectionCutsRevitStyleOnPlan(tr, btr, db, offsetX, offsetY, ext, xvCut, yhCut, "A", "B", fa);
+            KsT(3);
             double extC = AxisExtensionBeyondBoundaryCm * fa;
             double Rbal = KesitEtiketRadiusCm * fa;
             double sectionLayoutPadCm = 280.0 * fa;
@@ -883,7 +969,9 @@ namespace ST4PlanIdCiz
             leftSectionMinX = offsetX + xmin;
 
             var slicesTop = CollectAllSectionSlices(floor, topA, topB, alongOrigTop, dirTop, isFoundationPlan, colExtra);
+            KsT(4);
             var slicesLeft = CollectAllSectionSlices(floor, leftA, leftB, alongOrigLeft, dirLeft, isFoundationPlan, colExtra);
+            KsT(5);
 
             double GetAmin(List<SectionSlice> sl) => sl == null || sl.Count == 0 ? 0 : sl.Min(s => s.A0) - 40;
             double GetAmax(List<SectionSlice> sl) => sl == null || sl.Count == 0 ? 200 : sl.Max(s => s.A1) + 40;
@@ -910,17 +998,24 @@ namespace ST4PlanIdCiz
                 contentTopY = yAksBalonUstDisYuzey + SectionMinAboveAxisTopLabelsCm * fa + 12.0 * fa;
             }
             ObjectId planOlcuDimId = GetOrCreatePlanOlcuDimStyle(tr, db, 12.0 * fa, fa);
+            KsT(11);
             DrawSchematicFromSlicesOneToOne(tr, btr, slicesTop, contentTopX, contentTopY, aminT, minZT, spanAT, spanZT, horizontalAlongX: true, mirrorElevationX: false, isFoundationPlan, drawReferenceAxis: false);
+            KsT(6);
             DrawKesitSiniriFromBeams(tr, btr, slicesTop, contentTopX, contentTopY, aminT, minZT, spanZT, horizontalAlongX: true, mirrorElevationX: false, isFoundationPlan);
+            KsT(7);
             DrawKesitSchematicDimensions(tr, btr, slicesTop, contentTopX, contentTopY, aminT, minZT, spanZT, horizontalAlongX: true, mirrorElevationX: false, isFoundationPlan, planOlcuDimId);
+            KsT(8);
             DrawKesitSchematicElementLabels(tr, btr, db, slicesTop, floor, contentTopX, contentTopY, aminT, minZT, spanZT, true, false, isFoundationPlan);
+            KsT(9);
             double groMinXT = double.NaN, groMaxXT = double.NaN, groBottomYT = double.NaN;
             if (isFoundationPlan)
                 DrawGrobetonUnderFoundationKesit(tr, btr, slicesTop, contentTopX, contentTopY, aminT, minZT, spanZT, horizontalAlongX: true, mirrorElevationX: false,
                     out groMinXT, out groMaxXT, out groBottomYT, out _);
             string similarKotSuffix = BuildSimilarFloorKotSuffix(similarFloorsForKot);
+            KsT(11);
             try { DrawKesitSchematicElevationKots(tr, btr, db, slicesTop, contentTopX, contentTopY, aminT, minZT, spanZT, horizontalAlongX: true, mirrorElevationX: false, isFoundationPlan, similarKotSuffix); }
             catch { /* kesit kotları — planın geri kalanı çizilsin */ }
+            KsT(10);
             // A-A başlık: üst aks balon üst yüzeyinden 60 cm yukarıda (metin alt kenarı); TextTop için üst hizası = alt + yükseklik
             double kesitBaslikHForLayout = KesitIsmiLayerYaziYukseklikCm * fa;
             double yAaBaslikUstHizasi = yAksBalonUstDisYuzey + KesitIsmiUstAksBalonUstuBoslukCm * fa + kesitBaslikHForLayout;
@@ -970,16 +1065,23 @@ namespace ST4PlanIdCiz
             {
                 contentLeftX = xAksBalonSolDisYuzey - SectionMinLeftOfAxisLeftLabelsCm * fa - spanZL - 28.0 * fa;
             }
+            KsT(11);
             DrawSchematicFromSlicesOneToOne(tr, btr, slicesLeft, contentLeftX, contentLeftY, aminL, minZL, spanAL, spanZL, horizontalAlongX: false, mirrorElevationX: true, isFoundationPlan, drawReferenceAxis: false);
+            KsT(6);
             DrawKesitSiniriFromBeams(tr, btr, slicesLeft, contentLeftX, contentLeftY, aminL, minZL, spanZL, horizontalAlongX: false, mirrorElevationX: true, isFoundationPlan);
+            KsT(7);
             DrawKesitSchematicDimensions(tr, btr, slicesLeft, contentLeftX, contentLeftY, aminL, minZL, spanZL, horizontalAlongX: false, mirrorElevationX: true, isFoundationPlan, planOlcuDimId);
+            KsT(8);
             DrawKesitSchematicElementLabels(tr, btr, db, slicesLeft, floor, contentLeftX, contentLeftY, aminL, minZL, spanZL, false, true, isFoundationPlan);
+            KsT(9);
             double groMinXL = double.NaN, groMaxXL = double.NaN, groBottomYL = double.NaN, groTopYL = double.NaN;
             if (isFoundationPlan)
                 DrawGrobetonUnderFoundationKesit(tr, btr, slicesLeft, contentLeftX, contentLeftY, aminL, minZL, spanZL, horizontalAlongX: false, mirrorElevationX: true,
                     out groMinXL, out groMaxXL, out groBottomYL, out groTopYL);
+            KsT(11);
             try { DrawKesitSchematicElevationKots(tr, btr, db, slicesLeft, contentLeftX, contentLeftY, aminL, minZL, spanZL, horizontalAlongX: false, mirrorElevationX: true, isFoundationPlan, similarKotSuffix); }
             catch { /* kesit kotları */ }
+            KsT(10);
             // B-B başlık: sol aks balon sol dış yüzeyinden 60 cm sola; dikey metnin plana bakan sağ kenarı ≈ merkez + yükseklik/2
             double bbTitleHeight = kesitBaslikHForLayout;
             double xBbBaslikMerkez = xAksBalonSolDisYuzey - KesitIsmiSolAksBalonSolBoslukCm * fa - bbTitleHeight * 0.5;
@@ -1354,6 +1456,10 @@ namespace ST4PlanIdCiz
             _hatilFootprintCache = null;
             _temelFootprintCacheFloorNo = int.MinValue;
             _columnPolyTableCache = null;
+            _floorElementUnionByFloorNo = null;
+            _cutOccupancyByFloor = null;
+            _cutSearchMemo = null;
+            _binaKesitCutInputs = null;
         }
 
         private void EnsureKalip50FloorOrderCaches()

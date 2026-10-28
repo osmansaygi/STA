@@ -70,6 +70,8 @@ namespace ST4PlanIdCiz
         /// MANTARDOSEME: 3 (1–2 boş, son kopya donatılı).
         /// </summary>
         public int CopiesPerFloor { get; }
+        /// <summary>DENEME2: yalnız donatılı (son) kopyada DENEME1 EKSEN X/Y artıları çizilir; diğer KALIP50 çizimi değişmez.</summary>
+        public bool DrawDeneme1EksenOnDonatiCopy { get; }
 
         public Kalip50LayoutFlags(
             bool plainInsertPoint = false,
@@ -82,7 +84,8 @@ namespace ST4PlanIdCiz
             bool drawInteriorVoidsOnBosLayerNotKalipBosluk = false,
             bool classifyDosemeHattiIntoTopologyLayers = false,
             bool includeMushroomBeams = false,
-            int copiesPerFloor = 0)
+            int copiesPerFloor = 0,
+            bool drawDeneme1EksenOnDonatiCopy = false)
         {
             PlainInsertPoint = plainInsertPoint;
             SingleCopyPerFloor = singleCopyPerFloor;
@@ -95,6 +98,7 @@ namespace ST4PlanIdCiz
             ClassifyDosemeHattiIntoTopologyLayers = classifyDosemeHattiIntoTopologyLayers;
             IncludeMushroomBeams = includeMushroomBeams;
             CopiesPerFloor = copiesPerFloor;
+            DrawDeneme1EksenOnDonatiCopy = drawDeneme1EksenOnDonatiCopy;
         }
     }
 
@@ -154,6 +158,8 @@ namespace ST4PlanIdCiz
         private bool _kalip50DrawSlabBoundaryPolylinesOnDosemeHatti;
         /// <summary>DENEME1: merdiven döşemesi çizilmez; kat altında olup merdiven paneliyle kesişen döşeme çizilmez.</summary>
         private bool _kalip50ExcludeStairAdjacentAndBelowFloorSlabs;
+        /// <summary>DENEME2: merdivene bağlı ara sahanlık (<see cref="ShouldOmitSlabFromBinaView"/>) etiketi ve donatısı çizilmez.</summary>
+        private bool _kalip50AraSahanlikEtiketDonatiYok;
         /// <summary>DENEME1: boşlukları BOS katmanında çiz, KALIP BOSLUK kullanma.</summary>
         private bool _kalip50DrawInteriorVoidsOnBosLayer;
         /// <summary>DENEME1: döşeme sınırı DOSEME HATTI 1–4 katmanlarına bölünür.</summary>
@@ -168,6 +174,14 @@ namespace ST4PlanIdCiz
         private Dictionary<int, Geometry> _kalip50Deneme1SlabHamQuadBySlabId;
         /// <summary>DENEME1: son çizimdeki kesilmiş döşeme poligonu (ileride donatı formülü için; şu an donatı ofsetinde kullanılmıyor).</summary>
         private Dictionary<int, Geometry> _kalip50Deneme1SlabKesilmisBySlabId;
+        /// <summary>DENEME2: donatılı kopyada eksen artısı için döşeme ham eksen dörtgenleri (DrawSlabs doldurur); null iken toplanmaz.</summary>
+        private List<(int SlabId, Geometry Geom)> _kalip50Deneme2EksenGeoms;
+        /// <summary>DENEME2: kopya sırası (kat grubu); <see cref="Deneme2EksenKayitlari"/> bu numarayla gruplanır.</summary>
+        private int _kalip50Deneme2CopyNo;
+        /// <summary>DENEME2: çizilen her eksen artısının merkezi ve X/Y doğrultuları (döşeme donatısı şeritleri için).</summary>
+        public List<Deneme2EksenKaydi> Deneme2EksenKayitlari { get; } = new List<Deneme2EksenKaydi>();
+        /// <summary>DENEME2: ST4 döşeme kimliği → DMX donatısı (montaj yalnız kendi kaydında) ve ST4 üst kotu (m). Boşsa GPR yazısı yolu.</summary>
+        public Dictionary<int, (DmxDosemeDonati.Rec Rec, double? UstKotM)> Deneme2DmxBySlabId { get; } = new Dictionary<int, (DmxDosemeDonati.Rec Rec, double? UstKotM)>();
         /// <summary>DENEME1: son finalize’da döşeme hattı 4 kenarı → sınır aksı, kiriş/perde eşleşmesi ve iç ofset (cm).</summary>
         private Dictionary<int, Deneme1DosemeHattiEdgeAxisRecord[]> _kalip50Deneme1DosemeHattiEdgeAxisRecordsBySlabId;
         /// <summary>KALIP50 bina şema kesiti: X yönü blok (bir kez; her antette INSERT).</summary>
@@ -1042,13 +1056,81 @@ namespace ST4PlanIdCiz
         /// <param name="suppressKirisPerdeKolonDosemeLabels">true ise kiriş/perde/kolon/döşeme metin etiketleri ve kiriş-perde kot blokları yok.</param>
         /// <param name="completionMessageCmdTag">null/boş: KALIP50ST4/KALIP100ST4; dolu: özet satırında bu komut adı.</param>
         /// <param name="layoutFlags">DENEME1 vb. sade çizim; <see cref="Kalip50LayoutFlags"/> varsayılanı tam kalıp planı.</param>
+        /// <summary>Tanı (ST4_DENEME2_TANI=1): DrawFormworkPlan50 bölüm süreleri; null iken ölçülmez.</summary>
+        private long[] _planT;
+        private long _planT0;
+
+        private long[] _bwT;
+        private long _bwT0;
+        private long[] _ksT;
+        private long _ksT0;
+        private long[] _dsT;
+        private long _dsT0;
+
+        /// <summary>Tanı: DrawSlabs iç bölümleri.</summary>
+        private void DsT(int slot)
+        {
+            if (_dsT == null) return;
+            long t = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (slot > 0) _dsT[slot] += t - _dsT0;
+            _dsT0 = t;
+        }
+
+        /// <summary>Tanı: DrawPlanSections iç bölümleri.</summary>
+        private void KsT(int slot)
+        {
+            if (_ksT == null) return;
+            long t = System.Diagnostics.Stopwatch.GetTimestamp();
+            _ksT[slot] += t - _ksT0;
+            _ksT0 = t;
+        }
+
+        /// <summary>Tanı: DrawBeamsAndWalls iç bölümleri (perde ön, kiriş grup, köşe, uzatma).</summary>
+        private void BwT(int slot)
+        {
+            if (_bwT == null) return;
+            long t = System.Diagnostics.Stopwatch.GetTimestamp();
+            _bwT[slot] += t - _bwT0;
+            _bwT0 = t;
+        }
+
+        private void PlanT(int slot)
+        {
+            if (_planT == null) return;
+            long t = System.Diagnostics.Stopwatch.GetTimestamp();
+            _planT[slot] += t - _planT0;
+            _planT0 = t;
+        }
+
         public void DrawFormworkPlan50(Database db, Editor ed, Point3d baseInsertPoint, string st4SourcePath = null, KalipPlanScale scaleMode = KalipPlanScale.Fifty, int firstIndividualFloorCount = 0, bool suppressKirisPerdeKolonDosemeLabels = false, string completionMessageCmdTag = null, Kalip50LayoutFlags layoutFlags = default)
         {
+            string ilerlemeBaslik = !string.IsNullOrWhiteSpace(completionMessageCmdTag) ? completionMessageCmdTag.Trim()
+                : scaleMode == KalipPlanScale.Hundred ? "KALIP100ST4" : "KALIP50ST4";
+            using KalipIlerleme ilerleme = KalipIlerleme.BaslatYoksa(ilerlemeBaslik, ed);
+            BeginKotSymbolCache();
+            try
+            {
+                DrawFormworkPlan50Core(db, ed, baseInsertPoint, st4SourcePath, scaleMode, firstIndividualFloorCount, suppressKirisPerdeKolonDosemeLabels, completionMessageCmdTag, layoutFlags);
+            }
+            finally
+            {
+                EndKotSymbolCache();
+            }
+        }
+
+        private void DrawFormworkPlan50Core(Database db, Editor ed, Point3d baseInsertPoint, string st4SourcePath, KalipPlanScale scaleMode, int firstIndividualFloorCount, bool suppressKirisPerdeKolonDosemeLabels, string completionMessageCmdTag, Kalip50LayoutFlags layoutFlags)
+        {
+            _planT = Environment.GetEnvironmentVariable("ST4_DENEME2_TANI") == "1" ? new long[17] : null;
+            _bwT = _planT != null ? new long[11] : null;
+            _ksT = _planT != null ? new long[12] : null;
+            _dsT = _planT != null ? new long[7] : null;
+            _planT0 = System.Diagnostics.Stopwatch.GetTimestamp();
             _ntsDrawFactory = NtsGeometryServices.Instance.CreateGeometryFactory();
             _isKalip50Mode = true;
             _kalip50SuppressKirisPerdeKolonDosemeLabels = suppressKirisPerdeKolonDosemeLabels;
             _kalip50DrawSlabBoundaryPolylinesOnDosemeHatti = layoutFlags.DrawSlabBoundaryPolylinesOnDosemeHattiLayer;
             _kalip50ExcludeStairAdjacentAndBelowFloorSlabs = layoutFlags.ExcludeStairAdjacentSlabsAndSlabsBelowFloorKot;
+            _kalip50AraSahanlikEtiketDonatiYok = layoutFlags.DrawDeneme1EksenOnDonatiCopy;
             _kalip50DrawInteriorVoidsOnBosLayer = layoutFlags.DrawInteriorVoidsOnBosLayerNotKalipBosluk;
             _kalip50ClassifyDosemeHattiTopologyLayers = layoutFlags.ClassifyDosemeHattiIntoTopologyLayers;
             _kalip50IncludeMushroomBeams = layoutFlags.IncludeMushroomBeams;
@@ -1098,6 +1180,19 @@ namespace ST4PlanIdCiz
                         return;
                     }
 
+                    // Durum çubuğu ilerlemesi: kat grubu × kopya × (kolon-kiriş, döşeme, kesit) + antet.
+                    int ilerlemeKopya = layoutFlags.SingleCopyPerFloor ? 1 : (layoutFlags.CopiesPerFloor > 0 ? layoutFlags.CopiesPerFloor : 2);
+                    if (ilerlemeKopya < 1) ilerlemeKopya = 1;
+                    int ilerlemeToplam = groups.Count * (ilerlemeKopya * 3 + 1);
+                    int ilerlemeAdim = 0, ilerlemeGrup = 0, ilerlemeKopyaNo = 0;
+                    void Ilerle(bool adimBitti, string asama)
+                    {
+                        if (adimBitti) ilerlemeAdim++;
+                        string yer = ilerlemeKopya > 1
+                            ? string.Format(CultureInfo.InvariantCulture, "kat {0}/{1} kopya {2}/{3} ", ilerlemeGrup, groups.Count, ilerlemeKopyaNo, ilerlemeKopya)
+                            : string.Format(CultureInfo.InvariantCulture, "kat {0}/{1} ", ilerlemeGrup, groups.Count);
+                        KalipIlerleme.Bildir((double)ilerlemeAdim / ilerlemeToplam, yer + asama);
+                    }
                     var firstGroup = groups[0];
                     var firstFloor = _model.Floors[firstGroup.Min()];
                     Geometry firstUnion = BuildFloorElementUnion(firstFloor);
@@ -1142,20 +1237,27 @@ namespace ST4PlanIdCiz
                         gprKalipDosemeDonati = dosemeMap;
                     if (!layoutFlags.SingleCopyPerFloor)
                         gprKalipDosemeDonati = MergeKalipDosemeDonatiPreferDmx(gprKalipDosemeDonati, st4SourcePath, ed, gprDosemeKeysCollapsed);
+                    // DENEME2: donatı doğrudan DMX'ten verilir; GPR yazısı ve kılavuz çizgisi çizilmez (DMX yoksa eski yol).
+                    bool deneme2Dmx = layoutFlags.DrawDeneme1EksenOnDonatiCopy && TryFillDeneme2Dmx(st4SourcePath, ed);
+                    if (deneme2Dmx)
+                        gprKalipDosemeDonati = null;
 
                     int gprDonatiSlabMatchCountTotal = 0;
+                    int deneme2EksenArtiTotal = 0;
                     int kalip50BinaSemaKesitSayisi = 0;
                     if (_kalip50DrawInteriorVoidsOnBosLayer)
                         EraseEntitiesOnLayerInBlock(tr, btr, LayerBos);
                     foreach (var group in groups)
                     {
                         if (group == null || group.Count == 0) continue;
+                        ilerlemeGrup++;
                         double groupStartCursorX = cursorX;
                         int labelFloorIdx = group.Min();
                         var floor = _model.Floors[labelFloorIdx];
 
                         Geometry elemUnion = BuildFloorElementUnion(floor);
                         var floorAxisExt = GetAksSiniriEnvelope(elemUnion);
+                        PlanT(12);
 
                         var otherFloors = group
                             .Where(i => i != labelFloorIdx)
@@ -1176,27 +1278,48 @@ namespace ST4PlanIdCiz
                             double offsetX = cursorX - floorAxisExt.Xmin;
                             double offsetY = baseDy;
                             bool isDonatiCopy = copyCount > 1 && copyIndex == donatiCopyIndex;
+                            ilerlemeKopyaNo = copyIndex + 1;
+                            Ilerle(false, "kolon-kiris");
 
                             if (!layoutFlags.NoAxes)
                                 DrawAxes(tr, btr, offsetX, offsetY, floorAxisExt);
+                            PlanT(0);
                             DrawColumns(tr, btr, floor, offsetX, offsetY);
+                            PlanT(1);
                             DrawBeamsAndWalls(tr, btr, floor, offsetX, offsetY);
+                            PlanT(2);
+                            Ilerle(true, "doseme");
                             if (_kalip50IncludeMushroomBeams)
                                 DrawMushroomBeams(tr, btr, floor, offsetX, offsetY);
-                            DrawSlabs(tr, btr, floor, offsetX, offsetY, drawSlabAltCizgi: isDonatiCopy);
+                            _kalip50Deneme2EksenGeoms = layoutFlags.DrawDeneme1EksenOnDonatiCopy && isDonatiCopy
+                                ? new List<(int SlabId, Geometry Geom)>()
+                                : null;
+                            DrawSlabs(tr, btr, floor, offsetX, offsetY, drawSlabAltCizgi: isDonatiCopy && !deneme2Dmx);
+                            PlanT(3);
                             DrawSlabVoids(tr, btr, elemUnion, offsetX, offsetY);
+                            PlanT(4);
                             DrawUnifiedLayer(tr, btr, floor, offsetX, offsetY, elemUnion);
+                            PlanT(5);
                             DrawBosVoidsFromDrawnStructuralUnion(tr, btr, floor, offsetX, offsetY);
+                            PlanT(6);
                             FinalizeDeneme1DosemeHattiTopologyLayers(tr, btr, floor, offsetX, offsetY, elemUnion);
+                            PlanT(7);
+                            if (_kalip50Deneme2EksenGeoms != null)
+                                _kalip50Deneme2CopyNo++;
+                            deneme2EksenArtiTotal += DrawDeneme2DosemeEksenArtilari(tr, btr);
+                            PlanT(8);
+                            Ilerle(true, "kesit");
                             bool hasSimilarFloors = otherFloors.Count > 0;
                             DrawFloorTitle(tr, btr, floor, offsetX, offsetY, floorAxisExt, isFoundationPlan: false, extraYOffsetCm: hasSimilarFloors ? 10.0 : 0.0);
                             if (hasSimilarFloors)
                                 DrawKalipSimilarFloorNamesNote(tr, btr, otherFloors, offsetX, offsetY, floorAxisExt, yAboveTopCm: 35.0);
+                            PlanT(9);
                             double layMinX, layMaxX, layMinY, layMaxY, leftSectionMinX;
                             if (!layoutFlags.NoSections)
                             {
                                 DrawPlanSections(tr, btr, db, floor, offsetX, offsetY, floorAxisExt, isFoundationPlan: false, elemUnion,
                                     out layMinX, out layMaxX, out layMinY, out layMaxY, out leftSectionMinX, otherFloors);
+                                PlanT(10);
                             }
                             else
                             {
@@ -1210,6 +1333,8 @@ namespace ST4PlanIdCiz
                             if (isDonatiCopy && gprKalipDosemeDonati != null && gprKalipDosemeDonati.Count > 0)
                                 gprDonatiSlabMatchCountTotal += DrawKalipDonatiPlanGprSlabNotes(
                                     tr, btr, db, floor, offsetX, offsetY, gprKalipDosemeDonati, countMatchedSlabs: true);
+                            PlanT(11);
+                            Ilerle(true, copyIndex + 1 < copyCount ? "sonraki kopya" : "antet");
                             if (copyIndex == 0 && !layoutFlags.NoAntetAndBinaSema)
                             {
                                 // Antet tek olacak; sol yerleşim için ilk (soldaki) kopya kesit referansı tutulur.
@@ -1271,6 +1396,7 @@ namespace ST4PlanIdCiz
                             double plannedNextKatAntetOuterLeftTarget = desiredAntetTargetRightPostScale + Kolon50AntetGapBetweenSheetsCm * kalipAntetSpacingMul;
                             string kalipAntetTitle = BuildKalipPlanAntetTitle(floor);
                             string benzerSatiri = BuildKalipBenzerKatSatiri(otherFloors);
+                            PlanT(16);
                             bool kalipAntetOk = TryDrawAntetFromEmbeddedTemplate(
                                 tr,
                                 btr,
@@ -1313,12 +1439,30 @@ namespace ST4PlanIdCiz
                                     tr, btr, db, placedAntetOuterLeft, placedAntetOuterRight, placedAntetOuterTop,
                                     floor, otherFloors, ed))
                                 kalip50BinaSemaKesitSayisi++;
+                            PlanT(13);
                         }
+                        Ilerle(true, "sonraki kat");
                         drawnPlanCount++;
                     }
 
+                    KalipIlerleme.Bildir(1.0, "kaydediliyor");
                     ApplyPlanStructuralLayerDrawOrder(tr, btr);
+                    PlanT(14);
                     tr.Commit();
+                    PlanT(15);
+                    if (_planT != null)
+                    {
+                        string[] ad = { "aks", "kolon", "kiris-perde", "doseme", "doseme-bosluk", "birlesik", "bos", "deneme1",
+                            "eksen-arti", "baslik", "kesit", "gpr-yazi", "kat-birlesim", "antet+sema", "cizim-sirasi", "commit", "diger" };
+                        double fms = 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+                        ed.WriteMessage("\nPLAN_TANI sure(ms): " + string.Join(" ", _planT.Select((t, i) => ad[i] + "=" + (t * fms).ToString("0"))));
+                        string[] bwAd = { "perde-on", "kiris-grup", "kose", "uzatma", "birlestir-ciz", "perde-ciz", "etiket-engel", "uzunluk-hazirlik", "perde-etiket", "kiris-uzunluk", "kiris-etiket" };
+                        ed.WriteMessage("\nPLAN_TANI kiris(ms): " + string.Join(" ", _bwT.Select((t, i) => bwAd[i] + "=" + (t * fms).ToString("0"))));
+                        string[] ksAd = { "isgal", "kesim-x", "kesim-y", "cizgi", "dilim-ust", "dilim-sol", "sema", "sinir", "olcu", "etiket", "kot", "diger" };
+                        ed.WriteMessage("\nPLAN_TANI kesit(ms): " + string.Join(" ", _ksT.Select((t, i) => ksAd[i] + "=" + (t * fms).ToString("0"))));
+                        string[] dsAd = { "-", "kesim", "cizim", "etiket-birlesim", "etiket-secim", "etiket-yaz", "on-hazirlik" };
+                        ed.WriteMessage("\nPLAN_TANI doseme(ms): " + string.Join(" ", _dsT.Select((t, i) => dsAd[i] + "=" + (t * fms).ToString("0"))));
+                    }
                     string gprSummary = string.Empty;
                     if (gprKalipDosemeDonati != null && gprKalipDosemeDonati.Count > 0)
                     {
@@ -1346,6 +1490,10 @@ namespace ST4PlanIdCiz
                         _model.Floors.Count,
                         gprSummary,
                         binaSemaNote);
+                    if (layoutFlags.DrawDeneme1EksenOnDonatiCopy)
+                        ed.WriteMessage(Deneme2EksenArtiCiz
+                            ? "\n{0}: donatili kopyalarda {1} doseme eksen artisi cizildi."
+                            : "\n{0}: donatili kopyalarda {1} doseme eksen kaydi (artilar cizilmedi).", msgTag, deneme2EksenArtiTotal);
                 }
             }
             finally
@@ -1354,10 +1502,12 @@ namespace ST4PlanIdCiz
                 _kalip50SuppressKirisPerdeKolonDosemeLabels = false;
                 _kalip50DrawSlabBoundaryPolylinesOnDosemeHatti = false;
                 _kalip50ExcludeStairAdjacentAndBelowFloorSlabs = false;
+                _kalip50AraSahanlikEtiketDonatiYok = false;
                 _kalip50DrawInteriorVoidsOnBosLayer = false;
                 _kalip50ClassifyDosemeHattiTopologyLayers = false;
                 _kalip50FormworkCompletionTag = null;
                 _kalip50Deneme1DosemeHattiGeoms = null;
+                _kalip50Deneme2EksenGeoms = null;
                 _kalip50Deneme1SlabHamQuadBySlabId = null;
                 _kalip50Deneme1SlabKesilmisBySlabId = null;
                 _kalipPlanScale = null;
@@ -1565,6 +1715,47 @@ namespace ST4PlanIdCiz
             else
                 ed?.WriteMessage("\nKALIP50: doseme donatisi DMX ({0} doseme, GPR ile ayni{1}).", written, montajNote);
             return dict;
+        }
+
+        /// <summary>
+        /// DENEME2: ST4 ile aynı adlı DMX kayıtları ST4 döşeme sırasıyla eşleşir (kayıt sayısı eşit olmalı).
+        /// Montaj yalnız kendi kaydında olan döşemeye; üst kot = kat kotu + döşeme kot farkı (ST4).
+        /// </summary>
+        /// <summary>DENEME2: ST4 döşeme kalınlığı (cm) ve üst kotu (kat kotu + kot farkı, m).</summary>
+        private double Deneme2SlabThicknessAndKot(int slabId, out double? ustKotM)
+        {
+            ustKotM = null;
+            SlabInfo slab = _model?.Slabs?.FirstOrDefault(s => s.SlabId == slabId);
+            if (slab == null) return 0;
+            FloorInfo floor = FloorForSlab(slab);
+            if (floor != null) ustKotM = floor.ElevationM + slab.OffsetFromFloorCm / 100.0;
+            return slab.ThicknessCm;
+        }
+
+        private bool TryFillDeneme2Dmx(string st4SourcePath, Editor ed)
+        {
+            Deneme2DmxBySlabId.Clear();
+            string dmxPath = DmxDosemeDonati.ResolvePath(st4SourcePath);
+            if (string.IsNullOrEmpty(dmxPath) || _model?.Slabs == null)
+            {
+                ed?.WriteMessage("\nDENEME2: ST4 ile ayni adli DMX yok; doseme donatisi GPR yazilarindan.");
+                return false;
+            }
+            List<DmxDosemeDonati.Rec> recs = DmxDosemeDonati.Read(dmxPath, projeGeneliMontaj: false);
+            if (recs.Count != _model.Slabs.Count)
+            {
+                ed?.WriteMessage("\nDENEME2: DMX kayit {0}, ST4 doseme {1}; doseme donatisi GPR yazilarindan.", recs.Count, _model.Slabs.Count);
+                return false;
+            }
+            for (int i = 0; i < recs.Count; i++)
+            {
+                SlabInfo slab = _model.Slabs[i];
+                FloorInfo floor = FloorForSlab(slab);
+                double? ustKot = floor != null ? floor.ElevationM + slab.OffsetFromFloorCm / 100.0 : (double?)null;
+                Deneme2DmxBySlabId[slab.SlabId] = (recs[i], ustKot);
+            }
+            ed?.WriteMessage("\nDENEME2: doseme donatisi dogrudan DMX'ten ({0} doseme); GPR yazisi cizilmez.", recs.Count);
+            return true;
         }
 
         private FloorInfo FloorForSlab(SlabInfo slab)
@@ -4050,7 +4241,20 @@ namespace ST4PlanIdCiz
         private static Coordinate C1(double x, double y) => new Coordinate(x, y);
 
         /// <summary>Katta çizilen elemanların (kolon, kiriş, perde, döşeme) birleşimi; model koordinatları (offset 0). Resimdeki gibi yapıyı takip eden dış sınır için kullanılır. Koordinatlar 1 cm yuvarlanarak non-noded intersection önlenir.</summary>
+        /// <summary>KALIP50 oturumu: kat eleman birleşimi (yalnız model + mantar bayrağına bağlı; ofsetsiz) kat başına bir kez.</summary>
+        private Dictionary<int, Geometry> _floorElementUnionByFloorNo;
+
         private Geometry BuildFloorElementUnion(FloorInfo floor)
+        {
+            if (!_isKalip50Mode || floor == null) return BuildFloorElementUnionCore(floor);
+            if (_floorElementUnionByFloorNo == null) _floorElementUnionByFloorNo = new Dictionary<int, Geometry>();
+            if (_floorElementUnionByFloorNo.TryGetValue(floor.FloorNo, out Geometry cached)) return cached;
+            Geometry g = BuildFloorElementUnionCore(floor);
+            _floorElementUnionByFloorNo[floor.FloorNo] = g;
+            return g;
+        }
+
+        private Geometry BuildFloorElementUnionCore(FloorInfo floor)
         {
             var factory = _ntsDrawFactory;
             var geoms = new List<Geometry>();
@@ -6306,6 +6510,77 @@ namespace ST4PlanIdCiz
             Dictionary<int, HashSet<int>> axisSets = BuildDeneme1BoundaryAxisIdSetBySlabIds(slabIds);
             Deneme1ApplyEksenSecondPhaseAlignIsolatedToBestNeighbor(result, geoms, slabMaps, axisSets);
             return result;
+        }
+
+        /// <summary>
+        /// DENEME2: donatılı kopyada DENEME1 ile aynı EKSEN grup/artı yönü hesabı (ham eksen dörtgeni) ve
+        /// yalnız <see cref="AppendDeneme1DosemeEksenArtiCizgileri"/>; döşeme hattı, DTX/DTY ve donatı hatları çizilmez.
+        /// </summary>
+        /// <summary>DENEME2 donatılı kopyada EKSEN X/Y artı çizgileri çizilsin mi (kapalı: yalnız donatı kaydı).</summary>
+        private static readonly bool Deneme2EksenArtiCiz = false;
+
+        private int DrawDeneme2DosemeEksenArtilari(Transaction tr, BlockTableRecord btr)
+        {
+            var geoms = _kalip50Deneme2EksenGeoms;
+            _kalip50Deneme2EksenGeoms = null;
+            if (geoms == null || geoms.Count == 0 || _ntsDrawFactory == null) return 0;
+            int drawn = 0;
+            try
+            {
+                Dictionary<int, int> slabIdToEgimGrupNo = BuildDeneme1EksenGrupNoBySlabId(geoms);
+                for (int eksenUnifyPass = 0; eksenUnifyPass < 2; eksenUnifyPass++)
+                {
+                    Dictionary<int, (double t1, double t2)> pre = BuildDeneme1EksenGrupCanonicalArtiYonByGrupNo(slabIdToEgimGrupNo);
+                    Deneme1UnifyEksenGrupNosByArtiYonSignature(slabIdToEgimGrupNo, pre, geoms);
+                }
+                Dictionary<int, (double t1, double t2)> eksenGrupArtiYon = BuildDeneme1EksenGrupCanonicalArtiYonByGrupNo(slabIdToEgimGrupNo);
+                Deneme1RenumberEksenGrupNosByFinalDrawnArtiSignature(slabIdToEgimGrupNo, eksenGrupArtiYon, geoms);
+                eksenGrupArtiYon = BuildDeneme1EksenGrupCanonicalArtiYonByGrupNo(slabIdToEgimGrupNo);
+
+                foreach ((int slabId, Geometry g) in geoms)
+                {
+                    if (g == null || g.IsEmpty) continue;
+                    if (!slabIdToEgimGrupNo.TryGetValue(slabId, out int egimNo) || egimNo <= 0) continue;
+                    Geometry gDraw = Deneme1ResolveDosemeHattiDrawOutline(g, _ntsDrawFactory) ?? g;
+                    try
+                    {
+                        double bt1, bt2;
+                        if (eksenGrupArtiYon.TryGetValue(egimNo, out (double t1, double t2) artiYon))
+                        {
+                            bt1 = artiYon.t1;
+                            bt2 = artiYon.t2;
+                        }
+                        else if (!TryGetDeneme1EksenArtiDikIkiYonRad(slabId, out bt1, out bt2))
+                            continue;
+                        // Kullanıcı (24.10.2026): EKSEN X/Y artı çizgileri şimdilik çizilmez; kayıt (donatı şeridi) aynen tutulur.
+                        if (Deneme2EksenArtiCiz)
+                            AppendDeneme1DosemeEksenArtiCizgileri(tr, btr, gDraw, slabId, bt1, bt2);
+                        drawn++;
+                        // Artı ile aynı merkez ve son çizim açıları: X kolu EKSEN X bandı, Y kolu EKSEN Y bandı.
+                        if (TryGetDeneme1DosemeLabelPoint(gDraw, out double cx, out double cy))
+                        {
+                            Deneme1ComputeFinalEksenArtiAnglesForDraw(slabId, bt1, bt2, out double ft1, out double ft2);
+                            bool ft1IsY = Deneme1IsEksenDirectionAngleInYBand(ft1);
+                            Deneme2EksenKayitlari.Add(new Deneme2EksenKaydi(
+                                _kalip50Deneme2CopyNo, slabId, cx, cy,
+                                ft1IsY ? ft2 : ft1,
+                                ft1IsY ? ft1 : ft2,
+                                g.Area,
+                                g.Coordinates.Select(c => new Point2d(c.X, c.Y)).ToArray(),
+                                Deneme2SlabThicknessAndKot(slabId, out double? ustKotM),
+                                ustKotM,
+                                donatiYok: _kalip50AraSahanlikEtiketDonatiYok
+                                    && ShouldOmitSlabFromBinaView(_model.Slabs.FirstOrDefault(s => s.SlabId == slabId))));
+                        }
+                    }
+                    catch { }
+                }
+            }
+            catch
+            {
+                // NTS topoloji hatasında artılar atlanır; kalıp planı etkilenmez.
+            }
+            return drawn;
         }
 
         /// <summary>DENEME1: döşeme hattı polyline’larını ham eksen dörtgeni üzerinden çizer; 1–4 katman sınıflandırması bu geometriye göre yapılır.</summary>
@@ -12144,6 +12419,27 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>GeometryCollection veya Boundary desteklemeyen geometriyi poligon listesine çevirip unionlar; Boundary çağrısı hata vermez.</summary>
+        /// <summary>
+        /// Çokgen(ler)den yalnız (merkez ± halfSpan·u) parçasının sınır kutusuna (1 cm pay) değen parçaları; ayrık parçalı birleşimde
+        /// alt küme geçerli MultiPolygon'dur. Hiçbiri değmiyorsa null. Çokgen dışı girdi aynen döner.
+        /// </summary>
+        private static Geometry KeepPolygonPartsNearSegment(Geometry geom, Point2d center, Vector2d u, double halfSpan, GeometryFactory factory)
+        {
+            if (geom == null || geom.IsEmpty || factory == null) return geom;
+            if (!(geom is Polygon) && !(geom is MultiPolygon)) return geom;
+            double ax = center.X - halfSpan * u.X, ay = center.Y - halfSpan * u.Y;
+            double bx = center.X + halfSpan * u.X, by = center.Y + halfSpan * u.Y;
+            var segEnv = new Envelope(Math.Min(ax, bx) - 1.0, Math.Max(ax, bx) + 1.0, Math.Min(ay, by) - 1.0, Math.Max(ay, by) + 1.0);
+            if (geom is Polygon p0) return p0.EnvelopeInternal.Intersects(segEnv) ? geom : null;
+            var keep = new List<Polygon>();
+            for (int i = 0; i < geom.NumGeometries; i++)
+                if (geom.GetGeometryN(i) is Polygon pi && pi.EnvelopeInternal.Intersects(segEnv))
+                    keep.Add(pi);
+            if (keep.Count == 0) return null;
+            if (keep.Count == geom.NumGeometries) return geom;
+            return keep.Count == 1 ? (Geometry)keep[0] : factory.CreateMultiPolygon(keep.ToArray());
+        }
+
         private static Geometry EnsureBoundarySafe(Geometry geom, GeometryFactory factory)
         {
             if (geom == null || geom.IsEmpty) return geom;
@@ -12546,6 +12842,7 @@ namespace ST4PlanIdCiz
             _drawnBeamGeometriesForSlabCut = null;
             _drawnWallGeometriesForSlabCut = null;
             var factory = _ntsDrawFactory;
+            _bwT0 = System.Diagnostics.Stopwatch.GetTimestamp();
             var wallList = new List<(Geometry poly, int fixedAxisId, BeamInfo beam, Point2d a, Point2d b)>();
             Geometry kolonPerdeUnion = BuildKolonPerdeUnion(floor, offsetX, offsetY);
             var kolonPerdeSafe = (kolonPerdeUnion != null && !kolonPerdeUnion.IsEmpty) ? EnsureBoundarySafe(kolonPerdeUnion, _ntsDrawFactory) : null;
@@ -12630,6 +12927,7 @@ namespace ST4PlanIdCiz
                 }
             }
 
+            BwT(0);
             // Uzatma kapalı.
             Dictionary<(int x, int y), Dictionary<(int beamId, double p1, double p2), double>> twoBeamCornerExtendCm = null;
             var finalBeamGeometries = new List<(int beamId, Geometry toDraw, int fixedAxisId)>();
@@ -12804,6 +13102,7 @@ namespace ST4PlanIdCiz
             var kirisKolonPerdeKesimSonrasi = finalBeamGeometries.Select(x => (x.beamId, x.toDraw, x.fixedAxisId)).ToList();
             // İşaret noktalarını hafızaya al; sadece kırmızı işaretin kestiği kirişleri diğer kirişin mavi uçlarına (izdüşümüne) kadar uzat, sonra çiz.
             const int axisXMin = 1001, axisXMax = 1999, axisYMin = 2001, axisYMax = 2999;
+            BwT(1);
             var twoBeamCornerData = GetMarkerPointsFromFinalBeamGeometries(finalBeamGeometries, kolonPerdeUnion, factory, axisXMin, axisXMax, axisYMin, axisYMax);
             bool isInsideOtherBeam(Point2d pt, int excludeBeamId, List<(int beamId, Geometry toDraw, int fixedAxisId)> geoms)
             {
@@ -12913,6 +13212,7 @@ namespace ST4PlanIdCiz
                 beamsExtended.Add(beamIdX);
                 beamsExtended.Add(beamIdY);
             }
+            BwT(2);
             for (int i = 0; i < finalBeamGeometries.Count; i++)
             {
                 var (beamId, _, fixedAxisId) = finalBeamGeometries[i];
@@ -12930,6 +13230,7 @@ namespace ST4PlanIdCiz
                 if (finalGeomByBeamId.TryGetValue(beamId, out Geometry drawnGeom) && drawnGeom != null)
                     beamLabelInfos[i] = (beamId, drawnGeom, firstBeam, firstA, firstB, minSeg);
             }
+            BwT(3);
             // Kirişleri çizimde görüldüğü hali (kesim + uzatma sonrası) ile birleştir: temas eden parçaları Union ile tek geometri yapıp çiz.
             var beamPieces = new List<Geometry>();
             foreach (var (_, toDraw, _) in finalBeamGeometries)
@@ -12982,6 +13283,7 @@ namespace ST4PlanIdCiz
             }
             else
                 _drawnBeamGeometriesForSlabCut = null;
+            BwT(4);
             // İşaretler (kırmızı/mavi daire) çizilmiyor; uzatma mantığı aynen uygulanıyor.
             var wallLabelInfos = new List<(int beamId, Geometry drawnGeometry, BeamInfo beam, Point2d firstA, Point2d firstB)>();
             _drawnWallGeometriesForSlabCut = new List<Geometry>();
@@ -13010,6 +13312,7 @@ namespace ST4PlanIdCiz
                 }
             }
 
+            BwT(5);
             // Perde etiketleri (isim) çizilir; perde ID yazıları çizilmez (wallLabelInfos üzerinden DrawBeamLabel ile isim yazılıyor).
 
             // Kiriş etiketleri: çizimde 70x14 cm referans (resimdeki gibi). Boyutlar ve 4 köşe koordinatı hafızada; 2 cm kuralı sabit.
@@ -13030,6 +13333,7 @@ namespace ST4PlanIdCiz
             }
             catch { }
 
+            BwT(6);
             if (!_kalip50SuppressKirisPerdeKolonDosemeLabels)
             {
             // Y kiriş etiketini uzunluk çizgisinin başına hizalamak için önce her kirişin (tStart, tEnd) segmentini hesapla
@@ -13048,6 +13352,7 @@ namespace ST4PlanIdCiz
                 }
             }
             catch { }
+            BwT(7);
             foreach (var (beamId, drawnGeometry, firstBeam, firstA, firstB, minSegmentLengthCm) in beamLabelInfos)
             {
                 Vector2d dir = firstB - firstA;
@@ -13076,6 +13381,9 @@ namespace ST4PlanIdCiz
                     var zoneEnd2 = CreateAxisStripPolygon(firstA, u, perp, tStart2, L, perpExtendCm, factory);
                     // Kolon: perde mantığıyla tam kullan (kırpma yok), böylece kolon yüzü doğru kesilir
                     Geometry kolonFull = (kolonUnionForBeamLength != null && !kolonUnionForBeamLength.IsEmpty) ? EnsureBoundarySafe(kolonUnionForBeamLength, factory) : null;
+                    // Engel birleşimi yalnız merkez çizgisi (merkez ± halfSpan) üzerinde kullanılır: çizgi kutusuna değmeyen kolon parçası
+                    // çizgi üzerindeki kesişim/içerik sonucunu değiştirmez → birleşime girmez (kat kolon birleşimiyle her kirişte Union pahalı).
+                    kolonFull = KeepPolygonPartsNearSegment(kolonFull, center, u, Math.Max(halfSpanCm, L * 0.5 + 50.0), factory);
                     // Diğer kiriş ve perdeleri sadece %25 uç şeritleri içinde kalan kısımlarıyla ekle
                     var otherBeamGeoms = new List<Geometry>();
                     foreach (var x in beamLabelInfos)
@@ -13134,6 +13442,7 @@ namespace ST4PlanIdCiz
                 }
             }
 
+            BwT(9);
             bool isPlan100Annot =
                 _temelFoundationScale == TemelFoundationPlanScale.Hundred ||
                 _kalipPlanScale == KalipPlanScale.Hundred;
@@ -13233,6 +13542,7 @@ namespace ST4PlanIdCiz
                 }
             }
 
+            BwT(10);
             // Kiriş uzunluk çizgileri artık çizilmiyor; segment değerleri (beamLengthSegmentByBeamId) sadece etiket yerleşimi için hafızada kullanılıyor.
 
             // Perde etiketleri: kiriş ile aynı mantık — çizilen perde geometrisine göre sol alt/alt sağ + 2 cm, 15 cm adımlarla merkeze kaydırma. Ölçü: eni/uzunluk (uzunluk = merkez doğrusunun kolonları kestiği noktalar arası).
@@ -13273,7 +13583,9 @@ namespace ST4PlanIdCiz
                 Point2d wallCenter = drawnGeometry.Centroid != null && !drawnGeometry.Centroid.IsEmpty
                     ? new Point2d(drawnGeometry.Centroid.X, drawnGeometry.Centroid.Y)
                     : new Point2d((firstA.X + firstB.X) * 0.5, (firstA.Y + firstB.Y) * 0.5);
-                double perdeLengthCm = GetPerdeLengthCm(wallCenter, u, kolonUnionForWalls, factory, firstA.GetDistanceTo(firstB));
+                // Uzunluk yalnız merkez ± 500 cm çizgisinde kolon sınırıyla ölçülür: çizgi kutusuna değmeyen kolon parçaları sonucu değiştirmez.
+                Geometry kolonNearWall = KeepPolygonPartsNearSegment(kolonUnionForWalls, wallCenter, u, 500.0, factory);
+                double perdeLengthCm = GetPerdeLengthCm(wallCenter, u, kolonNearWall, factory, firstA.GetDistanceTo(firstB));
                 const double perdeLabelMinLengthForDimensionsCm = 160.0;
                 string labelText = perdeLengthCm < perdeLabelMinLengthForDimensionsCm
                     ? string.Format(CultureInfo.InvariantCulture, "P{0}{1}", katEtiketi, beamNumeroStr)
@@ -13290,7 +13602,7 @@ namespace ST4PlanIdCiz
                 const double minPerdeSegmentAfterShortenCm = 1.0;
                 double tLineStart = tMin;
                 double tLineEnd = tMax;
-                if (TryGetPerdeLengthSegment(wallCenter, u, kolonUnionForWalls, factory, out double tSegStart, out double tSegEnd))
+                if (TryGetPerdeLengthSegment(wallCenter, u, kolonNearWall, factory, out double tSegStart, out double tSegEnd))
                 {
                     double perdeSegLen = tSegEnd - tSegStart;
                     double maxShortenCm = perdeLengthCm >= perdeLabelLongThresholdCm ? perdeLengthShortenCmLong : perdeLengthShortenCmShort;
@@ -13302,7 +13614,20 @@ namespace ST4PlanIdCiz
                 try
                 {
                     if (baseObstaclesWalls != null && !baseObstaclesWalls.IsEmpty && drawnGeometry != null && !drawnGeometry.IsEmpty)
-                        obstacles = baseObstaclesWalls.Difference(drawnGeometry);
+                    {
+                        // Engeller yalnız bu perdenin etiket kutularıyla sınanır (kutular perde çevresinde): kat birleşimini önce
+                        // perde zarfı + tüm kutu konumlarını kapsayan payla kırp, sonra perdeyi çıkar (tam kat Difference her perdede pahalı).
+                        Geometry near = null;
+                        try
+                        {
+                            double pay = textWidthCm + 3.0 * wallLabelHeightCm + Temel100PerdeLabelShiftAlongPerpCm + 50.0;
+                            var we = drawnGeometry.EnvelopeInternal;
+                            var clipEnv = new Envelope(we.MinX - pay, we.MaxX + pay, we.MinY - pay, we.MaxY + pay);
+                            near = baseObstaclesWalls.Intersection(factory.ToGeometry(clipEnv));
+                        }
+                        catch { near = null; }
+                        obstacles = near != null ? near.Difference(drawnGeometry) : baseObstaclesWalls.Difference(drawnGeometry);
+                    }
                 }
                 catch { }
                 bool isFixedX = beam.FixedAxisId >= 1001 && beam.FixedAxisId <= 1999;
@@ -13375,6 +13700,7 @@ namespace ST4PlanIdCiz
                 }
                 catch { /* geometri/union hatası: kiriş çizgileri olduğu gibi */ }
             }
+            BwT(8);
         }
 
         /// <summary>Verilen kattaki perde isimlerini (P{kat}{no} eni/uzunluk) çizer. Temel planında ilk kat perdeleri için kullanılır.</summary>
@@ -13868,6 +14194,7 @@ namespace ST4PlanIdCiz
         /// <param name="drawSlabAltCizgi">true ise (KALIP50 donatı planı) döşeme alt çizgileri (karşı kenar ortaları + aşağı ofset) çizilir.</param>
         private void DrawSlabs(Transaction tr, BlockTableRecord btr, FloorInfo floor, double offsetX, double offsetY, bool drawSlabAltCizgi = false)
         {
+            DsT(0);
             int floorNo = floor.FloorNo;
             var factory = _ntsDrawFactory;
             _drawnSlabGeometriesForUnion = new List<Geometry>();
@@ -13912,6 +14239,9 @@ namespace ST4PlanIdCiz
 
             var slabRecords = new List<(SlabInfo slab, Geometry toDraw, Geometry adjGeom, Point2d center)>();
             var labelSlabsNoGeometry = new HashSet<int>();
+            // İkinci döngü aynı eksen dörtgeni − aynı birleşim farkını yeniden hesaplamasın (kopya ile birebir aynı geometri).
+            var kesilmisBySlabId = new Dictionary<int, Geometry>();
+            DsT(6);
             foreach (var slab in slabsOnFloor)
             {
                 if (_kalip50ExcludeStairAdjacentAndBelowFloorSlabs && _model.StairSlabIds.Contains(slab.SlabId)) continue;
@@ -13924,6 +14254,8 @@ namespace ST4PlanIdCiz
                 Point2d center;
                 if (!TryGetSlabGeometry(slab, floorNo, offsetX, offsetY, factory, drawnKolonPerdeKirisUnion, out toDraw, out center))
                     continue;
+                if (toDraw != null && !toDraw.IsEmpty)
+                    kesilmisBySlabId[slab.SlabId] = toDraw;
                 if (toDraw == null || toDraw.IsEmpty)
                 {
                     if (!_model.StairSlabIds.Contains(slab.SlabId))
@@ -13936,6 +14268,7 @@ namespace ST4PlanIdCiz
                     adjGeom = axisQuad;
                 slabRecords.Add((slab, toDraw, adjGeom, center));
             }
+            DsT(1);
 
             foreach (var slab in _model.Slabs)
             {
@@ -13972,7 +14305,12 @@ namespace ST4PlanIdCiz
                     continue;
 
                 Geometry toDraw = slabPoly;
-                if (drawnKolonPerdeKirisUnion != null && !drawnKolonPerdeKirisUnion.IsEmpty)
+                if (kesilmisBySlabId.TryGetValue(slab.SlabId, out Geometry kesilmis))
+                {
+                    try { toDraw = kesilmis.Copy(); }
+                    catch { toDraw = kesilmis; }
+                }
+                else if (drawnKolonPerdeKirisUnion != null && !drawnKolonPerdeKirisUnion.IsEmpty)
                 {
                     try
                     {
@@ -13989,6 +14327,11 @@ namespace ST4PlanIdCiz
                 if (toDraw != null && !toDraw.IsEmpty)
                 {
                     _drawnSlabGeometriesForUnion.Add(toDraw);
+                    if (_kalip50Deneme2EksenGeoms != null && !isStair)
+                    {
+                        try { _kalip50Deneme2EksenGeoms.Add((slab.SlabId, slabPoly.Copy())); }
+                        catch { _kalip50Deneme2EksenGeoms.Add((slab.SlabId, slabPoly)); }
+                    }
                     if (_kalip50DrawSlabBoundaryPolylinesOnDosemeHatti)
                     {
                         if (_kalip50ClassifyDosemeHattiTopologyLayers && _kalip50Deneme1DosemeHattiGeoms != null)
@@ -14030,6 +14373,7 @@ namespace ST4PlanIdCiz
                     }
                 }
             }
+            DsT(2);
 
             if (!_kalip50SuppressKirisPerdeKolonDosemeLabels)
             {
@@ -14039,6 +14383,7 @@ namespace ST4PlanIdCiz
                 else
                     DrawSlabLabelsClassic(tr, btr, floor, storyId, slabRecords, labelSlabsNoGeometry, slabLabelStyleId, drawnKolonPerdeKirisUnion);
             }
+            DsT(5);
         }
 
         /// <summary>KALIP50/100 / ST4PLANID: eski etiket (kalınlık+kot+yük komşuluk; ST4 numa).</summary>
@@ -14071,9 +14416,11 @@ namespace ST4PlanIdCiz
                 floorBoundary = floorUnion?.Boundary;
             }
             catch { }
+            DsT(3);
 
             var forIds = classicRecords.Select(r => (r.slab, r.toDraw, r.center)).ToList();
             HashSet<int> slabIdsToLabel = ComputeSlabIdsToLabel(forIds, floor, floorBoundary);
+            DsT(4);
             if (labelSlabsNoGeometry != null)
             {
                 foreach (int id in labelSlabsNoGeometry)
@@ -14096,7 +14443,9 @@ namespace ST4PlanIdCiz
             foreach (var r in classicRecords)
             {
                 if (!slabIdsToLabel.Contains(r.slab.SlabId)) continue;
-                Point2d anchor = GetSlabLabelAnchorTopLeftQuarter(r.adjGeom ?? r.toDraw, r.center);
+                if (_kalip50AraSahanlikEtiketDonatiYok && ShouldOmitSlabFromBinaView(r.slab)) continue;
+                Point2d anchor = KeepSlabLabelAnchorInside(
+                    GetSlabLabelAnchorTopLeftQuarter(r.adjGeom ?? r.toDraw, r.center), r.toDraw ?? r.adjGeom);
                 AppendSlabLabel(tr, btr, r.slab, floor, storyId, GetSlabNumero(r.slab.SlabId), slabPad, anchor, textStyleId);
             }
             if (labelSlabsNoGeometry != null)
@@ -14107,6 +14456,7 @@ namespace ST4PlanIdCiz
                     if (classicRecords.Any(x => x.slab.SlabId == id)) continue;
                     var slab = _model.Slabs.FirstOrDefault(s => s.SlabId == id);
                     if (slab == null) continue;
+                    if (_kalip50AraSahanlikEtiketDonatiYok && ShouldOmitSlabFromBinaView(slab)) continue;
                     AppendSlabLabel(tr, btr, slab, floor, storyId, GetSlabNumero(id), slabPad, new Point2d(0, 0), textStyleId);
                 }
             }
@@ -14116,6 +14466,31 @@ namespace ST4PlanIdCiz
         /// Döşeme etiket kotası: aks dörtgeninin sol-üst 1/4 karo ortası
         /// (üst/alt çizgi karolajının sol-üst hücresi; tam orta değil).
         /// </summary>
+        /// <summary>
+        /// Eğik döşemede zarf sol-üst çeyreği döşeme dışına (komşuya) düşebilir: nokta kendi döşemesi içindeyse aynen;
+        /// değilse içeriye noktası yönünde yarı yarıya çekilir (en çok 6 adım), olmazsa döşeme iç noktası.
+        /// </summary>
+        private static Point2d KeepSlabLabelAnchorInside(Point2d anchor, Geometry slabGeom)
+        {
+            if (slabGeom == null || slabGeom.IsEmpty) return anchor;
+            try
+            {
+                var f = slabGeom.Factory;
+                if (slabGeom.Contains(f.CreatePoint(new Coordinate(anchor.X, anchor.Y)))) return anchor;
+                Point ip = slabGeom.InteriorPoint;
+                if (ip == null || ip.IsEmpty) return anchor;
+                var c = new Point2d(ip.X, ip.Y);
+                Point2d p = anchor;
+                for (int i = 0; i < 6; i++)
+                {
+                    p = new Point2d(0.5 * (p.X + c.X), 0.5 * (p.Y + c.Y));
+                    if (slabGeom.Contains(f.CreatePoint(new Coordinate(p.X, p.Y)))) return p;
+                }
+                return c;
+            }
+            catch { return anchor; }
+        }
+
         private static Point2d GetSlabLabelAnchorTopLeftQuarter(Geometry boundsGeom, Point2d fallbackCenter)
         {
             try
@@ -15535,30 +15910,50 @@ namespace ST4PlanIdCiz
         {
             if (symbolScale < 1e-6) symbolScale = 1.0;
             Database sourceDb = null;
+            bool keepSource = false;
             try
             {
-                sourceDb = new Database(false, true);
-                string ext = Path.GetExtension(filePath);
-                if (string.Equals(ext, ".dxf", StringComparison.OrdinalIgnoreCase))
-                    sourceDb.DxfIn(filePath, null);
-                else
-                    sourceDb.ReadDwgFile(filePath, FileOpenMode.OpenForReadAndAllShare, true, null);
-
-                ObjectIdCollection ids = new ObjectIdCollection();
-                using (Transaction trSrc = sourceDb.TransactionManager.StartTransaction())
+                ObjectIdCollection ids;
+                if (_kotSymbolCacheDepth > 0 && _kotSymbolSrcDb != null && string.Equals(_kotSymbolSrcPath, filePath, StringComparison.OrdinalIgnoreCase))
                 {
-                    BlockTableRecord ms = trSrc.GetObject(sourceDb.CurrentSpaceId, OpenMode.ForRead) as BlockTableRecord;
-                    if (ms == null) return false;
-                    foreach (ObjectId id in ms)
+                    keepSource = true;
+                    ids = new ObjectIdCollection(_kotSymbolSrcIds);
+                }
+                else
+                {
+                    sourceDb = new Database(false, true);
+                    string ext = Path.GetExtension(filePath);
+                    if (string.Equals(ext, ".dxf", StringComparison.OrdinalIgnoreCase))
+                        sourceDb.DxfIn(filePath, null);
+                    else
+                        sourceDb.ReadDwgFile(filePath, FileOpenMode.OpenForReadAndAllShare, true, null);
+
+                    ids = new ObjectIdCollection();
+                    using (Transaction trSrc = sourceDb.TransactionManager.StartTransaction())
                     {
-                        if (!id.IsValid || id.IsErased) continue;
-                        Entity ent = trSrc.GetObject(id, OpenMode.ForRead) as Entity;
-                        if (ent == null) continue;
-                        // Kot yazıları çağıranda çizilir; şablondaki -0.40/-0.60 TEXT kopyalanmaz
-                        if (ent is DBText || ent is MText) continue;
-                        ids.Add(id);
+                        BlockTableRecord ms = trSrc.GetObject(sourceDb.CurrentSpaceId, OpenMode.ForRead) as BlockTableRecord;
+                        if (ms == null) return false;
+                        foreach (ObjectId id in ms)
+                        {
+                            if (!id.IsValid || id.IsErased) continue;
+                            Entity ent = trSrc.GetObject(id, OpenMode.ForRead) as Entity;
+                            if (ent == null) continue;
+                            // Kot yazıları çağıranda çizilir; şablondaki -0.40/-0.60 TEXT kopyalanmaz
+                            if (ent is DBText || ent is MText) continue;
+                            ids.Add(id);
+                        }
+                        trSrc.Commit();
                     }
-                    trSrc.Commit();
+                    if (_kotSymbolCacheDepth > 0)
+                    {
+                        // Oturum boyunca aynı kaynak: her kot işaretinde dosya yeniden okunmaz (EndKotSymbolCache kapatır).
+                        _kotSymbolSrcDb?.Dispose();
+                        _kotSymbolSrcDb = sourceDb;
+                        _kotSymbolSrcPath = filePath;
+                        _kotSymbolSrcIds = new ObjectId[ids.Count];
+                        ids.CopyTo(_kotSymbolSrcIds, 0);
+                        keepSource = true;
+                    }
                 }
                 if (ids.Count == 0) return false;
 
@@ -15627,8 +16022,26 @@ namespace ST4PlanIdCiz
             catch { return false; }
             finally
             {
-                sourceDb?.Dispose();
+                if (!keepSource) sourceDb?.Dispose();
             }
+        }
+
+        private static Database _kotSymbolSrcDb;
+        private static string _kotSymbolSrcPath;
+        private static ObjectId[] _kotSymbolSrcIds;
+        private static int _kotSymbolCacheDepth;
+
+        /// <summary>Çizim oturumu boyunca kot işareti kaynak DWG'si açık tutulur; <see cref="EndKotSymbolCache"/> ile mutlaka kapatılır.</summary>
+        private static void BeginKotSymbolCache() => _kotSymbolCacheDepth++;
+
+        private static void EndKotSymbolCache()
+        {
+            if (_kotSymbolCacheDepth > 0) _kotSymbolCacheDepth--;
+            if (_kotSymbolCacheDepth > 0) return;
+            try { _kotSymbolSrcDb?.Dispose(); } catch { }
+            _kotSymbolSrcDb = null;
+            _kotSymbolSrcPath = null;
+            _kotSymbolSrcIds = null;
         }
 
         /// <summary>TEMEL50ST4: DLL içine gömülü antet_02.dwg → geçici dosyaya yazilir; ReadDwgFile (DXF DxfIn sembol tablosu hatalarindan kacinir).</summary>
