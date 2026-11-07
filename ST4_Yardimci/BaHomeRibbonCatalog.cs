@@ -33,7 +33,8 @@ namespace ST4Yardimci
             new Group("OLCU", "Ölçü", "OTOOLCU", "PLANOLCU"),
             new Group("DETAY", "Detay", "MERDIVEN", "TEMELHATILI", "PARAPET", "TEMELCEKURU",
                 "TEMELDETAY", "KURANGLEZ", "PERDEBOSLUK", "SEHPADONATI"),
-            new Group("DONATI", "Donatı", "DOSEMEDONATI", "OTODONATI", "HASIRDONATI", "RADYEILAVE"),
+            new Group("MIMARI", "Mimari", "MIMARIKAT", "MIMARIBOSLUK", "MIMARIMERDIVEN"),
+            new Group("DONATI", "Donatı", "DOSEMEDONATI", "OTODONATI", "HASIRDONATI", "RADYEILAVE", "MANTARILAVE", "KIRISCIZ"),
             new Group("GENEL", "Genel Düzenleme", "DONATIBOYU", "DONATIADET", "DONATIOKU",
                 "KOTDEGISTIR", "DONATIMETRAJ", "BETONKALIP", "SEHIMTABLOSU", "KATMANYUKLE")
         };

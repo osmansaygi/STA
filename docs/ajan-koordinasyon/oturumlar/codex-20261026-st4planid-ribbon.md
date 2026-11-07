@@ -1,0 +1,11 @@
+# Codex — BEYKENT ST4PLANID düğmesi
+- Ajan: Codex / bu sohbet.
+- Tarih: 26.10.2026 Europe/Istanbul.
+- Durum: tamamlandı; tüm dosya/çıktı ayırmaları serbest.
+- Görev: mevcut ST4PLANID komutunu mevcut onaylı Monolit simgesiyle BEYKENT / Yapı grubuna ekleme.
+- Ayrılan: ST4_Plan_ID_Ciz/BeykentRibbonCatalog.cs; tools/PlanRibbonCheck/Probe/Program.cs; tools/PlanRibbonCheck/prepared/**, obj/**, build/**, Probe/bin/**, Probe/obj/**, actual-ribbon.png; docs/modul-durum/ST4_Plan_ID_Ciz.Ribbon.md; bu kayıt; yayında NETLOAD/GUNCEL_2027/**, NETLOAD/arsiv/**.
+- Kontrol: son iki gün kayıtları ve yeni sehim teslimi okundu. Claude sehim işi tamamlandı; Yardımcı164244 korunacak. Beklemedeki DosemeDonatiRunner/Deneme2DosemeDonati ve StatikRaporClaude dosyaları değişmez. Menü/Home/Monolit ve kurulu yükleyici hedefi kontrol edildi.
+- Ortak bin/obj kullanılmaz. Mevcut Monolit atlas ST4PLANID girdisi kullanılır; simge sırası değişmez. Çalışan AutoCAD'e DLL yüklenmez.
+- Kapsam eki: tools/Test-StaStartup.ps1 test fixture'ı; önceden eklenmiş CizimIzleyici.Kur çağrısının eksik test karşılığı genel doğrulamayı CS0103 ile durdurdu. Üretim davranışını değiştirmeyen fixture desteği eklenecek.
+- Sonuç: ST4PLANID Yapı grubuna mevcut Monolit simgesiyle eklendi. Ribbon 22 komut/32px/yönlendirme/tek düğme/yaşam döngüsü PASS; WPF görsel PASS; genel Verify-Project ve 2027 başlangıç testi PASS. Fixture eksikliği giderildi. İzole net10/2027 0 hata/4 bilinen uyarı.
+- Yayın: Plan20261026_165023 + mevcut Yardımcı20261026_164244; metadata/bağımlılık/kopya SHA256 PASS, klasörde iki ST4 DLL doğrulandı. Çizim/hesap kaynakları değişmedi. Gerçek AutoCAD testi yok; çalışan kullanıcı oturumuna DLL yüklenmedi. Modül durum kaydı güncel; commit/push yok.

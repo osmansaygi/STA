@@ -58,3 +58,6 @@
 - Ayrılanlar: ST4_Plan_ID_Ciz/PlanIdDrawingManager.KirisAcilim.cs (KirisAcilimGovdeUc); tools/KesitKonum20261023/**; NETLOAD/GUNCEL_2027/**, NETLOAD/arsiv, NETLOAD/OKU.txt; docs/modul-durum/ST4_Plan_ID_Ciz.md; bu kayıt.
 - Sonuç: KirisAcilimGovdeUc ara mesnet "aynı düzen" dalı (mesnet ortasında boy kadar bindirme) yalnız sürekli temelde; kirişte her gövde kendi yüzünden boy = max(50φ, ℓb) kadar girer (karşı ucu paspayında sınırlı). Tek çubukta birleştirme (≤1200) değişmedi.
 - Doğrulama: CK SZ-61 (180 cm) gövde 124/120 → 64/60, bindirme yok (tools/KesitKonum20261023/sz61-sonra.png). CK kiriş: yalnız gövde yazıları değişti, 248 çubuk aynı, toplam boy 200890 → 198584 cm. Sürekli temel ve MS nesne sayısı aynı; kesit/mesnet kontrolleri PASS. Yayın Plan 010706 + Yardımcı 213059 hash PASS. Canlı AutoCAD denenmedi.
+## Commit / push (24.10.2026, kullanıcı yetkisiyle)
+- Commit 45d7b1d → origin/cursor/temel-donati-dort-kopya (b5fa547..45d7b1d). 541 dosya: izlenen 77 değişiklik + izlenmeyen kaynak/proje/betik/doküman/ikon (önceki oturumların commit edilmemiş işleri dahil, kullanıcı "tüm çalışma ağacı" seçti). DLL/PDB, NETLOAD paketleri, setup/bundle/zip, DWG/DXF test çıktıları, ST4/MAT1 proje verileri ve 157 MB .pyd hariç. Bu kayıt dosyası commit sonrası güncellendi (commit dışında).
+- Durum: tamamlandı — rezervasyon yok.

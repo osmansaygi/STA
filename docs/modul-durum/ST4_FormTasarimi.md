@@ -1,5 +1,13 @@
 # Yardımcı ve Plan — Standart A açık formlar
 
+## Ortak girdi bileşenleri (07.11.2026, Claude) — GUNCEL_2027 220219 + 220221
+
+- Kullanıcı isteği: girdiler amaca uygun ve bütün formlar birbiriyle uyumlu; ø elle yazılmasın. Kurallar: `tools/FormGirdiPilot20261107/README.md` ("Ortak form kuralları", 8 madde).
+- Yeni `Ortak/Monolit/`: `OlcuKutusu` (birim kutuda, sınır, virgül/nokta), `DonatiKutusu` (ø sabit önek, `12/15`, cm²/m), `SegmentSecim`, `CapIsaretiSecim`, `GirdiDenetci` (alt şerit: kırmızı hata engeller, sarı uyarı engellemez, Varsayılana dön), `GirdiKutusu`, `GirdiTema`.
+- Dönüştürülen: Plan 8 form, Yardımcı 19 form (KatmanAyar ve RadyeOtomatik değişmedi). Settings adları/ini anahtarları/runner aynı. KolonApplication'dan KOLONDUSEY/KAPAMADETAY'ın kopyası 3 ayar kaldırıldı (çizim akışı ortak ini'den okuyor). Girdi doğrulama MessageBox'ları şeride taşındı; sessiz varsayılana dönüş kaldırıldı.
+- Doğrulama: izole net10/2027 derleme Yardımcı 0/0, Plan 0 hata/6 eski uyarı (`tools/FormGirdiPilot20261107/derleme/build*/…_20261107_2202*.dll`); önizleme `--test` PASS (yalnız TemelHatili davranışı). Diğer formların görsel/canlı AutoCAD denemesi YOK. Yedek: `tools/FormGirdiPilot20261107/yedek-20261107/`.
+- Bilinen: `tools/ParapetFormPreview` ve `tools/MonolitFormCheck/Smoke.cs` eski alan tiplerine yansıma ile eriştiği için güncellenmeli.
+
 Güncelleme: 22.10.2026. Kullanıcı, gösterilen A / Standart düzenini onayladı ve bütün kot kutularında cm istedi. Önceki Monolit/koyu form tercihi geçersizdir.
 
 ## Güncel teslim

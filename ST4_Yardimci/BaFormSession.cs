@@ -181,6 +181,7 @@ namespace ST4Yardimci
                 case "SEHPADONATI": return "Sehpa Donatısı";
                 case "HASIRDONATI": return "Hasır Donatı";
                 case "RADYEILAVE": return "Radye İlave";
+                case "MANTARILAVE": return "Mantar İlave";
                 case "TEMELHATILI": return "Temel Hatılı";
                 case "PARAPET": return "Parapet Detayı";
                 case "TEMELCEKURU": return "Temel Çukuru";

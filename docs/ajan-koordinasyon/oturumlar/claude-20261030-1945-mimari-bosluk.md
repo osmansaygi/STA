@@ -1,0 +1,11 @@
+# Claude — MIMARIBOSLUK (mimariden kalıba şaft/boşluk aktarma)
+- Ajan: Claude Code
+- Güncelleme: 30.10.2026 20:12 (Europe/Istanbul)
+- Durum: tamamlandı — rezervasyon yok
+- Görev: Yardımcı'ya yeni komut. Mimari kat planı + kalıp kat planı pencereleri → kolon eşleşmesiyle otomatik hizalama → mimarideki şaft/boşluk adayları → KALIP BOSLUK + X çizimi; farklar MIMARI KONTROL katmanında.
+- Kontrol: protokol + son 2 gün kayıtları; aktif çakışma yok. Görev başı GUNCEL_2027 = Plan 20261030_184447 + Yardımcı 20261030_172538.
+- Değişen: ST4_Yardimci/MimariBoslukAnaliz.cs (yeni), ST4_Yardimci/MimariBoslukRunner.cs (yeni), ST4_Yardimci/CommandEntry.cs (MIMARIBOSLUK, -MIMARIBOSLUK), ST4_Yardimci/BaCommandIcons.cs (1 satır), ST4_Yardimci/BaHomeRibbonCatalog.cs (Detay grubu), ST4_Yardimci/Icons/ba_mimaribosluk.png (yeni), tools/HomeRibbonCheck/Probe/Program.cs (23 komut), tools/HomeRibbonCheck/Probe/Probe.csproj (eksik BA_HOME_RIBBON tanımı), tools/MimariBosluk20261030/** (Build/Publish51/IkonUret), docs/modul-durum/ST4_Yardimci.md, NETLOAD/OKU.txt.
+- Doğrulama: izole Release net10/2027 0 hata/0 uyarı (20261030_200737). Core Console 2027 üç projede (BLG/CK/NU mimari DWG kalıba blok olarak eklenip) hizalama + aday + işaret; bindirme PNG'leri ile hizalama gözle doğru. Test-HomeRibbon PASS (23 komut, MIMARIBOSLUK simge + komut). Yayınlanan DLL ile BLG tekrar aynı sonuç.
+- Yayın: GUNCEL_2027 = Yardımcı 20261030_200737 + Plan 20261030_184447, Publish51 hash PASS, eski arsiv/GUNCEL_2027_20261030_200822_183. Canlı AutoCAD denenmedi. Commit yok.
+- Not (kullanıcı): mimari kat planı aşağıya, kalıp planı aynı katın üstüne bakar → kalıp boşluğu mimaride bir üst katta aranır; komut istemi buna göre.
+- Açık: döndürülmüş/yansıtılmış mimari, ayrık çizgili şaft konturu, merdiven/kat sınırı aktarımı.

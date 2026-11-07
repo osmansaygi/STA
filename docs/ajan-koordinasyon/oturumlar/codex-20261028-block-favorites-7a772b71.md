@@ -1,0 +1,11 @@
+# Codex — Favori blok kurtarma
+- Tarih: 28.10.2026 Europe/Istanbul.
+- Durum: beklemede; AutoCAD kapatıldıktan sonra liste kurtarılacak.
+- Ayrılan: tools/BlockFavoritesRecovery20261028/** ve bu kayıt. Ortak kod/DLL/derleme yok.
+- Bulgu: BLOCKSYNCFOLDER = D:\projeler\00_sablon\WBLOCK. FavoriteBlocks istemci JSON dosyası 2767 bayt ve tamamen sıfır; 15 DWG mevcut. AppData eski listesi 4 kayıt içeriyor.
+- İşlem: iki FavoriteBlocks klasörü çalışma alanına yedeklendi; kaynaklara yazılmadı.
+- Açık: çalışan AutoCAD kapandıktan sonra kurtarma kopyasında liste oluşturma ve gerçek AutoCAD doğrulaması.
+- Devam: kullanıcı AutoCAD'i kapattı. Durum aktif. Ek hedef: D:/projeler/00_sablon/WBLOCK/FavoriteBlocks/1348cafd-f573-4bdd-9bd3-d659c0352f41.json (yalnız bozuk indeks). Mevcut DWG/önizleme dosyaları değişmez.
+- Sonuç: 15 kayıtlı geçerli JSON aynı istemci kimliğiyle oluşturulup gerçek FavoriteBlocks konumuna yazıldı; önceki sıfır dolu dosyanın yanında .corrupt-20261028.bak yedeği korundu.
+- Doğrulama: gerçek kullanıcı oturumunda acad kapalı; indeks SHA256 eşitliği PASS; 15 DWG imzası PASS; DWG yedek hashleri değişmedi; indeks anahtarları dosyalarla birebir. 10 kaynak yolu RecentBlocks'tan, 5 kaynak yolu korunan metadata/dosyalardan tamamlandı. Önceki favori sırası birebir kurtarılamadı.
+- Durum: tamamlandı; dosya ayırmaları serbest. Açık sınır: kullanıcı AutoCAD'i açınca Favoriler görünümü doğrulanmalı. Proje testi/derleme/DLL kopyalama yok; AutoCAD canlı doğrulaması yapılmadı.

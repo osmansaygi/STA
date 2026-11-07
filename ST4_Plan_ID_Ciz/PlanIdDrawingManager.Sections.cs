@@ -337,7 +337,9 @@ namespace ST4PlanIdCiz
                     ix.Facets = new NetTopologySuite.Operation.Distance.IndexedFacetDistance(occ);
                 }
                 catch { ix.Prepared = null; ix.Facets = null; }
-                _occupancyIndex.AddOrUpdate(occ, ix);
+                // AddOrUpdate net48'de yok; anahtar burada yok, Remove + Add ikisinde de aynı.
+                _occupancyIndex.Remove(occ);
+                _occupancyIndex.Add(occ, ix);
             }
             if (ix.Prepared != null)
             {
@@ -3205,7 +3207,8 @@ namespace ST4PlanIdCiz
 
         /// <summary>Kesit düzlemi = çizgi; poligon kolonda birden fazla parça ayrı dilim.</summary>
         private void TryAddSliceCutLine(Geometry cutLine, Geometry footprint, Point2d alongOrigin, Vector2d dirUnit,
-            double z0, double z1, string layer, int order, List<SectionSlice> list, string etiket = null)
+            double z0, double z1, string layer, int order, List<SectionSlice> list, string etiket = null,
+            BeamInfo egimliPerde = null, double floorLevelCm = 0.0)
         {
             if (footprint == null || footprint.IsEmpty || cutLine == null || cutLine.IsEmpty) return;
             try
@@ -3215,7 +3218,16 @@ namespace ST4PlanIdCiz
                 if (inter == null || inter.IsEmpty) return;
                 var du = dirUnit.GetNormal();
                 foreach (var (a0, a1) in AlongSpansFromLinePolygonIntersect(inter, alongOrigin, du))
-                    list.Add(new SectionSlice { A0 = a0, A1 = a1, Z0 = z0, Z1 = z1, Layer = layer, Order = order, Etiket = etiket });
+                {
+                    // Eğimli kapama perdesi: kesildiği noktadaki üst kot.
+                    double zTop = z1;
+                    if (IsEgimliPerde(egimliPerde))
+                    {
+                        double am = 0.5 * (a0 + a1);
+                        zTop = floorLevelCm + PerdeUstKotRelCmAt(egimliPerde, alongOrigin + du * am);
+                    }
+                    list.Add(new SectionSlice { A0 = a0, A1 = a1, Z0 = z0, Z1 = zTop, Layer = layer, Order = order, Etiket = etiket });
+                }
             }
             catch { /* non-noded */ }
         }
@@ -3481,9 +3493,10 @@ namespace ST4PlanIdCiz
             return factory.CreatePolygon(factory.CreateLinearRing(coords));
         }
 
+        /// <summary>Kesit dilimleri. includeMushroomBeams (varsayılan true): /Slabs Data/ mantar fiktif kirişleri (plan süzgeciyle, döşemeyle aynı kalınlıktakiler hariç) kiriş gibi kesilir; kalıp planı A-A/B-B, bina şeması, serbest ve bina kesitlerinde görünür.</summary>
         private List<SectionSlice> CollectAllSectionSlices(FloorInfo floor, Point2d pa, Point2d pb, Point2d alongOrigin, Vector2d dirUnit,
             bool isFoundationPlan, Dictionary<int, (double altKotCm, double yukseklikCm, double? k)> colExtra,
-            bool omitStairAndAdjacentLandings = false)
+            bool omitStairAndAdjacentLandings = false, bool includeMushroomBeams = true)
         {
             var list = new List<SectionSlice>();
             var factory = _ntsDrawFactory;
@@ -3621,7 +3634,8 @@ namespace ST4PlanIdCiz
                     var poly = BeamFootprintPoly(beam);
                     double zu = floorLevelCm + Math.Max(beam.Point1KotCm, beam.Point2KotCm);
                     double h = beam.HeightCm > 0 ? beam.HeightCm : 40.0;
-                    TryAddSliceCutLine(cutLine, poly, alongOrigin, dirN, zu - h, zu, LayerPerde, 40, list, FormatSectionPerdeSliceLabel(beam, floor));
+                    TryAddSliceCutLine(cutLine, poly, alongOrigin, dirN, floorLevelCm + PerdeAltKotRelCm(beam, h), zu, LayerPerde, 40, list, FormatSectionPerdeSliceLabel(beam, floor),
+                        egimliPerde: beam, floorLevelCm: floorLevelCm);
                 }
             }
             else
@@ -3645,13 +3659,19 @@ namespace ST4PlanIdCiz
                     double h = beam.HeightCm > 0 ? beam.HeightCm : 30.0;
                     TryAddSliceCutLine(cutLine, poly, alongOrigin, dirN, zu - h, zu, LayerKiris, 30, list, FormatSectionBeamSliceLabel(beam, floor));
                 }
+                if (includeMushroomBeams)
+                {
+                    foreach (var (_, poly, zb, zt) in BinaViewMushroomBeams(floorNo, floorLevelCm))
+                        TryAddSliceCutLine(cutLine, poly, alongOrigin, dirN, zb, zt, LayerKiris, 30, list);
+                }
                 foreach (var beam in MergeSameIdBeamsOnFloor(floorNo))
                 {
                     if (beam.IsWallFlag != 1) continue;
                     var poly = BeamFootprintPoly(beam);
                     double zu = floorLevelCm + Math.Max(beam.Point1KotCm, beam.Point2KotCm);
                     double h = beam.HeightCm > 0 ? beam.HeightCm : 40.0;
-                    TryAddSliceCutLine(cutLine, poly, alongOrigin, dirN, zu - h, zu, LayerPerde, 40, list, FormatSectionPerdeSliceLabel(beam, floor));
+                    TryAddSliceCutLine(cutLine, poly, alongOrigin, dirN, floorLevelCm + PerdeAltKotRelCm(beam, h), zu, LayerPerde, 40, list, FormatSectionPerdeSliceLabel(beam, floor),
+                        egimliPerde: beam, floorLevelCm: floorLevelCm);
                 }
                 addColPolys();
             }

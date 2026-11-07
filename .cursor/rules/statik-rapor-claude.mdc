@@ -1,0 +1,19 @@
+---
+description: StatikRaporClaude (BEYKENT statik hesap raporu, STA4 GPR'li/GPR'siz) üzerinde çalışırken uygulanacak kurallar
+globs: StatikRaporClaude/**
+alwaysApply: false
+---
+
+# StatikRaporClaude — çalışma kuralları
+
+Önce oku: `docs/statik-rapor-claude-CURSOR-DEVIR.md` (devir notu, mimari, komutlar, açık işler), `docs/modul-durum/StatikRaporClaude.md` (sürüm geçmişi, doğrulama sonuçları).
+Dosya biçimleri ve formüller: `docs/statik-rapor-arastirma/*.md` (GPR karşılaştırmasıyla bulunmuş kayıt yerleşimleri). Biçim tahmin etme; oradaki ofset/formülü kullan, yeni bulguyu oraya ekle.
+
+## Değişmezler
+- STA4 proje klasörleri (`D:\projeler\...`) ve `C:\Sta4V14` **salt okunur**. Test için dosyaları scratchpad/çıktı klasörüne kopyala.
+- Sayı biçimi STA4 ile aynı olmalı: float32 → 7 anlamlı hane → `MidpointRounding.AwayFromZero`; "-0.00" basılmaz (`Uretec.Fmt.N`, `Uretec.Fea3D.Sayi`). `double` ile yuvarlama .xx5 hücrelerinde yanlış verir.
+- Üreteç değiştirdiysen GPR'li bir projede `--uretec` ile karşılaştır; birebir oranı düşerse geri al ya da nedenini yaz. Yaklaşık kalan bölüm `Uretec.SanalBolum.Yaklasik` sözlüğüne nedeniyle eklenir (raporda başlık altında görünür).
+- STA4'ün baskı hatalarını kopyalama (FEA koordinat kayması, şerit tablosunda sayfa sonu kayıt atlaması, duvar tablosunun 70 satırda kesilmesi).
+- Teslim = Release derlemesi. `dotnet build -c Release` çıktıyı otomatik `StatikRaporClaude/bin/Uygulama/`'ya kopyalar (masaüstü kısayolu oradan açar). Uygulama açıksa kopya atlanır → kapatıp yeniden derle. Pencere başlığındaki derleme zamanıyla teslimi doğrula.
+- NETLOAD / AutoCAD DLL'leriyle ilgisi yok; ortak NETLOAD klasörüne dokunma. Kullanıcı istemedikçe commit yok.
+- Kullanıcıyla Türkçe, kısa; "eklendi" demeden önce bin/Uygulama'ya derlendiğini doğrula.

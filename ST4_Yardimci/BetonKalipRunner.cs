@@ -25,9 +25,11 @@ namespace ST4Yardimci
     internal static class BetonKalipRunner
     {
         private const string IniDosya = "betonkalip.ini";
-        private const double SatirH = 20.0, AdW = 290.0, DegerW = 140.0, YaziH = 10.0, BaslikH = 15.0, BaslikKutuH = 25.0;
-        // 290 + 2 × 140 = 570: DONATIMETRAJ toplam tablosu genişliği
+        private const double SatirH = 20.0, AdW = 295.0, DegerW = 140.0, YaziH = 10.0, BaslikH = 15.0, BaslikKutuH = 25.0;
+        // 295 + 2 × 140 = 575: DONATIMETRAJ toplam tablosu genişliği
         private const double KutuBosluk = 10.0;
+        // Seçilen nokta tablonun sol üst köşesinin bu kadar üstünde (ör. demir tablosunun sol alt köşesi)
+        private const double YerlesimUstBosluk = 25.0;
         private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
         private static readonly CultureInfo Tr = new CultureInfo("tr-TR");
 
@@ -125,9 +127,10 @@ namespace ST4Yardimci
         {
             Editor ed = doc.Editor;
             Database db = doc.Database;
-            var ppr = ed.GetPoint("\nBETONKALIP: Tablonun sol üst köşesi: ");
+            var ppr = ed.GetPoint("\nBETONKALIP: Yerleşim noktası (tablo sol üst köşesi 25 cm altında): ");
             if (ppr.Status != PromptStatus.OK) return;
             Point3d p0 = ppr.Value.TransformBy(ed.CurrentUserCoordinateSystem);
+            p0 = new Point3d(p0.X, p0.Y - YerlesimUstBosluk, p0.Z);
             var satirlar = Satirlar(proje, kirilimli);
 
             using (doc.LockDocument())

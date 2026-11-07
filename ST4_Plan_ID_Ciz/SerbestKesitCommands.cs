@@ -26,6 +26,7 @@ namespace ST4PlanIdCiz
         [CommandMethod("SERBESTKESIT")]
         public void SerbestKesit()
         {
+            if (!PlanLisans.EnsureOrWarn()) return;
             var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
             try

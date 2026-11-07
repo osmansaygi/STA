@@ -12,6 +12,7 @@
 ## Cursor ve Codex ortak çalışma
 
 - Her görevin başında ve düzenlemeye geçmeden önce `docs/ajan-koordinasyon/PROTOKOL.md` dosyasını ve `docs/ajan-koordinasyon/oturumlar/` içindeki aktif kayıtları oku; oradaki koordinasyon protokolünü uygula.
+- Codex, Cursor ve Claude her görevde PROTOKOL'deki "Her görevde zorunlu kontrol" adımlarını uygular: son 2 günün tüm kayıtları, menü düzeni, `ST4_GUNCEL_2027.bundle` otomatik yükleyicisi ve `NETLOAD/GUNCEL_2027/` içeriği. Yayınlanmamış değişiklik kullanıcıya "eklendi" diye sunulmaz.
 - İlgili işlerde `docs/modul-durum/INDEX.md`, ilgili modül durum dosyası ve `.cursor/rules/` altındaki ilgili teknik kuralları oku.
 - Kendi sohbetine özel çalışma kaydı tut; başka ajanın kaydını değiştirme. Aktif başka işin dosyalarına veya ortak derleme/DLL çıktısına çakışan değişiklik yapma.
 

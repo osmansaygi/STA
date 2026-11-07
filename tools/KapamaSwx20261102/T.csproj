@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs;Stub.cs" />
+    <Compile Include="..\..\ST4_Plan_ID_Ciz\ST4AksCizCSharp\St4Parser.cs;..\..\ST4_Plan_ID_Ciz\ST4AksCizCSharp\St4Model.cs;..\..\ST4_Plan_ID_Ciz\ST4AksCizCSharp\St4Text.cs;..\..\ST4_Plan_ID_Ciz\ST4AksCizCSharp\BeamInfo.cs;..\..\ST4_Plan_ID_Ciz\ST4AksCizCSharp\FloorInfo.cs;..\..\ST4_Plan_ID_Ciz\ST4AksCizCSharp\AxisKind.cs;..\..\ST4_Plan_ID_Ciz\ST4AksCizCSharp\AxisLine.cs;..\..\ST4_Plan_ID_Ciz\ST4AksCizCSharp\ColumnAxisInfo.cs;..\..\ST4_Plan_ID_Ciz\ST4AksCizCSharp\SlabInfo.cs;..\..\ST4_Plan_ID_Ciz\ST4AksCizCSharp\SlabAxesDirections.cs" />
+    <Compile Include="..\..\ST4_Plan_ID_Ciz\GprPerdePanelDonatiParser.cs;..\..\ST4_Plan_ID_Ciz\SwxKapamaDonati.cs;..\..\ST4_Plan_ID_Ciz\GprRadyeAyir.cs;..\..\ST4_Plan_ID_Ciz\WindowsAnsiEncodings.cs" />
+  </ItemGroup>
+</Project>

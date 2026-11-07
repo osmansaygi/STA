@@ -1,0 +1,11 @@
+# Cursor — Statik Rapor (Claude sürümü) devir
+- Ajan: Cursor
+- Güncelleme: 25.10.2026 23:44 (Europe/Istanbul)
+- Durum: beklemede — yan yana PDF ve sembol yazı tipi teslim; kullanıcı bakacak
+- Görev: StatikRaporClaude (STA4 projesinden GPR'li / GPR'siz BEYKENT statik hesap raporu). Kaynak: docs/statik-rapor-claude-CURSOR-DEVIR.md, claude-20261025-1500-statik-rapor.md (tamamlandı, ayırma kalktı).
+- Ayrılan: StatikRaporClaude/** (kaynak + kendi bin/obj/Uygulama); docs/modul-durum/StatikRaporClaude.md; docs/statik-rapor-arastirma/**; docs/statik-rapor-claude-CURSOR-DEVIR.md; .cursor/rules/statik-rapor-claude.mdc; bu kayıt.
+- Dokunulmaz: ST4_Plan_ID_Ciz, ST4_Yardimci, NETLOAD, tools/ATflRapor20261025, output/pdf, Codex rapor araçları. STA4 proje klasörleri ve C:\Sta4V14 salt okunur.
+- Ortak çıktı: StatikRaporClaude/bin/Uygulama (Release kopyası). NETLOAD/AutoCAD derlemesi yok.
+- Kontrol: son 2 gün kayıtları okundu. Yükleyici NETLOAD/GUNCEL_2027 hedefliyor; orada Plan 20261024_233825 + Yardımcı 20261023_213059. Bu işte menü/yayın yok.
+- Sürüm: csproj 0.8.0. GPR'siz N_ULK_02 varsayılan 101 s., tüm kalemler 1883 s. Commit yok.
+- Açık: kullanıcı yeşil/kırmızı kalem ve sanal bölüm notlarını deneyecek. Sıradaki teknik işler devir notundaki öncelik listesinde (burkulma Δi, kolon Ve, kiriş sehim uç T/M, temel f ve kayma, radye Mx/My).

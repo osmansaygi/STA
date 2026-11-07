@@ -32,6 +32,7 @@ public static class Application {
  public static void Tick() { Idle?.Invoke(null,EventArgs.Empty); }
 }
 public static class WindowsAnsiEncodings { public static void EnsureRegistered() {} }
+public static class CizimIzleyici { public static void Kur() {} }
 public static class BeykentRibbonManager { public static int Initialized; public static void Initialize() { Initialized++; } }
 public class StaStartupProbe {
  static int loaded = 1;

@@ -440,15 +440,17 @@ namespace ST4Yardimci
                         if (!id.IsValid || id.IsErased || !usedIds.Add(id)) continue;
                         var ent = tr.GetObject(id, OpenMode.ForRead) as Entity;
                         if (ent == null || ent.IsErased) continue;
-                        if (!LayerOk(ent.Layer)) continue;
 
                         string raw = ent is DBText tx ? (tx.TextString ?? "") : (ent is MText mx ? (mx.Contents ?? "") : null);
                         if (raw == null) continue;
                         string plain = StripMText(raw);
 
-                        NoteKalipBenzer(frame, plain);
-                        int kot = CountKesitKotBenzer(plain);
-                        if (kot > frame.KotBenzer) frame.KotBenzer = kot;
+                        // KALIP PLANI / BENZER KATLAR başlığı donatı katmanında değil: katman süzgecinden önce, metnin kendi antetine.
+                        AntetFrame noteHost = TryTextCenter(ent, out double nx, out double ny)
+                            ? (SmallestFrame(frames, nx, ny) ?? frame)
+                            : frame;
+                        NoteKalipBenzer(noteHost, plain);
+                        if (!LayerOk(ent.Layer)) continue;
 
                         if (TryHasirLabel(plain, out HasirHit hh))
                         {

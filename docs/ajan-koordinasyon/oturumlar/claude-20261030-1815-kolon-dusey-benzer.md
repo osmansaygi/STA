@@ -1,0 +1,11 @@
+# Claude — KOLONDUSEY benzer kolon gruplama incelemesi (yalnız rapor)
+- Ajan: Claude Code
+- Güncelleme: 30.10.2026 18:15 (Europe/Istanbul)
+- Durum: tamamlandı — rezervasyon yok, kaynak/DLL değişmedi, yayın yok.
+- Görev: "Benzer kolon düşey açılımları beraber çizilmemiş" — gruplama ölçütlerini bul, gerçek projede ayrı çizilen benzer grupları raporla.
+- Kontrol: son 2 gün kayıtları okundu; GUNCEL_2027 = Plan 20261030_152926 + Yardımcı 20261030_172538.
+- Kök: `PlanIdDrawingManager.KolonDusey.cs` — kat-kat mod (kullanıcı ini KatModu=2) satır 533 `KolonDuseyKatBenzerImza` (1253–1395) + `KolonDuseyKatDonatiImza` (1404–1563); kat birleştirme 1817 `BuildKolonDuseyBenzerKatGruplari` (tüm kolon imzaları birebir eşit olmalı). Tüm boy modu: 1157 `BuildKolonDuseyGroupSignature`.
+- Probe: scratchpad `ksig/` (KSIG; yansıma ile imza dökümü, build2027 152926 DLL). ARD_B_01, CK_20827_2_01 çalıştı.
+- Bulgu özeti: ayrımların çoğu gerçek veri farkı (GPR etriye çapı/aralığı, üst kot, kolon üstte bitiyor/devam). Çizim ayrıntısından ayıranlar: net yükseklik `n`, üst kat net `Un`, kenar kiriş yükseklik seti `h`, `ai` bayrağı, aynı GPR donatısında çizilen yüz adedi `f`. Ayrıntı: ortak not klasöründeki `kolon-dusey-benzer-rapor.md`.
+- Karar (kullanıcı): ertelendi, mevcut birebir eşleşme davranışı korunuyor; daha sonra tekrar gözden geçirilecek. Rezervasyon yok.
+- Açık: düzeltme ertelendi. Tüm boy modunda (KatModu=0) imza probe'da boş döndü — doğrulanmadı.

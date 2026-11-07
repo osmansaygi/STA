@@ -333,7 +333,8 @@ namespace BeykentOrtak
                 K("ZEMIN (BEYKENT)", 43, 50),
                 new KatmanAyar { Ad = "BLOKAJ (BEYKENT)", Aci = 8, Kalinlik = 15, Saydamlik = 65 },
                 K("ETIKET CIZGISI (BEYKENT)", 64, 15),
-                K("IC ANTET (BEYKENT)", 152, 30),
+                // 07.11.2026 kullanıcı seçimi: açık mavi 151, 0.25; eski çizimlerde de renk güncellenir.
+                new KatmanAyar { Ad = "IC ANTET (BEYKENT)", Aci = 151, Kalinlik = 25, RenkZorla = true },
                 K("ANTET BASLIK 1 (BEYKENT)", 1, 20),
                 K("KAPAMA PERDESI (BEYKENT)", 5, 30),
                 K("KAPAMA PERDESI ISMI (BEYKENT)", 5, 20),

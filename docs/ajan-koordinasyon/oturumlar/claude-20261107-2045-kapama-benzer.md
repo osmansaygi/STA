@@ -1,0 +1,11 @@
+# Claude — KAPAMADETAY birebir aynı perde hatlarını birleştirme
+- Ajan: Claude Code
+- Güncelleme: 07.11.2026 20:45 (Europe/Istanbul)
+- Durum: tamamlandı (bkz. son satır)
+- Görev: Kullanıcı seçimi 1: geometri/kalınlık/kot/donatı birebir aynı perde hatları tek antette; donatı etiketlerine adet çarpanı ("2x…"), tabloda numaralar birleşik (ADET sütunu yok).
+- Kontrol: protokol + son kayıtlar (aktif yok). Görev başı GUNCEL_2027 = Plan 20261107_195538 + Yardımcı 20261107_194557.
+- Ayrılan: ST4_Plan_ID_Ciz/PlanIdDrawingManager.PerdeGorunus.cs (Flush), ST4_Plan_ID_Ciz/PlanIdDrawingManager.KolonDuseyYerlesim.cs (birleştirme), tools/PoligonKesitAci20261107/**, docs/modul-durum/ST4_Plan_ID_Ciz.md, NETLOAD/OKU.txt; yayında NETLOAD/GUNCEL_2027/**, NETLOAD/arsiv.
+- Kapsam eki (kullanıcı): KAPAMADETAY formu ve kolon aplikasyon formuna "benzerleri beraber çiz" seçeneği → ST4_Plan_ID_Ciz/KapamaPerdeForm.cs, ST4_Plan_ID_Ciz/KolonApplicationForm.cs.
+- Sonuç (20:14): KolonDuseyYerlesim.cs (KapamaHatImza, MergeKapamaBenzerHatlar), PerdeGorunus.cs (Flush'ta ayara bağlı çağrı), KapamaPerdeForm.cs (BenzerleriBirlestir ayarı + onay kutusu), KolonApplicationForm.cs (ortak ayar onay kutusu). Doğrulama: izole Release 0 hata; Core Console FHNS_J_03 28→22 antet, kapalıyken 28 (kapamaperde.ini geçici değiştirildi, geri alındı); KI_OTP_03/07, ESN_C_OTP, SANER, ARD değişmedi. Form görüntüsü ve canlı AutoCAD denenmedi.
+- Yayın: GUNCEL_2027 = Plan 20261107_201357 + Yardımcı 20261107_194557, Publish51 PASS, arşiv NETLOAD/arsiv/GUNCEL_2027_20261107_201431_739. Commit yok.
+- Durum: tamamlandı — rezervasyon yok.

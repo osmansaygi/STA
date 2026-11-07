@@ -1,0 +1,11 @@
+# Claude — KOLONDUSEY2 antetli: kesit takımı yerleşimi + iç antet boşlukları
+- Ajan: Claude Code
+- Güncelleme: 07.11.2026 18:45 (Europe/Istanbul)
+- Durum: tamamlandı (bkz. son satır)
+- Görev: Antetli kat-kat kolon düşey çizimlerinde kesit takımı antet yazıları (TOPLAM, kolon id) ile çakışmasın, açılıma yakın dursun; iç antet satırlarında büyük boşluklar azalsın (gerekirse takım açılım üstüne).
+- Kontrol: protokol + son kayıtlar (aktif yok). Görev başı GUNCEL_2027 = Plan 20261107_183422 + Yardımcı 20261107_143240. Yeni komut yok.
+- Ayrılan: ST4_Plan_ID_Ciz/PlanIdDrawingManager.KolonDusey.cs (kat-kat satır yerleşimi + takım yakalama), ST4_Plan_ID_Ciz/PlanIdDrawingManager.KolonDuseyYerlesim.cs (yeni), tools/PoligonKesitAci20261107/** (izole derleme/Core Console), docs/modul-durum/ST4_Plan_ID_Ciz.md, NETLOAD/OKU.txt; yayında NETLOAD/GUNCEL_2027/**, NETLOAD/arsiv.
+- Sonuç (19:05): KolonDuseyYerlesim.cs (yeni: takım yakalama, ölçü tanım noktalı kutu, yan/üst seçimi A/B/C, değişken yükseklikli satır paketleme DP + eski yöntem karşılaştırması, kolon id payı); KolonDusey.cs kat satırında yakalama + yerleşim + satır başına yükseklik/dolgu. Ara hata: ölçü TextPosition (0,0) → üst katlarda takım kat tabanı kadar kayıyordu; tanım noktalarına geçildi.
+- Doğrulama: izole Release net10/2027 0 hata. Core Console 1/25 kat-kat ana antet toplam genişlik eski 183422/175857 → yeni: SANER 53717→41540, CK 39724→27570, KOS_D3 79638→58660, KOS_D1_01 52935→45571; PDF (out/y_sa_p1, y_sa_z1/z2, y_ck_p1, y_d3_p3) çakışma yok. Mod 0 çizildi (yol değişmedi). Canlı AutoCAD yok.
+- Yayın: GUNCEL_2027 = Plan 20261107_190427 + Yardımcı 20261107_143240, Publish51 PASS, arşiv NETLOAD/arsiv/GUNCEL_2027_20261107_190444_731. Commit yok.
+- Durum: tamamlandı — rezervasyon yok.

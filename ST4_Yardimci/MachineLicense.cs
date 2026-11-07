@@ -23,8 +23,18 @@ namespace ST4Yardimci
         private static bool? _cachedOk;
         private static string _cachedUuid;
 
+        /// <summary>Kilit yalnız ofis paketinde (OFIS_KILIT: net48 ve /p:OfisPaketi=true); geliştirme 2027 derlemesinde şimdilik kapalı.</summary>
+        private static readonly bool KilitAcik =
+#if OFIS_KILIT
+            true;
+#else
+            false;
+#endif
+
         public static bool IsAllowed()
         {
+            if (!KilitAcik)
+                return true;
             if (_cachedOk.HasValue)
                 return _cachedOk.Value;
 

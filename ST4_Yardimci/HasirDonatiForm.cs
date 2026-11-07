@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using System.Windows.Forms;
+using Beykent.Monolit.Girdi;
 using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
 using SdFont = System.Drawing.Font;
 using SdPoint = System.Drawing.Point;
@@ -11,17 +12,15 @@ namespace ST4Yardimci
     /// <summary>Hasır donatı ayar formu — tip, standart ebat, bindirme, paspayı.</summary>
     internal sealed class HasirDonatiForm : Beykent.Monolit.MonolitForm
     {
-        private const int Pad = 12;
-        private const int FormW = 300;
         private static HasirDonatiForm _instance;
 
         private readonly ComboBox _cmbTip;
-        private readonly NumericUpDown _numBoy;
-        private readonly NumericUpDown _numEn;
-        private readonly NumericUpDown _numBindirme;
-        private readonly NumericUpDown _numPas;
-        private readonly RadioButton _rbTek;
-        private readonly RadioButton _rbCift;
+        private readonly OlcuKutusu _numBoy;
+        private readonly OlcuKutusu _numEn;
+        private readonly OlcuKutusu _numBindirme;
+        private readonly OlcuKutusu _numPas;
+        private readonly SegmentSecim _katman;
+        private readonly GirdiDenetci Denetci = new GirdiDenetci();
         private bool _starting;
 
         public static void ShowOrActivate()
@@ -82,53 +81,22 @@ namespace ST4Yardimci
             Font = new SdFont("Segoe UI", 9f);
             KeyPreview = true;
 
-            int y = 10;
-            _rbTek = MakeRadio("Tek hasır", Pad, y);
-            _rbCift = MakeRadio("Çift hasır", Pad + 120, y);
-            _rbTek.Checked = !HasirDonatiSettings.CiftHasir;
-            _rbCift.Checked = HasirDonatiSettings.CiftHasir;
-            Controls.Add(_rbTek);
-            Controls.Add(_rbCift);
-            y += 26;
-
-            Controls.Add(MakeLabel("Hasır çeşidi", Pad, y + 2));
-            _cmbTip = MakeTipCombo(130, y, HasirDonatiSettings.Tip);
+            _katman = new SegmentSecim("Tek hasır", "Çift hasır");
+            _cmbTip = MakeTipCombo(HasirDonatiSettings.Tip);
             Controls.Add(_cmbTip);
-            y += 30;
+            // Sınırlar ve ondalıklar eski NumericUpDown ile aynı.
+            _numBoy = Denetci.Ekle(new OlcuKutusu("Standart boy", "cm", 50, 2000, 500));
+            _numEn = Denetci.Ekle(new OlcuKutusu("Standart en", "cm", 50, 2000, 215));
+            _numBindirme = Denetci.Ekle(new OlcuKutusu("Bindirme boyu", "cm", 5, 200, 45));
+            _numPas = Denetci.Ekle(new OlcuKutusu("Paspayı", "cm", 0, 20, 3, 1, 0.5));
+            LoadFromSettings();
+            Denetci.HataKurali(() => _numBindirme.Deger >= _numBoy.Deger || _numBindirme.Deger >= _numEn.Deger
+                ? "Bindirme, boy ve en'den küçük olmalı" : null, _numBindirme, _numBoy, _numEn);
 
-            Controls.Add(MakeLabel("Standart boy", Pad, y + 2));
-            _numBoy = MakeNum(130, y, 70, 50, 2000, 1, 0, (decimal)HasirDonatiSettings.BoyCm);
-            Controls.Add(_numBoy);
-            Controls.Add(MakeUnit("cm", 206, y + 2));
-            y += 28;
-
-            Controls.Add(MakeLabel("Standart en", Pad, y + 2));
-            _numEn = MakeNum(130, y, 70, 50, 2000, 1, 0, (decimal)HasirDonatiSettings.EnCm);
-            Controls.Add(_numEn);
-            Controls.Add(MakeUnit("cm", 206, y + 2));
-            y += 28;
-
-            Controls.Add(MakeLabel("Bindirme boyu", Pad, y + 2));
-            _numBindirme = MakeNum(130, y, 70, 5, 200, 1, 0, (decimal)HasirDonatiSettings.BindirmeCm);
-            Controls.Add(_numBindirme);
-            Controls.Add(MakeUnit("cm", 206, y + 2));
-            y += 28;
-
-            Controls.Add(MakeLabel("Paspayı", Pad, y + 2));
-            _numPas = MakeNum(130, y, 70, 0, 20, 0.5m, 1, (decimal)HasirDonatiSettings.PaspayiCm);
-            Controls.Add(_numPas);
-            Controls.Add(MakeUnit("cm", 206, y + 2));
-            y += 34;
-
-            var btnRun = MakeButton("Hasır çiz", Pad, y, 120, true);
+            var btnRun = MakeButton("Hasır çiz", true);
             btnRun.Click += (s, e) => OnRun();
-            var btnClose = MakeButton("Kapat", Pad + 128, y, 80, false);
+            var btnClose = MakeButton("Kapat", false);
             btnClose.Click += (s, e) => Close();
-            Controls.Add(btnRun);
-            Controls.Add(btnClose);
-            y += 36;
-
-            ClientSize = new SdSize(FormW, y);
 
             FormClosing += (s, e) =>
             {
@@ -154,13 +122,17 @@ namespace ST4Yardimci
                 StartPosition = FormStartPosition.CenterScreen;
             }
 
-            // Kompakt, içerik odaklı form düzeni.
             var ui = BeginCompact(300);
-            ui.Section(null).Options(_rbTek, _rbCift);
-            ui.Section("Hasır ayarları").Field("Hasır çeşidi", _cmbTip).Field("Boy / en · cm", _numBoy, _numEn)
-                .Field("Bindirme · cm", _numBindirme).Field("Paspayı · cm", _numPas);
+            ui.Section("Hasır ayarları")
+                .Control(_katman)
+                .Field("Hasır çeşidi", _cmbTip)
+                .Field("Boy / en", _numBoy, _numEn)
+                .Field("Bindirme", _numBindirme)
+                .Field("Paspayı", _numPas);
+            ui.Section(null).Control(Denetci.Serit, 44);
             ui.Footer(btnRun, btnClose);
             ui.Finish();
+            Denetci.Guncelle();
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -170,7 +142,7 @@ namespace ST4Yardimci
                 Close();
                 return true;
             }
-            if (keyData == Keys.Enter || keyData == Keys.Return)
+            if ((keyData == Keys.Enter || keyData == Keys.Return) && !(ActiveControl is Button))
             {
                 OnRun();
                 return true;
@@ -180,49 +152,33 @@ namespace ST4Yardimci
 
         private void LoadFromSettings()
         {
-            _rbCift.Checked = HasirDonatiSettings.CiftHasir;
-            _rbTek.Checked = !HasirDonatiSettings.CiftHasir;
+            _katman.Secili = HasirDonatiSettings.CiftHasir ? 1 : 0;
             SelectTip(_cmbTip, HasirDonatiSettings.Tip);
-            _numBoy.Value = Clamp(_numBoy, (decimal)HasirDonatiSettings.BoyCm);
-            _numEn.Value = Clamp(_numEn, (decimal)HasirDonatiSettings.EnCm);
-            _numBindirme.Value = Clamp(_numBindirme, (decimal)HasirDonatiSettings.BindirmeCm);
-            _numPas.Value = Clamp(_numPas, (decimal)HasirDonatiSettings.PaspayiCm);
+            _numBoy.Deger = Kirp(Math.Round(HasirDonatiSettings.BoyCm), 50, 2000);
+            _numEn.Deger = Kirp(Math.Round(HasirDonatiSettings.EnCm), 50, 2000);
+            _numBindirme.Deger = Kirp(Math.Round(HasirDonatiSettings.BindirmeCm), 5, 200);
+            _numPas.Deger = Kirp(Math.Round(HasirDonatiSettings.PaspayiCm, 1), 0, 20);
         }
 
-        private bool TryPush()
+        private void PushAll()
         {
-            double boy = (double)_numBoy.Value;
-            double en = (double)_numEn.Value;
-            double bin = (double)_numBindirme.Value;
-            if (boy < 50 || en < 50)
-            {
-                Warn("Standart boy/en geçersiz (cm).");
-                return false;
-            }
-            if (bin >= boy || bin >= en)
-            {
-                Warn("Bindirme, boy ve en'den küçük olmalı.");
-                return false;
-            }
             HasirDonatiSettings.Tip = _cmbTip.SelectedItem as string ?? "Q188/188";
-            HasirDonatiSettings.BoyCm = boy;
-            HasirDonatiSettings.EnCm = en;
-            HasirDonatiSettings.BindirmeCm = bin;
-            HasirDonatiSettings.PaspayiCm = (double)_numPas.Value;
-            HasirDonatiSettings.CiftHasir = _rbCift.Checked;
-            return true;
+            HasirDonatiSettings.BoyCm = _numBoy.Deger;
+            HasirDonatiSettings.EnCm = _numEn.Deger;
+            HasirDonatiSettings.BindirmeCm = _numBindirme.Deger;
+            HasirDonatiSettings.PaspayiCm = _numPas.Deger;
+            HasirDonatiSettings.CiftHasir = _katman.Secili == 1;
         }
 
         private void TryPushQuiet()
         {
             try
             {
-                HasirDonatiSettings.Tip = _cmbTip.SelectedItem as string ?? HasirDonatiSettings.Tip;
-                HasirDonatiSettings.BoyCm = (double)_numBoy.Value;
-                HasirDonatiSettings.EnCm = (double)_numEn.Value;
-                HasirDonatiSettings.BindirmeCm = (double)_numBindirme.Value;
-                HasirDonatiSettings.PaspayiCm = (double)_numPas.Value;
-                HasirDonatiSettings.CiftHasir = _rbCift.Checked;
+                // Kapanışta geçersiz kutu son geçerli değerini tutar; hata varsa ayar değiştirilmez.
+                if (!Denetci.Uygun) return;
+                string tip = HasirDonatiSettings.Tip;
+                PushAll();
+                if (_cmbTip.SelectedItem == null) HasirDonatiSettings.Tip = tip;
             }
             catch { }
         }
@@ -230,7 +186,8 @@ namespace ST4Yardimci
         private void OnRun()
         {
             if (_starting) return;
-            if (!TryPush()) return;
+            if (!Denetci.Onayla()) return;
+            PushAll();
             HasirDonatiSettings.Save();
             try
             {
@@ -244,16 +201,6 @@ namespace ST4Yardimci
             {
                 _starting = false;
             }
-        }
-
-        private static void Warn(string msg)
-        {
-            try
-            {
-                AcApp.DocumentManager.MdiActiveDocument?.Editor.WriteMessage("\nHasır: " + msg);
-            }
-            catch { }
-            MessageBox.Show(msg, "Hasır Donatı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
 
         private static void SelectTip(ComboBox cmb, string tip)
@@ -275,62 +222,12 @@ namespace ST4Yardimci
             cmb.SelectedIndex = i >= 0 ? i : Math.Max(0, cmb.Items.IndexOf("Q188/188"));
         }
 
-        private static decimal Clamp(NumericUpDown n, decimal v)
-        {
-            if (v < n.Minimum) return n.Minimum;
-            if (v > n.Maximum) return n.Maximum;
-            return v;
-        }
+        private static double Kirp(double v, double min, double max) => Math.Max(min, Math.Min(max, v));
 
-        private Label MakeLabel(string text, int x, int y)
-        {
-            return new Label
-            {
-                Text = text,
-                Location = new SdPoint(x, y),
-                AutoSize = true,
-                ForeColor = Beykent.Monolit.StandardFormTheme.TextMuted,
-                BackColor = Beykent.Monolit.StandardFormTheme.Bg
-            };
-        }
-
-        private Label MakeUnit(string text, int x, int y)
-        {
-            return new Label
-            {
-                Text = text,
-                Location = new SdPoint(x, y),
-                AutoSize = true,
-                ForeColor = Beykent.Monolit.StandardFormTheme.TextMuted,
-                BackColor = Beykent.Monolit.StandardFormTheme.Bg
-            };
-        }
-
-        private NumericUpDown MakeNum(int x, int y, int w, decimal min, decimal max, decimal inc, int decimals, decimal val)
-        {
-            var n = new NumericUpDown
-            {
-                Location = new SdPoint(x, y),
-                Size = new SdSize(w, 22),
-                Minimum = min,
-                Maximum = max,
-                Increment = inc,
-                DecimalPlaces = decimals,
-                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
-                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
-                BorderStyle = BorderStyle.FixedSingle
-            };
-            n.Value = Clamp(n, val);
-            YardimciUi.StripUpDownButtons(n);
-            return n;
-        }
-
-        private ComboBox MakeTipCombo(int x, int y, string selected)
+        private ComboBox MakeTipCombo(string selected)
         {
             var c = new ComboBox
             {
-                Location = new SdPoint(x, y),
-                Size = new SdSize(140, 22),
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
                 ForeColor = Beykent.Monolit.StandardFormTheme.Text,
@@ -343,25 +240,11 @@ namespace ST4Yardimci
             return c;
         }
 
-        private RadioButton MakeRadio(string text, int x, int y)
-        {
-            return new RadioButton
-            {
-                Text = text,
-                Location = new SdPoint(x, y),
-                AutoSize = true,
-                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
-                BackColor = Beykent.Monolit.StandardFormTheme.Bg
-            };
-        }
-
-        private Button MakeButton(string text, int x, int y, int w, bool accent)
+        private Button MakeButton(string text, bool accent)
         {
             var b = new Button
             {
                 Text = text,
-                Location = new SdPoint(x, y),
-                Size = new SdSize(w, 26),
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Beykent.Monolit.StandardFormTheme.BgAlt,
                 ForeColor = accent ? Beykent.Monolit.StandardFormTheme.Accent : Beykent.Monolit.StandardFormTheme.Text,

@@ -1,18 +1,25 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
-using System.Globalization;
 using System.Windows.Forms;
 using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
+using Beykent.Monolit.Girdi;
 
 namespace ST4Yardimci
 {
+    /// <summary>
+    /// Parapet detayı formu. Ortak girdi kuralları (07.11.2026): birimli ölçü kutusu,
+    /// tek satır donatı (ø sabit), segment yerleşim/pafta seçimi, alt durum şeridi.
+    /// </summary>
     internal sealed class ParapetForm : Beykent.Monolit.MonolitForm
     {
         static ParapetForm _instance;
-        readonly Dictionary<string, NumericUpDown> _numbers = new Dictionary<string, NumericUpDown>();
-        readonly ComboBox _konum, _dikeyCap, _yatayCap;
-        readonly Panel _beam, _footer;
+        /// <summary>Anahtar = ParapetSettings alan adı (yansıma ile okunur/yazılır).</summary>
+        readonly Dictionary<string, OlcuKutusu> _numbers = new Dictionary<string, OlcuKutusu>();
+        readonly SegmentSecim _konum;
+        readonly DonatiKutusu _dikeyCap, _yatayCap;
+        readonly SegmentSecim _olcek;
+        readonly GirdiDenetci Denetci = new GirdiDenetci();
         readonly ToolTip _tips = new ToolTip { AutoPopDelay = 12000 };
         bool _starting;
         internal static ParapetSettings Current;
@@ -39,176 +46,111 @@ namespace ST4Yardimci
         ParapetForm()
         {
             Current = ParapetSettings.Load();
-            SuspendLayout();
+            var varsayilan = new ParapetSettings();
             Text = "Parapet Detayı";
-            AutoScaleDimensions = new SizeF(96,96);
-            AutoScaleMode = AutoScaleMode.Dpi;
-            ClientSize = new Size(420,298);
-            FormBorderStyle = FormBorderStyle.FixedToolWindow;
             StartPosition = FormStartPosition.CenterScreen;
             ShowInTaskbar = false;
             MaximizeBox = MinimizeBox = false;
-            BackColor = Beykent.Monolit.StandardFormTheme.Bg;
-            ForeColor = Beykent.Monolit.StandardFormTheme.Text;
-            Font = new Font("Segoe UI",8.5f);
             KeyPreview = true;
 
-            LabelAt(this,"Yerleşim",10,15,76,20,true);
-            _konum=Combo(this,96,10,314);
-            _konum.Items.AddRange(new object[]{"Döşeme kenarı","Döşeme ortası","Kiriş üzeri"});
-            _konum.SelectedIndex=(int)Current.Konum;
-            Rule(this,10,44,400);
+            _konum = new SegmentSecim("Döşeme kenarı", "Döşeme ortası", "Kiriş üzeri") { Secili = (int)Current.Konum };
 
-            Section(this,"Kesit (cm)",10,54);
-            Row(this,"DosemeKalinligi","Döşeme kalınlığı",10,83,8,150);
-            Row(this,"DosemeUstKotu","Döşeme üst kotu",10,109,-100000,100000);
-            Row(this,"ParapetYuksekligi","Parapet yüksekliği",10,135,15,600);
-            Row(this,"ParapetKalinligi","Parapet kalınlığı",10,161,10,150);
-            Row(this,"Sakal","Sakal",10,187,0,300);
-            Row(this,"Paspayi","Paspayı",10,213,2,20);
-            _tips.SetToolTip(_numbers["Sakal"],"Döşeme alt yüzünden aşağı sarkan mesafe. 0: sakal yok. Kiriş üzerinde kullanılamaz.");
-            _tips.SetToolTip(_numbers["ParapetYuksekligi"],"Döşeme üst yüzünden parapet üstüne kadar ölçülür.");
-            _tips.SetToolTip(_numbers["DosemeUstKotu"],"Üst kotu cm olarak girin. Örnek: +3.00 m için 300.");
+            // Sınırlar eski NumericUpDown Min/Max değerleriyle aynı; 1 ondalık, 0,5 adım.
+            Number("DosemeKalinligi", "Döşeme kalınlığı", 8, 150, varsayilan);
+            Number("DosemeUstKotu", "Döşeme üst kotu", -100000, 100000, varsayilan);
+            Number("ParapetYuksekligi", "Parapet yüksekliği", 15, 600, varsayilan);
+            Number("ParapetKalinligi", "Parapet kalınlığı", 10, 150, varsayilan);
+            Number("Sakal", "Sakal", 0, 300, varsayilan);
+            Number("Paspayi", "Paspayı", 2, 20, varsayilan);
+            Number("KirisGenisligi", "Kiriş genişliği", 10, 300, varsayilan);
+            Number("KirisYuksekligi", "Kiriş yüksekliği", 8, 300, varsayilan);
+            Number("ToplamUzunluk", "Toplam boy", 0, 10000000, varsayilan, 0, 10);
 
-            Section(this,"Donatı",224,54);
-            LabelAt(this,"Ø mm",268,78,56,18,true);
-            LabelAt(this,"Ara / cm",342,78,68,18,true);
-            _dikeyCap=RebarRow("Düşey","DikeyAralik",99,Current.DikeyCap);
-            _yatayCap=RebarRow("Yatay","YatayAralik",127,Current.YatayCap);
-            _tips.SetToolTip(_dikeyCap,"Alt ve ikinci gönye en az 12Ø; toplam boy 5 cm katına tamamlanır.");
-            _tips.SetToolTip(_yatayCap,"Sakal sıraları yatay donatı adedine dahildir.");
+            // Çap + aralık tek satırda; aralık sınırı eski 5–50 cm, çap ø6–ø32 (standart liste).
+            _dikeyCap = Denetci.Ekle(new DonatiKutusu("Düşey donatı", CapYuvarla(varsayilan.DikeyCap), varsayilan.DikeyAralik, 6, 40, 5, 50));
+            _yatayCap = Denetci.Ekle(new DonatiKutusu("Yatay donatı", CapYuvarla(varsayilan.YatayCap), varsayilan.YatayAralik, 6, 40, 5, 50));
+            _dikeyCap.Ayarla(CapYuvarla(Current.DikeyCap), Current.DikeyAralik);
+            _yatayCap.Ayarla(CapYuvarla(Current.YatayCap), Current.YatayAralik);
 
-            Section(this,"Metraj",224,169);
-            LabelAt(this,"Toplam boy (cm)",224,194,186,18,true);
-            Number(this,"ToplamUzunluk",224,215,186,0,10000000,0,10);
-            _tips.SetToolTip(_numbers["ToplamUzunluk"],"Stok boyu 1200 cm, bindirme 60 cm. 0: adet ve metraj tablosu yok.");
+            _olcek = new SegmentSecim("1/50 pafta", "1/100 pafta (×2)") { Secili = BaPaftaOlcek.Yuz("parapet") ? 1 : 0 };
+            _olcek.SeciliDegisti += (s, e) => BaPaftaOlcek.Kaydet("parapet", _olcek.Secili == 1);
 
-            _beam=new Panel {Location=new Point(10,246),Size=new Size(194,74),BackColor=BackColor};
-            Controls.Add(_beam);
-            Section(_beam,"Kiriş (cm)",0,0);
-            Row(_beam,"KirisGenisligi","Genişlik",0,22,10,300);
-            Row(_beam,"KirisYuksekligi","Yükseklik",0,48,8,300);
-            _tips.SetToolTip(_beam,"Kiriş ve parapetin dış yüzleri hizalıdır. Kiriş üst kotu döşeme üst kotudur.");
+            // Fiziksel kontroller ParapetSettings.Validate ile aynı kaynaktan (eski MessageBox yerine şerit).
+            Denetci.SegmentIzle(_konum);
+            var tum = new List<IGirdi>(_numbers.Values) { _dikeyCap, _yatayCap };
+            Denetci.HataKurali(() => ReadSettings().Validate(), tum.ToArray());
 
-            _footer=new Panel {Location=new Point(0,254),Size=new Size(420,44),BackColor=BackColor};
-            Controls.Add(_footer);
-            Rule(_footer,10,0,400);
-            LabelAt(_footer,"Boy 0: metraj yok",10,16,150,20,true);
-            var close=ButtonAt(_footer,"Kapat",230,10,66,false);
-            close.Click+=(s,e)=>Close();
-            var draw=ButtonAt(_footer,"Detayı çiz",306,10,104,true);
-            draw.Click+=(s,e)=>Draw();
-            _konum.SelectedIndexChanged+=(s,e)=>EnableBeam();
+            var close = new Button { Text = "Kapat" };
+            close.Click += (s, e) => Close();
+            var draw = new Button { Text = "Detayı çiz" };
+            draw.Click += (s, e) => Draw();
+            _konum.SeciliDegisti += (s, e) => EnableBeam();
             EnableBeam();
-            FormClosed+=(s,e)=>{ReadSettings().Save(); _instance=null; BaFormSession.Release("PARAPET");};
-            ResumeLayout(false);
+            FormClosed += (s, e) => { ReadSettings().Save(); _instance = null; BaFormSession.Release("PARAPET"); };
 
-            // Kompakt, içerik odaklı form düzeni.
-            var ui = BeginCompact(360);
-            ui.Section(null).Field("Yerleşim", _konum);
-            ui.Tabs(220,
-                ui.Page("Kesit", p => p.Field("Döşeme kalınlığı · cm", _numbers["DosemeKalinligi"]).Field("Döşeme üst kotu · cm", _numbers["DosemeUstKotu"])
-                    .Field("Parapet yük. / en · cm", _numbers["ParapetYuksekligi"], _numbers["ParapetKalinligi"])
-                    .Field("Sakal / paspayı · cm", _numbers["Sakal"], _numbers["Paspayi"])
-                    .Columns(ui.Column("Kiriş · cm").Field("En / yükseklik", _numbers["KirisGenisligi"], _numbers["KirisYuksekligi"]).When(() => _konum.SelectedIndex == 2))),
-                ui.Page("Donatı ve metraj", p => p.Field("Düşey · Ø mm / ara cm", _dikeyCap, _numbers["DikeyAralik"])
-                    .Field("Yatay · Ø mm / ara cm", _yatayCap, _numbers["YatayAralik"]).Field("Toplam boy · cm", _numbers["ToplamUzunluk"])
-                    .Hint("Toplam boy 0 ise metraj tablosu çizilmez.")));
+            var ui = BeginCompact(390);
+            ui.Section("Yerleşim").Control(_konum);
+            ui.Section("Kesit")
+                .Field("Döşeme kalınlığı", _numbers["DosemeKalinligi"])
+                .Field("Döşeme üst kotu", _numbers["DosemeUstKotu"])
+                .Field("Parapet yük. / kalınlık", _numbers["ParapetYuksekligi"], _numbers["ParapetKalinligi"])
+                .Field("Sakal / paspayı", _numbers["Sakal"], _numbers["Paspayi"]);
+            ui.Section("Kiriş").Field("Genişlik / yükseklik", _numbers["KirisGenisligi"], _numbers["KirisYuksekligi"])
+                .When(() => _konum.Secili == 2);
+            ui.Section("Donatı  (ø çap / aralık)")
+                .Field("Düşey", _dikeyCap)
+                .Field("Yatay", _yatayCap);
+            ui.Section("Metraj").Field("Toplam boy", _numbers["ToplamUzunluk"])
+                .Hint("Toplam boy 0 ise metraj tablosu çizilmez.");
+            ui.Section("Pafta ölçeği · detay 1/25").Control(_olcek);
+            ui.Section(null).Control(Denetci.Serit, 44);
             ui.Footer(draw, close);
+            Tip(_numbers["Sakal"], "Döşeme alt yüzünden aşağı sarkan mesafe. 0: sakal yok. Kiriş üzerinde kullanılamaz.");
+            Tip(_numbers["ParapetYuksekligi"], "Döşeme üst yüzünden parapet üstüne kadar ölçülür.");
+            Tip(_numbers["DosemeUstKotu"], "Üst kotu cm olarak girin. Örnek: +3.00 m için 300.");
+            Tip(_dikeyCap, "Alt ve ikinci gönye en az 12ø; toplam boy 5 cm katına tamamlanır.");
+            Tip(_yatayCap, "Sakal sıraları yatay donatı adedine dahildir.");
+            Tip(_numbers["ToplamUzunluk"], "Stok boyu 1200 cm, bindirme 60 cm. 0: adet ve metraj tablosu yok.");
+            Tip(_numbers["KirisGenisligi"], "Kiriş ve parapetin dış yüzleri hizalıdır. Kiriş üst kotu döşeme üst kotudur.");
             ui.Finish();
+            Denetci.Guncelle();
         }
 
-        static Label LabelAt(Control parent,string text,int x,int y,int width,int height,bool muted)
+        static int CapYuvarla(double mm) => (int)Math.Round(mm, MidpointRounding.AwayFromZero);
+
+        /// <summary>Araç ipucu kutuya ve içindeki metin kutusuna birlikte bağlanır.</summary>
+        void Tip(Control c, string text)
         {
-            var label=new Label {Text=text,Location=new Point(x,y),Size=new Size(width,height),
-                ForeColor=muted?Beykent.Monolit.StandardFormTheme.TextMuted:Beykent.Monolit.StandardFormTheme.Text,BackColor=Color.Transparent};
-            parent.Controls.Add(label);
-            return label;
+            _tips.SetToolTip(c, text);
+            foreach (Control child in c.Controls) _tips.SetToolTip(child, text);
         }
 
-        static void Section(Control parent,string text,int x,int y)
+        void Number(string key, string ad, double min, double max, ParapetSettings varsayilan, int decimals = 1, double step = 0.5)
         {
-            var label=LabelAt(parent,text,x,y,190,23,false);
-            label.Font=new Font("Segoe UI Semibold",9);
-        }
-
-        static void Rule(Control parent,int x,int y,int width)
-            => parent.Controls.Add(new Panel {Location=new Point(x,y),Size=new Size(width,1),BackColor=Beykent.Monolit.StandardFormTheme.InputBorder});
-
-        static ComboBox Combo(Control parent,int x,int y,int width)
-        {
-            var combo=new ComboBox {Location=new Point(x,y),Width=width,DropDownStyle=ComboBoxStyle.DropDownList,
-                FlatStyle=FlatStyle.Flat,BackColor=Beykent.Monolit.StandardFormTheme.InputBg,ForeColor=Beykent.Monolit.StandardFormTheme.Text,
-                IntegralHeight=true,DropDownHeight=220,DrawMode=DrawMode.OwnerDrawFixed,ItemHeight=18};
-            combo.DrawItem+=(s,e)=>
-            {
-                bool selected=(e.State&DrawItemState.Selected)!=0;
-                using(var brush=new SolidBrush(selected?Beykent.Monolit.StandardFormTheme.BgHover:Beykent.Monolit.StandardFormTheme.InputBg))
-                    e.Graphics.FillRectangle(brush,e.Bounds);
-                object item=e.Index>=0?combo.Items[e.Index]:combo.SelectedItem;
-                if(item!=null)
-                    TextRenderer.DrawText(e.Graphics,combo.GetItemText(item),combo.Font,
-                        new Rectangle(e.Bounds.X+3,e.Bounds.Y,e.Bounds.Width-5,e.Bounds.Height),Beykent.Monolit.StandardFormTheme.Text,
-                        TextFormatFlags.Left|TextFormatFlags.VerticalCenter|TextFormatFlags.EndEllipsis|TextFormatFlags.NoPrefix);
-                e.DrawFocusRectangle();
-            };
-            parent.Controls.Add(combo);
-            return combo;
-        }
-
-        ComboBox RebarRow(string name,string spacingKey,int y,double selected)
-        {
-            LabelAt(this,name,224,y+3,44,22,false);
-            var combo=Combo(this,268,y,64);
-            var sizes=new List<double>{6,8,10,12,14,16,18,20,22,24,25,26,28,30,32,36,40};
-            // Eski kayıttaki özel çap kaybolmasın.
-            if(selected>=6 && selected<=40 && !sizes.Contains(selected)) {sizes.Add(selected); sizes.Sort();}
-            foreach(double diameter in sizes) combo.Items.Add(diameter);
-            combo.Format+=(s,e)=>e.Value="Ø"+Convert.ToDouble(e.ListItem,CultureInfo.InvariantCulture).ToString("0.#",CultureInfo.InvariantCulture);
-            combo.FormattingEnabled=true;
-            combo.SelectedItem=selected;
-            if(combo.SelectedIndex<0) combo.SelectedItem=12d;
-            Number(this,spacingKey,342,y,68,5,50);
-            return combo;
-        }
-
-        void Number(Control parent,string key,int x,int y,int width,decimal min,decimal max,int decimals=1,decimal step=0.5m)
-        {
-            var n=new NumericUpDown {Location=new Point(x,y),Width=width,Minimum=min,Maximum=max,
-                DecimalPlaces=decimals,Increment=step,BackColor=Beykent.Monolit.StandardFormTheme.InputBg,ForeColor=Beykent.Monolit.StandardFormTheme.Text,
-                BorderStyle=BorderStyle.FixedSingle,TextAlign=HorizontalAlignment.Right};
-            double value=(double)typeof(ParapetSettings).GetField(key).GetValue(Current);
-            n.Value=(decimal)Math.Max((double)min,Math.Min((double)max,value));
-            YardimciUi.StripUpDownButtons(n);
-            _numbers.Add(key,n);
-            parent.Controls.Add(n);
-        }
-
-        void Row(Control parent,string key,string text,int x,int y,decimal min,decimal max)
-        {
-            LabelAt(parent,text,x,y+3,126,22,true);
-            Number(parent,key,x+132,y,62,min,max);
+            double def = (double)typeof(ParapetSettings).GetField(key).GetValue(varsayilan);
+            var n = Denetci.Ekle(new OlcuKutusu(ad, "cm", min, max, def, decimals, step));
+            n.Deger = (double)typeof(ParapetSettings).GetField(key).GetValue(Current);
+            _numbers.Add(key, n);
         }
 
         void EnableBeam()
         {
-            bool beam=_konum.SelectedIndex==2;
-            _beam.Visible=beam;
-            _numbers["KirisGenisligi"].Enabled=_numbers["KirisYuksekligi"].Enabled=beam;
-            _numbers["Sakal"].Enabled=!beam;
-            if(beam) _numbers["Sakal"].Value=0;
-            if(CompactLayoutReady) { RefreshCompactLayout(); return; }
-            float scale=IsHandleCreated?DeviceDpi/96f:1f;
-            _footer.Top=(int)Math.Round((beam?330:254)*scale);
-            ClientSize=new Size((int)Math.Round(420*scale),(int)Math.Round((beam?374:298)*scale));
+            bool beam = _konum.Secili == 2;
+            _numbers["KirisGenisligi"].Enabled = _numbers["KirisYuksekligi"].Enabled = beam;
+            _numbers["Sakal"].Enabled = !beam;
+            if (beam) _numbers["Sakal"].Deger = 0;
+            if (CompactLayoutReady) RefreshCompactLayout();
         }
 
         ParapetSettings ReadSettings()
         {
-            var s=new ParapetSettings {Konum=(ParapetKonumu)_konum.SelectedIndex};
-            foreach(var kv in _numbers) typeof(ParapetSettings).GetField(kv.Key).SetValue(s,(double)kv.Value.Value);
-            s.DikeyCap=Convert.ToDouble(_dikeyCap.SelectedItem,CultureInfo.InvariantCulture);
-            s.YatayCap=Convert.ToDouble(_yatayCap.SelectedItem,CultureInfo.InvariantCulture);
+            var s = new ParapetSettings { Konum = (ParapetKonumu)_konum.Secili };
+            foreach (var kv in _numbers) typeof(ParapetSettings).GetField(kv.Key).SetValue(s, kv.Value.Deger);
+            // Çap ve aralık tek donatı kutusundan (DikeyAralik/YatayAralik alanları dahil).
+            s.DikeyCap = _dikeyCap.CapMm;
+            s.DikeyAralik = _dikeyCap.AralikCm;
+            s.YatayCap = _yatayCap.CapMm;
+            s.YatayAralik = _yatayCap.AralikCm;
             s.Normalize();
             return s;
         }
@@ -221,46 +163,33 @@ namespace ST4Yardimci
 
         void Draw()
         {
-            if(_starting) return;
-            var settings=ReadSettings();
-            string error=settings.Validate();
-            if(error!=null) {MessageBox.Show(this,error,"Parapet Detayı"); return;}
-            var doc=AcApp.DocumentManager.MdiActiveDocument;
-            if(doc==null) return;
-            Current=settings;
+            if (_starting) return;
+            if (!Denetci.Onayla()) return;
+            var settings = ReadSettings();
+            var doc = AcApp.DocumentManager.MdiActiveDocument;
+            if (doc == null) return;
+            Current = settings;
             Current.Save();
-            _starting=true;
+            _starting = true;
             BaFormSession.BeginPick("PARAPET");
             Hide();
-            try {doc.SendStringToExecute("PARAPETCIZ ",true,false,false);}
-            catch {_starting=false; Show(); BaFormSession.EndPick("PARAPET"); throw;}
+            try { doc.SendStringToExecute("PARAPETCIZ ", true, false, false); }
+            catch { _starting = false; Show(); BaFormSession.EndPick("PARAPET"); throw; }
         }
 
-        protected override bool ProcessCmdKey(ref Message msg,Keys keyData)
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
-            if(keyData==Keys.Escape) {Close(); return true;}
-            if(keyData==Keys.Enter)
+            if (keyData == Keys.Escape) { Close(); return true; }
+            if ((keyData == Keys.Enter || keyData == Keys.Return) && !(ActiveControl is Button))
             {
-                if(_konum.DroppedDown || _dikeyCap.DroppedDown || _yatayCap.DroppedDown) return base.ProcessCmdKey(ref msg,keyData);
                 Draw(); return true;
             }
-            return base.ProcessCmdKey(ref msg,keyData);
-        }
-
-        static Button ButtonAt(Control parent,string text,int x,int y,int width,bool primary)
-        {
-            var button=new Button {Text=text,Location=new Point(x,y),Size=new Size(width,30),FlatStyle=FlatStyle.Flat,
-                BackColor=primary?Beykent.Monolit.StandardFormTheme.Accent:Beykent.Monolit.StandardFormTheme.BgAlt,
-                ForeColor=primary?Beykent.Monolit.StandardFormTheme.InputBg:Beykent.Monolit.StandardFormTheme.Text,Cursor=Cursors.Hand,UseVisualStyleBackColor=false};
-            button.FlatAppearance.BorderSize=primary?0:1;
-            button.FlatAppearance.BorderColor=Beykent.Monolit.StandardFormTheme.InputBorder;
-            parent.Controls.Add(button);
-            return button;
+            return base.ProcessCmdKey(ref msg, keyData);
         }
 
         protected override void Dispose(bool disposing)
         {
-            if(disposing) _tips.Dispose();
+            if (disposing) _tips.Dispose();
             base.Dispose(disposing);
         }
     }

@@ -250,20 +250,16 @@ namespace ST4PlanIdCiz
 
     internal sealed class CommandPaletteControl : DarkPaletteUserControl
     {
-        private static readonly (string label, string cmd)[] S50 =
+        // Kalıp/Kolon/Temel: ölçek (1/50 – 1/100) komut açılışında formda seçilir.
+        private static readonly (string label, string cmd)[] Planlar =
         {
-            ("Kal\u0131p Plan\u0131",    "KALIP50ST4"),
-            ("Kolon Aplikasyon", "KOLON50ST4"),
+            ("Kal\u0131p Plan\u0131",    "KALIPST4"),
+            ("Kolon Aplikasyon", "KOLONST4"),
             ("Kolon D\u00fc\u015fey", "KOLONDUSEY"),
-            ("Temel Plan\u0131",   "TEMEL50ST4"),
+            ("Temel Plan\u0131",   "TEMELST4"),
             ("Rd. Temel Plan\u0131", "TEMELDONATI"),
             ("\u0130lave deneme", "TEMELILAVEDENEME"),
-        };
-        private static readonly (string label, string cmd)[] S100 =
-        {
-            ("Kal\u0131p Plan\u0131",    "KALIP100ST4"),
-            ("Kolon Aplikasyon", "KOLON100ST4"),
-            ("Temel Plan\u0131",   "TEMEL100ST4"),
+            ("Radye legant kar\u015f\u0131la\u015ft\u0131rma", "RADYELEGANTKARSILASTIRMA"),
         };
         private static readonly (string label, string cmd)[] Isk =
         {
@@ -288,6 +284,7 @@ namespace ST4PlanIdCiz
             ("Bina Kesiti", "BINAKESITI"),
             ("Serbest Kesit (hat göster)", "SERBESTKESIT"),
             ("Kiriş Açılımları", "KIRISACILIMLARI"),
+            ("Kiriş Çiz (manuel)", "KIRISCIZ"),
             ("Sürekli Temel Açılımları", "SUREKLITEMELACILIMLARI"),
         };
 
@@ -297,8 +294,7 @@ namespace ST4PlanIdCiz
             Padding = new Padding(4, 6, 4, 6);
 
             int y = 6;
-            y = AddGroup(y, "Ölçek 1:50", S50);
-            y = AddGroup(y, "Ölçek 1:100", S100);
+            y = AddGroup(y, "Planlar (1:50 / 1:100)", Planlar);
             y = AddGroup(y, "İskele", Isk);
             y = AddGroup(y, "Genel", Gen);
             y = AddGroup(y, "Deneme", AltDeneme);

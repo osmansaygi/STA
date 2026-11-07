@@ -13,6 +13,14 @@
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <!-- net48 çıktısı 2027 ile aynı seçim klasöründe bulunmasın. Testler kökü ayırabilir. -->
     <NetloadRootDir Condition="'$(NetloadRootDir)' == ''">$(MSBuildProjectDirectory)\..\NETLOAD</NetloadRootDir>
+    <!-- Yardımcı gibi: Debug şifresiz; ofis/dağıtım Release'te Obfuscar (isim + string, PlanLisans UUID). -->
+    <SkipObfuscar Condition="'$(SkipObfuscar)' == '' and '$(Configuration)' == 'Debug'">true</SkipObfuscar>
+    <!-- Geliştirme bilgisayarı (AutoCAD 2027) derlemesi şimdilik kilitsiz/şifresiz. Ofis paketi /p:OfisPaketi=true
+         (2027 Release'te de makine kilidi + Obfuscar). net48 her zaman kilitli. -->
+    <SkipObfuscar Condition="'$(SkipObfuscar)' == '' and '$(AutoCAD2027Build)' == 'true' and '$(OfisPaketi)' != 'true'">true</SkipObfuscar>
+    <DefineConstants Condition="'$(AutoCAD2027Build)' != 'true' or '$(OfisPaketi)' == 'true'">$(DefineConstants);OFIS_KILIT</DefineConstants>
+    <!-- BEYKENT şerit sekmesi net48 ofis paketinde ve 2027'de (Yardımcı BA_HOME_RIBBON gibi). -->
+    <DefineConstants>$(DefineConstants);BEYKENT_RIBBON</DefineConstants>
   </PropertyGroup>
   <!-- AutoCAD 2027 kendi .NET 10 API'sini kullanır; net48 derlemesi 2027'de Transaction.Commit sırasında
        yığın bozulmasıyla göçer (0xc0000005, il_objectAppended). 2027 derlemesi ayrı ve NETLOAD kökünü değiştirmez. -->
@@ -48,12 +56,38 @@
       <ExcludeAssets>runtime</ExcludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <!-- Obfuscar bağımlılık yolu (derleme NuGet ile olduğunda; Yardımcı ile aynı). -->
+    <PackageReference Include="AutoCAD.NET.Model" Version="24.3.0" GeneratePathProperty="true" Condition="'$(AutoCADInstallDir)' == ''">
+      <ExcludeAssets>runtime</ExcludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="AutoCAD.NET.Core" Version="24.3.0" GeneratePathProperty="true" Condition="'$(AutoCADInstallDir)' == ''">
+      <ExcludeAssets>runtime</ExcludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Obfuscar" Version="2.2.49" GeneratePathProperty="true">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
   </ItemGroup>
 
   <ItemGroup Condition="'$(AutoCAD2027Build)' != 'true'">
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Drawing" />
     <Reference Include="System.Runtime.Serialization" />
+    <Reference Include="System.Management" />
+    <!-- BeykentRibbonManager: AdWindows (AutoCAD.NET paketi) WPF tipleri. -->
+    <Reference Include="PresentationCore" />
+    <Reference Include="PresentationFramework" />
+    <Reference Include="WindowsBase" />
+    <Reference Include="System.Xaml" />
+  </ItemGroup>
+  <!-- PlanLisans makine UUID okuması (Yardımcı MachineLicense ile aynı). -->
+  <ItemGroup Condition="'$(AutoCAD2027Build)' == 'true'">
+    <Reference Include="System.Management">
+      <HintPath>$(AutoCADInstallDir)\System.Management.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
   </ItemGroup>
   <!-- Yardımcı ile ortak katman / ölçü / yazı stili ayarları (%APPDATA%\BEYKENT\katman-stil.json). -->
   <ItemGroup>
@@ -146,6 +180,41 @@
     <Message Importance="high" Condition="'$(AutoCAD2027Build)' != 'true'" Text="  net48: $(NetloadRootDir)\Legacy-net48\$(AssemblyName).dll — AutoCAD 2027'de YUKLEMEYIN." />
     <Message Importance="high" Condition="'$(AutoCAD2027Build)' == 'true'" Text="  AutoCAD 2027: $(TargetPath) (bagimliliklariyla; otomatik dagitim kapali)." />
     <Message Importance="high" Text="========================================" />
+  </Target>
+
+  <!-- Derleme sonrası Obfuscar (Yardımcı şablonu): isimler + stringler (UUID) karışır; public AutoCAD API korunur. -->
+  <Target Name="ObfuscateOutput" AfterTargets="CleanupOutputFolder" BeforeTargets="CopyToNetloadFolder"
+          Condition="'$(SkipObfuscar)' != 'true'">
+    <PropertyGroup>
+      <_OutAbs>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\$(OutputPath)').TrimEnd('\'))</_OutAbs>
+      <_OutAbs Condition="$([System.IO.Path]::IsPathRooted('$(OutputPath)'))">$([System.IO.Path]::GetFullPath('$(OutputPath)').TrimEnd('\'))</_OutAbs>
+      <_ObfDir>$(_OutAbs)\obf</_ObfDir>
+      <_DllName>$(AssemblyName).dll</_DllName>
+      <_DllPath>$(_OutAbs)\$(_DllName)</_DllPath>
+      <_CfgPath>$(_OutAbs)\obfuscar.generated.xml</_CfgPath>
+      <_TemplatePath>$(MSBuildProjectDirectory)\..\ST4_Yardimci\obfuscar.xml.template</_TemplatePath>
+      <_ObfuscarExe>$(PkgObfuscar)\tools\Obfuscar.Console.exe</_ObfuscarExe>
+      <_AcadSearch>$(AutoCADInstallDir)</_AcadSearch>
+      <_AcadSearch Condition="'$(_AcadSearch)' == '' and '$(PkgAutoCAD_NET_Model)' != ''">$(PkgAutoCAD_NET_Model)\lib\net47</_AcadSearch>
+      <_AcadCore>$(AutoCADInstallDir)</_AcadCore>
+      <_AcadCore Condition="'$(_AcadCore)' == '' and '$(PkgAutoCAD_NET_Core)' != ''">$(PkgAutoCAD_NET_Core)\lib\net47</_AcadCore>
+      <_AcadCore Condition="'$(_AcadCore)' == ''">$(_AcadSearch)</_AcadCore>
+    </PropertyGroup>
+    <Error Condition="!Exists('$(_DllPath)')" Text="Obfuscar: DLL bulunamadi: $(_DllPath)" />
+    <Error Condition="!Exists('$(_TemplatePath)')" Text="Obfuscar: sablon yok: $(_TemplatePath)" />
+    <Error Condition="'$(PkgObfuscar)' == '' or !Exists('$(_ObfuscarExe)')"
+           Text="Obfuscar.Console.exe bulunamadi. 'dotnet restore' calistirin. PkgObfuscar=$(PkgObfuscar)" />
+    <Error Condition="!Exists('$(_AcadSearch)\acdbmgd.dll')"
+           Text="Obfuscar: AutoCAD yolu bulunamadi (acdbmgd.dll): $(_AcadSearch)" />
+    <MakeDir Directories="$(_ObfDir)" />
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -Command &quot;$t = Get-Content -LiteralPath '$(_TemplatePath)' -Raw -Encoding UTF8; $t = $t.Replace('INPATH_PLACEHOLDER', '$(_OutAbs)').Replace('OUTPATH_PLACEHOLDER', '$(_ObfDir)').Replace('MODULE_PLACEHOLDER', '$(_DllName)').Replace('ACADPATH_PLACEHOLDER', '$(_AcadSearch)').Replace('ACADCOREPATH_PLACEHOLDER', '$(_AcadCore)'); Set-Content -LiteralPath '$(_CfgPath)' -Value $t -Encoding UTF8&quot;" />
+    <Exec Command="&quot;$(_ObfuscarExe)&quot; &quot;$(_CfgPath)&quot;" WorkingDirectory="$(_OutAbs)" />
+    <Error Condition="!Exists('$(_ObfDir)\$(_DllName)')" Text="Obfuscar cikti DLL uretmedi: $(_ObfDir)\$(_DllName)" />
+    <Copy SourceFiles="$(_ObfDir)\$(_DllName)" DestinationFiles="$(_DllPath)" OverwriteReadOnlyFiles="true" />
+    <Delete Files="$(_OutAbs)\$(AssemblyName).pdb" ContinueOnError="true" />
+    <RemoveDir Directories="$(_ObfDir)" ContinueOnError="true" />
+    <Delete Files="$(_CfgPath)" ContinueOnError="true" />
+    <Message Importance="high" Text="Obfuscar tamam: $(_DllPath)" />
   </Target>
 
   <!-- Legacy DLL yalnız sürüme özel klasöre; NETLOAD kökünden yanlış 2027 yüklemesini önler. -->

@@ -1,0 +1,11 @@
+# A_TFL — B+C rapor tasarımı
+- Kaynak proje: D:/projeler/projeler2026/ahmet_kustepe/adem_tafli/STATIK/A_TFL.st4 ve A_TFL.GPR; kaynak PDF CZM_RPR/A_TFL_RPR.pdf.
+- Sayısal kaynak GPR 12.10.2026, 86 teknik sayfa. ST4 proje adı/kat kotları/malzeme eşleştirmesi ve SMX/KMX/DMX/TMX seçilmiş donatı çapraz kontrolü yapıldı. Analiz yeniden çalıştırılmadı.
+- B+C düzeni: sade lacivert başlıklar, ferah tablo satırları, kapak/özet, ST4 kat kotları şeması, kaynak noktalarından spektrum grafiği, 9 ana hesap bölümü, bağlantılı dizin ve yer imleri.
+- Tablolar GPR hücrelerinden baştan dizildi. Özgün ayraç konumları çok katmanlı/ortak başlık SPAN alanlarına dönüştürülür. Salt sayısal hücreler tam ölçülü minimum genişlik ve satır bölünmesiz stil kullanır. STA özel matematik/donatı glyphleri özgün CourierSTA ile korunur. 3/4 üs ve Fdi kesri anlamı korunarak yeni dizgiye uyarlanır.
+- Girdi dosyalarına yazılmaz. 9 özgün raster şema ve 6 vektör şekil yerleşimi (kapak planı, diyafram, modal grafik, 3 aplikasyon) kaynak PDF'den alınır.
+- Yeniden üretim/kanıt: tools/ATflRapor20261025/build.py, verify.py, manifest.json, tables.json, binary-crosscheck.json, verification.json; çıktı output/pdf/A_TFL_Yeniden_Tasarim/A_TFL_Statik_Betonarme_Raporu.pdf. Yerel mühendislik dosyaları .gitignore ile Git dışı.
+- Doğrulama: 5791 kaynak gövde kaydı ve 119 tablonun hücreleri birebir; 33983 sayısal öğe; 10 seçilmiş ikili/GPR çapraz kontrolü PASS. Son görsel kontrol ve teslim bilgisi oturum kaydında.
+- AutoCAD kaynak/NETLOAD/DLL/ortak derleme değişikliği yok. C# derleme, DLL kopyalama ve canlı AutoCAD testi bu PDF görevinin kapsamında değil.
+- Teslim: 175 A4 sayfa, 1.618.729 bayt; 68 dizin girdisi, 136 iç bağlantı. 175 sayfa son dosyadan render edildi; tümü 9 toplu sayfa görüntüsünde, kapak/çeşitli tablo/üs-kesir/mod şekli/plan yakın ölçekte incelendi. Hücre/sayı, kaynak hash, bağlantı, yatay taşma ve 7.3 pt altı gövde kontrolleri PASS. Sayısal hücrelerde ölçülen minimum genişlik ve bölünmesiz paragraf stili uygulanır. Çok katmanlı başlıklar özgün çizgi konumlarından SPAN olarak yeniden oluşturulur; temel başlıkları ilk hesap grubundan ayrılmaz.
+- Durum: tamamlandı. Kalan kapsam sınırı: yeniden hesap ve mühendislik uygunluk değerlendirmesi yok; doğrulama veri aktarımı ve rapor sunumudur.

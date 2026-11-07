@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><Nullable>disable</Nullable><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\..\ST4_Yardimci\BetonKalipVeri.cs" Link="BetonKalipVeri.cs" />
+    <Compile Include="..\..\..\ST4_Yardimci\BetonKalipTemel.cs" Link="BetonKalipTemel.cs" />
+    <Compile Include="..\..\..\ST4_Yardimci\BetonKalipEgik.cs" Link="BetonKalipEgik.cs" />
+    <PackageReference Include="NetTopologySuite" Version="2.6.0" />
+  </ItemGroup>
+</Project>

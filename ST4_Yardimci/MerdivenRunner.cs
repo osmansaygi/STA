@@ -1815,13 +1815,19 @@ namespace ST4Yardimci
                 else
                 {
                     // Yalnız ekseni gerçekten kesen kenarlar (köşe projeksiyonu yok — yanlış kısa sahanlık)
+                    // Poligon kolon/perde (merdiveni saran tek kapalı polyline): eksene paralel yan
+                    // kenar ve karşı uçtaki kenarlar da aynı mesnette olur. Paralel kenar yok sayılır,
+                    // yalnız istenen yöndeki kesişimler kullanılır — aksi halde mesnet elenirdi.
                     var hits = new List<double>();
                     foreach (var e in s.Edges)
                     {
                         if (!TryLineSegIntersectParam(origin, axis, e.A, e.B, out double tHit, out double latHit))
                             continue;
                         if (latHit > latMax) continue;
-                        hits.Add(tHit);
+                        if (IsParallelToAxis(axis, e.A, e.B)) continue;
+                        double d = forward ? tHit : -tHit;
+                        if (d < 2.0) continue;
+                        hits.Add(d);
                     }
                     if (hits.Count == 0) continue;
                     hits.Sort();
@@ -1833,23 +1839,11 @@ namespace ST4Yardimci
                             uniq.Add(t);
                     }
 
-                    double tMin = uniq[0];
-                    double tMax = uniq[uniq.Count - 1];
-                    double span = Math.Max(tMax - tMin, 0);
+                    gap = uniq[0];
+                    // Kalınlık: yakın yüz → bir sonraki yüz (aynı mesnet)
+                    double span = uniq.Count > 1 ? uniq[1] - uniq[0] : 0;
                     bool thin = span < 5;
-
-                    if (forward)
-                    {
-                        if (tMin < 2.0) continue;
-                        gap = tMin;
-                        thick = thin ? (s.IsDosemeSiniri ? 0 : 25) : Math.Min(200, Math.Max(span, 15));
-                    }
-                    else
-                    {
-                        if (tMax > -2.0) continue;
-                        gap = -tMax;
-                        thick = thin ? (s.IsDosemeSiniri ? 0 : 25) : Math.Min(200, Math.Max(span, 15));
-                    }
+                    thick = thin ? (s.IsDosemeSiniri ? 0 : 25) : Math.Min(200, Math.Max(span, 15));
                 }
                 if (gap >= RayMaxCm) continue;
 
@@ -2005,6 +1999,14 @@ namespace ST4Yardimci
         }
 
         /// <summary>Sonsuz eksen çizgisi × segment; t = axis param, lat = dik mesafe.</summary>
+        private static bool IsParallelToAxis(Vector2d axis, Point2d a, Point2d b)
+        {
+            double dx = b.X - a.X, dy = b.Y - a.Y;
+            double len = Math.Sqrt(dx * dx + dy * dy);
+            if (len < Tol) return true;
+            return Math.Abs(axis.X * dy - axis.Y * dx) / len < 1e-6;
+        }
+
         private static bool TryLineSegIntersectParam(
             Point2d origin, Vector2d axis, Point2d a, Point2d b,
             out double t, out double lat)
@@ -2598,13 +2600,31 @@ namespace ST4Yardimci
             // Alt / bel profili (sağ→sol). Temelde sahanlık altı ve soffitin temel içindeki kısmı silinir.
             var bot = new List<Point2d>();
             double botRightX = sagBeam || sagCut ? landEndX : xRight;
-            bot.Add(new Point2d(botRightX, yLandHi));
+            // Sağ mesnet son rıhta çok yakınsa bel, üst sahanlık alt kotuna mesnetten önce
+            // ulaşamaz: alt çizgi bel doğrultusunda mesnet yüzünde biter (sahanlık altına kırılmaz).
+            double ySagJoin = yLandHi;
+            if (landHi.X >= botRightX - Tol
+                && TryIntersectX(sofA, sofB, botRightX, out Point2d sofSag)
+                && sofSag.Y < yLandHi)
+                ySagJoin = sofSag.Y;
+            bot.Add(new Point2d(botRightX, ySagJoin));
             if (landHi.X < botRightX - Tol && landHi.X > x0 + Tol)
                 bot.Add(landHi);
+            double ySolJoin = yLandLo;
             if (!temelAktif)
             {
-                bot.Add(landLo);
-                bot.Add(new Point2d(x0, yLandLo));
+                // Sol mesnet ilk rıhta çok yakınsa bel mesnet yüzünde biter (mesnet içine taşmaz)
+                if (landLo.X <= x0 + Tol
+                    && TryIntersectX(sofA, sofB, x0, out Point2d sofSol)
+                    && sofSol.Y > yLandLo)
+                    ySolJoin = sofSol.Y;
+                if (ySolJoin > yLandLo)
+                    bot.Add(new Point2d(x0, ySolJoin));
+                else
+                {
+                    bot.Add(landLo);
+                    bot.Add(new Point2d(x0, yLandLo));
+                }
             }
             else
             {
@@ -2653,32 +2673,32 @@ namespace ST4Yardimci
             {
                 AddLineRaw(tr, ms,
                     ox + fx(x0) * Scale, oy + 0 * Scale,
-                    ox + fx(x0) * Scale, oy + yLandLo * Scale,
+                    ox + fx(x0) * Scale, oy + ySolJoin * Scale,
                     LayerKesitCizgisi);
             }
             if (!openSag && !sagBeam)
             {
                 AddLineRaw(tr, ms,
                     ox + fx(xRight) * Scale, oy + yTop * Scale,
-                    ox + fx(xRight) * Scale, oy + yLandHi * Scale,
+                    ox + fx(xRight) * Scale, oy + ySagJoin * Scale,
                     LayerKesitCizgisi);
             }
 
             if (!temelAktif && solCut && solW > 0)
-                DrawKolonPerdeFinis(tr, ms, ox, oy, fx(colLeft), fx(x0), yLandLo, 0, LayerKesitCizgisi);
+                DrawKolonPerdeFinis(tr, ms, ox, oy, fx(colLeft), fx(x0), ySolJoin, 0, LayerKesitCizgisi);
             else if (!temelAktif && solBeam && solW > 0)
             {
                 double h = ResolveKirisHeightCm(sol);
-                DrawKirisFinisU(tr, ms, ox, oy, fx(-solW), fx(0), 0, -h, yLandLo);
+                DrawKirisFinisU(tr, ms, ox, oy, fx(-solW), fx(0), 0, -h, ySolJoin);
             }
 
             if (sagBeam && sagW > 0)
             {
                 double h = ResolveKirisHeightCm(sag);
-                DrawKirisFinisU(tr, ms, ox, oy, fx(xRight), fx(landEndX), yTop, yTop - h, yLandHi);
+                DrawKirisFinisU(tr, ms, ox, oy, fx(xRight), fx(landEndX), yTop, yTop - h, ySagJoin);
             }
             else if (sagCut && sagW > 0)
-                DrawKolonPerdeFinis(tr, ms, ox, oy, fx(colRight), fx(landEndX), yLandHi, yTop, LayerKesitCizgisi);
+                DrawKolonPerdeFinis(tr, ms, ox, oy, fx(colRight), fx(landEndX), ySagJoin, yTop, LayerKesitCizgisi);
 
             _temelAcilimEkAsagiCm = 0;
             _temelBar1AsagiCm = 100.0;
@@ -4769,6 +4789,9 @@ namespace ST4Yardimci
             List<Point2d> sharp;
             if (join.X <= xVert + Tol)
                 sharp = new List<Point2d> { start, join, topEnd, tip };
+            else if (TryIntersectX(oA, oB, xVert, out Point2d endOnSlope))
+                // Mesnet son rıhta çok yakın: eğik doğrultuda mesnet içinde biter, aşağı kanca
+                sharp = new List<Point2d> { start, endOnSlope, new Point2d(xVert, endOnSlope.Y - gonyeH) };
             else
                 sharp = new List<Point2d> { start, topEnd, tip };
 
@@ -4820,6 +4843,9 @@ namespace ST4Yardimci
             List<Point2d> sharp;
             if (join.X <= xVert + Tol)
                 sharp = new List<Point2d> { start, join, topEnd, tip };
+            else if (TryIntersectX(uA, uB, xVert, out Point2d endOnSlope))
+                // Mesnet son rıhta çok yakın: eğik doğrultuda mesnet içinde biter, aşağı kanca
+                sharp = new List<Point2d> { start, endOnSlope, new Point2d(xVert, endOnSlope.Y - gonyeH) };
             else
                 sharp = new List<Point2d> { start, topEnd, tip };
 
@@ -4903,6 +4929,12 @@ namespace ST4Yardimci
                 sharp.Add(new Point2d(xR, yTopBar));
                 sharp.Add(new Point2d(xR, yTopBar - gonyeDown));
             }
+            else if (TryIntersectX(oA, oB, xR, out Point2d endOnSlope))
+            {
+                // Mesnet son rıhta çok yakın: eğik doğrultuda mesnet içinde biter, aşağı kanca
+                sharp[sharp.Count - 1] = endOnSlope;
+                sharp.Add(new Point2d(xR, endOnSlope.Y - gonyeDown));
+            }
             else
             {
                 sharp.Add(new Point2d(xR, yTopBar - gonyeDown));
@@ -4957,6 +4989,12 @@ namespace ST4Yardimci
             {
                 sharp.Add(new Point2d(xR, yTopBar));
                 sharp.Add(new Point2d(xR, yTopBar - gonyeDown));
+            }
+            else if (TryIntersectX(uA, uB, xR, out Point2d endOnSlope))
+            {
+                // Mesnet son rıhta çok yakın: eğik doğrultuda mesnet içinde biter, aşağı kanca
+                sharp[sharp.Count - 1] = endOnSlope;
+                sharp.Add(new Point2d(xR, endOnSlope.Y - gonyeDown));
             }
             else
             {

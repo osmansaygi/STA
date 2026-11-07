@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Windows.Forms;
+using Beykent.Monolit.Girdi;
 using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
 
 namespace ST4PlanIdCiz
@@ -13,51 +14,28 @@ namespace ST4PlanIdCiz
     {
         /// <summary>true = görünüşte temel hatılı çizilir; false = çizilmez.</summary>
         public static bool TemelHatili { get; set; } = true;
+        /// <summary>true = 1/100 paftaya konacak: çizim (yazı/ölçü dahil) ×2.</summary>
+        public static bool Pafta100 { get; set; }
+        /// <summary>true = birebir aynı perde hatları tek antette; donatı yazılarına adet çarpanı.</summary>
+        public static bool BenzerleriBirlestir { get; set; } = true;
 
         static bool _loaded;
-
-        static string IniPath()
-        {
-            string dir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "ST4_Plan_ID_Ciz");
-            try { Directory.CreateDirectory(dir); } catch { }
-            return Path.Combine(dir, "kapamaperde.ini");
-        }
 
         public static void EnsureLoaded()
         {
             if (_loaded) return;
             _loaded = true;
-            try
-            {
-                string path = IniPath();
-                if (!File.Exists(path)) return;
-                foreach (string raw in File.ReadAllLines(path))
-                {
-                    string line = (raw ?? "").Trim();
-                    if (line.Length == 0 || line[0] == ';' || line[0] == '#') continue;
-                    int eq = line.IndexOf('=');
-                    if (eq <= 0) continue;
-                    string key = line.Substring(0, eq).Trim();
-                    string val = line.Substring(eq + 1).Trim();
-                    if (string.Equals(key, "TemelHatili", StringComparison.OrdinalIgnoreCase))
-                        TemelHatili = val != "0" && !string.Equals(val, "false", StringComparison.OrdinalIgnoreCase);
-                }
-            }
-            catch { }
+            var s = PlanFormSettings.Load("kapamaperde");
+            TemelHatili = s.Bool("TemelHatili", TemelHatili);
+            Pafta100 = s.Bool("Pafta100", Pafta100);
+            BenzerleriBirlestir = s.Bool("BenzerleriBirlestir", BenzerleriBirlestir);
         }
 
         public static void Save()
         {
             EnsureLoaded();
-            try
-            {
-                var sb = new StringBuilder();
-                sb.AppendLine("TemelHatili=" + (TemelHatili ? "1" : "0"));
-                File.WriteAllText(IniPath(), sb.ToString(), Encoding.UTF8);
-            }
-            catch { }
+            PlanFormSettings.Load("kapamaperde").Set("TemelHatili", TemelHatili).Set("Pafta100", Pafta100)
+                .Set("BenzerleriBirlestir", BenzerleriBirlestir).Save();
         }
     }
 
@@ -66,8 +44,9 @@ namespace ST4PlanIdCiz
     /// </summary>
     internal sealed class KapamaPerdeForm : Beykent.Monolit.MonolitForm
     {
-        private readonly RadioButton _rbHatiliVar;
-        private readonly RadioButton _rbHatiliYok;
+        private readonly SegmentSecim _hatil;
+        private readonly SegmentSecim _pafta;
+        private readonly CheckBox _chkBenzer;
 
         /// <summary>Modal form. true = Çiz (ayarlar kaydedildi).</summary>
         public static bool ShowModalAndAccept()
@@ -97,16 +76,19 @@ namespace ST4PlanIdCiz
             KeyPreview = true;
             DialogResult = DialogResult.Cancel;
 
-            int y = 10;
-            Controls.Add(MkLabel("Temel hatılı", 12, y + 3, 70));
-            y += 22;
-
-            _rbHatiliVar = MkRadio("Temel hatılı olsun", 12, y, KapamaPerdeSettings.TemelHatili);
-            Controls.Add(_rbHatiliVar);
-            y += 22;
-
-            _rbHatiliYok = MkRadio("Temel hatılı olmasın", 12, y, !KapamaPerdeSettings.TemelHatili);
-            Controls.Add(_rbHatiliYok);
+            int y = 54;
+            // Ortak kural 3/4: hatıl var/yok ve pafta ölçeği segment; KapamaPerdeSettings anlamı aynı.
+            _hatil = new SegmentSecim("Hatıllı", "Hatılsız") { Secili = KapamaPerdeSettings.TemelHatili ? 0 : 1 };
+            _pafta = new SegmentSecim("1/50 pafta", "1/100 pafta (×2)") { Secili = KapamaPerdeSettings.Pafta100 ? 1 : 0 };
+            _chkBenzer = new CheckBox
+            {
+                Text = "Benzerleri beraber çiz",
+                AutoSize = true,
+                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
+                BackColor = Color.Transparent,
+                Checked = KapamaPerdeSettings.BenzerleriBirlestir
+            };
+            Controls.Add(_chkBenzer);
             y += 30;
 
             var btnCiz = MkButton("Çiz", 12, y, 100, true);
@@ -141,8 +123,11 @@ namespace ST4PlanIdCiz
 
             // Kompakt, içerik odaklı form düzeni.
             var ui = BeginCompact(270);
-            _rbHatiliVar.Text = "Hatıllı"; _rbHatiliYok.Text = "Hatılsız";
-            ui.Section("Hatıl durumu").Options(_rbHatiliVar, _rbHatiliYok);
+            ui.Section("Hatıl durumu").Control(_hatil);
+            ui.Tip(_hatil, "Temel hatılı olsun / olmasın");
+            ui.Section("Benzer perdeler").Options(_chkBenzer);
+            ui.Tip(_chkBenzer, "Birebir aynı perde hatları tek antette çizilir; donatı yazılarına adet çarpanı (2x…) eklenir.");
+            ui.Section("Pafta ölçeği · detay 1/25").Control(_pafta);
             ui.Footer(btnCiz, btnIptal);
             ui.Finish();
         }
@@ -155,7 +140,7 @@ namespace ST4PlanIdCiz
                 Close();
                 return true;
             }
-            if (keyData == Keys.Enter || keyData == Keys.Return)
+            if ((keyData == Keys.Enter || keyData == Keys.Return) && !(ActiveControl is Button))
             {
                 PushSettings();
                 DialogResult = DialogResult.OK;
@@ -167,29 +152,11 @@ namespace ST4PlanIdCiz
 
         private void PushSettings()
         {
-            KapamaPerdeSettings.TemelHatili = _rbHatiliVar.Checked;
+            KapamaPerdeSettings.TemelHatili = _hatil.Secili == 0;
+            KapamaPerdeSettings.Pafta100 = _pafta.Secili == 1;
+            KapamaPerdeSettings.BenzerleriBirlestir = _chkBenzer.Checked;
             KapamaPerdeSettings.Save();
         }
-
-        private static Label MkLabel(string text, int x, int y, int w) => new Label
-        {
-            Text = text,
-            Location = new Point(x, y),
-            AutoSize = false,
-            Size = new Size(w, 18),
-            ForeColor = Beykent.Monolit.StandardFormTheme.TextMuted,
-            BackColor = Color.Transparent
-        };
-
-        private static RadioButton MkRadio(string text, int x, int y, bool on) => new RadioButton
-        {
-            Text = text,
-            Location = new Point(x, y),
-            AutoSize = true,
-            ForeColor = Beykent.Monolit.StandardFormTheme.Text,
-            BackColor = Color.Transparent,
-            Checked = on
-        };
 
         private static Button MkButton(string text, int x, int y, int w, bool accent)
         {

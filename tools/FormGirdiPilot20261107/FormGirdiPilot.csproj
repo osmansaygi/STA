@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- İzole önizleme/test: AutoCAD taklitli. Canlı DLL üretmez, NETLOAD'a kopyalamaz, kullanıcı ayarına yazmaz. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <NuGetAudit>false</NuGetAudit>
+    <AssemblyName>FormGirdiPilot</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../Ortak/Monolit/*.cs" Link="Ortak/%(Filename)%(Extension)" />
+    <Compile Include="../../ST4_Yardimci/TemelHatiliForm.cs" Link="Yeni/TemelHatiliForm.cs" />
+    <Compile Include="../../ST4_Yardimci/YardimciUi.cs" Link="Yeni/YardimciUi.cs" />
+    <Compile Include="Onizleme/*.cs" />
+  </ItemGroup>
+</Project>

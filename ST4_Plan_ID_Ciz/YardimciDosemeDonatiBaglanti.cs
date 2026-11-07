@@ -9,6 +9,8 @@ namespace ST4Yardimci
     internal static class DosemeDonatiForm
     {
         public static void ShowAfterPick() { }
+        /// <summary>Yardımcı formunun 1/100 seçimi; Plan ID'de etkisiz (DENEME2 çarpanı kendisi verir).</summary>
+        internal static bool Olcek100 => false;
     }
 
     /// <summary>Yardımcı DonatiBoyuForm.cs ile aynı değerler.</summary>

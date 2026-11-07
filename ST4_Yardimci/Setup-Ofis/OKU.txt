@@ -1,27 +1,33 @@
-BETONARME TOOL — ofis kurulumu (yalnız BEYKENT-2)
+﻿BETONARME TOOL + ST4 PLAN ID — ofis kurulumu (yalnız BEYKENT-2)
+Sürüm 2026.11.07.1 — AutoCAD 2027
 
-Bu klasörün tamamını (Kur.cmd, Kur.ps1, PackageContents.xml, payload, OKU.txt)
+Bu klasörün tamamını (Kur.cmd, Kur.ps1, PackageContents.xml, payload, plan, OKU.txt)
 ofis bilgisayarına kopyalayın. Masaüstü veya İndirilenler olur; kurulum kendi
-klasöründeki DLL’ye dokunmaz.
+klasöründeki DLL’lere dokunmaz.
 
 1. Kur.cmd’e çift tıklayın.
 2. Açık AutoCAD kapanır. Kayıtlı olmayan çizim varsa önce kendiniz kaydedin.
-3. Eski bundle, NETLOAD kopyası, APPLOAD başlangıç kaydı ve acad.rx / acad.lsp
-   içindeki eski satır silinir.
+3. Eski bundle’lar, NETLOAD kopyaları, APPLOAD başlangıç kayıtları ve acad.rx / acad.lsp
+   içindeki eski satırlar silinir (ST4_Yardimci ve ST4_Plan_ID_Ciz).
 4. Yeni sürüm yalnız şuraya kurulur:
 
    %AppData%\Autodesk\ApplicationPlugins\ST4_Yardimci.bundle\
+   %AppData%\Autodesk\ApplicationPlugins\ST4_Plan_ID_Ciz.bundle\
 
-Kurulum başka bilgisayarda durur (yalnız BEYKENT-2).
+Kurulum başka bilgisayarda durur (yalnız BEYKENT-2). İki DLL de şifreli ve makine
+kilitlidir; başka bilgisayara kopyalanırsa komutlar “lisans yok” der.
+
+Bu paket AutoCAD 2027 içindir (Plan ID ve Yardımcı .NET 10 derlemesi). Başka AutoCAD
+sürümünde yüklenmez.
 
 AutoCAD’in düşmemesi için:
 - Eski ve yeni DLL aynı anda yüklenmez. İkinci kopya kalırsa kurulum hata verir;
   AutoCAD’i açmayın, uyarıdaki dosyayı silip Kur.cmd’i tekrar çalıştırın.
-- Ayrı NETLOAD yapmayın. APPLOAD Startup Suite’te ST4_Yardimci kalmamalı.
-- NTS ve System.* bundle’ın içindedir. Eksikse kurulum yapılmaz (eksik NTS açılışta düşürür).
-- Eski yazısız şerit (BAUST) açılışta kurulmaz. COM ile şerit silinmez.
+- Ayrı NETLOAD yapmayın. APPLOAD Startup Suite’te ST4_Yardimci / ST4_Plan_ID_Ciz kalmamalı.
+- NTS ve PdfPig bundle’ların içindedir. Eksikse kurulum yapılmaz.
 
 AutoCAD açılınca komut satırında “BETONARME TOOL yuklendi” yazmalı.
-Komutlar Home (Giriş) sekmesinde: Ölçü / Detay / Donatı / Genel Düzenleme
-grupları. Eski BETONARME TOOL yan paneli açılmaz. Gruplar görünmezse
-komut satırına BARIBBON yazın; kaldırmak için BARIBBONKAPAT.
+Yardımcı komutları Home (Giriş) sekmesinde: Ölçü / Detay / Donatı / Genel Düzenleme
+grupları. Gruplar görünmezse komut satırına BARIBBON yazın; kaldırmak için BARIBBONKAPAT.
+Plan ID komutları şeritte BEYKENT sekmesindedir. Sekme görünmezse komut satırına BEYKENT yazın;
+kaldırmak için BEYKENTKAPAT.

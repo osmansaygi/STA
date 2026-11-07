@@ -45,9 +45,9 @@ namespace ST4Yardimci
         private const double MinPilyeSpanCm = 200.0;
         /// <summary>Tüm donatı kıvrımlarında büküm yarıçapı.</summary>
         private const double BendRadiusCm = 3.0;
-        private const double StaggerCm = 5.0;
+        private static double StaggerCm => 5.0 * AutoYaziCarpani;
         private const double PaspayiCm = 3.0;
-        private const double DuzBelowPilyeCm = 20.0;
+        private static double DuzBelowPilyeCm => 20.0 * AutoYaziCarpani;
         private const double GonyeCm = 20.0;
         /// <summary>Ticari çubuk 12 m. Aşan donatı Lb bindirme ile bölünür.</summary>
         private const double StockLenCm = 1200.0;
@@ -72,7 +72,9 @@ namespace ST4Yardimci
         private const double PlanKotOffsetXCm = 19.5 - 5.1739; // 14.3261
         private const double LabelGapCm = 3.0;
         private const double TextHeightCm = 10.0;
-        private const double UstIlaveAboveTopCm = 25.0;
+        /// <summary>1/100 (Plan DENEME2, Yardımcı formunda 1/100): donatı yazısı, yazı boşluğu ve pilye/düz/ilave/kademe aralıkları çarpanı (1,5); oturum dışında hep 1.</summary>
+        internal static double AutoYaziCarpani = 1.0;
+        private static double UstIlaveAboveTopCm => 25.0 * AutoYaziCarpani;
 
         private const string LayerKiris = "KIRIS (BEYKENT)";
         private const string LayerKolon = "KOLON (BEYKENT)";
@@ -268,6 +270,8 @@ namespace ST4Yardimci
 
             Editor ed = doc.Editor;
             Database db = doc.Database;
+            // Formdaki 1/100: yazılar ve donatı aralıkları ×1,5 (Plan DENEME2 1/100 ile aynı).
+            AutoYaziCarpani = DosemeDonatiForm.Olcek100 ? 1.5 : 1.0;
 
             try
             {
@@ -327,6 +331,7 @@ namespace ST4Yardimci
             }
             finally
             {
+                AutoYaziCarpani = 1.0;
                 DosemeDonatiForm.ShowAfterPick();
             }
         }
@@ -5170,7 +5175,7 @@ namespace ST4Yardimci
             var t = new DBText();
             t.SetDatabaseDefaults();
             t.TextString = text;
-            t.Height = TextHeightCm;
+            t.Height = TextHeightCm * AutoYaziCarpani;
             if (!textStyleId.IsNull)
                 t.TextStyleId = textStyleId;
             t.Position = barRef;
@@ -5196,8 +5201,8 @@ namespace ST4Yardimci
                 double cx = (ext.MinPoint.X + ext.MaxPoint.X) * 0.5;
                 double dx = barRef.X - cx;
                 double dy = localAbove
-                    ? (barRef.Y + LabelGapCm) - ext.MinPoint.Y
-                    : (barRef.Y - LabelGapCm) - ext.MaxPoint.Y;
+                    ? (barRef.Y + LabelGapCm * AutoYaziCarpani) - ext.MinPoint.Y
+                    : (barRef.Y - LabelGapCm * AutoYaziCarpani) - ext.MaxPoint.Y;
                 t.TransformBy(Matrix3d.Displacement(new Vector3d(dx, dy, 0)));
             }
             catch { }

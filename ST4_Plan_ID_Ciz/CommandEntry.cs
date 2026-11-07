@@ -36,11 +36,17 @@ namespace ST4PlanIdCiz
                 catch { }
                 return;
             }
+            if (!PlanLisans.IsAllowed())
+            {
+                try { doc?.Editor.WriteMessage("\nST4 PLAN ID: Bu bilgisayar için lisans yok (yetkisiz makine)."); }
+                catch { }
+                return;
+            }
             // Plan ID / Yardımcı komutlarında 5 sn'yi aşan çizimde "Çiziliyor..." penceresi (Core Console'da kurulmaz).
             CizimIzleyici.Kur();
             // NETLOAD sırasında PaletteSet açmak (özellikle Yardımcı ile birlikte) AutoCAD'i göçertebilir.
             Application.Idle -= OnIdleShowStaPanel;
-#if AUTOCAD2027
+#if BEYKENT_RIBBON
             if (!string.Equals(System.Diagnostics.Process.GetCurrentProcess().ProcessName,
                 "accoreconsole", StringComparison.OrdinalIgnoreCase))
                 BeykentRibbonManager.Initialize();
@@ -72,7 +78,7 @@ namespace ST4PlanIdCiz
         {
             try { Application.Idle -= OnIdleShowStaPanel; } catch { }
             CizimIzleyici.Kaldir();
-#if AUTOCAD2027
+#if BEYKENT_RIBBON
             BeykentRibbonManager.Shutdown();
 #endif
             CommandPaletteManager.Shutdown();
@@ -169,6 +175,7 @@ namespace ST4PlanIdCiz
         [CommandMethod("STAPANEL")]
         public void StaPanel()
         {
+            if (!PlanLisans.EnsureOrWarn()) return;
             CommandPaletteManager.Show();
         }
 
@@ -176,6 +183,7 @@ namespace ST4PlanIdCiz
         [CommandMethod("ST4KATMANTEMIZLE")]
         public void St4KatmanTemizle()
         {
+            if (!PlanLisans.EnsureOrWarn()) return;
             var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
             int n;
@@ -193,6 +201,7 @@ namespace ST4PlanIdCiz
         [CommandMethod("ST4PLANID")]
         public void Run()
         {
+            if (!PlanLisans.EnsureOrWarn()) return;
             var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
             ApplyStaDefaultDrawingDisplaySettings(doc);
@@ -231,6 +240,7 @@ namespace ST4PlanIdCiz
         [CommandMethod("ISKELECIZ")]
         public void IskeleCiz()
         {
+            if (!PlanLisans.EnsureOrWarn()) return;
             var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
             ApplyStaDefaultDrawingDisplaySettings(doc);
@@ -244,6 +254,7 @@ namespace ST4PlanIdCiz
         [CommandMethod("ISKELEKESIT")]
         public void IskeleKesit()
         {
+            if (!PlanLisans.EnsureOrWarn()) return;
             var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
             ApplyStaDefaultDrawingDisplaySettings(doc);
@@ -259,6 +270,7 @@ namespace ST4PlanIdCiz
         [CommandMethod("KIRISDUZELT")]
         public void KirisDuzelt()
         {
+            if (!PlanLisans.EnsureOrWarn()) return;
             var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
             ApplyStaDefaultDrawingDisplaySettings(doc);
@@ -298,6 +310,7 @@ namespace ST4PlanIdCiz
         [CommandMethod("TEMELKIRISDUZELT")]
         public void TemelKirisDuzelt()
         {
+            if (!PlanLisans.EnsureOrWarn()) return;
             var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
             ApplyStaDefaultDrawingDisplaySettings(doc);
@@ -337,6 +350,7 @@ namespace ST4PlanIdCiz
         [CommandMethod("KOLONDATA")]
         public void KolonData()
         {
+            if (!PlanLisans.EnsureOrWarn()) return;
             var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
             ApplyStaDefaultDrawingDisplaySettings(doc);
@@ -438,6 +452,7 @@ namespace ST4PlanIdCiz
         [CommandMethod("METRAJ")]
         public void Metraj()
         {
+            if (!PlanLisans.EnsureOrWarn()) return;
             var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
             ApplyStaDefaultDrawingDisplaySettings(doc);
@@ -498,6 +513,7 @@ namespace ST4PlanIdCiz
         [CommandMethod("ST4KESIT")]
         public void St4Kesit()
         {
+            if (!PlanLisans.EnsureOrWarn()) return;
             var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
             ApplyStaDefaultDrawingDisplaySettings(doc);
@@ -550,6 +566,7 @@ namespace ST4PlanIdCiz
         [CommandMethod("TEMEL50ST4")]
         public void Temel50St4()
         {
+            if (!PlanLisans.EnsureOrWarn()) return;
             var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
             ApplyStaDefaultDrawingDisplaySettings(doc);
@@ -583,6 +600,7 @@ namespace ST4PlanIdCiz
         [CommandMethod("TEMEL100ST4")]
         public void Temel100St4()
         {
+            if (!PlanLisans.EnsureOrWarn()) return;
             var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
             ApplyStaDefaultDrawingDisplaySettings(doc);
@@ -614,8 +632,19 @@ namespace ST4PlanIdCiz
         }
 
         [CommandMethod("KOLON50ST4")]
-        public void Kolon50St4()
+        public void Kolon50St4() => RunKolonApplication("KOLON50ST4", KolonApplicationPlanScale.Fifty);
+
+        [CommandMethod("KOLON100ST4")]
+        public void Kolon100St4() => RunKolonApplication("KOLON100ST4", KolonApplicationPlanScale.Hundred);
+
+        /// <summary>Kolon aplikasyon planı; ölçek kolon formunda seçilir (1/50 veya 1/100).</summary>
+        [CommandMethod("KOLONST4")]
+        public void KolonSt4() => RunKolonApplication("KOLONST4", null);
+
+        /// <param name="scale">null: ölçek formda sorulur.</param>
+        private void RunKolonApplication(string cmdTag, KolonApplicationPlanScale? scale)
         {
+            if (!PlanLisans.EnsureOrWarn()) return;
             var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
             ApplyStaDefaultDrawingDisplaySettings(doc);
@@ -623,9 +652,10 @@ namespace ST4PlanIdCiz
             var ed = doc.Editor;
             var db = doc.Database;
 
-            if (!KolonApplicationForm.ShowModalAndAccept()) return;
+            if (!KolonApplicationForm.ShowModalAndAccept(olcekSor: scale == null)) return;
+            KolonApplicationPlanScale olcek = scale ?? (KolonApplicationForm.Olcek100 ? KolonApplicationPlanScale.Hundred : KolonApplicationPlanScale.Fifty);
 
-            if (!RememberedFilePrompt.TryPrompt(ed, "\nKOLON50ST4 icin ST4 Dosyasi Secin",
+            if (!RememberedFilePrompt.TryPrompt(ed, "\n" + cmdTag + " icin ST4 Dosyasi Secin",
                 "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
                 return;
 
@@ -637,9 +667,9 @@ namespace ST4PlanIdCiz
                 GprYapiAksLabels.TryMergeFromGprBesideSt4(st4Path, model);
                 WriteGprAxisSummary(ed, model);
                 var manager = new PlanIdDrawingManager(model);
-                var insRes = ed.GetPoint(new PromptPointOptions("\nKOLON50ST4 yerlesim noktasi (SheetViewOut sol-altin 50 cm solu): ") { AllowNone = false });
+                var insRes = ed.GetPoint(new PromptPointOptions("\n" + cmdTag + " yerlesim noktasi (SheetViewOut sol-altin 50 cm solu): ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
-                manager.DrawColumnApplicationPlan(db, ed, insRes.Value, st4Path, KolonApplicationPlanScale.Fifty,
+                manager.DrawColumnApplicationPlan(db, ed, insRes.Value, st4Path, olcek,
                     mergeSimilarFloors: KolonApplicationForm.BenzerKatlariBeraberCiz,
                     drawInformationLabels: KolonApplicationForm.BilgiYazilariniYaz,
                     addVerticalDetails: KolonApplicationForm.KolonDuseyAcilimiEkle,
@@ -648,52 +678,32 @@ namespace ST4PlanIdCiz
             }
             catch (System.Exception ex)
             {
-                WriteStaCommandError(ed, "KOLON50ST4", ex);
+                WriteStaCommandError(ed, cmdTag, ex);
             }
         }
 
-        [CommandMethod("KOLON100ST4")]
-        public void Kolon100St4()
+        /// <summary>Temel planı; açılışta 1/50 – 1/100 sorulur, seçime göre TEMEL50ST4 / TEMEL100ST4 çalışır.</summary>
+        [CommandMethod("TEMELST4")]
+        public void TemelSt4()
         {
-            var doc = Application.DocumentManager.MdiActiveDocument;
-            if (doc == null) return;
-            ApplyStaDefaultDrawingDisplaySettings(doc);
+            if (!PlanLisans.EnsureOrWarn()) return;
+            if (!PlanOlcekForm.TrySor("temelolcek", "Temel Planı", null, out bool yuz)) return;
+            if (yuz) Temel100St4(); else Temel50St4();
+        }
 
-            var ed = doc.Editor;
-            var db = doc.Database;
-
-            if (!KolonApplicationForm.ShowModalAndAccept()) return;
-
-            if (!RememberedFilePrompt.TryPrompt(ed, "\nKOLON100ST4 icin ST4 Dosyasi Secin",
-                "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
-                return;
-
-            try
-            {
-                ConfigureNtsNextGenOverlay();
-                var parser = new St4Parser();
-                var model = parser.Parse(st4Path);
-                GprYapiAksLabels.TryMergeFromGprBesideSt4(st4Path, model);
-                WriteGprAxisSummary(ed, model);
-                var manager = new PlanIdDrawingManager(model);
-                var insRes = ed.GetPoint(new PromptPointOptions("\nKOLON100ST4 yerlesim noktasi (SheetViewOut sol-altin 50 cm solu): ") { AllowNone = false });
-                if (insRes.Status != PromptStatus.OK) return;
-                manager.DrawColumnApplicationPlan(db, ed, insRes.Value, st4Path, KolonApplicationPlanScale.Hundred,
-                    mergeSimilarFloors: KolonApplicationForm.BenzerKatlariBeraberCiz,
-                    drawInformationLabels: KolonApplicationForm.BilgiYazilariniYaz,
-                    addVerticalDetails: KolonApplicationForm.KolonDuseyAcilimiEkle,
-                    addKapamaDetails: KolonApplicationForm.KapamaPerdeAcilimiEkle);
-                FinishStaDrawing(doc);
-            }
-            catch (System.Exception ex)
-            {
-                WriteStaCommandError(ed, "KOLON100ST4", ex);
-            }
+        /// <summary>Kalıp planı; açılışta 1/50 – 1/100 sorulur, seçime göre KALIP50ST4 / KALIP100ST4 çalışır.</summary>
+        [CommandMethod("KALIPST4")]
+        public void KalipSt4()
+        {
+            if (!PlanLisans.EnsureOrWarn()) return;
+            if (!PlanOlcekForm.TrySor("kalipolcek", "Kalıp Planı", null, out bool yuz)) return;
+            if (yuz) Kalip100St4(); else Kalip50St4();
         }
 
         [CommandMethod("KALIP50ST4")]
         public void Kalip50St4()
         {
+            if (!PlanLisans.EnsureOrWarn()) return;
             var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
             ApplyStaDefaultDrawingDisplaySettings(doc);
@@ -728,12 +738,15 @@ namespace ST4PlanIdCiz
         [CommandMethod("DENEME1")]
         public void Deneme1KalipIlkIkiKat()
         {
+            if (!PlanLisans.EnsureOrWarn()) return;
             var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
             ApplyStaDefaultDrawingDisplaySettings(doc);
 
             var ed = doc.Editor;
             var db = doc.Database;
+
+            if (!PlanOlcekForm.TrySor("deneme1olcek", "Kalıp Deneme", "İlk iki kat, sade kalıp planı.", out bool yuz)) return;
 
             if (!RememberedFilePrompt.TryPrompt(ed, "\nDENEME1 icin ST4 Dosyasi Secin",
                 "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
@@ -755,7 +768,7 @@ namespace ST4PlanIdCiz
                     ed,
                     insRes.Value,
                     st4Path,
-                    KalipPlanScale.Fifty,
+                    yuz ? KalipPlanScale.Hundred : KalipPlanScale.Fifty,
                     firstIndividualFloorCount: 2,
                     suppressKirisPerdeKolonDosemeLabels: true,
                     completionMessageCmdTag: "DENEME1",
@@ -781,12 +794,15 @@ namespace ST4PlanIdCiz
         [CommandMethod("DENEME2")]
         public void Deneme2KalipEksen()
         {
+            if (!PlanLisans.EnsureOrWarn()) return;
             var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
             ApplyStaDefaultDrawingDisplaySettings(doc);
 
             var ed = doc.Editor;
             var db = doc.Database;
+
+            if (!PlanOlcekForm.TrySor("deneme2olcek", "Kalıp Deneme 2", "Kalıp planı + döşeme donatısı.", out bool yuz)) return;
 
             if (!RememberedFilePrompt.TryPrompt(ed, "\nDENEME2 icin ST4 Dosyasi Secin",
                 "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
@@ -813,12 +829,13 @@ namespace ST4PlanIdCiz
                     ed,
                     insRes.Value,
                     st4Path,
-                    KalipPlanScale.Fifty,
+                    yuz ? KalipPlanScale.Hundred : KalipPlanScale.Fifty,
                     completionMessageCmdTag: "DENEME2",
                     layoutFlags: new Kalip50LayoutFlags(drawDeneme1EksenOnDonatiCopy: true));
                 KalipIlerleme.Bolum(0.55, 1.0);
                 // Plan commit edildi: Yardımcı DOSEMEDONATI çekirdeği çizimdeki kiriş/döşeme/kot/GPR nesnelerini okur.
-                Deneme2DosemeDonati.Run(doc, manager.Deneme2EksenKayitlari, startHandle, manager.Deneme2DmxBySlabId);
+                Deneme2DosemeDonati.Run(doc, manager.Deneme2EksenKayitlari, startHandle, manager.Deneme2DmxBySlabId,
+                    yaziCarpani: yuz ? 1.5 : 1.0);
                 FinishStaDrawing(doc);
             }
             catch (System.Exception ex)
@@ -827,16 +844,19 @@ namespace ST4PlanIdCiz
             }
         }
 
-        /// <summary>1/50 kalıp planı + /Slabs Data/ mantar fiktif kirişleri (BANT). Kat başına 3 kopya (1–2 boş, 3. donatılı).</summary>
+        /// <summary>1/50 kalıp planı + /Slabs Data/ mantar fiktif kirişleri (BANT). Kat başına 3 kopya (1–2 boş, 3. donatılı); GPR zımbalama donatısı gereken kolonu olan katta 4. kopya zımbalama donatısı.</summary>
         [CommandMethod("MANTARDOSEME")]
         public void MantarDosemeKalip()
         {
+            if (!PlanLisans.EnsureOrWarn()) return;
             var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
             ApplyStaDefaultDrawingDisplaySettings(doc);
 
             var ed = doc.Editor;
             var db = doc.Database;
+
+            if (!PlanOlcekForm.TrySor("mantarolcek", "Mantar Döşeme", "Kalıp planı + mantar fiktif kirişleri.", out bool yuz)) return;
 
             if (!RememberedFilePrompt.TryPrompt(ed, "\nMANTARDOSEME icin ST4 Dosyasi Secin",
                 "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
@@ -850,6 +870,9 @@ namespace ST4PlanIdCiz
                 GprYapiAksLabels.TryMergeFromGprBesideSt4(st4Path, model);
                 WriteGprAxisSummary(ed, model);
                 ed.WriteMessage("\nMANTARDOSEME: Mantar fiktif kiris sayisi = {0}.", model.MushroomBeams?.Count ?? 0);
+                // GPR "KOLON ZIMBALAMA KONTROLU": donatı gereken kolonu olan kata ayrı zımbalama kopyası.
+                List<GprZimbalamaKolon> zimbalama = GprZimbalamaParser.TryReadMantar(st4Path, out _);
+                ed.WriteMessage("\nMANTARDOSEME: GPR zimbalama donatisi gereken kolon = {0}.", zimbalama.Count);
                 var manager = new PlanIdDrawingManager(model);
                 var insRes = ed.GetPoint(new PromptPointOptions("\nMANTARDOSEME: En soldaki antet SheetViewOut sol-altinin 50 cm solu: ") { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
@@ -858,9 +881,9 @@ namespace ST4PlanIdCiz
                     ed,
                     insRes.Value,
                     st4Path,
-                    KalipPlanScale.Fifty,
+                    yuz ? KalipPlanScale.Hundred : KalipPlanScale.Fifty,
                     completionMessageCmdTag: "MANTARDOSEME",
-                    layoutFlags: new Kalip50LayoutFlags(includeMushroomBeams: true, copiesPerFloor: 3));
+                    layoutFlags: new Kalip50LayoutFlags(includeMushroomBeams: true, copiesPerFloor: 3, mantarZimbalama: zimbalama));
                 FinishStaDrawing(doc);
             }
             catch (System.Exception ex)
@@ -873,6 +896,7 @@ namespace ST4PlanIdCiz
         [CommandMethod("BINAGORUNUS")]
         public void BinaGorunus()
         {
+            if (!PlanLisans.EnsureOrWarn()) return;
             var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
             ApplyStaDefaultDrawingDisplaySettings(doc);
@@ -953,6 +977,7 @@ namespace ST4PlanIdCiz
         [CommandMethod("BINAKESITI")]
         public void BinaKesiti()
         {
+            if (!PlanLisans.EnsureOrWarn()) return;
             var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
             ApplyStaDefaultDrawingDisplaySettings(doc);
@@ -1002,6 +1027,7 @@ namespace ST4PlanIdCiz
         [CommandMethod("KIRISACILIMLARI")]
         public void KirisAcilimlari()
         {
+            if (!PlanLisans.EnsureOrWarn()) return;
             var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
             ApplyStaDefaultDrawingDisplaySettings(doc);
@@ -1026,10 +1052,17 @@ namespace ST4PlanIdCiz
                 var insRes = ed.GetPoint(new PromptPointOptions(prompt) { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
                 var manager = new PlanIdDrawingManager(model);
+                long ilkHandle = db.Handseed.Value;
                 if (manager.DrawKirisAcilimlariSecenekli(db, ed, insRes.Value, st4Path, secenekler))
                 {
-                    try { manager.KirisAcilimGorunumeAl(ed); }
-                    catch { /* görünüm başarısız olsa da çizim kalsın */ }
+                    // 1/100 pafta: açılım (yazı/ölçü/antet) ×2; görünüm büyütülmüş çizime alınır.
+                    if (secenekler.Pafta100)
+                        BeykentOrtak.PaftaOlcek.BuyutYeni(db, ilkHandle, insRes.Value, ed: ed);
+                    else
+                    {
+                        try { manager.KirisAcilimGorunumeAl(ed); }
+                        catch { /* görünüm başarısız olsa da çizim kalsın */ }
+                    }
                 }
             }
             catch (System.Exception ex)
@@ -1042,6 +1075,7 @@ namespace ST4PlanIdCiz
         [CommandMethod("KOLONDUSEY")]
         public void KolonDusey()
         {
+            if (!PlanLisans.EnsureOrWarn()) return;
             var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
             ApplyStaDefaultDrawingDisplaySettings(doc);
@@ -1079,11 +1113,13 @@ namespace ST4PlanIdCiz
                 if (insRes.Status != PromptStatus.OK) return;
 
                 var planMgr = new PlanIdDrawingManager(model);
+                long ilkHandle = db.Handseed.Value;
+                bool ok = false;
                 using (var tr = db.TransactionManager.StartTransaction())
                 {
                     var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
                     var btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
-                    bool ok = planMgr.DrawKolonDuseyFromSt4(
+                    ok = planMgr.DrawKolonDuseyFromSt4(
                         insRes.Value, db, ed, tr, btr, st4Path,
                         olcek25: KolonDuseySettings.Olcek25,
                         katKatCiz: KolonDuseySettings.KatKatCiz,
@@ -1092,6 +1128,9 @@ namespace ST4PlanIdCiz
                     if (ok)
                         tr.Commit();
                 }
+                // 1/100 pafta: düşey açılım (yazı/ölçü/antet) ×2.
+                if (ok && KolonDuseySettings.Pafta100)
+                    BeykentOrtak.PaftaOlcek.BuyutYeni(db, ilkHandle, insRes.Value);
                 FinishStaDrawing(doc);
             }
             catch (System.Exception ex)
@@ -1104,6 +1143,7 @@ namespace ST4PlanIdCiz
         [CommandMethod("KOLONREVIZE")]
         public void KolonRevize()
         {
+            if (!PlanLisans.EnsureOrWarn()) return;
             var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
             ApplyStaDefaultDrawingDisplaySettings(doc);
@@ -1122,6 +1162,7 @@ namespace ST4PlanIdCiz
         [CommandMethod("KAPAMADETAY")]
         public void KapamaDetay()
         {
+            if (!PlanLisans.EnsureOrWarn()) return;
             var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
             ApplyStaDefaultDrawingDisplaySettings(doc);
@@ -1146,15 +1187,20 @@ namespace ST4PlanIdCiz
                 var parser = new St4Parser();
                 var model = parser.Parse(st4Path);
                 var planMgr = new PlanIdDrawingManager(model);
+                long ilkHandle = db.Handseed.Value;
+                bool ok = false;
                 using (var tr = db.TransactionManager.StartTransaction())
                 {
                     var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
                     var btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
-                    bool ok = planMgr.DrawKapamaDetayFromSt4(insRes.Value, db, ed, tr, btr, st4Path,
+                    ok = planMgr.DrawKapamaDetayFromSt4(insRes.Value, db, ed, tr, btr, st4Path,
                         temelHatili: KapamaPerdeSettings.TemelHatili);
                     if (ok)
                         tr.Commit();
                 }
+                // 1/100 pafta: kapama açılımı (yazı/ölçü/antet) ×2.
+                if (ok && KapamaPerdeSettings.Pafta100)
+                    BeykentOrtak.PaftaOlcek.BuyutYeni(db, ilkHandle, insRes.Value);
                 FinishStaDrawing(doc);
             }
             catch (System.Exception ex)
@@ -1167,6 +1213,7 @@ namespace ST4PlanIdCiz
         [CommandMethod("TEMELDONATI")]
         public void TemelDonati()
         {
+            if (!PlanLisans.EnsureOrWarn()) return;
             var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
             ApplyStaDefaultDrawingDisplaySettings(doc);
@@ -1175,7 +1222,8 @@ namespace ST4PlanIdCiz
             var db = doc.Database;
 
             // İlave zarf ayarları (en az genişlik, paspay, düşey hiza): TEMELILAVEDENEME ile aynı form.
-            if (!TemelIlaveDenemeForm.TryShow()) return;
+            if (!TemelIlaveDenemeForm.TryShow(olcekSor: true)) return;
+            bool yuz = TemelIlaveDenemeForm.Olcek100;
 
             if (!RememberedFilePrompt.TryPrompt(ed, "\nTEMELDONATI: ST4 dosyasi secin",
                 "ST4 Dosyalari (*.st4)|*.st4|Tum Dosyalar (*.*)|*.*", RememberedFilePrompt.KindSt4, out string st4Path))
@@ -1200,7 +1248,8 @@ namespace ST4PlanIdCiz
                     : null;
 
                 var copies = new List<PlanIdDrawingManager.TemelPlanCopyLayout>();
-                manager.DrawFoundationPlanWithSections(db, ed, insRes.Value, st4Path, TemelFoundationPlanScale.Fifty, kopyaSayisi, copies, basliklar);
+                manager.DrawFoundationPlanWithSections(db, ed, insRes.Value, st4Path,
+                    yuz ? TemelFoundationPlanScale.Hundred : TemelFoundationPlanScale.Fifty, kopyaSayisi, copies, basliklar);
                 if (copies.Count < 4)
                 {
                     ed.WriteMessage("\nTEMELDONATI: 4 temel kopyasi olusmadi.");
@@ -1209,7 +1258,9 @@ namespace ST4PlanIdCiz
                 }
 
                 // 3. plan X/Y alt, 4. plan X/Y üst: TEMELILAVEDENEME zarfları + lejant yazısı (ısı haritası yok).
-                TemelIlaveDenemeCommands.RdPlanZarflari(db, ed, st4Path, copies);
+                TemelIlaveDenemeCommands.YaziCarpani = yuz ? 1.5 : 1.0;
+                try { TemelIlaveDenemeCommands.RdPlanZarflari(db, ed, st4Path, copies); }
+                finally { TemelIlaveDenemeCommands.YaziCarpani = 1.0; }
                 if (copies.Count >= 5)
                 {
                     int n = manager.DrawZimbalamaPlan(db, ed, copies[4], zimbalama);
@@ -1269,6 +1320,7 @@ namespace ST4PlanIdCiz
         [CommandMethod("KALIP100ST4")]
         public void Kalip100St4()
         {
+            if (!PlanLisans.EnsureOrWarn()) return;
             var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
             ApplyStaDefaultDrawingDisplaySettings(doc);

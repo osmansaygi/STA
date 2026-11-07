@@ -5,8 +5,8 @@
   ProductType="Application"
   Name="ST4_Yardimci"
   Description="BETONARME TOOL"
-  AppVersion="2026.10.23.2"
-  FriendlyVersion="2026.10.23.2"
+  AppVersion="2026.11.07.1"
+  FriendlyVersion="2026.11.07.1"
   ProductCode="{E1F7C35A-8B6D-4E2C-B05F-2C9D6E4F7182}"
   UpgradeCode="{A7B3E91C-4D2F-4A8E-9C1B-8E5F2A0B1C3E}">
 
@@ -16,12 +16,12 @@
     <RuntimeRequirements
       OS="Win64"
       Platform="AutoCAD*"
-      SeriesMin="R23.0"
-      SeriesMax="R28.0" />
+      SeriesMin="R26.0"
+      SeriesMax="R26.0" />
 
     <ComponentEntry
       AppName="ST4_Yardimci"
-      ModuleName="./Contents/Windows/ST4_Yardimci.dll"
+      ModuleName="./Contents/Windows/ST4_Yardimci_2027.dll"
       AppDescription="BETONARME TOOL"
       LoadOnAutoCADStartup="True"
       LoadOnCommandInvocation="False"

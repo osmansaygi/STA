@@ -1,0 +1,11 @@
+# Claude — Poligon gövde etiket/çiroz uyumu + alt kat ≥ üst kat donatı
+- Ajan: Claude Code
+- Güncelleme: 07.11.2026 18:15 (Europe/Istanbul)
+- Durum: tamamlandı (bkz. son satır)
+- Görev: SANER_01 poligon perde kollarında gövde düşey adedi / etiket / çiroz uyumsuzluğu (etiket ve çiroz sMin/govdeSmax yerine 2/20 kullanıyordu); kural: aynı kesitte alt kat donatısı üst kattan az olamaz (poligon + perde; dikdörtgen kolonda zaten var). As gerekenden fazla eklenmeyecek.
+- Kontrol: protokol + son kayıtlar (aktif yok). Görev başı GUNCEL_2027 = Plan 20261107_175857 + Yardımcı 20261107_143240.
+- Ayrılan: ST4_Plan_ID_Ciz/PlanIdDrawingManager.KolonDusey.cs, tools/PoligonKesitAci20261107/** (izole derleme, Core Console), docs/modul-durum/ST4_Plan_ID_Ciz.md, NETLOAD/OKU.txt; yayında NETLOAD/GUNCEL_2027/**, NETLOAD/arsiv.
+- Sonuç (18:35): KolonDusey.cs — gövde etiketi/çiroz sMin+govdeSmax; poligon PoligonKesitHedefAs (üst kat GPR As), yerleşim sonrası adet (PoligonKatCizilenAdet) + As korunarak gövde gevşetme; perde ApplyPerdeUstKatEnAz (çizilen toplam, önce uç sonra gövde) + PerdeCizilenAdet/TryPerdeKatGirdi. Ara denemeler: gövdeye tüm açığı ø12 koymak CK SB-49'da 2x18ø12/4, GPR satırı karşılaştırması SANER SB-01'de gereksiz artış verdi → çizilen toplam karşılaştırmasına geçildi.
+- Doğrulama: izole Release net10/2027 0 hata. Core Console probe (Native/PolyCount.cs, KD_LOWER yapay test) ve KOLONDUSEY_DRAW eski 175857 / yeni yazı farkları: SANER (poligon etiket + S-09 As azaldı), CK (SB/SZ-49 benzeri uç 8→9/10/13ø14), KOS_D1_01 (SB-11/20 gövde 2x3→2x4). Canlı AutoCAD yok.
+- Yayın: GUNCEL_2027 = Plan 20261107_183422 + Yardımcı 20261107_143240, Publish51 PASS, arşiv NETLOAD/arsiv/GUNCEL_2027_20261107_183550_007. Commit yok.
+- Durum: tamamlandı — rezervasyon yok.

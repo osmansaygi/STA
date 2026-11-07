@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Windows.Forms;
+using Beykent.Monolit.Girdi;
 using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
 
 namespace ST4PlanIdCiz
@@ -9,27 +10,44 @@ namespace ST4PlanIdCiz
         private static decimal _sonGenislik = (decimal)TemelIlaveKutuBol.MinDilimGenislikCm;
         private static decimal _sonPaspay = 5m;
         private static decimal _sonHiza = 100m;
-        private readonly NumericUpDown _genislik;
-        private readonly NumericUpDown _paspay;
-        private readonly NumericUpDown _hiza;
+        private readonly OlcuKutusu _genislik;
+        private readonly OlcuKutusu _paspay;
+        private readonly OlcuKutusu _hiza;
+        private readonly SegmentSecim _olcek;
+        private readonly GirdiDenetci _denetci = new GirdiDenetci();
+        /// <summary>TEMELDONATI: formda seçilen plan ölçeği (yalnız ölçek sorulduğunda).</summary>
+        internal static bool Olcek100 { get; private set; }
 
-        internal static bool TryShow()
+        /// <param name="olcekSor">true: 1/50 – 1/100 seçimi (TEMELDONATI).</param>
+        internal static bool TryShow(bool olcekSor = false)
         {
-            using (var form = new TemelIlaveDenemeForm())
+            using (var form = new TemelIlaveDenemeForm(olcekSor))
             {
                 if (AcApp.ShowModalDialog(form) != DialogResult.OK) return false;
-                TemelIlaveKutuBol.MinDilimGenislikCm = (double)form._genislik.Value;
-                TemelIlaveDenemeCommands.TemelPaspayCm = (double)form._paspay.Value;
-                TemelIlaveDenemeCommands.DuseyHizaFarkCm = (double)form._hiza.Value;
-                _sonGenislik = form._genislik.Value;
-                _sonPaspay = form._paspay.Value;
-                _sonHiza = form._hiza.Value;
+                if (olcekSor)
+                {
+                    Olcek100 = form._olcek.Secili == 1;
+                    PlanFormSettings.Load("temelilave").Set("Olcek100", Olcek100).Save();
+                }
+                TemelIlaveKutuBol.MinDilimGenislikCm = form._genislik.Deger;
+                TemelIlaveDenemeCommands.TemelPaspayCm = form._paspay.Deger;
+                TemelIlaveDenemeCommands.DuseyHizaFarkCm = form._hiza.Deger;
+                _sonGenislik = (decimal)form._genislik.Deger;
+                _sonPaspay = (decimal)form._paspay.Deger;
+                _sonHiza = (decimal)form._hiza.Deger;
                 return true;
             }
         }
 
-        private TemelIlaveDenemeForm()
+        private TemelIlaveDenemeForm(bool olcekSor)
         {
+            var saved = PlanFormSettings.Load("temelilave");
+            bool sonYuz = saved.Bool("Olcek100", false);
+            // Plan ölçeği ayrı çizim yoludur (×2 büyütme değil): etiket düz "1/50 / 1/100".
+            _olcek = new SegmentSecim("1/50", "1/100") { Secili = sonYuz ? 1 : 0 };
+            _sonGenislik = saved.Decimal("GenislikCm", _sonGenislik, 10m, 1000m);
+            _sonPaspay = saved.Decimal("PaspayiCm", _sonPaspay, 0m, 30m);
+            _sonHiza = saved.Decimal("HizaFarkiCm", _sonHiza, 0m, 500m);
             Text = "Temel İlave";
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterScreen;
@@ -42,41 +60,13 @@ namespace ST4PlanIdCiz
             AutoScaleMode = AutoScaleMode.Dpi;
             ClientSize = new Size(440, 268);
 
-            var adetYazi = new Label
-            {
-                Text = "En az dilim genişliği (cm)",
-                Location = new Point(18, 22),
-                AutoSize = true
-            };
-            _genislik = SayiKutu(280, 18, 0);
-            _genislik.Minimum = 10;
-            _genislik.Maximum = 1000;
-            _genislik.Increment = 10;
-            _genislik.Value = _sonGenislik < 10 ? 120m : _sonGenislik;
-
-            var paspayYazi = new Label
-            {
-                Text = "Temel paspayı (cm)",
-                Location = new Point(18, 62),
-                AutoSize = true
-            };
-            _paspay = SayiKutu(280, 58, 1);
-            _paspay.Minimum = 0;
-            _paspay.Maximum = 30;
-            _paspay.Increment = 0.5m;
-            _paspay.Value = _sonPaspay < 0 ? 5m : _sonPaspay;
-
-            var hizaYazi = new Label
-            {
-                Text = "Düşey hiza farkı (cm)",
-                Location = new Point(18, 102),
-                AutoSize = true
-            };
-            _hiza = SayiKutu(280, 98, 0);
-            _hiza.Minimum = 0;
-            _hiza.Maximum = 500;
-            _hiza.Increment = 10;
-            _hiza.Value = _sonHiza < 0 ? 100m : _sonHiza;
+            // Sınırlar ve adımlar eski NumericUpDown ile aynı (10–1000/10, 0–30/0,5, 0–500/10).
+            _genislik = _denetci.Ekle(new OlcuKutusu("En az genişlik", "cm", 10, 1000, 120, 0, 10));
+            _genislik.Deger = (double)(_sonGenislik < 10 ? 120m : _sonGenislik);
+            _paspay = _denetci.Ekle(new OlcuKutusu("Temel paspayı", "cm", 0, 30, 5, 1, 0.5));
+            _paspay.Deger = (double)(_sonPaspay < 0 ? 5m : _sonPaspay);
+            _hiza = _denetci.Ekle(new OlcuKutusu("Düşey hiza farkı", "cm", 0, 500, 100, 0, 10));
+            _hiza.Deger = (double)(_sonHiza < 0 ? 100m : _sonHiza);
 
             var not = new Label
             {
@@ -106,33 +96,24 @@ namespace ST4PlanIdCiz
             };
             ciz.Click += (s, e) =>
             {
+                if (!_denetci.Onayla()) return;
+                PlanFormSettings.Load("temelilave").Set("GenislikCm", (decimal)_genislik.Deger)
+                    .Set("PaspayiCm", (decimal)_paspay.Deger).Set("HizaFarkiCm", (decimal)_hiza.Deger).Save();
                 DialogResult = DialogResult.OK;
                 Close();
             };
-            Controls.AddRange(new Control[] { adetYazi, _genislik, paspayYazi, _paspay, hizaYazi, _hiza, not, ciz, iptal });
+            Controls.AddRange(new Control[] { not, ciz, iptal });
             AcceptButton = ciz;
             CancelButton = iptal;
 
-            // Kompakt, içerik odaklı form düzeni.
             var ui = BeginCompact(350);
-            ui.Section("Zarf yerleşimi").Field("En az genişlik · cm", _genislik).Field("Temel paspayı · cm", _paspay).Field("Düşey hiza farkı · cm", _hiza);
+            ui.Section("Zarf yerleşimi").Field("En az genişlik", _genislik).Field("Temel paspayı", _paspay).Field("Düşey hiza farkı", _hiza);
             ui.Section(null).Control(not);
+            if (olcekSor) ui.Section("Ölçek").Control(_olcek);
+            ui.Section(null).Control(_denetci.Serit, 44);
             ui.Footer(ciz, iptal);
             ui.Finish();
-        }
-
-        private static NumericUpDown SayiKutu(int x, int y, int ondalik)
-        {
-            return new NumericUpDown
-            {
-                Location = new Point(x, y),
-                Size = new Size(90, 24),
-                DecimalPlaces = ondalik,
-                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
-                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
-                TextAlign = HorizontalAlignment.Right,
-                ThousandsSeparator = false
-            };
+            _denetci.Guncelle();
         }
     }
 }

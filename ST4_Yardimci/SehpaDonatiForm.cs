@@ -3,6 +3,7 @@ using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Windows.Forms;
+using Beykent.Monolit.Girdi;
 using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
 using SdFont = System.Drawing.Font;
 using SdPoint = System.Drawing.Point;
@@ -234,21 +235,20 @@ namespace ST4Yardimci
     /// <summary>Sehpa donatısı formu — radye / mantar. Enter çiz, Esc kapat.</summary>
     internal sealed class SehpaDonatiForm : Beykent.Monolit.MonolitForm
     {
-        private const int FormW = 300;
-        private const int Pad = 12;
-
+        private const string OlcekAnahtar = "sehpa";
         private static SehpaDonatiForm _instance;
 
-        private readonly RadioButton _rbRadye;
-        private readonly RadioButton _rbMantar;
+        private readonly SegmentSecim _tip;
         private readonly Label _lblKalinlik;
         private readonly Label _lblAlan;
-        private readonly NumericUpDown _numKalinlik;
+        private readonly OlcuKutusu _numKalinlik;
         private readonly ComboBox _cmbCap;
-        private readonly NumericUpDown _numUstKot;
-        private readonly NumericUpDown _numGenislik;
-        private readonly NumericUpDown _numAlan;
-        private readonly NumericUpDown _numPas;
+        private readonly OlcuKutusu _numUstKot;
+        private readonly OlcuKutusu _numGenislik;
+        private readonly OlcuKutusu _numAlan;
+        private readonly OlcuKutusu _numPas;
+        private readonly SegmentSecim _olcek;
+        private readonly GirdiDenetci Denetci = new GirdiDenetci();
         private bool _starting;
         private bool _suppressTipSwitch;
 
@@ -292,7 +292,7 @@ namespace ST4Yardimci
                     _instance.BeginInvoke(new Action(HideTemporarily));
                     return;
                 }
-                
+
                 BaFormSession.BeginPick("SEHPADONATI");
                 _instance.Visible = false;
             }
@@ -312,68 +312,40 @@ namespace ST4Yardimci
             Font = new SdFont("Segoe UI", 9f);
             KeyPreview = true;
 
-            int y = 10;
-            _rbRadye = MakeRadio("Radye temel", Pad, y);
-            _rbMantar = MakeRadio("Mantar döşeme", Pad + 130, y);
+            _tip = new SegmentSecim("Radye temel", "Mantar döşeme");
             _suppressTipSwitch = true;
-            if (SehpaDonatiSettings.Tip == SehpaDonatiTip.MantarDoseme)
-                _rbMantar.Checked = true;
-            else
-                _rbRadye.Checked = true;
+            _tip.Secili = SehpaDonatiSettings.Tip == SehpaDonatiTip.MantarDoseme ? 1 : 0;
             _suppressTipSwitch = false;
-            _rbRadye.CheckedChanged += OnTipRadioChanged;
-            _rbMantar.CheckedChanged += OnTipRadioChanged;
-            Controls.Add(_rbRadye);
-            Controls.Add(_rbMantar);
-            y += 28;
+            _tip.SeciliDegisti += OnTipChanged;
 
-            _lblKalinlik = MakeLabel("Temel kalınlığı", Pad, y + 2);
-            Controls.Add(_lblKalinlik);
-            _numKalinlik = MakeNum(150, y, 70, 10, 400, 1, 0, (decimal)SehpaDonatiSettings.KalinlikCm);
-            Controls.Add(_numKalinlik);
-            Controls.Add(MakeUnit("cm", 226, y + 2));
-            y += 30;
-
-            Controls.Add(MakeLabel("Paspayı", Pad, y + 2));
-            _numPas = MakeNum(150, y, 70, 1, 15, 0.5m, 1, (decimal)SehpaDonatiSettings.PaspayiCm);
-            Controls.Add(_numPas);
-            Controls.Add(MakeUnit("cm", 226, y + 2));
-            y += 30;
-
-            Controls.Add(MakeLabel("Donatı çapı", Pad, y + 2));
-            _cmbCap = MakeCapCombo(150, y, SehpaDonatiSettings.CapMm);
+            // Sınırlar ve ondalıklar eski NumericUpDown ile aynı. Üst kot cm gösterilir, UstKotM (metre) kaydedilir.
+            _lblKalinlik = new Label { Text = "Temel kalınlığı", AutoSize = true };
+            _lblAlan = new Label { Text = "Radye alanı", AutoSize = true };
+            _numKalinlik = Denetci.Ekle(new OlcuKutusu("Kalınlık", "cm", 10, 400, 50));
+            _numPas = Denetci.Ekle(new OlcuKutusu("Paspayı", "cm", 1, 15, 5, 1, 0.5));
+            _numUstKot = Denetci.Ekle(new OlcuKutusu("Üst kot", "cm", -8000, 20000, -80, 2, 5));
+            _numGenislik = Denetci.Ekle(new OlcuKutusu("En az genişlik", "cm", 5, 400, 30));
+            _numAlan = Denetci.Ekle(new OlcuKutusu("Alan", "m²", 0.1, 1000000, 322, 1));
+            _cmbCap = MakeCapCombo(SehpaDonatiSettings.CapMm);
             Controls.Add(_cmbCap);
-            Controls.Add(MakeUnit("mm", 226, y + 2));
-            y += 30;
+            _olcek = new SegmentSecim("1/50 pafta", "1/100 pafta (×2)") { Secili = BaPaftaOlcek.Yuz(OlcekAnahtar) ? 1 : 0 };
+            _olcek.SeciliDegisti += (s, e) => BaPaftaOlcek.Kaydet(OlcekAnahtar, _olcek.Secili == 1);
+            LoadFieldsFromActive();
 
-            Controls.Add(MakeLabel("Üst kot", Pad, y + 2));
-            _numUstKot = MakeNum(150, y, 70, -8000, 20000, 5m, 2, (decimal)(SehpaDonatiSettings.UstKotM * 100.0));
-            Controls.Add(_numUstKot);
-            Controls.Add(MakeUnit("cm", 226, y + 2));
-            y += 32;
+            Denetci.UyariKurali(() =>
+            {
+                bool mantar = _tip.Secili == 1;
+                double h = mantar
+                    ? _numKalinlik.Deger - 2.0 * _numPas.Deger - 2.0
+                    : _numKalinlik.Deger - (_numPas.Deger + 2.0);
+                return h < 1 ? "Sehpa yüksekliği 1 cm'nin altında; 1 cm alınır" : null;
+            });
 
-            Controls.Add(MakeLabel("Min genişlik", Pad, y + 2));
-            _numGenislik = MakeNum(150, y, 70, 5, 400, 1, 0, SehpaDonatiSettings.MinGenislikCm);
-            Controls.Add(_numGenislik);
-            Controls.Add(MakeUnit("cm", 226, y + 2));
-            y += 32;
-
-            _lblAlan = MakeLabel("Radye alanı", Pad, y + 2);
-            Controls.Add(_lblAlan);
-            _numAlan = MakeNum(150, y, 70, 0.1m, 1000000, 1, 1, (decimal)SehpaDonatiSettings.AlanM2);
-            Controls.Add(_numAlan);
-            Controls.Add(MakeUnit("m²", 226, y + 2));
-            y += 32;
-
-            var btnRun = MakeButton("Sehpa çiz", Pad, y, 120, true);
+            var btnRun = MakeButton("Sehpa çiz", true);
             btnRun.Click += (s, e) => OnRun();
-            var btnClose = MakeButton("Kapat", Pad + 128, y, 80, false);
+            var btnClose = MakeButton("Kapat", false);
             btnClose.Click += (s, e) => Close();
-            Controls.Add(btnRun);
-            Controls.Add(btnClose);
-            y += 36;
 
-            ClientSize = new SdSize(FormW, y);
             UpdateKalinlikLabel();
 
             FormClosing += (s, e) =>
@@ -400,14 +372,22 @@ namespace ST4Yardimci
                 StartPosition = FormStartPosition.CenterScreen;
             }
 
-            // Kompakt, içerik odaklı form düzeni.
             var ui = BeginCompact(310);
-            ui.Section(null).Options(_rbRadye, _rbMantar);
-            ui.Section("Kesit ve sehpa").Field(_lblKalinlik, _numKalinlik).Field("Paspayı · cm", _numPas)
-                .Field("Çap · mm / üst kot · cm", _cmbCap, _numUstKot)
-                .Field("En az genişlik · cm", _numGenislik).Field(_lblAlan, _numAlan);
+            ui.Section(null).Control(_tip);
+            ui.Section("Kesit")
+                .Field(_lblKalinlik, _numKalinlik)
+                .Field("Paspayı", _numPas)
+                .Field("Üst kot", _numUstKot)
+                .Field(_lblAlan, _numAlan);
+            ui.Section("Sehpa")
+                .Field("Donatı çapı (mm)", _cmbCap)
+                .Field("En az genişlik", _numGenislik)
+                .Hint("Adet = alan × 1 adet/m².");
+            ui.Section("Pafta ölçeği · detay 1/25").Control(_olcek);
+            ui.Section(null).Control(Denetci.Serit, 44);
             ui.Footer(btnRun, btnClose);
             ui.Finish();
+            Denetci.Guncelle();
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -417,7 +397,7 @@ namespace ST4Yardimci
                 Close();
                 return true;
             }
-            if (keyData == Keys.Enter || keyData == Keys.Return)
+            if ((keyData == Keys.Enter || keyData == Keys.Return) && !(ActiveControl is Button))
             {
                 OnRun();
                 return true;
@@ -428,21 +408,19 @@ namespace ST4Yardimci
         private void UpdateKalinlikLabel()
         {
             if (_lblKalinlik == null) return;
-            bool mantar = _rbMantar != null && _rbMantar.Checked;
-            _lblKalinlik.Text = mantar ? "Döşeme kalınlığı · cm" : "Temel kalınlığı · cm";
+            bool mantar = _tip != null && _tip.Secili == 1;
+            _lblKalinlik.Text = mantar ? "Döşeme kalınlığı" : "Temel kalınlığı";
             if (_lblAlan != null)
-                _lblAlan.Text = mantar ? "Döşeme alanı · m²" : "Radye alanı · m²";
+                _lblAlan.Text = mantar ? "Döşeme alanı" : "Radye alanı";
         }
 
-        private void OnTipRadioChanged(object sender, EventArgs e)
+        private SehpaDonatiTip SeciliTip => _tip.Secili == 1 ? SehpaDonatiTip.MantarDoseme : SehpaDonatiTip.RadyeTemel;
+
+        private void OnTipChanged(object sender, EventArgs e)
         {
             if (_suppressTipSwitch) return;
-            var rb = sender as RadioButton;
-            if (rb == null || !rb.Checked) return;
 
-            SehpaDonatiTip newTip = _rbMantar.Checked
-                ? SehpaDonatiTip.MantarDoseme
-                : SehpaDonatiTip.RadyeTemel;
+            SehpaDonatiTip newTip = SeciliTip;
             SehpaDonatiTip oldTip = SehpaDonatiSettings.Tip;
             if (newTip == oldTip)
             {
@@ -454,48 +432,43 @@ namespace ST4Yardimci
             SehpaDonatiSettings.Tip = newTip;
             LoadFieldsFromActive();
             UpdateKalinlikLabel();
+            Denetci.Guncelle();
             try { SehpaDonatiSettings.Save(); } catch { }
         }
 
         private void LoadFromSettings()
         {
             _suppressTipSwitch = true;
-            if (SehpaDonatiSettings.Tip == SehpaDonatiTip.MantarDoseme)
-                _rbMantar.Checked = true;
-            else
-                _rbRadye.Checked = true;
+            _tip.Secili = SehpaDonatiSettings.Tip == SehpaDonatiTip.MantarDoseme ? 1 : 0;
             _suppressTipSwitch = false;
             LoadFieldsFromActive();
             UpdateKalinlikLabel();
+            Denetci.Guncelle();
         }
 
+        /// <summary>Eski NumericUpDown gibi yüklenen değer sınıra kırpılır ve ondalığa yuvarlanır.</summary>
         private void LoadFieldsFromActive()
         {
-            _numKalinlik.Value = Clamp(_numKalinlik, (decimal)SehpaDonatiSettings.KalinlikCm);
+            _numKalinlik.Deger = Kirp(Math.Round(SehpaDonatiSettings.KalinlikCm), 10, 400);
             SelectCap(_cmbCap, SehpaDonatiSettings.CapMm);
-            _numUstKot.Value = Clamp(_numUstKot, (decimal)(SehpaDonatiSettings.UstKotM * 100.0));
-            _numGenislik.Value = Clamp(_numGenislik, SehpaDonatiSettings.MinGenislikCm);
-            _numAlan.Value = Clamp(_numAlan, (decimal)SehpaDonatiSettings.AlanM2);
-            _numPas.Value = Clamp(_numPas, (decimal)SehpaDonatiSettings.PaspayiCm);
+            _numUstKot.Deger = Kirp(Math.Round(SehpaDonatiSettings.UstKotM * 100.0, 2), -8000, 20000);
+            _numGenislik.Deger = Kirp(SehpaDonatiSettings.MinGenislikCm, 5, 400);
+            _numAlan.Deger = Kirp(Math.Round(SehpaDonatiSettings.AlanM2, 1), 0.1, 1000000);
+            _numPas.Deger = Kirp(Math.Round(SehpaDonatiSettings.PaspayiCm, 1), 1, 15);
         }
+
+        private static double Kirp(double v, double min, double max) => Math.Max(min, Math.Min(max, v));
 
         private bool TryPush()
         {
-            double kal = (double)_numKalinlik.Value;
-            if (kal < 10 || kal > 400)
-            {
-                Warn("Kalınlık geçersiz (cm).");
-                return false;
-            }
-            SehpaDonatiSettings.Tip = _rbMantar.Checked
-                ? SehpaDonatiTip.MantarDoseme
-                : SehpaDonatiTip.RadyeTemel;
-            SehpaDonatiSettings.KalinlikCm = kal;
+            if (!Denetci.Onayla()) return false;
+            SehpaDonatiSettings.Tip = SeciliTip;
+            SehpaDonatiSettings.KalinlikCm = _numKalinlik.Deger;
             SehpaDonatiSettings.CapMm = ParseCap(_cmbCap);
-            SehpaDonatiSettings.UstKotM = (double)_numUstKot.Value / 100.0;
-            SehpaDonatiSettings.MinGenislikCm = (int)_numGenislik.Value;
-            SehpaDonatiSettings.AlanM2 = (double)_numAlan.Value;
-            SehpaDonatiSettings.PaspayiCm = (double)_numPas.Value;
+            SehpaDonatiSettings.UstKotM = _numUstKot.Deger / 100.0;
+            SehpaDonatiSettings.MinGenislikCm = (int)Math.Round(_numGenislik.Deger);
+            SehpaDonatiSettings.AlanM2 = _numAlan.Deger;
+            SehpaDonatiSettings.PaspayiCm = _numPas.Deger;
             return true;
         }
 
@@ -503,30 +476,23 @@ namespace ST4Yardimci
         {
             try
             {
-                SehpaDonatiSettings.Tip = _rbMantar.Checked
-                    ? SehpaDonatiTip.MantarDoseme
-                    : SehpaDonatiTip.RadyeTemel;
+                SehpaDonatiSettings.Tip = SeciliTip;
                 PushQuietTo(SehpaDonatiSettings.Tip);
             }
             catch { }
         }
 
+        /// <summary>Geçerli alanları profile yazar; geçersiz alan eski değerde kalır.</summary>
         private void PushQuietTo(SehpaDonatiTip tip)
         {
             var p = SehpaDonatiSettings.ProfileFor(tip);
             if (p == null) return;
-            double kal = (double)_numKalinlik.Value;
-            if (kal >= 10 && kal <= 400)
-                p.KalinlikCm = kal;
+            if (_numKalinlik.Gecerli) p.KalinlikCm = _numKalinlik.Deger;
             p.CapMm = ParseCap(_cmbCap);
-            p.UstKotM = (double)_numUstKot.Value / 100.0;
-            p.MinGenislikCm = (int)_numGenislik.Value;
-            double alan = (double)_numAlan.Value;
-            if (alan >= 0.1 && alan <= 1000000)
-                p.AlanM2 = alan;
-            double pas = (double)_numPas.Value;
-            if (pas >= 1 && pas <= 15)
-                p.PaspayiCm = pas;
+            if (_numUstKot.Gecerli) p.UstKotM = _numUstKot.Deger / 100.0;
+            if (_numGenislik.Gecerli) p.MinGenislikCm = (int)Math.Round(_numGenislik.Deger);
+            if (_numAlan.Gecerli) p.AlanM2 = _numAlan.Deger;
+            if (_numPas.Gecerli) p.PaspayiCm = _numPas.Deger;
         }
 
         private void OnRun()
@@ -548,16 +514,6 @@ namespace ST4Yardimci
             }
         }
 
-        private static void Warn(string msg)
-        {
-            try
-            {
-                AcApp.DocumentManager.MdiActiveDocument?.Editor.WriteMessage("\nSehpa: " + msg);
-            }
-            catch { }
-            MessageBox.Show(msg, "Sehpa Donatısı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-        }
-
         private static int ParseCap(ComboBox cmb)
         {
             if (cmb?.SelectedItem is string s && int.TryParse(s, out int v))
@@ -572,74 +528,10 @@ namespace ST4Yardimci
             cmb.SelectedIndex = i >= 0 ? i : 0;
         }
 
-        private static decimal Clamp(NumericUpDown n, decimal v)
-        {
-            if (v < n.Minimum) return n.Minimum;
-            if (v > n.Maximum) return n.Maximum;
-            return v;
-        }
-
-        private RadioButton MakeRadio(string text, int x, int y)
-        {
-            return new RadioButton
-            {
-                Text = text,
-                Location = new SdPoint(x, y),
-                AutoSize = true,
-                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
-                BackColor = Beykent.Monolit.StandardFormTheme.Bg
-            };
-        }
-
-        private Label MakeLabel(string text, int x, int y)
-        {
-            return new Label
-            {
-                Text = text,
-                Location = new SdPoint(x, y),
-                AutoSize = true,
-                ForeColor = Beykent.Monolit.StandardFormTheme.TextMuted,
-                BackColor = Beykent.Monolit.StandardFormTheme.Bg
-            };
-        }
-
-        private Label MakeUnit(string text, int x, int y)
-        {
-            return new Label
-            {
-                Text = text,
-                Location = new SdPoint(x, y),
-                AutoSize = true,
-                ForeColor = Beykent.Monolit.StandardFormTheme.TextMuted,
-                BackColor = Beykent.Monolit.StandardFormTheme.Bg
-            };
-        }
-
-        private NumericUpDown MakeNum(int x, int y, int w, decimal min, decimal max, decimal inc, int decimals, decimal val)
-        {
-            var n = new NumericUpDown
-            {
-                Location = new SdPoint(x, y),
-                Size = new SdSize(w, 22),
-                Minimum = min,
-                Maximum = max,
-                Increment = inc,
-                DecimalPlaces = decimals,
-                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
-                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
-                BorderStyle = BorderStyle.FixedSingle
-            };
-            n.Value = Clamp(n, val);
-            YardimciUi.StripUpDownButtons(n);
-            return n;
-        }
-
-        private ComboBox MakeCapCombo(int x, int y, int selectedMm)
+        private ComboBox MakeCapCombo(int selectedMm)
         {
             var c = new ComboBox
             {
-                Location = new SdPoint(x, y),
-                Size = new SdSize(70, 22),
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
                 ForeColor = Beykent.Monolit.StandardFormTheme.Text,
@@ -652,13 +544,11 @@ namespace ST4Yardimci
             return c;
         }
 
-        private Button MakeButton(string text, int x, int y, int w, bool accent)
+        private Button MakeButton(string text, bool accent)
         {
             var b = new Button
             {
                 Text = text,
-                Location = new SdPoint(x, y),
-                Size = new SdSize(w, 26),
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Beykent.Monolit.StandardFormTheme.BgAlt,
                 ForeColor = accent ? Beykent.Monolit.StandardFormTheme.Accent : Beykent.Monolit.StandardFormTheme.Text,

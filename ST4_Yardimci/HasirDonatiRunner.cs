@@ -420,8 +420,13 @@ namespace ST4Yardimci
                     if (!(tr.GetObject(pair.Value, OpenMode.ForWrite, false) is Entity ent)) continue;
                     if (ent.IsErased) continue;
 
-                    try { ent.TransformBy(xform); }
-                    catch { continue; }
+                    // Kalan parçada sx≠sy: polyline TransformBy reddeder; köşeleri tek tek dönüştür.
+                    // Dönüşmeyen klon şablon koordinatında silüet bırakmasın diye silinir.
+                    if (!TryTransformClone(ent, xform))
+                    {
+                        try { ent.Erase(); } catch { }
+                        continue;
+                    }
 
                     // Yön artığı
                     if (LayerStarts(ent.Layer, "HASIR YONU"))
@@ -462,6 +467,13 @@ namespace ST4Yardimci
                     diagPl.SetPointAt(1, new Point2d(diagB.X, diagB.Y));
                     diagPl.Layer = LayerHasirCizgi;
                 }
+                else if (count > 0)
+                {
+                    // Uyarlanmış boyutta şablon çaprazı dönüşemediyse panel kendi çaprazını alır
+                    var diag = new Line(diagA, diagB) { Layer = LayerHasirCizgi };
+                    ms.AppendEntity(diag);
+                    tr.AddNewlyCreatedDBObject(diag, true);
+                }
 
                 foreach (Entity e in yonToErase)
                 {
@@ -470,6 +482,48 @@ namespace ST4Yardimci
             }
 
             return count;
+        }
+
+        private static bool TryTransformClone(Entity ent, Matrix3d xform)
+        {
+            try
+            {
+                ent.TransformBy(xform);
+                return true;
+            }
+            catch { }
+
+            // sx≠sy: Line da TransformBy'ı reddeder; uçları tek tek dönüştür (çapraz silinmesin)
+            if (ent is Line ln)
+            {
+                try
+                {
+                    Point3d a = ln.StartPoint.TransformBy(xform);
+                    Point3d b = ln.EndPoint.TransformBy(xform);
+                    ln.StartPoint = a;
+                    ln.EndPoint = b;
+                    return true;
+                }
+                catch { }
+            }
+
+            if (ent is Polyline pl)
+            {
+                try
+                {
+                    double z = pl.Elevation;
+                    for (int i = 0; i < pl.NumberOfVertices; i++)
+                    {
+                        Point2d p = pl.GetPoint2dAt(i);
+                        Point3d q = new Point3d(p.X, p.Y, z).TransformBy(xform);
+                        pl.SetPointAt(i, new Point2d(q.X, q.Y));
+                        pl.SetBulgeAt(i, 0);
+                    }
+                    return true;
+                }
+                catch { }
+            }
+            return false;
         }
 
         private static bool IsDiagonalLine(Line ln, out double len)

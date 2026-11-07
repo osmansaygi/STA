@@ -72,6 +72,11 @@ namespace ST4PlanIdCiz
         public int CopiesPerFloor { get; }
         /// <summary>DENEME2: yalnız donatılı (son) kopyada DENEME1 EKSEN X/Y artıları çizilir; diğer KALIP50 çizimi değişmez.</summary>
         public bool DrawDeneme1EksenOnDonatiCopy { get; }
+        /// <summary>
+        /// MANTARDOSEME: GPR "KOLON ZIMBALAMA KONTROLU" donatısı gereken kolonlar. Bu kolonlardan biri olan kat grubuna
+        /// donatılı kopyadan sonra bir kopya daha eklenir ve zımbalama donatısı (radye TEMELDONATI 5. plan gibi) çizilir.
+        /// </summary>
+        public IReadOnlyList<GprZimbalamaKolon> MantarZimbalama { get; }
 
         public Kalip50LayoutFlags(
             bool plainInsertPoint = false,
@@ -85,8 +90,10 @@ namespace ST4PlanIdCiz
             bool classifyDosemeHattiIntoTopologyLayers = false,
             bool includeMushroomBeams = false,
             int copiesPerFloor = 0,
-            bool drawDeneme1EksenOnDonatiCopy = false)
+            bool drawDeneme1EksenOnDonatiCopy = false,
+            IReadOnlyList<GprZimbalamaKolon> mantarZimbalama = null)
         {
+            MantarZimbalama = mantarZimbalama;
             PlainInsertPoint = plainInsertPoint;
             SingleCopyPerFloor = singleCopyPerFloor;
             NoAntetAndBinaSema = noAntetAndBinaSema;
@@ -586,9 +593,9 @@ namespace ST4PlanIdCiz
                             continue;
                         var line = factory.CreateLineString(new[] { new Coordinate(p1.X, p1.Y), new Coordinate(p2.X, p2.Y) });
                         if (!colPoly.Intersects(line)) continue;
-                        double kotUstCm = floorLevelCm + Math.Max(beam.Point1KotCm, beam.Point2KotCm);
+                        double kotUstCm = floorLevelCm + PerdeUstKotRelCmAt(beam, new Point2d((colEnv.MinX + colEnv.MaxX) * 0.5, (colEnv.MinY + colEnv.MaxY) * 0.5));
                         double hCm = beam.HeightCm > 0 ? beam.HeightCm : 30.0;
-                        double kotAltCm = kotUstCm - hCm;
+                        double kotAltCm = floorLevelCm + PerdeAltKotRelCm(beam, hCm);
                         if (kotUstCm > maxUst) maxUst = kotUstCm;
                         if (kotAltCm < minAlt) minAlt = kotAltCm;
                     }
@@ -1007,7 +1014,7 @@ namespace ST4PlanIdCiz
                             KapamaPerdeSettings.EnsureLoaded();
                             double kapamaLeft = nextAntetOuterLeftTarget.Value;
                             double kapamaRight = new PlanIdDrawingManager(_model).DrawApplicationKapamaDetails(
-                                db, ed, st4SourcePath, kapamaLeft, detailBottom, KapamaPerdeSettings.TemelHatili);
+                                db, ed, st4SourcePath, kapamaLeft, detailBottom, KapamaPerdeSettings.TemelHatili, antetSpacingMul);
                             if (kapamaRight > kapamaLeft + 0.01)
                                 nextAntetOuterLeftTarget = kapamaRight + Kolon50AntetGapBetweenSheetsCm * antetSpacingMul;
                         }
@@ -1015,7 +1022,7 @@ namespace ST4PlanIdCiz
                         {
                             double detailLeft = nextAntetOuterLeftTarget.Value;
                             double detailRight = verticalManager.DrawApplicationVerticalDetails(
-                                db, ed, st4SourcePath, floorGroup, detailLeft, detailBottom);
+                                db, ed, st4SourcePath, floorGroup, detailLeft, detailBottom, antetSpacingMul);
                             nextAntetOuterLeftTarget = Math.Max(detailLeft, detailRight)
                                 + Kolon50AntetGapBetweenSheetsCm * antetSpacingMul;
                         }
@@ -1273,11 +1280,21 @@ namespace ST4PlanIdCiz
                             : (layoutFlags.CopiesPerFloor > 0 ? layoutFlags.CopiesPerFloor : 2);
                         if (copyCount < 1) copyCount = 1;
                         int donatiCopyIndex = copyCount - 1; // çoklu kopyada yalnızca son kopya donatılı
+                        // MANTARDOSEME: grubun bir katında zımbalama donatısı gereken kolon varsa donatılı kopyadan sonra zımbalama kopyası.
+                        int zimCopyIndex = -1;
+                        if (copyCount > 1 && layoutFlags.MantarZimbalama != null && layoutFlags.MantarZimbalama.Count > 0 &&
+                            MantarZimbalamaKatKolonlari(group.Select(i => _model.Floors[i]).ToList(), layoutFlags.MantarZimbalama.ToList()).Count > 0)
+                        {
+                            zimCopyIndex = copyCount;
+                            copyCount++;
+                        }
+                        int lastCopyIndex = copyCount - 1;
                         for (int copyIndex = 0; copyIndex < copyCount; copyIndex++)
                         {
                             double offsetX = cursorX - floorAxisExt.Xmin;
                             double offsetY = baseDy;
                             bool isDonatiCopy = copyCount > 1 && copyIndex == donatiCopyIndex;
+                            bool isZimCopy = copyIndex == zimCopyIndex;
                             ilerlemeKopyaNo = copyIndex + 1;
                             Ilerle(false, "kolon-kiris");
 
@@ -1333,6 +1350,15 @@ namespace ST4PlanIdCiz
                             if (isDonatiCopy && gprKalipDosemeDonati != null && gprKalipDosemeDonati.Count > 0)
                                 gprDonatiSlabMatchCountTotal += DrawKalipDonatiPlanGprSlabNotes(
                                     tr, btr, db, floor, offsetX, offsetY, gprKalipDosemeDonati, countMatchedSlabs: true);
+                            if (isZimCopy)
+                            {
+                                var grupKatlari = new List<FloorInfo> { floor };
+                                grupKatlari.AddRange(otherFloors);
+                                DrawMantarZimbalamaCopyTitle(tr, btr, offsetX, offsetY, floorAxisExt, hasSimilarFloors);
+                                int nZim = DrawMantarZimbalamaOnCopy(tr, btr, db, ed, grupKatlari, layoutFlags.MantarZimbalama.ToList(),
+                                    offsetX, offsetY, elemUnion);
+                                ed.WriteMessage("\nMANTARDOSEME: {0} zimbalama kopyasina {1} kolon zimbalama donatisi cizildi.", floor.Name, nZim);
+                            }
                             PlanT(11);
                             Ilerle(true, copyIndex + 1 < copyCount ? "sonraki kopya" : "antet");
                             if (copyIndex == 0 && !layoutFlags.NoAntetAndBinaSema)
@@ -1345,9 +1371,9 @@ namespace ST4PlanIdCiz
                                 antetLeftSectionMinX = leftSectionMinX;
                                 antetBottom = GetLowestHorizontalColumnAxisY(offsetY, floorAxisExt) - 600.0 * kalipAntetSpacingMul;
                             }
-                            if (copyIndex == donatiCopyIndex)
+                            if (copyIndex == donatiCopyIndex || copyIndex == zimCopyIndex)
                             {
-                                // Sağ hedef: aynı katın en sağdaki (donatılı) kopyasının en sağ dikey aksı.
+                                // Sağ hedef: aynı katın en sağdaki (donatılı / zımbalama) kopyasının en sağ dikey aksı.
                                 rightCopyRightVerticalAxisX = floorAxisExt.Xmax + offsetX;
                             }
 
@@ -1359,7 +1385,7 @@ namespace ST4PlanIdCiz
                                 double requiredDelta = Math.Max(0.0, requiredNextCursorX - cursorX);
                                 axisDelta = Math.Ceiling(requiredDelta / 100.0) * 100.0;
                             }
-                            else if (copyIndex < donatiCopyIndex)
+                            else if (copyIndex < lastCopyIndex)
                             {
                                 // Aynı kata ait ardışık kopyalar: sonraki sol sınırı, bu kopya sağından min 200 cm sağda.
                                 GetSectionCutBalloonExtents(offsetX, offsetY, floorAxisExt,
@@ -2416,8 +2442,9 @@ namespace ST4PlanIdCiz
             int maxSlabNumero = slabsOnFloor.Count > 0 ? slabsOnFloor.Max(s => GetSlabNumero(s.SlabId)) : 0;
             int slabPad = GetLabelPadWidth(maxSlabNumero);
             ObjectId textStyleId = GetOrCreateYaziBeykentTextStyle(tr, db);
-            const double textH = 10.0;
-            const double lineGapCm = 5.0;
+            // Kalıp 1/100: GPR donatı yazısı diğer kalıp yazıları gibi 1,5×.
+            double textH = _kalipPlanScale == KalipPlanScale.Hundred ? 15.0 : 10.0;
+            double lineGapCm = _kalipPlanScale == KalipPlanScale.Hundred ? 7.5 : 5.0;
             const short aciRed = 1;
             const short aciBlue = 5;
             int matched = 0;
@@ -2897,7 +2924,8 @@ namespace ST4PlanIdCiz
             double floorElevM = floor.ElevationM;
             double topElevM = _model.BuildingBaseKotu + floorElevM + (Math.Max(beam.Point1KotCm, beam.Point2KotCm) / 100.0);
             double heightCm = beam.HeightCm > 0 ? beam.HeightCm : 30.0;
-            double bottomElevM = topElevM - heightCm / 100.0;
+            // Eğimli kapama perdesi: alt kot düz (alçak uç − h).
+            double bottomElevM = _model.BuildingBaseKotu + floorElevM + PerdeAltKotRelCm(beam, heightCm) / 100.0;
             Point2d kotCenter;
             if (placedWallGeom.Centroid != null && !placedWallGeom.Centroid.IsEmpty)
                 kotCenter = new Point2d(placedWallGeom.Centroid.X, placedWallGeom.Centroid.Y);
@@ -3012,19 +3040,42 @@ namespace ST4PlanIdCiz
                 int minNo = group.Where(x => x.beam != null).Select(x => GetBeamNumero(x.beam.BeamId)).DefaultIfEmpty(0).Min();
                 double targetLeftX = isFirstPlaced ? (prevRightEndpointPlacedX + exactGapX) : anchorX;
                 bool foundAnchor = false;
-                // Ayni perde numarasi farkli katta her zaman ayni X'te olsun.
-                foreach (var it in rotatedGroup)
+                int stackKey = minNo;
+                Geometry stackBasePlan = null;
+                if (_kolon50DrawPerdeGorunus)
                 {
-                    if (it.beam == null || it.wall == null || it.wall.IsEmpty) continue;
-                    int no = GetBeamNumero(it.beam.BeamId);
-                    if (!wallNoToX.TryGetValue(no, out double mapX)) continue;
-                    double thisLeft = it.wall.EnvelopeInternal.MinX;
-                    targetLeftX = mapX - (thisLeft - srcLeftX);
-                    foundAnchor = true;
-                    break;
+                    // Görünüş yığını: alt/üst kat perdesi numaradan değil plandaki üst üste binmeden eşlenir
+                    // (ör. SANER_01: bodrum P115+P103 üstünde zemin P202+P203).
+                    ResetPerdeStackAnchorsIfNeeded(wallNoToX);
+                    stackBasePlan = PerdeStackBasePlan(group, planOffsetX, planOffsetY);
+                    if (TryFindPerdeStackAnchor(floor, group, rotatedGroup, stackBasePlan, axisAngle, planOffsetX, planOffsetY, rot, srcLeftX,
+                        out int ancKey, out double ancLeftX))
+                    {
+                        targetLeftX = ancLeftX;
+                        stackKey = ancKey;
+                        foundAnchor = true;
+                    }
+                    else
+                    {
+                        stackKey = AllocatePerdeStackKey(minNo);
+                    }
                 }
-                if (!foundAnchor && wallNoToX.TryGetValue(minNo, out double mappedLeftX))
-                    targetLeftX = mappedLeftX;
+                else
+                {
+                    // Ayni perde numarasi farkli katta her zaman ayni X'te olsun.
+                    foreach (var it in rotatedGroup)
+                    {
+                        if (it.beam == null || it.wall == null || it.wall.IsEmpty) continue;
+                        int no = GetBeamNumero(it.beam.BeamId);
+                        if (!wallNoToX.TryGetValue(no, out double mapX)) continue;
+                        double thisLeft = it.wall.EnvelopeInternal.MinX;
+                        targetLeftX = mapX - (thisLeft - srcLeftX);
+                        foundAnchor = true;
+                        break;
+                    }
+                    if (!foundAnchor && wallNoToX.TryGetValue(minNo, out double mappedLeftX))
+                        targetLeftX = mappedLeftX;
+                }
                 double dx = targetLeftX - srcLeftX;
                 double dy = topLineY - blockTopWallY;
                 var trf = NetTopologySuite.Geometries.Utilities.AffineTransformation.TranslationInstance(dx, dy);
@@ -3055,7 +3106,7 @@ namespace ST4PlanIdCiz
                         DrawGeometryRingsAsPolylines(tr, btr, w, LayerPerde, addHatch: true, hatchAngleRad: 0.0, applySmallTriangleTrim: false);
                         Kolon50AccumulatePerdeCopyExtent(w);
                         int wallNumero = GetBeamNumero(it.beam.BeamId);
-                        Kolon50AccumulateCopyExtentForWall(wallNumero, w.EnvelopeInternal);
+                        Kolon50AccumulateCopyExtentForWall(stackKey, w.EnvelopeInternal);
                         string wallNo = wallNumero.ToString("D" + wallPad, CultureInfo.InvariantCulture);
                         string wallText = string.Format(CultureInfo.InvariantCulture, "P{0}{1}", katEtiketi, wallNo);
                         DrawKolon50CopyWallName(tr, btr, w.EnvelopeInternal, wallText, it.beam);
@@ -3070,7 +3121,7 @@ namespace ST4PlanIdCiz
                         DrawGeometryRingsAsPolylines(tr, btr, clipped, LayerKolon, addHatch: true, hatchAngleRad: 0.0, applySmallTriangleTrim: false);
                         Kolon50AccumulatePerdeCopyExtent(clipped);
                         if (it.beam != null)
-                            Kolon50AccumulateCopyExtentForWall(GetBeamNumero(it.beam.BeamId), clipped.EnvelopeInternal);
+                            Kolon50AccumulateCopyExtentForWall(stackKey, clipped.EnvelopeInternal);
                         var cEnv = clipped.EnvelopeInternal;
                         AppendColumnLabelCenteredBelowWallBottom(tr, btr, cEnv.MaxX, placedWallBottomY, c.col.ColumnNo, c.col.ColumnType, c.dim, floor);
                     }
@@ -3110,7 +3161,15 @@ namespace ST4PlanIdCiz
 
                 if (_kolon50DrawPerdeGorunus && _kolon50GorunusPending != null)
                 {
-                    RememberKolon50SheetEntities(btr, minNo, beforeSheetIds);
+                    RememberKolon50SheetEntities(btr, stackKey, beforeSheetIds);
+                    RecordPerdeStackAnchor(floor, rotatedGroup, stackBasePlan, axisAngle, group[0].fixedAxisId,
+                        planOffsetX, planOffsetY, rot, dx, stackKey);
+                    var copyIds = new List<ObjectId>();
+                    if (beforeSheetIds != null)
+                    {
+                        foreach (ObjectId idC in btr)
+                            if (!idC.IsNull && !beforeSheetIds.Contains(idC)) copyIds.Add(idC);
+                    }
                     _kolon50GorunusPending.Add(new Kolon50GorunusPending
                     {
                         Floor = floor,
@@ -3120,7 +3179,10 @@ namespace ST4PlanIdCiz
                         Trf = trf,
                         PlanOffsetX = planOffsetX,
                         PlanOffsetY = planOffsetY,
-                        MinWallNo = minNo
+                        MinWallNo = minNo,
+                        StackKey = stackKey,
+                        RowTopY = topLineY,
+                        CopyIds = copyIds
                     });
                 }
             }
@@ -11320,6 +11382,9 @@ namespace ST4PlanIdCiz
             DrawOneRectSideDimension(tr, btr, dimStyleId, rect[1], rect[2], new Vector2d(1, 0), axisPointWorld, angleDeg, center, firstOffsetCm, rowGapCm, useLocalX: false);
         }
 
+        /// <summary>Aplikasyon ölçü: Dimrnd sonrası "0" yazılmasın diye min anlamlı uzunluk (cm).</summary>
+        private const double KolonApplicationOlcuMinCm = 1.0;
+
         private void DrawOneRectSideDimension(
             Transaction tr, BlockTableRecord btr, ObjectId dimStyleId,
             Point2d p1, Point2d p2, Vector2d localOutwardNormal, Point2d axisPointWorld, double angleDeg, Point2d center,
@@ -11336,27 +11401,35 @@ namespace ST4PlanIdCiz
                 ? (Math.Abs(b.X - a.X) > 1e-9 ? (axisLocal.X - a.X) / (b.X - a.X) : -1.0)
                 : (Math.Abs(b.Y - a.Y) > 1e-9 ? (axisLocal.Y - a.Y) / (b.Y - a.Y) : -1.0);
             bool hasSplit = tSplit > 1e-6 && tSplit < 1.0 - 1e-6;
-            Point2d dimLinePtTotal = mid + worldOut.MultiplyBy(hasSplit ? (firstOffsetCm + rowGapCm) : firstOffsetCm);
-            if (tSplit > 1e-6 && tSplit < 1.0 - 1e-6)
+            if (hasSplit)
             {
                 Point2d split = new Point2d(
                     p1.X + (p2.X - p1.X) * tSplit,
                     p1.Y + (p2.Y - p1.Y) * tSplit);
-                Point2d dimLinePtSplit = mid + worldOut.MultiplyBy(firstOffsetCm);
-                AppendEntity(tr, btr, new AlignedDimension(
-                    new Point3d(p1.X, p1.Y, 0),
-                    new Point3d(split.X, split.Y, 0),
-                    new Point3d(dimLinePtSplit.X, dimLinePtSplit.Y, 0),
-                    "",
-                    dimStyleId) { Layer = LayerOlcu });
-                AppendEntity(tr, btr, new AlignedDimension(
-                    new Point3d(split.X, split.Y, 0),
-                    new Point3d(p2.X, p2.Y, 0),
-                    new Point3d(dimLinePtSplit.X, dimLinePtSplit.Y, 0),
-                    "",
-                    dimStyleId) { Layer = LayerOlcu });
+                double d1 = p1.GetDistanceTo(split);
+                double d2 = split.GetDistanceTo(p2);
+                // Aks kenara çok yakınsa "0" parça çizme.
+                if (d1 >= KolonApplicationOlcuMinCm && d2 >= KolonApplicationOlcuMinCm)
+                {
+                    Point2d dimLinePtSplit = mid + worldOut.MultiplyBy(firstOffsetCm);
+                    AppendEntity(tr, btr, new AlignedDimension(
+                        new Point3d(p1.X, p1.Y, 0),
+                        new Point3d(split.X, split.Y, 0),
+                        new Point3d(dimLinePtSplit.X, dimLinePtSplit.Y, 0),
+                        "",
+                        dimStyleId) { Layer = LayerOlcu });
+                    AppendEntity(tr, btr, new AlignedDimension(
+                        new Point3d(split.X, split.Y, 0),
+                        new Point3d(p2.X, p2.Y, 0),
+                        new Point3d(dimLinePtSplit.X, dimLinePtSplit.Y, 0),
+                        "",
+                        dimStyleId) { Layer = LayerOlcu });
+                }
+                else
+                    hasSplit = false;
             }
 
+            Point2d dimLinePtTotal = mid + worldOut.MultiplyBy(hasSplit ? (firstOffsetCm + rowGapCm) : firstOffsetCm);
             AppendEntity(tr, btr, new AlignedDimension(
                 new Point3d(p1.X, p1.Y, 0),
                 new Point3d(p2.X, p2.Y, 0),
@@ -11420,21 +11493,26 @@ namespace ST4PlanIdCiz
                 .Where(v => v >= minT - 1e-6 && v <= maxT + 1e-6)
                 .OrderBy(v => v)
                 .ToList();
+            // Yakın istasyonları birleştir; aksi halde Dimrnd "0" yazar.
+            const double mergeTol = KolonApplicationOlcuMinCm;
             var uniq = new List<double>();
             foreach (double v in orderedCuts)
             {
-                if (uniq.Count == 0 || Math.Abs(uniq[uniq.Count - 1] - v) > 1e-3) uniq.Add(v);
+                if (uniq.Count == 0 || Math.Abs(uniq[uniq.Count - 1] - v) > mergeTol - 1e-9)
+                    uniq.Add(v);
             }
             if (uniq.Count < 2) return;
 
             Point2d detailedLinePt = midWorld + worldOut.MultiplyBy(firstOffsetCm);
             for (int i = 0; i < uniq.Count - 1; i++)
             {
+                double seg = uniq[i + 1] - uniq[i];
+                if (seg < KolonApplicationOlcuMinCm - 1e-9) continue;
                 Point2d aL = isHorizontal ? new Point2d(uniq[i], faceValue) : new Point2d(faceValue, uniq[i]);
                 Point2d bL = isHorizontal ? new Point2d(uniq[i + 1], faceValue) : new Point2d(faceValue, uniq[i + 1]);
                 Point2d aW = ToWorld(aL, center, angleDeg);
                 Point2d bW = ToWorld(bL, center, angleDeg);
-                if (aW.GetDistanceTo(bW) <= 1e-6) continue;
+                if (aW.GetDistanceTo(bW) < KolonApplicationOlcuMinCm - 1e-9) continue;
                 AppendEntity(tr, btr, new AlignedDimension(
                     new Point3d(aW.X, aW.Y, 0),
                     new Point3d(bW.X, bW.Y, 0),
@@ -13676,7 +13754,8 @@ namespace ST4PlanIdCiz
                     double floorElevM = floorInfoPerde != null ? floorInfoPerde.ElevationM : 0.0;
                     double topElevM = _model.BuildingBaseKotu + floorElevM + (Math.Max(beam.Point1KotCm, beam.Point2KotCm) / 100.0);
                     double heightCm = beam.HeightCm > 0 ? beam.HeightCm : 30.0;
-                    double bottomElevM = topElevM - heightCm / 100.0;
+                    // Eğimli kapama perdesi: alt kot düz (alçak uç − h).
+                    double bottomElevM = _model.BuildingBaseKotu + floorElevM + PerdeAltKotRelCm(beam, heightCm) / 100.0;
                     Point2d kotCenter = drawnGeometry.Centroid != null && !drawnGeometry.Centroid.IsEmpty
                         ? new Point2d(drawnGeometry.Centroid.X, drawnGeometry.Centroid.Y)
                         : new Point2d((firstA.X + firstB.X) * 0.5, (firstA.Y + firstB.Y) * 0.5);
@@ -13891,7 +13970,8 @@ namespace ST4PlanIdCiz
                     double floorElevM = floor != null ? floor.ElevationM : 0.0;
                     double topElevM = _model.BuildingBaseKotu + floorElevM + (Math.Max(beam.Point1KotCm, beam.Point2KotCm) / 100.0);
                     double heightCm = beam.HeightCm > 0 ? beam.HeightCm : 30.0;
-                    double bottomElevM = topElevM - heightCm / 100.0;
+                    // Eğimli kapama perdesi: alt kot düz (alçak uç − h).
+                    double bottomElevM = _model.BuildingBaseKotu + floorElevM + PerdeAltKotRelCm(beam, heightCm) / 100.0;
                     Point2d kotCenter = drawnGeometry.Centroid != null && !drawnGeometry.Centroid.IsEmpty
                         ? new Point2d(drawnGeometry.Centroid.X, drawnGeometry.Centroid.Y)
                         : new Point2d((firstA.X + firstB.X) * 0.5, (firstA.Y + firstB.Y) * 0.5);
@@ -16652,7 +16732,7 @@ namespace ST4PlanIdCiz
             try
             {
                 // 18. satir okunmali: /Materials/ sonrasi beton sinifi (1. sutun / 10 -> C30 vb.); 15. satirda break vardi, CClass hic doldurulmuyordu.
-                string line3 = null, line4 = null, line7 = null, line14 = null, line18 = null;
+                string line3 = null, line4 = null, line7 = null, line13 = null, line14 = null, line18 = null;
                 int ln = 0;
                 foreach (string raw in File.ReadLines(st4SourcePath))
                 {
@@ -16660,6 +16740,7 @@ namespace ST4PlanIdCiz
                     if (ln == 3) line3 = raw;
                     else if (ln == 4) line4 = raw;
                     else if (ln == 7) line7 = raw;
+                    else if (ln == 13) line13 = raw;
                     else if (ln == 14) line14 = raw;
                     else if (ln == 18) { line18 = raw; break; }
                 }
@@ -16684,7 +16765,9 @@ namespace ST4PlanIdCiz
                     v.ZeminTasima = st4Tasima.ToString("0.00", CultureInfo.InvariantCulture);
                 if (TryGetSt4ColumnDouble(line18, 1, out double cRaw))
                     v.CClass = Math.Round(cRaw / 10.0, 0).ToString("0", CultureInfo.InvariantCulture);
+                FillAntetDepremFromSt4(line4, line13, line14, v);
 
+                // GPR yalnız boş kalanları doldurur (BYS; ST4 kodu tanınmayan sistem/zemin).
                 string gprPath = ResolveGprPathBesideSt4(st4SourcePath);
                 if (!string.IsNullOrEmpty(gprPath))
                     FillAntetValuesFromGpr(gprPath, v);
@@ -16700,6 +16783,50 @@ namespace ST4PlanIdCiz
             }
             catch { }
             return v;
+        }
+
+        /// <summary>
+        /// Antet deprem bilgisi ST4 başlığından (D:\projeler, GPR'li 1048 projede GPR ile karşılaştırıldı):
+        /// R = 4. satır 5. sütun; sistem A sınıfı = 13. satır 7. sütun kodu; D = 14. satır 1. sütun;
+        /// zemin = 14. satır 6. sütun (22 ZB … 25 ZE); DTS = SDS (14. satır 2. sütun) ve I (4. satır 6. sütun), TBDY Tablo 3.2.
+        /// BYS Hn'ye bağlı, ST4'te yok (GPR'den). Tanınmayan kod boş bırakılır.
+        /// </summary>
+        private static void FillAntetDepremFromSt4(string line4, string line13, string line14, AntetValueSet v)
+        {
+            if (TryGetSt4ColumnDouble(line4, 5, out double r) && r > 0.5)
+                v.RValue = r.ToString("0.###", CultureInfo.InvariantCulture);
+            if (TryGetSt4ColumnDouble(line14, 1, out double d) && d > 0.5)
+                v.DValue = d.ToString("0.###", CultureInfo.InvariantCulture);
+            if (TryGetSt4ColumnDouble(line13, 7, out double sys))
+            {
+                switch ((int)Math.Round(sys))
+                {
+                    case 1: v.AClass = "A11"; break;
+                    case 3: v.AClass = "A13"; break;
+                    case 5: v.AClass = "A15"; break;
+                    case 7: v.AClass = "A22"; break;
+                    case 9: v.AClass = "A24"; break;
+                    case 10: v.AClass = "A31"; break;
+                    case 11: v.AClass = "A32"; break;
+                    case 12: v.AClass = "A33"; break;
+                    case 14: v.AClass = "A16"; break;
+                }
+            }
+            if (TryGetSt4ColumnDouble(line14, 6, out double zc))
+            {
+                switch ((int)Math.Round(zc))
+                {
+                    case 22: v.Zemin = "ZB"; break;
+                    case 23: v.Zemin = "ZC"; break;
+                    case 24: v.Zemin = "ZD"; break;
+                    case 25: v.Zemin = "ZE"; break;
+                }
+            }
+            if (TryGetSt4ColumnDouble(line14, 2, out double sds) && sds > 0.0 && TryGetSt4ColumnDouble(line4, 6, out double imp))
+            {
+                int dts = sds < 0.33 ? 4 : sds < 0.50 ? 3 : sds < 0.75 ? 2 : 1;
+                v.Dts = dts.ToString(CultureInfo.InvariantCulture) + (imp > 1.4 ? "a" : string.Empty);
+            }
         }
 
         private static string GetSt4Line(string st4Path, int oneBasedLineNo)
@@ -19016,7 +19143,9 @@ namespace ST4PlanIdCiz
             string title = isFoundationPlan
                 ? "TEMEL PLANI (aks + 1. kat kolon + surekli/radye temel)"
                 : string.Format(CultureInfo.InvariantCulture, "{0} ({1}m)", floor.Name, floor.ElevationM.ToString("0", CultureInfo.InvariantCulture));
-            AppendEntity(tr, btr, MakeCenteredText(tr, btr.Database, LayerBaslik, 12, title, titlePos));
+            // Kalıp 1/100 (DENEME1 kat başlığı): diğer kalıp yazıları gibi 1,5×.
+            double titleH = !isFoundationPlan && _kalipPlanScale == KalipPlanScale.Hundred ? 18 : 12;
+            AppendEntity(tr, btr, MakeCenteredText(tr, btr.Database, LayerBaslik, titleH, title, titlePos));
         }
 
         private void DrawTemelDonatiCopyCaption(
@@ -19027,7 +19156,7 @@ namespace ST4PlanIdCiz
         {
             if (string.IsNullOrWhiteSpace(caption)) return;
             var pos = new Point3d(offsetX + (ext.Xmin + ext.Xmax) / 2.0, offsetY + ext.Ymax + 80.0, 0);
-            AppendEntity(tr, btr, MakeCenteredText(tr, btr.Database, LayerBaslik, 20, caption, pos));
+            AppendEntity(tr, btr, MakeCenteredText(tr, btr.Database, LayerBaslik, 20 * TemelFoundationAnnotMul, caption, pos));
         }
 
         private void DrawKalipSimilarFloorNamesNote(Transaction tr, BlockTableRecord btr, List<FloorInfo> otherFloors, double offsetX, double offsetY,
@@ -19040,7 +19169,7 @@ namespace ST4PlanIdCiz
             if (string.IsNullOrWhiteSpace(names)) return;
             string note = "(" + names + ")";
             var notePos = new Point3d(offsetX + (ext.Xmin + ext.Xmax) / 2.0, offsetY + ext.Ymax + yAboveTopCm, 0);
-            AppendEntity(tr, btr, MakeCenteredText(tr, btr.Database, LayerBaslik, 8, note, notePos));
+            AppendEntity(tr, btr, MakeCenteredText(tr, btr.Database, LayerBaslik, _kalipPlanScale == KalipPlanScale.Hundred ? 12 : 8, note, notePos));
         }
 
         /// <summary>

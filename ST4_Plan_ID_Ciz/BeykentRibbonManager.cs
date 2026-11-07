@@ -1,4 +1,4 @@
-#if AUTOCAD2027
+#if BEYKENT_RIBBON
 using System;
 using System.Collections.Generic;
 using System.IO;

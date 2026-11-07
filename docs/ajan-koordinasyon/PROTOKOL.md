@@ -8,6 +8,16 @@ Her sohbet kendine benzersiz bir kayıt açar: `oturumlar/<cursor-codex-veya-her
 
 Kaydın içeriği: ajan, sohbet/görev tanımı, güncelleme zamanı, durum (aktif/beklemede/tamamlandı), düzenlenecek tam proje göreli dosya yolları, ortak çıktı kaynakları, yapılan değişiklik, doğrulama ve açık işler. Kayıtları kısa tut.
 
+## Her görevde zorunlu kontrol (Codex, Cursor, Claude)
+
+Kullanıcı talimatı (24.10.2026): üç ajan da her görevde aşağıdakileri kontrol eder; yalnız "aktif" kayıtlara veya dosya adlarına bakıp geçilmez.
+
+1. **Son kayıtlar:** `oturumlar/` içinde son 2 günün tüm kayıtlarını (tamamlananlar dahil) ve ilgili modül durum dosyalarını sonuna kadar oku. Başka ajanın yeni kurduğu düzeni (menü/ribbon, dağıtım, yükleyici, test aracı) öğrenmeden aynı alanda iş yapma.
+2. **Menü düzeni:** Komut ekleme/değiştirmede AutoCAD 2027 BEYKENT sekmesi (`ST4_Plan_ID_Ciz/BeykentRibbonCatalog.cs`, durum `docs/modul-durum/ST4_Plan_ID_Ciz.Ribbon.md`, test `tools/PlanRibbonCheck`), Yardımcı Home şeridi (`ST4_Yardimci/BaHomeRibbonCatalog.cs`) ve Monolit simge eşlemesi birlikte güncellenir.
+3. **Otomatik yükleme:** `%APPDATA%\Autodesk\ApplicationPlugins\ST4_GUNCEL_2027.bundle` (kaynak `tools/GuncelOtoYukle2027/`) AutoCAD 2027 açılışında `NETLOAD/GUNCEL_2027/` içindeki dosya adına göre en son `ST4_Plan_ID_Ciz_2027_*.dll` ve `ST4_Yardimci_2027_*.dll`'yi yükler. Görev başında bu klasörün içeriğini ve yükleyicinin hedefini kontrol et.
+4. **Teslim:** Kullanıcıya ulaşması gereken değişiklik `NETLOAD/GUNCEL_2027/`'ye yayınlanmadan "eklendi/hazır" denmez. Yayın yapılmadıysa bunu açıkça yaz. Yayından sonra klasörde yalnız yeni iki ST4 DLL kaldığını doğrula.
+5. **Çökme bildiriminde:** önce dökümden/olay günlüğünden yüklü DLL yolunu ve sürümünü belirle; eski DLL yüklendiyse bunu ayrıca bildir.
+
 ## Düzenleme öncesi
 
 1. Hedef dosyaları kendi kaydına yaz. Henüz belirlenmemiş dosyalarda değişiklik yapma; kapsam genişlerse önce kaydı güncelle.

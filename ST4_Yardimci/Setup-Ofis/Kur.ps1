@@ -1,5 +1,6 @@
-# BETONARME TOOL kurulum — yalniz ofis bilgisayari (BEYKENT-2).
-# AutoCAD kapatilir, eski bundle / NETLOAD / APPLOAD tamamen silinir, tek bundle kurulur.
+# BETONARME TOOL + ST4 PLAN ID kurulum — yalniz ofis bilgisayari (BEYKENT-2).
+# AutoCAD kapatilir, eski bundle / NETLOAD / APPLOAD tamamen silinir; her eklentiden tek bundle kurulur
+# (ST4_Yardimci.bundle ve ST4_Plan_ID_Ciz.bundle).
 # Iki kopya (eski NETLOAD + yeni bundle) ofiste AutoCAD'i dusurur. COM toolbar silinmez.
 $ErrorActionPreference = "Continue"
 
@@ -126,6 +127,8 @@ function Remove-MatchingDlls($root) {
             -not (Test-UnderSetup $_.FullName) -and (
                 $_.Name -like "ST4_Yardimci*.dll" -or
                 $_.Name -like "ST4_Yardimci*.pdb" -or
+                $_.Name -like "ST4_Plan_ID_Ciz*.dll" -or
+                $_.Name -like "ST4_Plan_ID_Ciz*.pdb" -or
                 $_.Name -eq "ST4Yardimci.dll" -or
                 $_.Name -eq "ST4Yardimci.pdb"
             )
@@ -165,6 +168,7 @@ function Remove-OldBundles {
             Where-Object {
                 $_.Name -like "*Yardimci*" -or
                 $_.Name -like "*ST4Yard*" -or
+                $_.Name -like "*ST4_Plan_ID*" -or
                 $_.Name -like "*BETONARME*" -or
                 $_.Name -like "*__eski_*"
             } |
@@ -183,7 +187,7 @@ function Remove-StartupFileRefs($root) {
         ForEach-Object {
             $lines = @(Get-Content -LiteralPath $_.FullName -ErrorAction SilentlyContinue)
             if ($lines.Count -eq 0) { return }
-            $kept = @($lines | Where-Object { $_ -notmatch "ST4_Yardimci|ST4Yardimci|BETONARME TOOL" })
+            $kept = @($lines | Where-Object { $_ -notmatch "ST4_Yardimci|ST4Yardimci|ST4_Plan_ID_Ciz|BETONARME TOOL" })
             if ($kept.Count -eq $lines.Count) { return }
             $bak = $_.FullName + ".st4bak"
             try {
@@ -210,7 +214,7 @@ function Clear-PluginRegistry {
                 foreach ($p in $props.PSObject.Properties) {
                     if ($p.Name -match "^PS") { continue }
                     $val = [string]$p.Value
-                    if ($val -match "ST4_Yardimci|ST4Yardimci|BETONARME|\\NETLOAD\\") {
+                    if ($val -match "ST4_Yardimci|ST4Yardimci|ST4_Plan_ID_Ciz|BETONARME|\\NETLOAD\\") {
                         Remove-ItemProperty -LiteralPath $key.PSPath -Name $p.Name -ErrorAction SilentlyContinue
                         Say "APPLOAD kaydi silindi: $val"
                     }
@@ -220,13 +224,13 @@ function Clear-PluginRegistry {
         if ($key.PSChildName -eq "Applications") {
             Get-ChildItem -LiteralPath $key.PSPath -ErrorAction SilentlyContinue | ForEach-Object {
                 $child = $_
-                $hit = $child.PSChildName -match "ST4_Yardimci|ST4Yardimci|BETONARME"
+                $hit = $child.PSChildName -match "ST4_Yardimci|ST4Yardimci|ST4_Plan_ID_Ciz|BETONARME"
                 if (-not $hit) {
                     $cp = Get-ItemProperty -LiteralPath $child.PSPath -ErrorAction SilentlyContinue
                     if ($cp) {
                         foreach ($p in $cp.PSObject.Properties) {
                             if ($p.Name -match "^PS") { continue }
-                            if (([string]$p.Value) -match "ST4_Yardimci|ST4Yardimci|BETONARME") { $hit = $true }
+                            if (([string]$p.Value) -match "ST4_Yardimci|ST4Yardimci|ST4_Plan_ID_Ciz|BETONARME") { $hit = $true }
                         }
                     }
                 }
@@ -242,7 +246,7 @@ function Clear-PluginRegistry {
                 $cur = [string]$prop.TRUSTEDPATHS
                 if (-not [string]::IsNullOrWhiteSpace($cur)) {
                     $parts = @($cur -split ";" | ForEach-Object { $_.Trim() } | Where-Object {
-                        $_ -and $_ -notmatch "ST4_Yardimci|ST4Yardimci|\\NETLOAD\\"
+                        $_ -and $_ -notmatch "ST4_Yardimci|ST4Yardimci|ST4_Plan_ID_Ciz|\\NETLOAD\\"
                     })
                     Set-ItemProperty -LiteralPath $key.PSPath -Name "TRUSTEDPATHS" -Value (($parts -join ";").Trim(";"))
                 }
@@ -273,25 +277,43 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $script:SetupRoot = [System.IO.Path]::GetFullPath($here)
 $script:LeftoverLocked = $false
 
-$payloadDll = Join-Path $here "payload\ST4_Yardimci.dll"
+$payloadDll = Join-Path $here "payload\ST4_Yardimci_2027.dll"
 $payloadXml = Join-Path $here "PackageContents.xml"
 if (-not (Test-Path -LiteralPath $payloadDll) -or -not (Test-Path -LiteralPath $payloadXml)) {
-    Say "Kurulum dosyalari eksik (payload\ST4_Yardimci.dll)."
+    Say "Kurulum dosyalari eksik (payload\ST4_Yardimci_2027.dll)."
     exit 1
 }
 
 $requiredDeps = @(
-    "NetTopologySuite.dll",
-    "System.Buffers.dll",
-    "System.Memory.dll",
-    "System.Numerics.Vectors.dll",
-    "System.Runtime.CompilerServices.Unsafe.dll"
+    # AutoCAD 2027 (net10) derlemesi: System.* .NET ile gelir; NTS bundle icinde olmali.
+    "NetTopologySuite.dll"
 )
 foreach ($dep in $requiredDeps) {
     $p = Join-Path $here ("payload\" + $dep)
     if (-not (Test-Path -LiteralPath $p)) {
         Say "Eksik bagimlilik: payload\$dep"
         Say "NTS eksikse AutoCAD acilista duser. Kurulum yapilmadi."
+        exit 1
+    }
+}
+
+# ST4 PLAN ID: plan\PackageContents.xml + plan\payload (tarihli ST4_Plan_ID_Ciz_*.dll ve bagimliliklari).
+$planXml = Join-Path $here "plan\PackageContents.xml"
+$planPayload = Join-Path $here "plan\payload"
+$planDlls = @(Get-ChildItem -LiteralPath $planPayload -File -Filter "ST4_Plan_ID_Ciz*.dll" -ErrorAction SilentlyContinue)
+if (-not (Test-Path -LiteralPath $planXml) -or $planDlls.Count -ne 1) {
+    Say "Kurulum dosyalari eksik (plan\payload\ST4_Plan_ID_Ciz_*.dll tek olmali)."
+    exit 1
+}
+$planDllName = $planDlls[0].Name
+if (-not ((Get-Content -LiteralPath $planXml -Raw) -match [regex]::Escape($planDllName))) {
+    Say "plan\PackageContents.xml $planDllName dosyasini gostermiyor. Kurulum yapilmadi."
+    exit 1
+}
+$planDeps = @($requiredDeps + @("UglyToad.PdfPig.dll"))
+foreach ($dep in $planDeps) {
+    if (-not (Test-Path -LiteralPath (Join-Path $planPayload $dep))) {
+        Say "Eksik bagimlilik: plan\payload\$dep. Kurulum yapilmadi."
         exit 1
     }
 }
@@ -381,10 +403,35 @@ Force-Unblock (Join-Path $dest "PackageContents.xml")
 $bundlePath = $dest.TrimEnd("\") + "\"
 try { Add-TrustedBundle $bundlePath } catch { }
 
-$dllPath = Join-Path $destWin "ST4_Yardimci.dll"
+$dllPath = Join-Path $destWin "ST4_Yardimci_2027.dll"
 foreach ($dep in $requiredDeps) {
     if (-not (Test-Path -LiteralPath (Join-Path $destWin $dep))) {
         Say "Kurulum eksik kopyaladi: $dep"
+        exit 1
+    }
+}
+
+$planDest = Join-Path $destRoot "ST4_Plan_ID_Ciz.bundle"
+$planDestWin = Join-Path $planDest "Contents\Windows"
+if (-not (Force-RemovePath $planDest)) {
+    Say "Eski Plan ID bundle silinemedi. AutoCAD kapali mi kontrol edin, sonra Kur.cmd tekrar."
+    exit 1
+}
+New-Item -ItemType Directory -Force -Path $planDestWin | Out-Null
+Copy-Item -LiteralPath $planXml -Destination (Join-Path $planDest "PackageContents.xml") -Force
+Get-ChildItem -LiteralPath $planPayload -File | ForEach-Object {
+    if ($_.Extension -match '^\.(pdb|xml)$') { return }
+    $target = Join-Path $planDestWin $_.Name
+    Copy-Item -LiteralPath $_.FullName -Destination $target -Force
+    Force-Unblock $target
+}
+Force-Unblock (Join-Path $planDest "PackageContents.xml")
+try { Add-TrustedBundle ($planDest.TrimEnd("\") + "\") } catch { }
+
+$planDllPath = Join-Path $planDestWin $planDllName
+foreach ($dep in $planDeps) {
+    if (-not (Test-Path -LiteralPath (Join-Path $planDestWin $dep))) {
+        Say "Plan ID kurulumu eksik kopyaladi: $dep"
         exit 1
     }
 }
@@ -394,30 +441,31 @@ foreach ($root in $scanRoots) {
     if (-not (Test-Path -LiteralPath $root)) { continue }
     Get-ChildItem -LiteralPath $root -Recurse -File -Force -ErrorAction SilentlyContinue |
         Where-Object {
-            $_.Name -like "ST4_Yardimci*.dll" -and
+            ($_.Name -like "ST4_Yardimci*.dll" -or $_.Name -like "ST4_Plan_ID_Ciz*.dll") -and
             -not (Test-UnderSetup $_.FullName) -and
-            ($_.FullName -ne $dllPath)
+            ($_.FullName -ne $dllPath) -and ($_.FullName -ne $planDllPath)
         } |
         ForEach-Object { $others += $_.FullName }
 }
 
 $dllInfo = Get-Item -LiteralPath $dllPath
+$planInfo = Get-Item -LiteralPath $planDllPath
 Say ""
-Say "Kurulum bitti. Tek kopya:"
+Say "Kurulum bitti. Her eklentiden tek kopya:"
 Say $dest
-Say ("ST4_Yardimci.dll  {0:yyyy-MM-dd HH:mm:ss}  {1} bayt" -f $dllInfo.LastWriteTime, $dllInfo.Length)
-Say "Icerik:"
-Get-ChildItem -LiteralPath $destWin -File | ForEach-Object { Say ("  " + $_.Name) }
+Say ("  ST4_Yardimci_2027.dll  {0:yyyy-MM-dd HH:mm:ss}  {1} bayt" -f $dllInfo.LastWriteTime, $dllInfo.Length)
+Say $planDest
+Say ("  {0}  {1:yyyy-MM-dd HH:mm:ss}  {2} bayt" -f $planDllName, $planInfo.LastWriteTime, $planInfo.Length)
 
 if ($failedBundle -or $script:LeftoverLocked -or $others.Count -gt 0) {
     Say ""
-    Say "UYARI: Baska bir ST4_Yardimci.dll duruyor. AutoCAD'i acmayin; cift yukleme programi dusurur."
+    Say "UYARI: Baska bir ST4_Yardimci / ST4_Plan_ID_Ciz DLL duruyor. AutoCAD'i acmayin; cift yukleme programi dusurur."
     foreach ($o in ($others | Select-Object -Unique)) { Say ("  " + $o) }
     Say "Bu dosyalari silip Kur.cmd tekrar calistirin."
     exit 1
 }
 
 Say ""
-Say "AutoCAD'i simdi acin. Komut satirinda BETONARME TOOL yuklendi yazmali."
-Say "APPLOAD Startup Suite'te ST4_Yardimci / NETLOAD olmamali. Ayrica NETLOAD yapmayin."
+Say "AutoCAD'i simdi acin. Komut satirinda BETONARME TOOL yuklendi yazmali; STA paneli (STAPANEL) acilir."
+Say "APPLOAD Startup Suite'te ST4_Yardimci / ST4_Plan_ID_Ciz / NETLOAD olmamali. Ayrica NETLOAD yapmayin."
 exit 0

@@ -1,0 +1,99 @@
+using System;
+using System.Drawing;
+using System.Windows.Forms;
+using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
+
+namespace ST4PlanIdCiz
+{
+    /// <summary>Kiriş açılım formuyla aynı düzen: Antetli/Antetsiz. Sürekli temel kat seçmez.</summary>
+    internal sealed class SurekliTemelAcilimForm : Beykent.Monolit.MonolitForm
+    {
+        private static bool _sonAntetli = true, _sonBirlestir = true;
+        private readonly RadioButton _antetli, _birlestir;
+        public KirisAcilimSecenekleri Secenekler { get; private set; }
+
+        internal static bool TryShow(out KirisAcilimSecenekleri secenekler)
+        {
+            secenekler = null;
+            using (var form = new SurekliTemelAcilimForm())
+            {
+                if (AcApp.ShowModalDialog(form) != DialogResult.OK) return false;
+                secenekler = form.Secenekler;
+                return true;
+            }
+        }
+
+        private SurekliTemelAcilimForm()
+        {
+            var saved = PlanFormSettings.Load("sureklitemelacilim");
+            _sonAntetli = saved.Bool("Antetli", _sonAntetli);
+            _sonBirlestir = saved.Bool("Birlestir", _sonBirlestir);
+            var pafta = BeykentOrtak.PaftaOlcek.Secenekler(saved.Bool("Pafta100", false));
+            Text = "Sürekli Temel Açılımları";
+            ClientSize = new Size(420, 220);
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            StartPosition = FormStartPosition.CenterParent;
+            MaximizeBox = MinimizeBox = false;
+            ShowInTaskbar = false;
+            Font = new Font("Segoe UI", 9f);
+            BackColor = Beykent.Monolit.StandardFormTheme.Bg;
+            ForeColor = Beykent.Monolit.StandardFormTheme.Text;
+
+            var drawing = new GroupBox
+            {
+                Text = "Çizim düzeni · 1/25",
+                Left = 16,
+                Top = 12,
+                Width = 388,
+                Height = 76,
+                ForeColor = ForeColor
+            };
+            _antetli = new RadioButton { Text = "Antetli", Left = 18, Top = 30, Width = 150, Checked = _sonAntetli };
+            var plain = new RadioButton { Text = "Antetsiz", Left = 198, Top = 30, Width = 150, Checked = !_sonAntetli };
+            drawing.Controls.AddRange(new Control[] { _antetli, plain });
+            Controls.Add(drawing);
+
+            // Birleştir: aynı hizadaki (orta çizgileri buluşan) temeller tek açılım. Ayrı: her temel kendi açılımı.
+            var temelGrup = new GroupBox { Text = "Temeller", Left = 16, Top = 92, Width = 388, Height = 56, ForeColor = ForeColor };
+            _birlestir = new RadioButton { Text = "Aynı hizadakileri birleştir", Left = 18, Top = 22, Width = 180, Checked = _sonBirlestir };
+            var ayri = new RadioButton { Text = "Her temel ayrı", Left = 198, Top = 22, Width = 150, Checked = !_sonBirlestir };
+            temelGrup.Controls.AddRange(new Control[] { _birlestir, ayri });
+            Controls.Add(temelGrup);
+
+            Controls.Add(new Label
+            {
+                Text = "Beton, kolon, donatı ve etriye açılımları.\nMontaj altta, düz donatı üstte çizilir.",
+                Left = 18,
+                Top = 102,
+                Width = 388,
+                Height = 40
+            });
+
+            var draw = new Button { Text = "Çiz", Left = 216, Top = 160, Width = 90, Height = 30 };
+            var cancel = new Button { Text = "İptal", Left = 314, Top = 160, Width = 90, Height = 30, DialogResult = DialogResult.Cancel };
+            draw.Click += (s, e) =>
+            {
+                Secenekler = new KirisAcilimSecenekleri { Antetli = _antetli.Checked, SeciliKatNo = null,
+                    TemelBirlestir = _birlestir.Checked, Pafta100 = pafta[1].Checked };
+                _sonAntetli = _antetli.Checked;
+                _sonBirlestir = _birlestir.Checked;
+                PlanFormSettings.Load("sureklitemelacilim").Set("Antetli", _sonAntetli).Set("Birlestir", _sonBirlestir)
+                    .Set("Pafta100", pafta[1].Checked).Save();
+                DialogResult = DialogResult.OK;
+                Close();
+            };
+            Controls.AddRange(new Control[] { draw, cancel });
+            AcceptButton = draw;
+            CancelButton = cancel;
+
+            // Kompakt, içerik odaklı form düzeni.
+            var ui = BeginCompact(340);
+            ui.Section("Çizim düzeni · 1/25").Options(_antetli, plain);
+            ui.Section("Pafta ölçeği").Options(pafta);
+            ui.Section("Temeller").Options(_birlestir, ayri);
+            ui.Section(null).Hint("Montaj altta; düz donatı üstte çizilir.");
+            ui.Footer(draw, cancel);
+            ui.Finish();
+        }
+    }
+}

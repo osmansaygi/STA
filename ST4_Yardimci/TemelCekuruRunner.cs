@@ -535,7 +535,12 @@ namespace ST4Yardimci
                 try { PlacePieceLabels(tr, ms); }
                 catch { }
                 // Donatı numaraları şimdilik kapalı; sabit noktalar ve hesap kimlikleri korunur.
-                if (DetayBaslik) FinishSingleDetail(tr, ms);
+                if (DetayBaslik)
+                {
+                    FinishSingleDetail(tr, ms);
+                    try { DrawDetailYatayMetraj(tr, ms); }
+                    catch { }
+                }
                 try { DrawKesitNo(tr, ms); }
                 catch { }
             }

@@ -1,0 +1,11 @@
+# Claude — Kolon düşey: poligon kesit plan açısına yakın çizim
+- Ajan: Claude Code
+- Güncelleme: 07.11.2026 17:45 (Europe/Istanbul)
+- Durum: tamamlandı (bkz. son satır)
+- Görev: KOLONDUSEY açılımlarında poligon kolon kesiti yerel tanım duruşu yerine plandaki açıya en yakın (90° katı) duruşta çizilsin; benzer grupta baz en düşük numaralı kolon.
+- Kontrol: protokol + son 2 gün kayıtları (aktif kayıt yok). Görev başı GUNCEL_2027 = Plan 20261107_172931 + Yardımcı 20261107_143240. Yeni komut yok → şerit/simge değişmez.
+- Ayrılan: ST4_Plan_ID_Ciz/PlanIdDrawingManager.KolonDusey.cs, tools/PoligonKesitAci20261107/** (izole derleme), docs/modul-durum/ST4_Plan_ID_Ciz.md, NETLOAD/OKU.txt; yayında NETLOAD/GUNCEL_2027/**, NETLOAD/arsiv.
+- Bulgu: tüm 2026 ST4'lerde poligon kolon açısı 0 (yalnız kos_idari/statik_TEMEL ±62.5). Dönüş, kesit takımının "görünüş bandına sığmazsa 90° döndür" kuralından (bant = kat yüksekliği, paylar 270) — kat-kat çizimde boyu eninden büyük her U dönüyordu. Ekran görüntüsü projesi SANER_01 (S-07/09/10).
+- Sonuç (18:00): KolonDusey.cs — bant döndürme kuralı kaldırıldı; kesit açısı PoligonKesitPlanaYakinAciDeg (açı mod 90); kesit KOL-n numarası eşit alanda görünüş çerçevesine göre. İzole Release net10/2027 0 hata (tools/PoligonKesitAci20261107/BuildPlan.ps1). Core Console: SANER_01 kat-kat S-07 ∩, S-09 ⊐, S-10 ⊔ plandaki gibi (out/saner_yeni2_*.pdf); KOS_D1_01 (poligonsuz) ve SANER mod 0 eski/yeni nesne sayıları birebir; KOS_D3 S-37 zaten plandaki gibiydi (geometri aynı, yalnız KOL-1/2 etiketi yer değiştirdi).
+- Yayın: GUNCEL_2027 = Plan 20261107_175857 + Yardımcı 20261107_143240, Publish51 PASS, arşiv NETLOAD/arsiv/GUNCEL_2027_20261107_180012_263. Canlı AutoCAD yok. Commit yok.
+- Durum: tamamlandı — rezervasyon yok.

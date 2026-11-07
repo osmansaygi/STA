@@ -1,0 +1,11 @@
+# Claude — GPR'siz aks isimleri (.AKS konumsal okuma)
+- Ajan: Claude Code
+- Güncelleme: 30.10.2026 18:48 (Europe/Istanbul)
+- Durum: tamamlandı — rezervasyon yok
+- Görev: GPR yokken (veya GPR'de YAPI AKS tablosu yokken) aks balon isimleri yanlış (1,2,3… / A,B,C…).
+- Kontrol: protokol + son 2 gün kayıtları; aktif çakışma yok. Görev başı GUNCEL_2027 = Plan 20261030_182652 + Yardımcı 20261030_172538.
+- Kök: GprYapiAksLabels.TryMergeFromGprBesideSt4 GPR yoksa return ediyordu (.AKS yedeğine hiç inmiyordu); .AKS yedeği boş satırla blok arıyordu, oysa .AKS konumsal (nx satır X + ny satır Y, boş isimler 4 boşluk/boş satır) → adet tutmuyor, yazılmıyordu.
+- Değişen: ST4_Plan_ID_Ciz/GprYapiAksLabels.cs (GPR yoksa da .AKS; konumsal okuma, 1254), docs/modul-durum/ST4_Plan_ID_Ciz.md, NETLOAD/OKU.txt, tools/AksIsim20261030/** (Build.ps1, Isolated.targets, Publish51.ps1).
+- Doğrulama: izole Release net10/2027 0 hata/4 bilinen uyarı (20261030_184447). Kural testi (scratchpad aks/cmp.cs): 1031 projede AKS↔GPR tablo 1017 birebir; 14 fark = GPR ayrıştırıcının düşürdüğü `[` adı (Z'den sonraki aks), 2 eski/uyumsuz AKS, 1 GPR ayrıştırma. Yansıma probe (scratchpad aks/probe): GPR'siz kopya N_ULK_02, SAS_TEMEL, KOS_SO_04 → eski DLL boş (varsayılan 1..n/A..), yeni DLL GPR'li orijinalle aynı isimler. GPR'li ARD_B_01 değişmedi.
+- Yayın: GUNCEL_2027 = Plan 20261030_184447 + Yardımcı 20261030_172538, Publish51 hash PASS, eski arsiv/GUNCEL_2027_20261030_184603_025. Canlı AutoCAD denenmedi. Commit yok.
+- Açık: GPR'nin kendi `[` adını düşürmesi (GPR'li projede 27. Y aksı varsayılan etiket alır) ayrıca düzeltilmedi.

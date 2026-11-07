@@ -1,0 +1,34 @@
+# Radye bölümleri (N_ULK_02.GPR s.1436–1518): GPR'siz üretim araştırması
+
+Araç: `scratchpad\ara_radye\tool\` (R.csproj, net10; `dotnet build -c Release -o bin`).
+GPR metin dökümü: `gpr_radye.txt` (s.1434–1520), `raw_1436.txt` (koordinatlı ham), ikinci projeler: `kblg_all.txt` (K_BLG_03), `CP_03_all.txt`.
+Komutlar: `R.exe verify|zkv|duvar|bk|analiz|momdiag|toggle|plan|misc <st4> <gpr.txt>`.
+
+Genel kurallar (tüm bölümler)
+- RAD: 2. satır `plak, düğüm, mesh, Ko, yükDurumu(17), noktaYükü, 1, kolonBağı, çubuk`; 4. satır 5. alan = Winkler kenar katsayısı (1.5); 5. satır 3. alan = qt; plak satırları (`no,mx,my,h(m),g,p,Ko,...` + 4 köşe x,y,z); mesh satırları `plak,I,J,K,L(0=üçgen),0,h(m),bayrak`; düğüm satırları `plak,x,y,z,kolonNo,yay(t/m)`; sonra nokta yükleri (6 alanlı başlık `düğüm,kolon,x,y,..` + 51 float = 17 durum × (Pz,Mx,My)); `0,0,0,0`; 13 alanlı satır; 8 alanlı kolon bağları; 10 alanlı çubuk/rijit bağlar; 9 alanlı bağ kirişleri (`I,J,B,D,?,BKno,..`) ve kenar çizgileri (`1,0,plak,x1,y1,x2,y2,..`).
+- DE1: düğüm kaydı 588 bayt, durum v için 28 bayt; `40+588(n−1)+28v`: k0 = −w (m), k1 = −∂w/∂y, k2 = +∂w/∂x (w aşağı +). (k5,k6 kat-rijit dönme benzeri; kullanılmıyor.)
+- GPR sütun → DE1 durumu: 1..14 → 0..13, 17 → 16.
+- Sayı biçimi: double/float değer `decimal` ile AwayFromZero; "-0.00" basılmaz. RAD metin yüklerinde float32'ye çevirip yuvarlamak gerekir (0.525 → 0.52).
+
+| # | Bölüm (sayfa) | Kaynak / kural | Doğrulama |
+|---|---|---|---|
+| 1 | RADYE PROGRAMI genel bilgi (1438) | Ko=RAD 2.satır 4.alan; qt=RAD 5.satır 3.alan; Ks=1,5 Ko metni=RAD 4.satır 5.alan; fck/fyk=ST4 malzeme (C25→250, C30→300; 4200); min pursantajlar 0.000; iki kombinasyon tablosu=`C:\Sta4V14\TS500T.COD` 2–11. satırlar (F2), CODE adı 12. satır; "Nokta tasarım momenti" ve notasyon tablosu sabit metin; Rs=8 üç projede sabit | N_ULK_02, CP_03, K_BLG_03 metinleri kurala uyuyor (Ko 1680/2072/1904, qt 30/37/34) |
+| 1b | Tg/Tq, LOADS CHECK (1450, 1489) | Tg=ΣPz(durum1) RAD nokta yükleri=680.57; Tq=ΣPz(durum2)=193.82; tuğla duvar=Σ G·L (ST4 /Walls/ kat=0)=63.07; kolon=Tg−duvar=617.50; DEAD=Σplak alanı×g=347.10; LIVE=Σalan×p=173.55; Wg=Σyay·w_g=1027.71; Wq=Σyay·w_q2=367.39; max zemin ger.=max(1.4g+1.6max q)=6.376 | 10/10 sayı birebir |
+| 2 | PLAK BİLGİLERİ (1439) | RAD plak satırları: D=h·100, "mesh x y", Ko, g, p (F3), 4 köşe (F2) | 50/51 hücre (tek fark "mesh x y" hücresindeki boşluk biçimi: " 5  15" / " 11 17") |
+| 2b | MESH BİLGİLERİ (1439–1441) | RAD mesh satırları sırayla, satırda 3 mesh; d=h·100; L=0 boş | 2440/2440 hücre, 488/488 mesh |
+| 3 | RADYE NOKTA YÜKLERİ (1441–1450) | RAD nokta yükleri, düğüm artan; satır "n Pz/Mx/My"; hücre = float32(değer[3·durum+bileşen]) F2 | 8730/8730 hücre, 582/582 satır, sıra birebir |
+| 3b | DUVAR YÜK BİLGİLERİ (1450) | ST4 /Walls/ 1.alan=0 (Temel): aks kodu 1000+i→"ix", 2000+i→"iy"; H=alan5 mod 10000, tip=alan5/10000 (1=Tugla); G=alan3/100 (F3); B=alan4; L=|aks(sağ)−aks(sol)| (ST4 /Axis data/: önce nx x-aksı, sonra ny y-aksı; nx,ny 5. satır); yüklenen = orta noktayı içeren plak | 160/160 hücre |
+| 4 | NOKTALARIN X/Y STATİK Mx/My (1451–1468) | DE1'de YOK; RAD+DE1'den plak elemanı (DKMQ dörtgen / DKMT üçgen, Reissner-Mindlin) eğrilikleri hesaplanıyor: Δβ_s = DKQ değeri/(1+φ_k), φ_k=2h²/(κ(1−ν)L_k²), κ=5/6; ν=0.25; E=3250√fck+14000 MPa ×100 (C25: 3.025e6 t/m²); D=Eh³/(12(1−ν²)); Mx=−D(κxx+νκyy), My=−D(κyy+νκxx); köşe değerleri, düğüme bağlı eleman sayısına eşit ağırlıkla ortalama. Mesh'siz (z=−0.4) düğümler 0. Ek kural: üçgenlerin çoğunda (ve 4 dörtgende) eleman düğüm sırasında 2. köşenin My, 3. köşenin Mx katkısı 0 alınıyor (sayaç yine artıyor) | Kuralsız 20615/21990; "tüm üçgenler" kuralıyla 21259/21990 (%96.7); hangi elemanlarda uygulandığı GPR'den bulunan listeyle 21778/21990 (%99.0). Düzenli iç düğümler 3383/3450 ±0.005. Kuralın hangi elemanlara uygulandığı belirlenemedi (bkz. not) |
+| 5 | ANALİZ SONUÇLARI (1469–1477) | dx=dy=bağlı mesh h·100, mesh'siz düğümde 500 ve tüm moment/As 0; X,Y,Z F3. Tasarım momenti: TS500T.COD 10 kombinasyon × 6 q deseni × (4 deprem durumu ±, katsayı 1.0) × (±Wx, ±Wy); alt=max(0,·), üst=min(0,·); sonra "bağlı düğümler" ortalaması. As_min=0.001·b·d, d=h−7 cm (3.30/6.30/7.30 üç projede birebir). As(M) ≈ dikdörtgen blok, fy=fyk/1.5=2800 kg/cm², d=h−7 | dx,dy,X,Y,Z: 3665/3665 (N_ULK), 21450/21450 (K_BLG_03), 4475/4475 (CP_03). Tasarım momenti (GPR statik değerlerinden, kendi+kenar komşuları): 1480/2064 ±0.03; komşu kümesi kesin değil. As: ±0.013 içinde 225/234 (N_ULK), 2398/2506 (K_BLG), 697/783 (CP) — yaklaşık |
+| 6 | TEMEL DONATI SONUÇLARI (1478) | Genel donatı (ø12/20 üst, ø14/20 alt) ve ilave donatıların çubuk sayısı/çap/aralık/boyu `N_ULK_02.MATBQF` (int16 dörtlüler: adet, ø, s, boy cm; ör. 9 ø12/33 365) yazdırma anında yazılıyor; As (cm²/m)=πø²/4/s; koordinat kutuları "As>genel" bölgesinin 50 cm uzatılmış sınırı | Kısmi: 5 ilave donatının 4'ünün adet/boyu MATBQF'de; kutu koordinatları ve genel donatı seçimi üretilemedi |
+| 7 | Ek donatı alanı grafikleri (1479–1480) | GPR'de `//GifPicture//` raster (sıkıştırılmış GIF) — X alt, Y üst, Y alt için As>genel bölgeleri. Veri: ANALİZ As − genel As | Birebir üretilemez; kendi çizimimiz yapılabilir |
+| 8 | WINKLER YAY YÜKLERİ (1480–1489) | R = yay(RAD 6.alan) × w(DE1 k0, işaret ters), tüm 733 düğüm, F2 | 10995/10995 hücre |
+| 9 | ZEMİN GERİLMESİ KONTROLU (1496–1502) | Yaylı düğümler: G=Ko·w_g; Q=max(q1..q6); E=(max|σ(9..12)| + 0.3|σ(17)|)/2; W=max(|σ13|,|σ14|) (F3); sütunlar 1.4G+1.6Q, G+Q+E, G+Q+W biçimi `{c,7:F3} < {qt,8:F3} ò` | 3612/3612 hücre, 516/516 satır |
+| 10 | TEMEL KİRİŞ STATİK (1508–1512) | RAD 9 alanlı bağ kirişi satırları (kenar satırları `1,0,..` hariç), segment başına 2 satır: "BK{no}".PadRight(5)+I.PadLeft(3), J.PadLeft(8); bu projede tüm değerler 0 (8,13,14. sütun "0.0") | 352/352 satır anahtarı, 5280/5280 hücre (hepsi sıfır) |
+| 11 | ZIMBALAMA (1513–1518) | Kolon poligonundan d/2 ötelenmiş kritik çevre (Up, Ac, Ix, Iy, Ex, Ey), Mx/My, Vd, Vdq; d=h−7; fctd=0.35√fck/1.5 (kg/cm², 2 haneye kesik: 11.66/12.77) | Üretilmedi (poligon öteleme + TS500 8.3 gerekiyor) |
+| 12 | 3D görünüş (1436) / düğüm planı (1437) | 1436: GifPicture raster. 1437: 733 düğüm numarası RAD koordinatlarının eksenometrik izdüşümü: px=134.87+0.034X+8.485Y−7.133Z, py=2789.56−9.080X+4.047Y+4.794Z (tam sayıya yuvarlanmış) | 1437: 733/733 düğüm ±1 birim; 1436 üretilemez |
+
+Notlar
+- Mx/My kalan fark: Kural (2. köşe My=0, 3. köşe Mx=0) bazı üçgenlerde uygulanmıyor: N_ULK_02'de 1, 21, 36, 56, 338–341, 343–345, 347, 350, 358, 364, 374, 377, 380, 383, 386; dörtgenlerde 103, 180, 356, 372'de uygulanıyor. Geometri, yön, bayrak, plak, kolon numarasıyla açıklanamadı; büyük olasılıkla STA4 içindeki durum bağımlı bir davranış.
+- İkinci projelerde (K_BLG_03, CP_03, VKF_01, FHM_GO_A) Winkler/Mx/zemin kontrol/nokta yükü tabloları yazdırılmamış; bu bölümler yalnız N_ULK_02'de doğrulandı.
+- C30 için E/D doğrulanamadı (Mx tablosu yok); formül TS500 Ec ile uyumlu.

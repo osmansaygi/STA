@@ -332,7 +332,9 @@ namespace ST4Yardimci
         {
             if (!Gate("MERDIVEN")) return;
             if (!MerdivenForm.ShowModalAndAcceptDraw()) return;
+            long ilkHandle = BaPaftaOlcek.Baslangic();
             MerdivenRunner.RunInteractive();
+            BaPaftaOlcek.Uygula("merdiven", AcApp.DocumentManager.MdiActiveDocument, ilkHandle, ustKose: false);
         }
 
         /// <summary>Doğrudan plandan çiz (form yok). Enter ile tekrarlanmaz — MERDIVEN kullanın.</summary>
@@ -340,7 +342,9 @@ namespace ST4Yardimci
         public void MerdivenCiz()
         {
             if (!Gate("MERDIVEN")) return;
+            long ilkHandle = BaPaftaOlcek.Baslangic();
             MerdivenRunner.RunInteractive();
+            BaPaftaOlcek.Uygula("merdiven", AcApp.DocumentManager.MdiActiveDocument, ilkHandle, ustKose: false);
         }
 
         [CommandMethod("DOSEMEDONATI")]
@@ -416,7 +420,9 @@ namespace ST4Yardimci
         public void SehpaDonatiCiz()
         {
             if (!Gate("SEHPADONATI")) return;
+            long ilkHandle = BaPaftaOlcek.Baslangic();
             SehpaDonatiRunner.RunInteractive();
+            BaPaftaOlcek.Uygula("sehpa", AcApp.DocumentManager.MdiActiveDocument, ilkHandle, ustKose: true);
         }
 
         /// <summary>Hasır donatı: tip/ebat/bindirme/paspayı formu → alana dizilim.</summary>
@@ -452,6 +458,21 @@ namespace ST4Yardimci
             RadyeIlaveRunner.RunInteractive();
         }
 
+        /// <summary>Mantar döşeme kolon üstü ilave (üst) donatısı: X/Y, kolona ortalı, sınırda gönye.</summary>
+        [CommandMethod("MANTARILAVE")]
+        public void MantarIlaveDonati()
+        {
+            if (!Gate("MANTARILAVE")) return;
+            MantarIlaveForm.ShowOrActivate();
+        }
+
+        [CommandMethod("MANTARILAVECIZ", CommandFlags.Modal)]
+        public void MantarIlaveDonatiCiz()
+        {
+            if (!Gate("MANTARILAVE")) return;
+            MantarIlaveRunner.RunInteractive();
+        }
+
         /// <summary>Temel üstü hatıl detayı.</summary>
         [CommandMethod("TEMELHATILI")]
         public void TemelHatili()
@@ -472,21 +493,27 @@ namespace ST4Yardimci
         public void ParapetCiz()
         {
             if (!Gate("PARAPET")) return;
+            long ilkHandle = BaPaftaOlcek.Baslangic();
             ParapetRunner.RunManual();
+            BaPaftaOlcek.Uygula("parapet", AcApp.DocumentManager.MdiActiveDocument, ilkHandle, ustKose: false);
         }
 
         [CommandMethod("TEMELHATILICIZ", CommandFlags.Modal)]
         public void TemelHatiliCiz()
         {
             if (!Gate("TEMELHATILI")) return;
+            long ilkHandle = BaPaftaOlcek.Baslangic();
             TemelHatiliRunner.RunManual();
+            BaPaftaOlcek.Uygula("temelhatili", AcApp.DocumentManager.MdiActiveDocument, ilkHandle, ustKose: false);
         }
 
         [CommandMethod("TEMELHATILIPLAN", CommandFlags.Modal)]
         public void TemelHatiliPlan()
         {
             if (!Gate("TEMELHATILI")) return;
+            long ilkHandle = BaPaftaOlcek.Baslangic();
             TemelHatiliRunner.RunFromPlan();
+            BaPaftaOlcek.Uygula("temelhatili", AcApp.DocumentManager.MdiActiveDocument, ilkHandle, ustKose: false);
         }
 
         /// <summary>Temel çukuru kesiti — gömülü şablon, CIZGI katmanı form değişkeni.</summary>
@@ -502,14 +529,18 @@ namespace ST4Yardimci
         public void TemelCekuruCiz()
         {
             if (!Gate("TEMELCEKURU")) return;
+            long ilkHandle = BaPaftaOlcek.Baslangic();
             TemelCekuruRunner.RunInteractive();
+            BaPaftaOlcek.Uygula("temelcekuru", AcApp.DocumentManager.MdiActiveDocument, ilkHandle, ustKose: true);
         }
 
         [CommandMethod("TEMELCEKURUPLAN", CommandFlags.Modal)]
         public void TemelCekuruPlan()
         {
             if (!Gate("TEMELCEKURU")) return;
+            long ilkHandle = BaPaftaOlcek.Baslangic();
             TemelCekuruRunner.RunFromPlan();
+            BaPaftaOlcek.Uygula("temelcekuru", AcApp.DocumentManager.MdiActiveDocument, ilkHandle, ustKose: true);
         }
 
         /// <summary>Temel detayı — temel çukurunun tek kesiti; sol ve sağ yükseklik ayrı.</summary>
@@ -524,7 +555,9 @@ namespace ST4Yardimci
         public void TemelDetayCiz()
         {
             if (!Gate("TEMELDETAY")) return;
+            long ilkHandle = BaPaftaOlcek.Baslangic();
             TemelCekuruRunner.RunDetay();
+            BaPaftaOlcek.Uygula("temeldetay", AcApp.DocumentManager.MdiActiveDocument, ilkHandle, ustKose: true);
         }
 
         /// <summary>Kuranglez donatı detayı — plan + A-A kesit, ölçek 1/25.</summary>
@@ -539,7 +572,9 @@ namespace ST4Yardimci
         public void KuranglezCiz()
         {
             if (!Gate("KURANGLEZ")) return;
+            long ilkHandle = BaPaftaOlcek.Baslangic();
             KuranglezRunner.RunInteractive();
+            BaPaftaOlcek.Uygula("kuranglez", AcApp.DocumentManager.MdiActiveDocument, ilkHandle, ustKose: false);
         }
 
         [CommandMethod("PERDEBOSLUK", CommandFlags.Modal)]
@@ -624,6 +659,54 @@ namespace ST4Yardimci
         {
             if (!GateIdle()) return;
             BetonKalipRunner.RunKomutSatiri();
+        }
+
+        /// <summary>Mimari kat planındaki şaft/boşlukları kolon eşleşmesiyle hizalayıp kalıp planına aktarır; farkları işaretler.</summary>
+        [CommandMethod("MIMARIBOSLUK", CommandFlags.Modal)]
+        public void MimariBosluk()
+        {
+            if (!GateIdle()) return;
+            MimariBoslukRunner.Run(false);
+        }
+
+        /// <summary>Betik sürümü: iki pencere köşeleri, [Tumu/Hicbiri]; yakınlaştırma ve tek tek onay yok.</summary>
+        [CommandMethod("-MIMARIBOSLUK", CommandFlags.Modal)]
+        public void MimariBoslukKomutSatiri()
+        {
+            if (!GateIdle()) return;
+            MimariBoslukRunner.Run(true);
+        }
+
+        /// <summary>Mimari projede kat kat pencere: şaft/bacalar ve merdivenler bizim katmanlarımızla birlikte çizilir.</summary>
+        [CommandMethod("MIMARIKAT", CommandFlags.Modal)]
+        public void MimariKat()
+        {
+            if (!GateIdle()) return;
+            MimariBoslukRunner.KatKat(false, true, true);
+        }
+
+        /// <summary>Betik sürümü: kat pencereleri köşe köşe, boş satır bitirir.</summary>
+        [CommandMethod("-MIMARIKAT", CommandFlags.Modal)]
+        public void MimariKatKomutSatiri()
+        {
+            if (!GateIdle()) return;
+            MimariBoslukRunner.KatKat(true, true, true);
+        }
+
+        /// <summary>Mimari kat planındaki merdiven kollarını kalıba aktarır: rıhtlar + çıkış hattı (MERDIVEN kesit girdisi).</summary>
+        [CommandMethod("MIMARIMERDIVEN", CommandFlags.Modal)]
+        public void MimariMerdiven()
+        {
+            if (!GateIdle()) return;
+            MimariMerdivenRunner.Run(false);
+        }
+
+        /// <summary>Betik sürümü: iki pencere köşeleri, [Tumu/Hicbiri].</summary>
+        [CommandMethod("-MIMARIMERDIVEN", CommandFlags.Modal)]
+        public void MimariMerdivenKomutSatiri()
+        {
+            if (!GateIdle()) return;
+            MimariMerdivenRunner.Run(true);
         }
 
         /// <summary>STA4CAD projesinden seçilen katın kiriş/döşeme uzun süreli sehim tablosu (mm).</summary>

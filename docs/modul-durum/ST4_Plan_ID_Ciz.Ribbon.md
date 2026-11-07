@@ -2,10 +2,10 @@
 
 Güncelleme: 23.10.2026, Codex / 4 numaralı görsel önerinin uygulaması.
 
-- AutoCAD 2027 / net10.0-windows: ayrı **BEYKENT** sekmesi, altı grup ve 19 mevcut komut. Temel (5), Kolon (4), Kiriş (2), Yapı (4), Detay / İskele (3), Metraj (1). 32px Monolit simgeleri ve iki satırlı etiketler.
+- AutoCAD 2027 / net10.0-windows: ayrı **BEYKENT** sekmesi, yedi grup ve 21 mevcut komut. Temel (5), Kolon (4), Kiriş (2), Yapı (4), Detay / İskele (3), Metraj (1), Deneme (2: DENEME1 / Kalıp Deneme, DENEME2 / Kalıp Deneme 2). 32px Monolit simgeleri ve iki satırlı etiketler.
 - Mevcut Plan simge sağlayıcısı kullanılır: kişisel simge > Monolit > klasik. Atlas/eşlemeler değiştirilmedi. Simge tercihi değişince yalnız bu sekme komut bağlamında yenilenir.
 - Açılışta sekme eklenir; kullanıcının aktif sekmesi korunur. `BEYKENT` sekmeyi açar/seçer; `BEYKENTKAPAT` gizler. CUI veya çalışma alanı dosyası yazılmaz. Workspace/ribbon yeniden açılışında çoğalmadan yeniden kurulur.
-- 2027'de eski STA paleti otomatik açılmaz; `STAPANEL` elle çalışır. Sekmede olmayan ST4 Plan ID, Kolon Data, ST4 Kesit, Katman temizle ve deneme komutları eski palet/komut satırından kullanılabilir. net48 başlangıcı değişmedi; Ribbon kodu yalnız AUTOCAD2027 ile derlenir.
+- 2027'de eski STA paleti otomatik açılmaz; `STAPANEL` elle çalışır. Sekmede olmayan Kolon Data, ST4 Kesit, Katman temizle komutları eski palet/komut satırından kullanılabilir. ST4 Plan ID, 26.10.2026 itibarıyla Yapı grubundadır. net48 başlangıcı değişmedi; Ribbon kodu yalnız AUTOCAD2027 ile derlenir.
 - Çizim/hesap yöntemleri değiştirilmedi. CommandEntry yalnız Initialize/Terminate; csproj yalnız 2027 sabiti ve kopyalanmayan AdWindows referansı. Üç yeni BeykentRibbon*.cs sunum/komut köprüsüdür.
 
 ## Doğrulama
@@ -22,3 +22,30 @@ Güncelleme: 23.10.2026, Codex / 4 numaralı görsel önerinin uygulaması.
 `NETLOAD/GUNCEL_2027/ST4_Plan_ID_Ciz_2027_20261023_205205.dll` — yayın betiği metadata/bağımlılık/kopya SHA256 doğrulaması PASS. Aynı pakette Claude'un son **ST4_Yardimci_2027_20261023_204332.dll** dosyası SHA256 aynı kalarak korunur. Eski paket NETLOAD/arsiv içindedir; masaüstü kısayolu aynı GUNCEL_2027 klasörünü açar.
 
 Claude'un döşeme kaydı tamamlandı ve ayırmaları kalktıktan sonra entegrasyon/dağıtım yapıldı; döşeme kaynakları değiştirilmedi. net48/ofis/setup bu işte derlenmedi veya dağıtılmadı. Commit/push yapılmadı.
+
+
+## 24.10.2026 — Deneme grubu
+BEYKENT sonuna ayrı Deneme grubu; Kalıp Deneme düğmesi mevcut DENEME1 komutunu ve Monolit simgesini kullanır. Çizim kodu değişmedi. Ribbon regresyonu (7 grup/20 komut, yönlendirme, 32px simge, yaşam döngüsü) PASS; WPF görüntü kontrolü PASS. İzole net10/2027 derleme 0 hata/4 mevcut uyarı; ilk derleyici AccessViolation sonrası DOTNET_PROCESSOR_COUNT=2 ile başarılı. Canlı AutoCAD'de denenmedi.
+Teslim: NETLOAD/GUNCEL_2027/ST4_Plan_ID_Ciz_2027_20261024_145505.dll; Yardımcı213059 değişmeden korundu, publisher metadata/bağımlılık/SHA256 PASS. Otomatik yükleyici sonraki açılışta güncel DLL'yi seçer.
+
+Genel doğrulama: pwsh -NoProfile -File tools/Verify-Project.ps1 PASS (BuildTarget=None); gerçek AutoCAD testi yapılmadı.
+
+## 24.10.2026 — Kalıp Deneme 2 (Claude)
+
+Deneme grubuna DENEME2 / "Kalıp Deneme 2" düğmesi; ayrı gömülü Monolit simgesi `Icons/kalip_deneme2_monolit.png` (atlas değişmedi). Ribbon regresyonu 7 grup/21 komut PASS, görüntü kontrolü PASS. Canlı AutoCAD'de denenmedi.
+
+## 26.10.2026 — ST4 Plan ID düğmesi
+
+BEYKENT / Yapı grubuna mevcut `ST4PLANID` komutu, mevcut onaylı Monolit simgesiyle eklendi; yedi grup/22 komut. Atlas/eşlemeler ve Yardımcı Home menüsü değişmedi. 32px simge, komut yönlendirmesi, Yapı grubunda tek düğme ve yaşam döngüsü regresyonu PASS; WPF görüntü kontrolü PASS. Genel Verify-Project ve Test-StaStartup -Beykent2027 PASS. Önceki CizimIzleyici.Kur çağrısının test fixture karşılığı eksikti; yalnız fixture tamamlandı.
+
+İzole net10/AutoCAD2027 derleme: 0 hata/4 mevcut uyarı. Yayın: `NETLOAD/GUNCEL_2027/ST4_Plan_ID_Ciz_2027_20261026_165023.dll`; son Yardımcı `ST4_Yardimci_2027_20261026_164244.dll` korundu. Publisher metadata/bağımlılık/SHA256 PASS; klasörde yalnız bu iki ST4 DLL var. Çalışan AutoCAD'e yüklenmedi; canlı AutoCAD testi yapılmadı. Sonraki AutoCAD açılışında otomatik yükleyici yeni Plan DLL'yi seçer.
+
+## 27.10.2026 — Serbest Kesit (Claude)
+
+Yapı grubuna SERBESTKESIT / "Serbest Kesit" düğmesi; ayrı gömülü Monolit simgesi `Icons/serbest_kesit_monolit.png` (atlas değişmedi; üreteç `tools/SerbestKesit20261027/IkonUret`). STA paletinde AltDeneme listesine satır. Ribbon regresyonu 23 komut, 32px simge ve yönlendirme PASS. Teslim `ST4_Plan_ID_Ciz_2027_20261027_133752.dll` + Yardımcı 205437. Canlı AutoCAD denenmedi.
+
+Temel grubuna RADYELEGANTKARSILASTIRMA / "Radye Legant Karşılaştırma" düğmesi (28.10.2026, Claude); gömülü Monolit simgesi `Icons/radye_legant_karsilastirma_monolit.png` (üreteç `tools/RadyeLegant20261028/IkonUret`). STA paleti S50 listesine satır. Ribbon regresyonu 24 komut PASS (test projesine eksik `BEYKENT_RIBBON` tanımı eklendi). Teslim Plan 20261028_194517 + Yardımcı 205437.
+
+## 02.11.2026 — 1/50 + 1/100 birleşik düğmeler (Claude)
+
+Temel/Kolon/Yapı gruplarında 1/50 ve 1/100 düğme çiftleri tek düğmeye indi: TEMELST4 "Temel Planı", KOLONST4 "Kolon Aplikasyon", KALIPST4 "Kalıp Planı" — ölçek açılışta formda sorulur. Simge `StaMonolitIcons.TryLoad` takma adıyla 1/50 atlas simgesi. STA paletinde "Ölçek 1:50 / 1:100" grupları tek "Planlar (1:50 / 1:100)" grubu. PlanRibbonCheck 23 düğme PASS. Teslim Plan 20261102_150617 + Yardımcı 180538.

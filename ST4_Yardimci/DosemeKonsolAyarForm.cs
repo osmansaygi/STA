@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
+using Beykent.Monolit.Girdi;
 using SdFont = System.Drawing.Font;
 
 namespace ST4Yardimci
@@ -8,9 +9,9 @@ namespace ST4Yardimci
     /// <summary>Konsol boyu → çap/aralık ayar formu (4 satır, kalıcı).</summary>
     internal sealed class DosemeKonsolAyarForm : Beykent.Monolit.MonolitForm
     {
-        private readonly NumericUpDown[] _numBoy = new NumericUpDown[DosemeKonsolSettings.BandCount];
-        private readonly ComboBox[] _cmbCap = new ComboBox[DosemeKonsolSettings.BandCount];
-        private readonly NumericUpDown[] _numAralik = new NumericUpDown[DosemeKonsolSettings.BandCount];
+        private readonly OlcuKutusu[] _numBoy = new OlcuKutusu[DosemeKonsolSettings.BandCount];
+        private readonly DonatiKutusu[] _donati = new DonatiKutusu[DosemeKonsolSettings.BandCount];
+        private readonly GirdiDenetci Denetci = new GirdiDenetci();
         private static readonly int[] CapChoices = { 8, 10, 12, 14, 16, 18, 20 };
 
         public DosemeKonsolAyarForm()
@@ -25,62 +26,60 @@ namespace ST4Yardimci
             BackColor = Beykent.Monolit.StandardFormTheme.Bg;
             ForeColor = Color.White;
             Font = new SdFont("Segoe UI", 9f);
+            KeyPreview = true;
 
             DosemeKonsolSettings.EnsureLoaded();
             var bands = DosemeKonsolSettings.GetBandsCopy();
 
-            int y = 12;
-            Controls.Add(MakeLabel("Konsol boyu (cm, azami) → çap / aralık. Kayıt otomatik hatırlanır.", 12, y));
-            y += 28;
-
-            Controls.Add(MakeLabel("Azami boy", 12, y));
-            Controls.Add(MakeLabel("Çap ø", 130, y));
-            Controls.Add(MakeLabel("Aralık cm", 250, y));
-            y += 22;
-
             for (int i = 0; i < DosemeKonsolSettings.BandCount; i++)
             {
-                _numBoy[i] = MakeNum(12, y, 100, 1, 20000, 1, (decimal)bands[i].MaxBoyCm);
-                _cmbCap[i] = MakeCapCombo(130, y, bands[i].CapMm);
-                _numAralik[i] = MakeNum(250, y, 80, 5, 50, 1, bands[i].AralikCm);
-                Controls.Add(_numBoy[i]);
-                Controls.Add(_cmbCap[i]);
-                Controls.Add(_numAralik[i]);
-                y += 32;
+                int no = i + 1;
+                // Sınırlar eski NumericUpDown ile aynı: boy 1–20000 cm, çap ø8–ø20, aralık 5–50 cm (tam sayı).
+                _numBoy[i] = Denetci.Ekle(new OlcuKutusu(no + ". kademe azami boy", "cm", 1, 20000,
+                    Math.Max(1, Math.Min(20000, Math.Round(bands[i].MaxBoyCm)))));
+                int cap = Array.IndexOf(CapChoices, bands[i].CapMm) >= 0 ? bands[i].CapMm : CapChoices[0];
+                _donati[i] = Denetci.Ekle(new DonatiKutusu(no + ". kademe donatı", cap,
+                    Math.Max(5, Math.Min(50, bands[i].AralikCm)), CapChoices[0], CapChoices[CapChoices.Length - 1], 5, 50));
+                var d = _donati[i];
+                Denetci.HataKurali(() => Math.Abs(d.AralikCm - Math.Round(d.AralikCm)) > 1e-9
+                    ? d.Ad + ": aralık tam sayı cm olmalı" : null, d);
             }
 
-            var btnOk = MakeButton("Kaydet", 200, y + 8, 100);
+            var btnOk = MakeButton("Kaydet");
             btnOk.Click += (s, e) => { SaveAndClose(); };
-            var btnCancel = MakeButton("İptal", 310, y + 8, 90);
+            var btnCancel = MakeButton("İptal");
             btnCancel.Click += (s, e) => { DialogResult = DialogResult.Cancel; Close(); };
-            Controls.Add(btnOk);
-            Controls.Add(btnCancel);
-            AcceptButton = btnOk;
             CancelButton = btnCancel;
 
-            // Kompakt, içerik odaklı form düzeni.
             var ui = BeginCompact(350);
-            var bandRows = new Control[DosemeKonsolSettings.BandCount][];
-            for (int i = 0; i < bandRows.Length; i++) bandRows[i] = new Control[] { _numBoy[i], _cmbCap[i], _numAralik[i] };
-            ui.Section("Konsol donatı kademeleri").Grid(new[] { "Azami boy · cm", "Ø · mm", "Aralık · cm" }, bandRows);
+            var sec = ui.Section("Konsol donatı kademeleri  (azami boy → ø çap / aralık)");
+            for (int i = 0; i < DosemeKonsolSettings.BandCount; i++)
+                sec.Field((i + 1) + ". kademe", _numBoy[i], _donati[i]);
+            sec.Hint("Kayıt otomatik hatırlanır.");
+            ui.Section(null).Control(Denetci.Serit, 44);
             ui.Footer(btnOk, btnCancel);
             ui.Finish();
+            Denetci.Guncelle();
+        }
+
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            if (keyData == Keys.Escape) { DialogResult = DialogResult.Cancel; Close(); return true; }
+            if ((keyData == Keys.Enter || keyData == Keys.Return) && !(ActiveControl is Button)) { SaveAndClose(); return true; }
+            return base.ProcessCmdKey(ref msg, keyData);
         }
 
         private void SaveAndClose()
         {
+            if (!Denetci.Onayla()) return;
             var bands = new DosemeKonsolSettings.Band[DosemeKonsolSettings.BandCount];
             for (int i = 0; i < DosemeKonsolSettings.BandCount; i++)
             {
-                int cap = CapChoices[0];
-                if (_cmbCap[i].SelectedItem is int ci) cap = ci;
-                else if (_cmbCap[i].SelectedItem != null)
-                    int.TryParse(_cmbCap[i].SelectedItem.ToString(), out cap);
                 bands[i] = new DosemeKonsolSettings.Band
                 {
-                    MaxBoyCm = (double)_numBoy[i].Value,
-                    CapMm = cap,
-                    AralikCm = (int)_numAralik[i].Value
+                    MaxBoyCm = _numBoy[i].Deger,
+                    CapMm = _donati[i].CapMm,
+                    AralikCm = (int)Math.Round(_donati[i].AralikCm)
                 };
             }
             DosemeKonsolSettings.SetBands(bands);
@@ -88,60 +87,11 @@ namespace ST4Yardimci
             Close();
         }
 
-        private static Label MakeLabel(string text, int x, int y) => new Label
-        {
-            Text = text,
-            Location = new Point(x, y),
-            AutoSize = true,
-            ForeColor = Color.White,
-            BackColor = Color.Transparent
-        };
-
-        private static NumericUpDown MakeNum(int x, int y, int w, decimal min, decimal max, decimal inc, decimal val)
-        {
-            var n = new NumericUpDown
-            {
-                Location = new Point(x, y),
-                Size = new Size(w, 24),
-                Minimum = min,
-                Maximum = max,
-                Increment = inc,
-                DecimalPlaces = inc < 1 ? 2 : 0,
-                BackColor = Beykent.Monolit.StandardFormTheme.BgAlt,
-                ForeColor = Color.White
-            };
-            if (val < min) val = min;
-            if (val > max) val = max;
-            n.Value = val;
-            YardimciUi.StripUpDownButtons(n);
-            return n;
-        }
-
-        private static ComboBox MakeCapCombo(int x, int y, int selected)
-        {
-            var c = new ComboBox
-            {
-                Location = new Point(x, y),
-                Size = new Size(90, 24),
-                DropDownStyle = ComboBoxStyle.DropDownList,
-                BackColor = Beykent.Monolit.StandardFormTheme.BgAlt,
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat
-            };
-            foreach (int v in CapChoices)
-                c.Items.Add(v);
-            int ix = Array.IndexOf(CapChoices, selected);
-            c.SelectedIndex = ix >= 0 ? ix : 0;
-            return c;
-        }
-
-        private Button MakeButton(string text, int x, int y, int w)
+        private static Button MakeButton(string text)
         {
             return new Button
             {
                 Text = text,
-                Location = new Point(x, y),
-                Size = new Size(w, 28),
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Beykent.Monolit.StandardFormTheme.BgAlt,
                 ForeColor = Color.White,

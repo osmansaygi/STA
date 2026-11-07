@@ -19,9 +19,11 @@ namespace ST4PlanIdCiz
     /// </summary>
     public sealed partial class PlanIdDrawingManager
     {
-        private const double ZimPaspayCm = 5.0;
+        private const double ZimPaspayCm = 5.0;           // radye
+        private const double ZimPaspayMantarCm = 3.0;     // mantar döşeme
         private const int ZimMinEtriyeCapMm = 10;
         private const double ZimMontajYariMaxCm = 11.5;   // etriye eni 25
+        private const double ZimMontajYuzMantarCm = 13.0;  // mantar: montaj ile kolon yüzü arası en fazla (büyük kolonda etriye genişler)
         private const double ZimMontajYariMinCm = 4.0;
         private const double ZimEtriyeTasmaCm = 1.0;
         private const double ZimKolBoyuCm = 100.0;
@@ -45,13 +47,16 @@ namespace ST4PlanIdCiz
             public double KolArti;
             public int CapMm;
             public int AralikCm;
+            public double Paspay = ZimPaspayCm;
+            /// <summary>Montaj ucu (ortadan, U): kollu tarafta Ic + kol; kolsuz tarafta kolon yüzü, sınır paspayını aşarsa geri çekilir.</summary>
+            public double UcEksi, UcArti;
 
             public double EtriyeEni => Math.Round(2.0 * (R + ZimEtriyeTasmaCm));
-            public double Boy => 2.0 * Ic + KolEksi + KolArti;
+            public double Boy => UcEksi + UcArti;
             public Point2d Nokta(double t, double s) => Orta + U * t + V * s;
             /// <summary>STA4 sayımı: kol boyunca s aralıkla kolon yüzü ve uç dahil floor(kol/s)+1 (100/20 → 6, 100/15 → 7).</summary>
-            public static int KolEtriye(double kol, int s) => kol < 2.0 * ZimPaspayCm ? 0 : (int)Math.Floor(kol / s + 1e-6) + 1;
-            public int Etriye => KolEtriye(KolEksi, AralikCm) + KolEtriye(KolArti, AralikCm);
+            public static int KolEtriye(double kol, int s, double paspay) => kol < 2.0 * paspay ? 0 : (int)Math.Floor(kol / s + 1e-6) + 1;
+            public int Etriye => KolEtriye(KolEksi, AralikCm, Paspay) + KolEtriye(KolArti, AralikCm, Paspay);
             public bool Yatay => Math.Abs(U.X) >= Math.Abs(U.Y);
             /// <summary>Dünya +X (yatayda +Y) yönündeki kol işareti.</summary>
             public int Yon(bool artiDunya) => (Yatay ? U.X : U.Y) >= 0 ? (artiDunya ? 1 : -1) : (artiDunya ? -1 : 1);
@@ -73,6 +78,9 @@ namespace ST4PlanIdCiz
 
             FloorInfo floor = _model.Floors[0];
             int cizilen = 0;
+            _zimEngel = new List<Extents3d>();
+            _zimEtiketKutu = new List<Extents3d>();
+            _zimPlanYazi = null;
             using (var tr = db.TransactionManager.StartTransaction())
             {
                 var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
@@ -96,43 +104,185 @@ namespace ST4PlanIdCiz
                         continue;
                     }
                     double h = ZimRadyeKalinlik(copy, merkez, gf, z.DCm);
-                    double etriyeH = Math.Max(10.0, h - 2.0 * ZimPaspayCm);
-                    List<ZimMerdiven> merdivenler = ZimMerdivenler(merkez, hw, hh, aci, z, icTemel, gf);
-                    if (merdivenler.Count == 0)
-                    {
-                        ed?.WriteMessage("\nTEMELDONATI: {0} radye icinde merdiven kolu sigmadi.", z.Ad);
-                        continue;
-                    }
-                    GetRotatedRectBounds(hw, hh, aci, out double kMinX, out double kMaxX, out double kMinY, out _);
-                    double hook = Math.Max(10.0, EtriyeAcilimKancaCm(z.CapMm));
-
-                    // Etriye tipleri (en farklıysa ayrı açılım/etiket).
-                    var tipler = merdivenler.GroupBy(m => m.EtriyeEni)
-                        .Select(g => (En: g.Key, Adet: g.Sum(m => m.Etriye),
-                            L: EtriyeAcilimKesimBoyCm(g.Key, etriyeH, hook)))
-                        .OrderByDescending(t => t.En).ToList();
-
-                    foreach (ZimMerdiven m in merdivenler)
-                        CizMerdiven(tr, btr, m);
-                    CizZimEtiketler(tr, btr, db, merdivenler, tipler, z, merkez);
-                    foreach (ZimMerdiven m in merdivenler)
-                        CizZimOlcu(tr, btr, db, m, dimStyleId);
-                    double acilimX = merkez.X + kMaxX + 35.0;
-                    double acilimUst = Math.Min(merkez.Y + kMinY, ZimYatayAltY(merdivenler, merkez)) - 75.0;
-                    foreach (var t in tipler)
-                        acilimX = CizZimEtriyeAcilim(tr, btr, db, acilimX, acilimUst, t.En, etriyeH, hook, z.CapMm, t.L) + 30.0;
-
-                    int adet = tipler.Sum(t => t.Adet);
-                    double saglanan = adet * 2.0 * Math.PI * z.CapMm * z.CapMm / 400.0;
-                    ed?.WriteMessage("\n  {0}: {1} etriye ø{2}/{3} ({4}), As={5:0.0} cm2 >= Asb={6:0.00} (STA {7}ø{9}), h={8:0} cm.",
-                        z.Ad, adet, z.CapMm, z.AralikCm,
-                        string.Join(", ", tipler.Select(t => string.Format(CultureInfo.InvariantCulture, "{0}x{1:0} L={2:0}", t.Adet, t.En, t.L))),
-                        saglanan, z.AsbCm2, z.Adet, h, staCap);
-                    cizilen++;
+                    if (CizZimKolon(tr, btr, db, ed, z, staCap, merkez, hw, hh, aci, h, icTemel, gf, dimStyleId, "TEMELDONATI", "radye"))
+                        cizilen++;
                 }
                 tr.Commit();
             }
             return cizilen;
+        }
+
+        /// <summary>Tek kolon: merdivenler, etiketler, ölçüler, etriye açılımı ve komut satırı özeti. Çizildiyse true.</summary>
+        private bool CizZimKolon(Transaction tr, BlockTableRecord btr, Database db, Editor ed, GprZimbalamaKolon z, int staCap,
+            Point2d merkez, double hw, double hh, double aci, double h, Geometry icSinir, GeometryFactory gf, ObjectId dimStyleId,
+            string cmdTag, string elemanAdi, double paspay = ZimPaspayCm, double kolMin = ZimKolBoyuCm, double montajYuzMax = 0.0)
+        {
+            double etriyeH = Math.Max(10.0, h - 2.0 * paspay);
+            List<ZimMerdiven> merdivenler = ZimMerdivenler(merkez, hw, hh, aci, z, icSinir, gf, paspay, kolMin, montajYuzMax);
+            if (merdivenler.Count == 0)
+            {
+                ed?.WriteMessage("\n{0}: {1} {2} icinde merdiven kolu sigmadi.", cmdTag, z.Ad, elemanAdi);
+                return false;
+            }
+            GetRotatedRectBounds(hw, hh, aci, out double kMinX, out double kMaxX, out double kMinY, out double kMaxY);
+            double hook = Math.Max(10.0, EtriyeAcilimKancaCm(z.CapMm));
+
+            // Etriye tipleri (en farklıysa ayrı açılım/etiket).
+            var tipler = merdivenler.GroupBy(m => m.EtriyeEni)
+                .Select(g => (En: g.Key, Adet: g.Sum(m => m.Etriye),
+                    L: EtriyeAcilimKesimBoyCm(g.Key, etriyeH, hook)))
+                .OrderByDescending(t => t.En).ToList();
+
+            // Etiketler en son: merdiven, kolon, ölçü ve açılım alanları dolu sayılır; yazı bunlara binmez.
+            if (_zimEngel == null) _zimEngel = new List<Extents3d>();
+            _zimEngel.Add(ZimKutu(merkez.X + kMinX, merkez.Y + kMinY, merkez.X + kMaxX, merkez.Y + kMaxY));
+            foreach (ZimMerdiven m in merdivenler)
+            {
+                CizMerdiven(tr, btr, m);
+                _zimEngel.Add(ZimMerdivenKutu(m));
+            }
+            foreach (ZimMerdiven m in merdivenler)
+                CizZimOlcu(tr, btr, db, m, dimStyleId);
+            double acilimX = merkez.X + kMaxX + 35.0;
+            double acilimX0 = acilimX;
+            double acilimUst = Math.Min(merkez.Y + kMinY, ZimYatayAltY(merdivenler, merkez)) - 75.0;
+            foreach (var t in tipler)
+                acilimX = CizZimEtriyeAcilim(tr, btr, db, acilimX, acilimUst, t.En, etriyeH, hook, z.CapMm, t.L) + 30.0;
+            _zimEngel.Add(ZimKutu(acilimX0 - 25.0, acilimUst - etriyeH - 30.0, acilimX - 30.0, acilimUst + 15.0));
+            CizZimEtiketler(tr, btr, db, merdivenler, tipler, z, merkez);
+
+            int adet = tipler.Sum(t => t.Adet);
+            double saglanan = adet * 2.0 * Math.PI * z.CapMm * z.CapMm / 400.0;
+            ed?.WriteMessage("\n  {0}: {1} etriye ø{2}/{3} ({4}), As={5:0.0} cm2 >= Asb={6:0.00} (STA {7}ø{9}), h={8:0} cm.",
+                z.Ad, adet, z.CapMm, z.AralikCm,
+                string.Join(", ", tipler.Select(t => string.Format(CultureInfo.InvariantCulture, "{0}x{1:0} L={2:0}", t.Adet, t.En, t.L))),
+                saglanan, z.AsbCm2, z.Adet, h, staCap);
+            return true;
+        }
+
+        /// <summary>
+        /// MANTARDOSEME zımbalama kopyası: bu kat grubunun GPR "KOLON ZIMBALAMA KONTROLU" donatısı gereken kolonları.
+        /// Benzer katlarda aynı kolon birden çok kez geçerse en büyük Asb (eşitse en çok etriye) alınır.
+        /// Paspayı 3 cm: kollar ve montaj uçları kat eleman birleşiminin 3 cm içinde kalır; etriye yüksekliği GPR D − 2×3.
+        /// Kol boyu GPR kroki "Lk" (yoksa 100 cm); Asb sağlanmazsa 5 cm adımla uzar.
+        /// Dönüş: çizilen kolon sayısı.
+        /// </summary>
+        private int DrawMantarZimbalamaOnCopy(Transaction tr, BlockTableRecord btr, Database db, Editor ed,
+            IList<FloorInfo> katlar, IList<GprZimbalamaKolon> tum, double offsetX, double offsetY, Geometry elemUnion)
+        {
+            List<GprZimbalamaKolon> kolonlar = MantarZimbalamaKatKolonlari(katlar, tum);
+            if (kolonlar.Count == 0) return 0;
+            FloorInfo floor = katlar[0];
+            var gf = _ntsDrawFactory ?? NtsGeometryServices.Instance.CreateGeometryFactory();
+            Geometry icSinir = null;
+            try
+            {
+                if (elemUnion != null && !elemUnion.IsEmpty)
+                    icSinir = NetTopologySuite.Geometries.Utilities.AffineTransformation
+                        .TranslationInstance(offsetX, offsetY).Transform(elemUnion).Buffer(-ZimPaspayMantarCm);
+            }
+            catch { icSinir = null; }
+            _zimEngel = new List<Extents3d>();
+            _zimEtiketKutu = new List<Extents3d>();
+            _zimPlanYazi = null;
+            try
+            {
+                if (elemUnion != null && !elemUnion.IsEmpty)
+                {
+                    Envelope env = elemUnion.EnvelopeInternal;
+                    _zimPlanYazi = ZimPlanYazilari(tr, btr, ZimKutu(env.MinX + offsetX - 100.0, env.MinY + offsetY - 100.0,
+                        env.MaxX + offsetX + 100.0, env.MaxY + offsetY + 100.0));
+                    _zimEngel.AddRange(_zimPlanYazi);
+                }
+            }
+            catch { _zimPlanYazi = null; }
+
+            EnsurePlanLayer(tr, db, LayerDonatiGovde, 4, LineWeight.LineWeight040, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerEtriye, 150, LineWeight.LineWeight035, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerKesitGorunus, 253, LineWeight.LineWeight020, useDashed: true);
+            EnsurePlanLayer(tr, db, LayerDonatiYazisiPerde, 3, LineWeight.LineWeight020, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerEtiketCizgisi, 64, LineWeight.LineWeight015, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerOlcu, 14, LineWeight.LineWeight020, useDashed: false);
+            ObjectId dimStyleId = ZimOlcuStil(tr, db);
+
+            int cizilen = 0;
+            foreach (GprZimbalamaKolon z in kolonlar)
+            {
+                int staCap = z.CapMm;
+                if (z.CapMm < ZimMinEtriyeCapMm) z.CapMm = ZimMinEtriyeCapMm;
+                if (!TryMantarZimKolon(floor, z.KolonNo, offsetX, offsetY, out Point2d merkez, out double hw, out double hh, out double aci))
+                {
+                    ed?.WriteMessage("\nMANTARDOSEME: {0} zimbalama kolonu {1} katinda bulunamadi, atlandi.", z.Ad, floor.Name);
+                    continue;
+                }
+                double h = z.KalinlikCm > 1.0 ? z.KalinlikCm : (z.DCm > 0 ? z.DCm + 3.0 : 25.0);
+                double kolMin = z.LkCm >= 2.0 * ZimPaspayMantarCm + 10.0 ? z.LkCm : ZimKolBoyuCm;
+                if (CizZimKolon(tr, btr, db, ed, z, staCap, merkez, hw, hh, aci, h, icSinir, gf, dimStyleId, "MANTARDOSEME", "doseme",
+                        ZimPaspayMantarCm, kolMin, ZimMontajYuzMantarCm))
+                    cizilen++;
+            }
+            return cizilen;
+        }
+
+        /// <summary>Zımbalama kopyası başlığı: kat başlığının üstünde (TEMELDONATI kopya başlığı gibi).</summary>
+        private void DrawMantarZimbalamaCopyTitle(Transaction tr, BlockTableRecord btr, double offsetX, double offsetY,
+            (double Xmin, double Xmax, double Ymin, double Ymax) ext, bool benzerKatVar)
+        {
+            var pos = new Point3d(offsetX + (ext.Xmin + ext.Xmax) / 2.0, offsetY + ext.Ymax + 85.0 + (benzerKatVar ? 10.0 : 0.0), 0);
+            AppendEntity(tr, btr, MakeCenteredText(tr, btr.Database, LayerBaslik, 20 * TemelFoundationAnnotMul, "ZIMBALAMA DONATISI", pos));
+        }
+
+        /// <summary>Kat grubundaki katların (kısa adına göre) zımbalama kolonları; aynı kolonda en elverişsizi.</summary>
+        internal static List<GprZimbalamaKolon> MantarZimbalamaKatKolonlari(IList<FloorInfo> katlar, IList<GprZimbalamaKolon> tum)
+        {
+            var sonuc = new List<GprZimbalamaKolon>();
+            if (katlar == null || tum == null || tum.Count == 0) return sonuc;
+            string Norm(string s) => (s ?? string.Empty).Trim().TrimEnd('-').Trim();
+            var adlar = new HashSet<string>(katlar.Where(f => f != null).Select(f => Norm(f.ShortName)).Where(s => s.Length > 0),
+                StringComparer.OrdinalIgnoreCase);
+            foreach (var g in tum.Where(z => adlar.Contains(Norm(z.KatKisa))).GroupBy(z => z.KolonNo))
+            {
+                GprZimbalamaKolon s = g.OrderByDescending(z => z.AsbCm2).ThenByDescending(z => z.Adet).First();
+                // Çizim sırasında çap en az ø10'a çekilir; GPR kaydı paylaşılmasın.
+                sonuc.Add(new GprZimbalamaKolon
+                {
+                    Ad = s.Ad, Numara = s.Numara, DCm = s.DCm, Adet = s.Adet, CapMm = s.CapMm, AralikCm = s.AralikCm,
+                    AsbCm2 = s.AsbCm2, UpSaglanan = s.UpSaglanan, UpGerekli = s.UpGerekli, KatKisa = s.KatKisa,
+                    KolonNo = s.KolonNo, KalinlikCm = s.KalinlikCm, LkCm = s.LkCm
+                });
+            }
+            return sonuc.OrderBy(z => z.KolonNo).ToList();
+        }
+
+        /// <summary>Kattaki kolon (kalıp planı DrawColumns ile aynı konum); kolon o katta yoksa false.</summary>
+        private bool TryMantarZimKolon(FloorInfo floor, int colNo, double offsetX, double offsetY,
+            out Point2d merkez, out double hw, out double hh, out double aci)
+        {
+            merkez = Point2d.Origin;
+            hw = hh = aci = 0;
+            foreach (ColumnAxisInfo col in _model.Columns)
+            {
+                if (col.ColumnNo != colNo) continue;
+                if (!_axisService.TryIntersect(col.AxisXId, col.AxisYId, out Point2d axisNode)) continue;
+                int sectionId = ResolveColumnSectionId(floor.FloorNo, col.ColumnNo);
+                if (sectionId <= 0 || !_model.ColumnDimsBySectionId.ContainsKey(sectionId)) continue;
+                var dim = _model.ColumnDimsBySectionId[sectionId];
+                hw = dim.W / 2.0;
+                hh = dim.H / 2.0;
+                Vector2d offsetLocal;
+                if (col.ColumnType == 2)
+                {
+                    offsetLocal = ComputeColumnOffsetCircle(col.OffsetXRaw, col.OffsetYRaw);
+                    hw = hh = Math.Max(hw, hh);
+                }
+                else
+                    offsetLocal = ComputeColumnOffset(col.OffsetXRaw, col.OffsetYRaw, hw, hh);
+                Vector2d offsetGlobal = Rotate(offsetLocal, col.AngleDeg);
+                merkez = new Point2d(axisNode.X + offsetGlobal.X + offsetX, axisNode.Y + offsetGlobal.Y + offsetY);
+                aci = col.AngleDeg;
+                return true;
+            }
+            return false;
         }
 
         private bool TryZimKolon(FloorInfo floor, GprZimbalamaKolon z, TemelPlanCopyLayout copy,
@@ -182,7 +332,8 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>Kare/dikdörtgen kolonda çapraz iki merdiven; uzun kolonda (perde) uzun doğrultuda bir, uçlarda iki enine.</summary>
-        private static List<ZimMerdiven> ZimMerdivenler(Point2d merkez, double hw, double hh, double aci, GprZimbalamaKolon z, Geometry icTemel, GeometryFactory gf)
+        private static List<ZimMerdiven> ZimMerdivenler(Point2d merkez, double hw, double hh, double aci, GprZimbalamaKolon z, Geometry icTemel, GeometryFactory gf,
+            double paspay = ZimPaspayCm, double kolMin = ZimKolBoyuCm, double montajYuzMax = 0.0)
         {
             Vector2d ux = Rotate(new Vector2d(1, 0), aci);
             Vector2d uy = Rotate(new Vector2d(0, 1), aci);
@@ -191,16 +342,19 @@ namespace ST4PlanIdCiz
             void Ekle(Vector2d u, Vector2d v, double ic, double dik, double kay, int kenar)
             {
                 double vMin = -dik - kay, vMax = dik - kay;
-                double r = Math.Min(ZimMontajYariMaxCm, Math.Min(vMax, -vMin) - ZimPaspayCm);
+                // montajYuzMax > 0 (mantar): büyük kolonda montaj kolon yüzüne en fazla bu kadar uzak; etriye eni buna göre büyür.
+                double yari = Math.Min(vMax, -vMin);
+                double rMax = montajYuzMax > 0 ? Math.Max(ZimMontajYariMaxCm, yari - montajYuzMax) : ZimMontajYariMaxCm;
+                double r = Math.Min(rMax, yari - paspay);
                 if (r < ZimMontajYariMinCm) r = ZimMontajYariMinCm;
                 list.Add(new ZimMerdiven
                 {
                     U = u, V = v, Orta = merkez + v * kay, Ic = ic, VMin = vMin, VMax = vMax, R = r, Kenar = kenar,
-                    CapMm = z.CapMm, AralikCm = z.AralikCm
+                    CapMm = z.CapMm, AralikCm = z.AralikCm, Paspay = paspay
                 });
             }
             // Uç merdiveni montajı kolon ucundan 5 cm içeride: kayma = yarı boy − 5 − r.
-            double UcKay(double yari) => yari - ZimPaspayCm - ZimMontajYariMaxCm;
+            double UcKay(double yari) => yari - paspay - ZimMontajYariMaxCm;
 
             if (hh >= ZimUzunKolonOrani * hw && UcKay(hh) > ZimMontajYariMaxCm)
             {
@@ -223,7 +377,7 @@ namespace ST4PlanIdCiz
             // Kol boyu: en az 100 cm; toplam etriye alanı Asb'yi karşılayana dek 5 cm adımla uzar, radye paspayında kesilir.
             double tekAlan = 2.0 * Math.PI * z.CapMm * z.CapMm / 400.0;
             int gerekli = z.AsbCm2 > 0 ? (int)Math.Ceiling(z.AsbCm2 / tekAlan - 1e-6) : 0;
-            for (double hedef = ZimKolBoyuCm; ; hedef += 5.0)
+            for (double hedef = kolMin; ; hedef += 5.0)
             {
                 int toplam = 0;
                 foreach (ZimMerdiven m in list)
@@ -235,7 +389,35 @@ namespace ST4PlanIdCiz
                 if (toplam >= gerekli || hedef >= ZimKolBoyuMaxCm) break;
             }
             list.RemoveAll(m => m.KolEksi <= 0 && m.KolArti <= 0);
+            foreach (ZimMerdiven m in list)
+            {
+                m.UcEksi = ZimMontajUcu(m, -1, icTemel, gf);
+                m.UcArti = ZimMontajUcu(m, +1, icTemel, gf);
+            }
             return list;
+        }
+
+        /// <summary>
+        /// Montaj ucu (ortadan |t|): kollu tarafta Ic + kol. Kolsuz tarafta kolon yüzü; kolon sınıra (kenar/döşeme ucu)
+        /// paspayından yakınsa montaj iki çizgisi sınırın paspayı içinde kalana dek 1 cm adımla geri çekilir.
+        /// </summary>
+        private static double ZimMontajUcu(ZimMerdiven m, int yon, Geometry icTemel, GeometryFactory gf)
+        {
+            double kol = m.Kol(yon);
+            if (kol > 0) return m.Ic + kol;
+            if (icTemel == null || icTemel.IsEmpty) return m.Ic;
+            for (double t = Math.Floor(m.Ic); t > 0; t -= 1.0)
+            {
+                Point2d p1 = m.Nokta(yon * t, -m.R), p2 = m.Nokta(yon * t, m.R);
+                try
+                {
+                    if (icTemel.Covers(gf.CreatePoint(new Coordinate(p1.X, p1.Y))) &&
+                        icTemel.Covers(gf.CreatePoint(new Coordinate(p2.X, p2.Y))))
+                        return t == Math.Floor(m.Ic) ? m.Ic : t;
+                }
+                catch { return m.Ic; }
+            }
+            return 0;
         }
 
         /// <summary>Kol ucu (etriye köşeleri) radye paspayı içinde kalacak en uzun 5 cm katı kol; sığmazsa 0.</summary>
@@ -243,7 +425,7 @@ namespace ST4PlanIdCiz
         {
             if (icTemel == null || icTemel.IsEmpty) return hedef;
             double b2 = m.EtriyeEni / 2.0;
-            for (double kol = hedef; kol >= 2.0 * ZimPaspayCm + 10.0; kol -= 5.0)
+            for (double kol = hedef; kol >= 2.0 * m.Paspay + 10.0; kol -= 5.0)
             {
                 double t = yon * (m.Ic + kol);
                 Point2d p1 = m.Nokta(t, -b2), p2 = m.Nokta(t, b2);
@@ -268,17 +450,17 @@ namespace ST4PlanIdCiz
         {
             var list = new List<double>();
             double kol = m.Kol(yon);
-            int n = ZimMerdiven.KolEtriye(kol, m.AralikCm);
-            double adim = n > 1 ? (kol - 2.0 * ZimPaspayCm) / (n - 1) : 0.0;
+            int n = ZimMerdiven.KolEtriye(kol, m.AralikCm, m.Paspay);
+            double adim = n > 1 ? (kol - 2.0 * m.Paspay) / (n - 1) : 0.0;
             for (int k = 0; k < n; k++)
-                list.Add(yon * (m.Ic + ZimPaspayCm + k * adim));
+                list.Add(yon * (m.Ic + m.Paspay + k * adim));
             return list;
         }
 
         /// <summary>Montaj (DONATI) iki çizgi; etriyeler (ETRIYE) montajın 1 cm dışına taşar.</summary>
         private void CizMerdiven(Transaction tr, BlockTableRecord btr, ZimMerdiven m)
         {
-            double t0 = -(m.Ic + m.KolEksi), t1 = m.Ic + m.KolArti;
+            double t0 = -m.UcEksi, t1 = m.UcArti;
             ZimCizgi(tr, btr, m.Nokta(t0, -m.R), m.Nokta(t1, -m.R), LayerDonatiGovde);
             ZimCizgi(tr, btr, m.Nokta(t0, m.R), m.Nokta(t1, m.R), LayerDonatiGovde);
             double e = m.EtriyeEni / 2.0;
@@ -321,6 +503,7 @@ namespace ST4PlanIdCiz
             if (dus != null)
             {
                 int ust = dus.Yon(true);
+                if (dus.Kol(ust) <= 0) ust = -ust; // üst kol sınırda düştüyse alt kola yaz
                 List<double> konum = ZimEtriyeKonumlari(dus, ust);
                 int sagV = dus.V.X >= 0 ? 1 : -1;
                 if (konum.Count > 0)
@@ -331,7 +514,7 @@ namespace ST4PlanIdCiz
                     double adim = konum.Count > 1 ? Math.Abs(konum[1] - konum[0]) : dus.AralikCm;
                     double geri = (Math.Ceiling(35.0 / adim - 0.5) + 0.5) * adim;
                     double tm = konum[ie] - ust * geri;
-                    if (ust * tm < dus.Ic + ZimPaspayCm) tm = konum[ie] - ust * 0.5 * adim;
+                    if (ust * tm < dus.Ic + dus.Paspay) tm = konum[ie] - ust * 0.5 * adim;
                     ZimRafYazi(tr, btr, db, dus.Nokta(tm, sagV * dus.R), 0, MontajYazi(dus));
                 }
             }
@@ -346,13 +529,38 @@ namespace ST4PlanIdCiz
                 bool asagi = m.Orta.Y < merkez.Y - 1.0;
                 int dikV = (m.V.Y >= 0) == !asagi ? 1 : -1;
                 int egim = asagi ? -1 : 1;
-                ZimRafYazi(tr, btr, db, m.Nokta(sag * (m.Ic + 0.55 * kol), dikV * m.R), egim * 22.0, MontajYazi(m));
+                // Etiket kolonun solundaki kolda ise sola kırılır (yazı kolon/düşey merdiven üstüne taşmaz).
+                int yatay = m.Nokta(sag * (m.Ic + 0.5 * kol), 0).X >= merkez.X - 1.0 ? 1 : -1;
                 List<double> konum = ZimEtriyeKonumlari(m, sag);
-                if (konum.Count > 0)
+                // İki yerleşim denenir, toplam çakışması az olan çizilir:
+                // 0: montaj kolun dış ucunda, etriye kolona yakın; 1: montaj kol ortasında, etriye dış uçta.
+                int CizYerlesim(int y, List<ObjectId> izler)
                 {
-                    double t = konum[Math.Min(konum.Count - 1, 1)];
-                    ZimRafYazi(tr, btr, db, m.Nokta(t, dikV * m.EtriyeEni / 2.0), egim * 52.0, EtriyeYazi(m));
+                    double tm = m.Ic + (y == 0 ? 0.8 : 0.55) * kol;
+                    // Asıl yönde yer yoksa merdivenin karşı yüzünden ters yöne yazılabilir.
+                    int puan = ZimRafYazi(tr, btr, db, m.Nokta(sag * tm, dikV * m.R), egim * 22.0, MontajYazi(m), yatay,
+                        m.Nokta(sag * tm, -dikV * m.R), izler);
+                    if (konum.Count > 0)
+                    {
+                        double t = y == 0 ? konum[Math.Min(konum.Count - 1, 1)] : konum[Math.Max(0, konum.Count - 2)];
+                        puan += ZimRafYazi(tr, btr, db, m.Nokta(t, dikV * m.EtriyeEni / 2.0), egim * 52.0, EtriyeYazi(m), yatay,
+                            m.Nokta(t, -dikV * m.EtriyeEni / 2.0), izler);
+                    }
+                    return puan;
                 }
+                int enIyi = 0, enIyiPuan = int.MaxValue;
+                for (int y = 0; y < 2; y++)
+                {
+                    int nEngel = _zimEngel.Count, nEtiket = _zimEtiketKutu?.Count ?? 0;
+                    var izler = new List<ObjectId>();
+                    int puan = CizYerlesim(y, izler);
+                    foreach (ObjectId id in izler)
+                        try { tr.GetObject(id, OpenMode.ForWrite).Erase(); } catch { }
+                    _zimEngel.RemoveRange(nEngel, _zimEngel.Count - nEngel);
+                    if (_zimEtiketKutu != null) _zimEtiketKutu.RemoveRange(nEtiket, _zimEtiketKutu.Count - nEtiket);
+                    if (puan < enIyiPuan) { enIyiPuan = puan; enIyi = y; }
+                }
+                CizYerlesim(enIyi, null);
             }
         }
 
@@ -360,43 +568,148 @@ namespace ST4PlanIdCiz
             string.Format(CultureInfo.InvariantCulture, "{0} L={1}", ZimMontajYazi, ZimMontajBoy(m));
 
         /// <summary>Dolu nokta (sıfır iç çaplı halka): kılavuzun donatıya değdiği yer.</summary>
-        private static void ZimNokta(Transaction tr, BlockTableRecord btr, Point2d p, double r)
+        private static ObjectId ZimNokta(Transaction tr, BlockTableRecord btr, Point2d p, double r)
         {
             var pl = new Polyline { Layer = LayerEtiketCizgisi };
             pl.AddVertexAt(0, new Point2d(p.X - r / 2.0, p.Y), 1.0, r, r);
             pl.AddVertexAt(1, new Point2d(p.X + r / 2.0, p.Y), 1.0, r, r);
             pl.Closed = true;
-            AppendEntity(tr, btr, pl);
+            return AppendEntityReturnId(tr, btr, pl);
         }
 
         /// <summary>
-        /// Donatıdan rafa etiket. yukseklik 0: donatı noktasından doğrudan sağa yatay raf;
-        /// değilse 45° kırılıp sağa raf. Yazı rafın üstünde, sola dayalı; raf yazı bitimine kadar.
+        /// Donatıdan rafa etiket. yukseklik 0: donatı noktasından doğrudan yatay raf; değilse 45° kırılıp raf.
+        /// yatay +1: raf sağa, yazı sola dayalı; −1: raf sola, yazı sağa dayalı. Yazı rafın üstünde, raf yazı boyunca.
+        /// Yazı+raf kutusu önceki yazı, merdiven, kolon, ölçü, açılım veya plan yazısına binerse ya da kılavuz bir yazının
+        /// üstünden geçerse kırık yüksekliği adım adım artırılır; karsiDonati verilirse her adımda merdivenin karşı
+        /// yüzünden ters yön de denenir. Boş yer yoksa en az çakışan deneme çizilir.
         /// </summary>
-        private void ZimRafYazi(Transaction tr, BlockTableRecord btr, Database db, Point2d donati, double yukseklik, string yazi)
+        private int ZimRafYazi(Transaction tr, BlockTableRecord btr, Database db, Point2d donatiAsil, double yukseklik, string yazi, int yatay = 1,
+            Point2d? karsiDonati = null, List<ObjectId> izler = null)
         {
-            ZimNokta(tr, btr, donati, 2.4);
-            bool kirikli = Math.Abs(yukseklik) > 1e-6;
-            Point2d kirik = new Point2d(donati.X + Math.Abs(yukseklik), donati.Y + yukseklik);
-            if (kirikli)
-                ZimCizgi(tr, btr, donati, kirik, LayerEtiketCizgisi);
-            double xYazi = kirik.X + (kirikli ? 4.0 : 18.0);
-            var t = new DBText
+            if (_zimEngel == null) _zimEngel = new List<Extents3d>();
+            double yaziH = ZimYaziCm * TemelFoundationAnnotMul;
+            double adim = yaziH + 6.0;
+            int isaret = yukseklik < 0 ? -1 : 1;
+            int sx = yatay < 0 ? -1 : 1;
+            int deneme = karsiDonati.HasValue ? 16 : 10;
+
+            // ciz=false: yalnız çakışma puanı (yazı silinir); ciz=true: çizer ve engellere ekler.
+            int Dene(int i, bool ciz)
             {
-                Layer = LayerDonatiYazisiPerde,
-                Height = ZimYaziCm,
-                TextStyleId = GetOrCreateYaziBeykentTextStyle(tr, db),
-                TextString = KolonDonatiTableDrawer.NormalizeDiameterSymbol(yazi),
-                Position = new Point3d(xYazi, kirik.Y + 2.5, 0)
-            };
-            ObjectId id = AppendEntityReturnId(tr, btr, t);
-            double son = xYazi + yazi.Length * ZimYaziCm * 0.6;
-            try
-            {
-                if (!id.IsNull) son = ((Entity)tr.GetObject(id, OpenMode.ForRead)).GeometricExtents.MaxPoint.X;
+                int k = karsiDonati.HasValue ? i / 2 : i;
+                bool ters = karsiDonati.HasValue && i % 2 == 1;
+                Point2d donati = ters ? karsiDonati.Value : donatiAsil;
+                double y = (ters ? -1 : 1) * (yukseklik + isaret * k * adim);
+                bool kirikli = Math.Abs(y) > 1e-6;
+                Point2d kirik = new Point2d(donati.X + sx * Math.Abs(y), donati.Y + y);
+                double bosluk = kirikli ? 4.0 : 18.0;
+                var t = new DBText
+                {
+                    Layer = LayerDonatiYazisiPerde,
+                    Height = yaziH,
+                    TextStyleId = GetOrCreateYaziBeykentTextStyle(tr, db),
+                    TextString = KolonDonatiTableDrawer.NormalizeDiameterSymbol(yazi),
+                    Position = new Point3d(kirik.X + sx * bosluk, kirik.Y + 2.5, 0)
+                };
+                if (sx < 0)
+                {
+                    t.HorizontalMode = TextHorizontalMode.TextRight;
+                    t.AlignmentPoint = new Point3d(kirik.X - bosluk, kirik.Y + 2.5, 0);
+                }
+                ObjectId id = AppendEntityReturnId(tr, btr, t);
+                double tahmin = yazi.Length * yaziH * 0.6;
+                double x0 = sx > 0 ? kirik.X + bosluk : kirik.X - bosluk - tahmin;
+                double x1 = sx > 0 ? kirik.X + bosluk + tahmin : kirik.X - bosluk;
+                double yUst = kirik.Y + 2.5 + yaziH;
+                try
+                {
+                    if (!id.IsNull)
+                    {
+                        var ent = (DBText)tr.GetObject(id, OpenMode.ForWrite);
+                        if (sx < 0) ent.AdjustAlignment(db);
+                        Extents3d ex = ent.GeometricExtents;
+                        x0 = ex.MinPoint.X;
+                        x1 = ex.MaxPoint.X;
+                        yUst = ex.MaxPoint.Y;
+                    }
+                }
+                catch { }
+                // Kutu kırık noktasının 1,5 cm ötesinden başlar (rafın değdiği kendi merdiveni çakışma sayılmaz).
+                Extents3d kutu = sx > 0
+                    ? ZimKutu(kirik.X + 1.5, kirik.Y - 1.0, x1 + 3.0, yUst + 1.0)
+                    : ZimKutu(x0 - 3.0, kirik.Y - 1.0, kirik.X - 1.5, yUst + 1.0);
+                if (!ciz)
+                {
+                    int puan = _zimEngel.Count(e => ZimKesisir(e, kutu)) * 10;
+                    if (kirikli)
+                        puan += ZimKilavuzNoktalari(donati, kirik).Count(p =>
+                            (_zimEtiketKutu != null && _zimEtiketKutu.Any(e => ZimIcinde(e, p))) ||
+                            (_zimPlanYazi != null && _zimPlanYazi.Any(e => ZimIcinde(e, p))));
+                    try { if (!id.IsNull) tr.GetObject(id, OpenMode.ForWrite).Erase(); } catch { }
+                    return puan;
+                }
+                ObjectId idNokta = ZimNokta(tr, btr, donati, 2.4);
+                izler?.Add(idNokta);
+                izler?.Add(id);
+                if (kirikli)
+                {
+                    ObjectId idKilavuz = ZimCizgi(tr, btr, donati, kirik, LayerEtiketCizgisi);
+                    izler?.Add(idKilavuz);
+                }
+                ObjectId idRaf = ZimCizgi(tr, btr, kirik, new Point2d(sx > 0 ? x1 + 3.0 : x0 - 3.0, kirik.Y), LayerEtiketCizgisi);
+                izler?.Add(idRaf);
+                _zimEngel.Add(kutu);
+                (_zimEtiketKutu ??= new List<Extents3d>()).Add(kutu);
+                // Kılavuz boyunca küçük kutular: sonraki etiket yazıları kılavuzun üstüne gelmesin.
+                if (kirikli)
+                    foreach (Point2d p in ZimKilavuzNoktalari(donati, kirik).Skip(2))
+                        _zimEngel.Add(ZimKutu(p.X - 1.5, p.Y - 1.5, p.X + 1.5, p.Y + 1.5));
+                return 0;
             }
-            catch { }
-            ZimCizgi(tr, btr, kirik, new Point2d(son + 3.0, kirik.Y), LayerEtiketCizgisi);
+
+            int enIyi = 0, enIyiPuan = int.MaxValue;
+            for (int i = 0; i < deneme; i++)
+            {
+                int puan = Dene(i, false);
+                if (puan < enIyiPuan) { enIyiPuan = puan; enIyi = i; }
+                if (puan == 0) break;
+            }
+            Dene(enIyi, true);
+            // Puan: çakışma ağırlıklı, eşitlikte kısa kılavuz (küçük deneme sırası) tercih.
+            return enIyiPuan * 100 + enIyi;
+        }
+
+        /// <summary>Etiket çakışma kontrolü için dolu alanlar (yazı, merdiven, kolon, ölçü, açılım); kopya/komut başında sıfırlanır.</summary>
+        private List<Extents3d> _zimEngel;
+        /// <summary>Yalnız etiket yazı+raf kutuları (kılavuz çizgisi kontrolü için).</summary>
+        private List<Extents3d> _zimEtiketKutu;
+
+        /// <summary>Kılavuz üzerinde 3 cm aralıklı noktalar (başlangıç dahil).</summary>
+        private static IEnumerable<Point2d> ZimKilavuzNoktalari(Point2d a, Point2d b)
+        {
+            double L = a.GetDistanceTo(b);
+            int n = Math.Max(1, (int)Math.Ceiling(L / 3.0));
+            for (int i = 0; i <= n; i++)
+                yield return a + (b - a) * (i / (double)n);
+        }
+
+        private static bool ZimIcinde(Extents3d e, Point2d p) =>
+            p.X > e.MinPoint.X && p.X < e.MaxPoint.X && p.Y > e.MinPoint.Y && p.Y < e.MaxPoint.Y;
+
+        private static Extents3d ZimKutu(double x0, double y0, double x1, double y1) =>
+            new Extents3d(new Point3d(Math.Min(x0, x1), Math.Min(y0, y1), 0), new Point3d(Math.Max(x0, x1), Math.Max(y0, y1), 0));
+
+        private static bool ZimKesisir(Extents3d a, Extents3d b) =>
+            a.MinPoint.X < b.MaxPoint.X && b.MinPoint.X < a.MaxPoint.X && a.MinPoint.Y < b.MaxPoint.Y && b.MinPoint.Y < a.MaxPoint.Y;
+
+        /// <summary>Merdivenin montaj uçları ve etriye eni kadar dörtgeni (dünya eksenli sınır kutusu).</summary>
+        private static Extents3d ZimMerdivenKutu(ZimMerdiven m)
+        {
+            double e = m.EtriyeEni / 2.0;
+            Point2d a = m.Nokta(-m.UcEksi, -e), b = m.Nokta(-m.UcEksi, e), c = m.Nokta(m.UcArti, -e), d = m.Nokta(m.UcArti, e);
+            return ZimKutu(Math.Min(Math.Min(a.X, b.X), Math.Min(c.X, d.X)), Math.Min(Math.Min(a.Y, b.Y), Math.Min(c.Y, d.Y)),
+                Math.Max(Math.Max(a.X, b.X), Math.Max(c.X, d.X)), Math.Max(Math.Max(a.Y, b.Y), Math.Max(c.Y, d.Y)));
         }
 
         /// <summary>
@@ -409,27 +722,69 @@ namespace ST4PlanIdCiz
             if (m.Kol(yon) <= 0) yon = -yon;
             double kol = m.Kol(yon);
             if (kol <= 0) return;
-            int yan;
-            if (m.Kenar != 0) yan = -m.Kenar;
-            else if (m.Yatay) yan = m.V.Y <= 0 ? 1 : -1;
-            else yan = m.V.X <= 0 ? 1 : -1;
-            // Uç merdiveninin iç yanında kolon sürer; ölçü montaj hizasında kolon yüzüne alınır.
-            double kose = m.Kenar != 0 ? m.R : (yan > 0 ? m.VMax : -m.VMin);
-            Point2d uc = m.Nokta(yon * (m.Ic + kol), yan * m.R);
-            Point2d kolonKose = m.Nokta(yon * m.Ic, yan * kose);
-            Point2d cizgi = m.Nokta(yon * (m.Ic + 0.5 * kol), yan * (Math.Max(kose, m.EtriyeEni / 2.0) + ZimOlcuOfsetCm));
-            double rot = Math.Atan2(m.U.Y, m.U.X);
-            var dim = new RotatedDimension(rot, new Point3d(uc.X, uc.Y, 0), new Point3d(kolonKose.X, kolonKose.Y, 0),
-                new Point3d(cizgi.X, cizgi.Y, 0), "", dimStyleId) { Layer = LayerOlcu };
-            AppendEntity(tr, btr, dim);
-            try
+            int yan0;
+            if (m.Kenar != 0) yan0 = -m.Kenar;
+            else if (m.Yatay) yan0 = m.V.Y <= 0 ? 1 : -1;
+            else yan0 = m.V.X <= 0 ? 1 : -1;
+            // Ölçü plan yazısına (kolon adı vb.) binerse, uç merdiveni değilse karşı yana alınır.
+            int deneme = m.Kenar != 0 || _zimPlanYazi == null || _zimPlanYazi.Count == 0 ? 1 : 2;
+            for (int d = 0; d < deneme; d++)
             {
-                // AppendEntity PLAN_OLCU hassasiyetini basar; ILAVE_OLCU tam sayıdır.
-                dim.Dimrnd = 1.0;
-                dim.Dimdec = 0;
-                dim.Dimtdec = 0;
+                int yan = d == 0 ? yan0 : -yan0;
+                // Uç merdiveninin iç yanında kolon sürer; ölçü montaj hizasında kolon yüzüne alınır.
+                double kose = m.Kenar != 0 ? m.R : (yan > 0 ? m.VMax : -m.VMin);
+                Point2d uc = m.Nokta(yon * (m.Ic + kol), yan * m.R);
+                Point2d kolonKose = m.Nokta(yon * m.Ic, yan * kose);
+                Point2d cizgi = m.Nokta(yon * (m.Ic + 0.5 * kol), yan * (Math.Max(kose, m.EtriyeEni / 2.0) + ZimOlcuOfsetCm));
+                double rot = Math.Atan2(m.U.Y, m.U.X);
+                var dim = new RotatedDimension(rot, new Point3d(uc.X, uc.Y, 0), new Point3d(kolonKose.X, kolonKose.Y, 0),
+                    new Point3d(cizgi.X, cizgi.Y, 0), "", dimStyleId) { Layer = LayerOlcu };
+                AppendEntity(tr, btr, dim);
+                try
+                {
+                    // AppendEntity PLAN_OLCU hassasiyetini basar; ILAVE_OLCU tam sayıdır.
+                    dim.Dimrnd = 1.0;
+                    dim.Dimdec = 0;
+                    dim.Dimtdec = 0;
+                }
+                catch { }
+                Extents3d? ex = null;
+                try
+                {
+                    dim.RecomputeDimensionBlock(true);
+                    ex = dim.GeometricExtents;
+                }
+                catch { }
+                if (d + 1 < deneme && ex.HasValue && _zimPlanYazi.Any(p => ZimKesisir(p, ex.Value)))
+                {
+                    try { dim.Erase(); } catch { }
+                    continue;
+                }
+                if (ex.HasValue) _zimEngel?.Add(ex.Value);
+                return;
             }
-            catch { }
+        }
+
+        /// <summary>Plan yazıları (kolon/döşeme/kiriş adı, kot vb.): ölçü yan seçimi ve etiket çakışması için.</summary>
+        private List<Extents3d> _zimPlanYazi;
+
+        /// <summary>Verilen alandaki model uzayı DBText/MText kutuları (zımbalama çizimi öncesi plan yazıları).</summary>
+        private static List<Extents3d> ZimPlanYazilari(Transaction tr, BlockTableRecord btr, Extents3d alan)
+        {
+            var list = new List<Extents3d>();
+            foreach (ObjectId id in btr)
+            {
+                if (!id.ObjectClass.IsDerivedFrom(Autodesk.AutoCAD.Runtime.RXObject.GetClass(typeof(DBText))) &&
+                    !id.ObjectClass.IsDerivedFrom(Autodesk.AutoCAD.Runtime.RXObject.GetClass(typeof(MText)))) continue;
+                try
+                {
+                    var e = (Entity)tr.GetObject(id, OpenMode.ForRead);
+                    Extents3d x = e.GeometricExtents;
+                    if (ZimKesisir(x, alan)) list.Add(x);
+                }
+                catch { }
+            }
+            return list;
         }
 
         /// <summary>Yardımcı'daki ILAVE_OLCU ile aynı: PLAN_OLCU tabanı, yazı 10, tam sayı.</summary>
@@ -485,10 +840,10 @@ namespace ST4PlanIdCiz
             return sag;
         }
 
-        private static void ZimCizgi(Transaction tr, BlockTableRecord btr, Point2d a, Point2d b, string layer)
+        private static ObjectId ZimCizgi(Transaction tr, BlockTableRecord btr, Point2d a, Point2d b, string layer)
         {
-            if (a.GetDistanceTo(b) < 1e-3) return;
-            AppendEntity(tr, btr, new Line(new Point3d(a.X, a.Y, 0), new Point3d(b.X, b.Y, 0)) { Layer = layer });
+            if (a.GetDistanceTo(b) < 1e-3) return ObjectId.Null;
+            return AppendEntityReturnId(tr, btr, new Line(new Point3d(a.X, a.Y, 0), new Point3d(b.X, b.Y, 0)) { Layer = layer });
         }
     }
 }

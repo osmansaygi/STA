@@ -1,0 +1,11 @@
+# Claude — KAPAMADETAY pafta yerleşimi (değişken satır + plan şeridi sıkıştırma)
+- Ajan: Claude Code
+- Güncelleme: 07.11.2026 20:00 (Europe/Istanbul)
+- Durum: tamamlandı (bkz. son satır)
+- Görev: KAPAMADETAY iç antet satırları değişken yükseklikli (kolon düşey gibi); her yığının plan kopya satırları yukarıdan boşluksuz (tek katlı/üst kat perdede görünüş–plan şeridi arası boşluk). İç antet rengi kullanıcı seçimine bağlı (bekliyor). Antet tablosu: kapamada isimler katlara göre numaralar (ADET anlamı belirsiz) → kullanıcıya soruldu.
+- Kontrol: protokol + son kayıtlar (aktif yok). Görev başı GUNCEL_2027 = Plan 20261107_192715 + Yardımcı 20261107_143240.
+- Ayrılan: ST4_Plan_ID_Ciz/PlanIdDrawingManager.PerdeGorunus.cs (Pending alanları, Flush, PackKapamaSheetsMinWidthInAntet), ST4_Plan_ID_Ciz/PlanIdDrawingManager.cs (DrawAlignedWallGroupsAsSeparateCopiesWithAnchors pending kaydı), tools/PoligonKesitAci20261107/**, docs/modul-durum/ST4_Plan_ID_Ciz.md, NETLOAD/OKU.txt; yayında NETLOAD/GUNCEL_2027/**, NETLOAD/arsiv.
+- Sonuç (19:38): PerdeGorunus.cs (Pending RowTopY/CopyIds, CompactKapamaCopyRows, Flush'ta P- için çağrı, PackKapamaSheetsMinWidthInAntet değişken satır), PlanIdDrawingManager.cs (pending kaydında kopya id + satır üstü). Doğrulama: izole Release 0 hata; Core Console KAPAMADETAY (tools/EgimliPerde20261101 Run/Plot, out/kp_*): SANER 6063→3655 genişlik, ARD_OTP1_01 aynı. Canlı AutoCAD yok.
+- Yayın: GUNCEL_2027 = Plan 20261107_193748 + Yardımcı 20261107_143240, Publish51 PASS, arşiv NETLOAD/arsiv/GUNCEL_2027_20261107_193857_177. Commit yok.
+- Açık: iç antet katman rengi (kullanıcı seçimi bekleniyor); kapama antet tablosu (ADET anlamı soruldu).
+- Durum: tamamlandı — rezervasyon yok.

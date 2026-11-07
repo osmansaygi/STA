@@ -6,6 +6,7 @@ using System.Text;
 using System.Windows.Forms;
 using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
 using SdFont = System.Drawing.Font;
+using Beykent.Monolit.Girdi;
 
 namespace ST4Yardimci
 {
@@ -122,9 +123,10 @@ namespace ST4Yardimci
     {
         private static KotDegistirForm _instance;
 
-        private readonly TextBox _txtEski;
-        private readonly TextBox _txtYeni;
+        private readonly OlcuKutusu _txtEski;
+        private readonly OlcuKutusu _txtYeni;
         private readonly ListBox _lstLayers;
+        private readonly GirdiDenetci Denetci = new GirdiDenetci();
 
         public static void ShowOrActivate()
         {
@@ -193,6 +195,7 @@ namespace ST4Yardimci
                     if (o is string s && string.Equals(s, layerName, StringComparison.OrdinalIgnoreCase))
                         return;
                 _instance._lstLayers.Items.Add(layerName);
+                _instance.Denetci.Guncelle();
             }
             catch { }
         }
@@ -208,6 +211,7 @@ namespace ST4Yardimci
                     return;
                 }
                 FillList(_instance._lstLayers, KotDegistirSettings.Katmanlar);
+                _instance.Denetci.Guncelle();
             }
             catch { }
         }
@@ -226,21 +230,13 @@ namespace ST4Yardimci
             Font = new SdFont("Segoe UI", 8.5f);
             KeyPreview = true;
 
+            // Kot kutuları cm (Standart A). Runner yalnız farkı kullanır; fark metreye çevrilir.
             int y = 8;
-            Controls.Add(MkLabel("Eski kot (cm)", 10, y + 3, 104));
-            _txtEski = MkBox(118, y, 192);
-            _txtEski.Text = KotDegistirSettings.EskiKot ?? "";
-            Controls.Add(_txtEski);
-            y += 28;
-
-            Controls.Add(MkLabel("Yeni kot (cm)", 10, y + 3, 104));
-            _txtYeni = MkBox(118, y, 192);
-            _txtYeni.Text = KotDegistirSettings.YeniKot ?? "";
-            Controls.Add(_txtYeni);
-            y += 30;
-
-            Controls.Add(MkLabel("Kot yazısı katmanı", 10, y + 2, 280));
-            y += 18;
+            _txtEski = Denetci.Ekle(new OlcuKutusu("Eski kot", "cm", -100000, 100000, 0, 1) { AdimDegeri = 5 });
+            _txtYeni = Denetci.Ekle(new OlcuKutusu("Yeni kot", "cm", -100000, 100000, 0, 1) { AdimDegeri = 5 });
+            KotYukle(_txtEski, KotDegistirSettings.EskiKot);
+            KotYukle(_txtYeni, KotDegistirSettings.YeniKot);
+            y += 76;
             _lstLayers = new ListBox
             {
                 Location = new Point(10, y),
@@ -276,6 +272,10 @@ namespace ST4Yardimci
             CancelButton = btnClose;
             ClientSize = new Size(320, y + 36);
 
+            Denetci.HataKurali(() => Math.Abs(_txtYeni.Deger - _txtEski.Deger) < 0.05
+                ? "Eski kot ile yeni kot aynı" : null, _txtEski, _txtYeni);
+            Denetci.HataKurali(() => _lstLayers.Items.Count == 0 ? "Kot yazısı katmanı ekleyin" : null);
+
             FormClosing += (s, e) => { try { PushSettings(); } catch { } };
             FormClosed += (s, e) =>
             {
@@ -295,10 +295,22 @@ namespace ST4Yardimci
 
             // Kompakt, içerik odaklı form düzeni.
             var ui = BeginCompact(320);
-            ui.Section(null).Grid(new[] { "Eski kot · cm", "Yeni kot · cm" }, new Control[] { _txtEski, _txtYeni });
+            ui.Section("Kot")
+                .Field("Eski kot", _txtEski)
+                .Field("Yeni kot", _txtYeni)
+                .Hint("Seçilen kot yazıları (m) yeni − eski fark kadar kaydırılır.");
             ui.Section("Kot yazısı katmanları").Layers(_lstLayers, btnAdd, btnDel, btnRem);
+            ui.Section(null).Control(Denetci.Serit, 44);
             ui.Footer(btnRun, btnClose);
             ui.Finish();
+            Denetci.Guncelle();
+        }
+
+        /// <summary>Kayıtlı metin runner ile aynı ayrıştırıcıyla okunur (±, %%p, + önekleri dahil).</summary>
+        private static void KotYukle(OlcuKutusu kutu, string kayitli)
+        {
+            if (KotDegistirRunner.TryParseKot(kayitli, out double cm)) kutu.Deger = cm;
+            else kutu.Text = (kayitli ?? "").Trim();
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -308,7 +320,7 @@ namespace ST4Yardimci
                 Close();
                 return true;
             }
-            if (keyData == Keys.Enter || keyData == Keys.Return)
+            if ((keyData == Keys.Enter || keyData == Keys.Return) && !(ActiveControl is Button))
             {
                 OnRun(this, EventArgs.Empty);
                 return true;
@@ -318,9 +330,10 @@ namespace ST4Yardimci
 
         private void LoadFromSettings()
         {
-            _txtEski.Text = KotDegistirSettings.EskiKot ?? "";
-            _txtYeni.Text = KotDegistirSettings.YeniKot ?? "";
+            KotYukle(_txtEski, KotDegistirSettings.EskiKot);
+            KotYukle(_txtYeni, KotDegistirSettings.YeniKot);
             FillList(_lstLayers, KotDegistirSettings.Katmanlar);
+            Denetci.Guncelle();
         }
 
         private void PushSettings()
@@ -332,26 +345,9 @@ namespace ST4Yardimci
 
         private void OnRun(object sender, EventArgs e)
         {
+            // Girdi hataları (sayı değil, aynı kot, katman yok) şeritte gösterilir.
+            if (!Denetci.Onayla()) return;
             PushSettings();
-            if (!KotDegistirRunner.TryParseKot(KotDegistirSettings.EskiKot, out double eskiCm) ||
-                !KotDegistirRunner.TryParseKot(KotDegistirSettings.YeniKot, out double yeniCm))
-            {
-                MessageBox.Show(this, "Eski kot ve yeni kot cm cinsinden sayı olmalı.", "Kot Değiştir",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-            if (Math.Abs(yeniCm - eskiCm) < 0.05)
-            {
-                MessageBox.Show(this, "Eski kot ile yeni kot aynı.", "Kot Değiştir",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-            if (KotDegistirSettings.Katmanlar.Count == 0)
-            {
-                MessageBox.Show(this, "Kot yazısı katmanı ekleyin.", "Kot Değiştir",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
             try
             {
                 var doc = AcApp.DocumentManager.MdiActiveDocument;
@@ -390,6 +386,7 @@ namespace ST4Yardimci
                 _lstLayers.Items.Remove(name);
             }
             PushSettings();
+            Denetci.Guncelle();
         }
 
         private static void FillList(ListBox lst, IReadOnlyList<string> layers)
@@ -410,26 +407,6 @@ namespace ST4Yardimci
                 if (o is string s) layers.Add(s);
             return layers;
         }
-
-        private static Label MkLabel(string text, int x, int y, int w) => new Label
-        {
-            Text = text,
-            Location = new Point(x, y),
-            AutoSize = false,
-            Size = new Size(w, 18),
-            ForeColor = Beykent.Monolit.StandardFormTheme.TextMuted,
-            BackColor = Color.Transparent
-        };
-
-        private static TextBox MkBox(int x, int y, int w) => new TextBox
-        {
-            Location = new Point(x, y),
-            Size = new Size(w, 22),
-            BorderStyle = BorderStyle.FixedSingle,
-            BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
-            ForeColor = Beykent.Monolit.StandardFormTheme.Text,
-            Font = new SdFont("Segoe UI", 9f)
-        };
 
         private static Button MkButton(string text, int x, int y, int w, bool accent)
         {

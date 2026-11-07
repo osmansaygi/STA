@@ -3,12 +3,157 @@ AutoCAD 2027 acilisinda GUNCEL_2027 icindeki en son Plan ve Yardimci DLL'i kendi
 (%APPDATA%\Autodesk\ApplicationPlugins\ST4_GUNCEL_2027.bundle; kaynak tools\GuncelOtoYukle2027, kaldirmak icin Kaldir.ps1).
 Elle NETLOAD yapmayin; ayni DLL iki kez yuklenmesin.
 
+GÜNCEL — TEMEL DETAYI: ALT TEMEL KESİMİ, DONATI İZİ, YATAY METRAJ (YARDIMCI) / AUTOCAD 2027 / 07.11.2026 21:06
+
+Yardımcı: ST4_Yardimci_2027_20261107_211129.dll — TEMELDETAY tek taraflı kademede alt temel ucu zigzag yerine düz KESIT SINIRI çizgisi; alt temelde üst temeldeki gibi üst/alt donatı izi ve iz noktaları. Tüm temel detaylarında açılımların sağına YATAY DONATI (L=kademe) tablosu: perde iç/dış yatayları (çift kademede çukur tabanı üst/alt da), boy = kademe − 2 paspayı + 2 gönye (temel kalınlığı − 2 paspayı), 1200 stok / 60 bindirme.
+Plan: ST4_Plan_ID_Ciz_2027_20261107_201357.dll (değişmedi).
+
+GÜNCEL — KAPAMA PERDE: BENZERLERİ BERABER ÇİZ (PLAN) / AUTOCAD 2027 / 07.11.2026 20:14
+
+Plan: ST4_Plan_ID_Ciz_2027_20261107_201357.dll — KAPAMADETAY formunda "Benzerleri beraber çiz", kolon aplikasyon formunda "Benzer kapama perdelerini beraber çiz" seçeneği (ortak ayar, varsayılan açık). Birebir aynı perde hatları tek antette çizilir; donatı yazılarına adet çarpanı gelir (ör. 2x2x5ø12/19), tabloda numaralar birlikte yazılır. Kapama kat tablosu (195538) bu sürümde de var.
+Yardımcı: ST4_Yardimci_2027_20261107_194557.dll (değişmedi).
+
+GÜNCEL — KAPAMA PERDE DETAYI: İÇ ANTET KAT TABLOSU (PLAN) / AUTOCAD 2027 / 07.11.2026 19:56
+
+Plan: ST4_Plan_ID_Ciz_2027_20261107_195538.dll — KAPAMADETAY iç antetlerinde sol üstte tablo: KAT (kat adları) | PERDE (o kattaki perde numaraları, sarı) | KALINLIK (yeşil). Hangi perde numarasının hangi katta olduğu görülür; alt şeritte yalnız ölçek kalır. İç antet açık mavi (194552) ve kompakt kapama paftası bu sürümde de var.
+Yardımcı: ST4_Yardimci_2027_20261107_194557.dll (değişmedi).
+
+GÜNCEL — İÇ ANTET KATMANI AÇIK MAVİ (PLAN + YARDIMCI) / AUTOCAD 2027 / 07.11.2026 19:46
+
+Plan: ST4_Plan_ID_Ciz_2027_20261107_194552.dll — "IC ANTET (BEYKENT)" katmanı ACI 151 (açık mavi), 0.25 kalınlık; açık çizimlerde komut çalışınca katman rengi de güncellenir. Kapama kompakt pafta (193748) bu sürümde de var.
+Yardımcı: ST4_Yardimci_2027_20261107_194557.dll — aynı katman varsayılanı (ortak stil ayarı).
+
+GÜNCEL — KAPAMA PERDE DETAYI: KOMPAKT PAFTA (PLAN) / AUTOCAD 2027 / 07.11.2026 19:38
+
+Plan: ST4_Plan_ID_Ciz_2027_20261107_193748.dll — KAPAMADETAY'da iç antet satırları ayrı yüksekliklerde dizilir (çok katlı yığın kendi boyunda, kısa perdeler yanında birkaç satırda); tek katlı perdelerin plan şeridi görünüşün hemen altına gelir. Örnek SANER_01: pafta %40 dar. Kolon düşey düzenlemeleri (192715) bu sürümde de var.
+Yardımcı: ST4_Yardimci_2027_20261107_143240.dll (değişmedi).
+
+GÜNCEL — KOLON DÜŞEY (ANTETLİ): KESİT TAKIMI ÖLÇÜLERİ İÇ ANTETİN İÇİNDE (PLAN) / AUTOCAD 2027 / 07.11.2026 19:28
+
+Plan: ST4_Plan_ID_Ciz_2027_20261107_192715.dll — Poligon kesit takımının ölçüleri (ör. SB-09 sol 180/120) artık iç antet çerçevesinin dışına taşmıyor; çerçeve ölçüleri de kapsıyor. Kolon tablosu (191829) ve önceki düzenlemeler bu sürümde de var.
+Yardımcı: ST4_Yardimci_2027_20261107_143240.dll (değişmedi).
+
+GÜNCEL — KOLON DÜŞEY (ANTETLİ): İÇ ANTET KOLON TABLOSU (PLAN) / AUTOCAD 2027 / 07.11.2026 19:20
+
+Plan: ST4_Plan_ID_Ciz_2027_20261107_191829.dll — İç antet sol üstünde kolon isimleri tablo halinde: KOLONLAR (sarı, ızgara), EBAT (yeşil; poligonda yok), ADET (kırmızı). "TOPLAM - n ADET" yazısı ADET hücresine taşındı. Kesit takımı yerleşimi ve kompakt pafta (190427) bu sürümde de var.
+Yardımcı: ST4_Yardimci_2027_20261107_143240.dll (değişmedi).
+
+GÜNCEL — KOLON DÜŞEY (ANTETLİ KAT-KAT): KESİT TAKIMI YERLEŞİMİ + KOMPAKT PAFTA (PLAN) / AUTOCAD 2027 / 07.11.2026 19:05
+
+Plan: ST4_Plan_ID_Ciz_2027_20261107_190427.dll — Antetli kat-kat kolon düşey çizimlerinde kesit takımı açılıma yakın (solunda) ya da yer varsa açılımın üstünde durur; TOPLAM/kolon id yazıları ve antet şeridiyle çakışmaz. İç antet satırlarının yükseklikleri ayrı hesaplanır (kısa antetler aynı satırda), böylece büyük boşluklar azalır ve paftalar daralır (örneklerde %14-31). Poligon gövde etiket/çiroz ve alt kat ≥ üst kat kuralı (183422) bu sürümde de var.
+Yardımcı: ST4_Yardimci_2027_20261107_143240.dll (değişmedi).
+
+GÜNCEL — KOLON DÜŞEY: POLİGON GÖVDE ETİKET/ÇİROZ + ALT KAT ≥ ÜST KAT (PLAN) / AUTOCAD 2027 / 07.11.2026 18:35
+
+Plan: ST4_Plan_ID_Ciz_2027_20261107_183422.dll — Poligon kolon perde kollarında gövde düşey etiketi ve çirozlar çizilen donatıyla aynı (adet/aralık tutuyor). Aynı kesitte alt katın donatısı üst kattan az olamaz: poligon ve perdede çizilen toplam adet ve As üst kattan azsa yalnız eksik kadar eklenir (önce başlık/uç, sonra gövde); fazla As eklenmez, poligonda gereğinden sık gövde aralığı gevşetildi. Poligon kesit plandaki duruşta (175857) ve kapama düzeltmesi bu sürümde de var.
+Yardımcı: ST4_Yardimci_2027_20261107_143240.dll (değişmedi).
+
+GÜNCEL — KOLON DÜŞEY: POLİGON KESİT PLANDAKİ DURUŞTA (PLAN) / AUTOCAD 2027 / 07.11.2026 18:00
+
+Plan: ST4_Plan_ID_Ciz_2027_20261107_175857.dll — KOLONDUSEY açılımlarında poligon (U/C/L) kolon kesitleri artık plandaki duruşuyla çizilir; kat-kat çizimde boyu eninden büyük kesitlerin 90° dönmesi kaldırıldı (SANER_01 S-07, S-09, S-10). Benzer kolonlarda en düşük numaralı kolon esas alınır. Kapama perde yığını düzeltmesi (172931) bu sürümde de var.
+Yardımcı: ST4_Yardimci_2027_20261107_143240.dll (değişmedi).
+
+GÜNCEL — KAPAMA PERDE AÇILIMI: FARKLI NUMARALI ÜST KAT PERDELERİ (PLAN) / AUTOCAD 2027 / 07.11.2026 18:20
+
+Plan: ST4_Plan_ID_Ciz_2027_20261107_172931.dll — KAPAMADETAY (ve KOLON50 perde görünüşü) paftalarında üst kata devam eden kapama perdeleri artık perde numarasına göre değil, plandaki konumuna göre alttaki perdenin üstüne yerleşir. Alt ve üst kat perde numaraları farklı olduğunda yanlış perdelerin aynı paftada birleşmesi düzeldi (SANER_01: P-01,P-14 ve P-02,P-03,P-15 paftaları zemin/1. normal kısımlarıyla doğru). Numaraları aynı olan projelerde çizim değişmedi (7 projede birebir).
+Yardımcı: ST4_Yardimci_2027_20261107_143240.dll (değişmedi).
+
+---- önceki teslim ----
+
+GÜNCEL — KİRİŞ ÇİZ: KALIP PLANINDAN AL (PLAN) / AUTOCAD 2027 / 07.11.2026 17:14
+
+Plan: ST4_Plan_ID_Ciz_2027_20261107_171305.dll — Kiriş Çiz (KIRISCIZ, Yardımcı ve BEYKENT şeridi) formunda yeni "Kalıp planından al…" düğmesi: form gizlenir, kalıp planında kiriş boyunca yüzleri soldan sağa tıklayın (ilk mesnet dış yüzü, mesnet öbür yüzü, açıklık sonu, … son mesnet dış yüzü, Enter). Mesnet enleri ve Ln ölçülür; açıklık üzerindeki "MC-01 (25/55)" yazısından kiriş adı ve b/h, mesnet aralığına oturan taramadan Kolon (yoksa Kiriş/saplama) tipi alınır. Donatı/etriye/döşeme/Δkot mevcut satırlardan korunur. Konsol: ilk istemde K (baş), açıklık sonundan sonra Enter (son). Geri: son noktayı siler. Çizim cm değilse (STA4CAD DWG 1/100 metre) birim sorulur.
+Yardımcı: ST4_Yardimci_2027_20261107_143240.dll (değişmedi).
+
+---- önceki teslim ----
+
+GÜNCEL — KALIP KESİTLERİNDE MANTAR KİRİŞLERİ (PLAN) / AUTOCAD 2027 / 07.11.2026 16:43
+
+Plan: ST4_Plan_ID_Ciz_2027_20261107_164029.dll — Kalıp planlarının A-A / B-B kesitlerinde (Kalıp 1/50-1/100, Mantar Döşeme, Deneme 2) ve Serbest Kesit'te mantar kirişleri (bant/diş) normal kiriş gibi kesitte görünür. Bina şematik kesiti mantarı zaten gösteriyordu. Zımbalama değişiklikleri (13 cm, Lk, 3 cm paspayı) bu sürümde de var.
+Yardımcı: ST4_Yardimci_2027_20261107_143240.dll (değişmedi).
+
+---- önceki teslim ----
+
+GÜNCEL — MANTAR ZIMBALAMA: MONTAJ KOLON YÜZÜNE ≤ 13 CM, ETİKET YERLEŞİMİ (PLAN) / AUTOCAD 2027 / 07.11.2026 15:58
+
+Plan: ST4_Plan_ID_Ciz_2027_20261107_155740.dll — Mantar Döşeme zımbalama kopyasında büyük kolonlarda montaj demirleri kolon yüzüne en fazla 13 cm kalacak şekilde açılır, etriye eni buna göre büyür (60/60 kolonda 36 cm). Radye zımbalaması değişmedi. Etiket kılavuzları diğer etiketlerin ve plan yazılarının üstünden geçmez; yer yoksa etiket merdivenin öbür yüzüne yazılır.
+Yardımcı: ST4_Yardimci_2027_20261107_143240.dll (değişmedi).
+
+---- önceki teslim ----
+
+GÜNCEL — MANTAR ZIMBALAMA: Lk KOL BOYU, 3 CM PASPAYI, ETİKET ÇAKIŞMASI (PLAN) / AUTOCAD 2027 / 07.11.2026 15:33
+
+Plan: ST4_Plan_ID_Ciz_2027_20261107_153236.dll — Mantar Döşeme zımbalama kopyasında kol boyu GPR'deki "Lk" (örn. 85 cm; etriye adedi STA ile aynı), paspayı 3 cm (etriye yüksekliği döşeme kalınlığı − 6), döşeme kenarındaki kolonda montaj demirleri kenardan 3 cm geride biter. Etiketler birbirine, ölçüye, merdivene ve plan yazılarına binmeyecek şekilde kaydırılır; soldaki kolun etiketi sola yazılır.
+Yardımcı: ST4_Yardimci_2027_20261107_143240.dll (değişmedi).
+
+---- önceki teslim ----
+
+GÜNCEL — MANTAR DÖŞEMEDE ZIMBALAMA DONATISI KOPYASI (PLAN) / AUTOCAD 2027 / 07.11.2026 14:47
+
+Plan: ST4_Plan_ID_Ciz_2027_20261107_144448.dll — Mantar Döşeme (MANTARDOSEME), GPR'deki "KOLON ZIMBALAMA KONTROLU" tablosunda zımbalama donatısı gereken kolonu olan katlara donatılı kopyadan sonra 4. kopya "ZIMBALAMA DONATISI" ekler; kolon altında X/Y etriye merdiveni (4ø12 montaj + GPR ø/s etriye, en az ø10), etiket, ölçü ve etriye açılımı radye temeldeki gibi. Döşeme kenarındaki kolonda dışarı taşan kol çizilmez. Benzer katlarda en elverişsiz kolon değeri alınır.
+Yardımcı: ST4_Yardimci_2027_20261107_143240.dll (değişmedi; BETONKALIP tablo 575).
+
+---- önceki teslim ----
+
+GÜNCEL — BETON/KALIP METRAJINDA DERİN MANTAR KİRİŞLER (YARDIMCI) / AUTOCAD 2027 / 02.11.2026 20:20
+
+Tek yükleme adresi: NETLOAD/GUNCEL_2027 (masaüstü GUNCEL DLL kısayolu).
+Yardımcı: ST4_Yardimci_2027_20261102_201729.dll — BETONKALIP döşemeden derin mantar kirişleri (/Slabs Data/, h > yandaki döşeme d) kiriş satırına sayar: beton b·h·Ln, kalıp Ln·(b + iki yanın sarkan yüksekliği); bandın döşemeyle kesişimi döşemeden düşülür. Döşemeyle aynı kalınlıktaki bantlar döşemede kalır. Not: STA4 keşif raporu (KSF) bu kirişleri saymaz.
+Plan: ST4_Plan_ID_Ciz_2027_20261102_193950.dll (değişmedi).
+
+---- önceki teslim ----
+
+GÜNCEL — BİNA GÖRÜNÜŞ / KESİTTE MANTAR KİRİŞLER (PLAN) / AUTOCAD 2027 / 02.11.2026 19:46
+
+Tek yükleme adresi: NETLOAD/GUNCEL_2027 (masaüstü GUNCEL DLL kısayolu).
+Plan: ST4_Plan_ID_Ciz_2027_20261102_193950.dll — Bina Görünüşü (BINAGORUNUS) ve Bina Kesiti (BINAKESITI) mantar döşeme fiktif kirişlerini (bant/diş) normal kiriş gibi çizer: görünüşte kiriş altı, kesitte hattın kestiği mantar kiriş taralı kesit. Kalıp planında çizilmeyen (döşemeyle aynı kalınlıktaki) mantar kirişler burada da çizilmez.
+Yardımcı: ST4_Yardimci_2027_20261102_185238.dll (değişmedi; Mantar İlave Donatı dahil).
+
+---- önceki teslim ----
+
+GÜNCEL — MANTAR DÖŞEME İLAVE DONATISI (YARDIMCI) / AUTOCAD 2027 / 02.11.2026 18:46
+
+Tek yükleme adresi: NETLOAD/GUNCEL_2027 (masaüstü GUNCEL DLL kısayolu).
+Yardımcı: ST4_Yardimci_2027_20261102_185238.dll — Home > Donatı > "Mantar İlave Donatı" (MANTARILAVE): seçilen kolonlara X ve Y yönünde, kolona ortalı, formdaki boyda üst ilave + donatı oku. KAT SINIRI / KALIP BOSLUK ucu keserse paspayı içeride biter, gönye = döşeme kalınlığı (DOSEME ISMI d= yazısı veya form) − 2×paspayı. Tek ucu gönyeli çubuk 150,200,240,300,350,400,450,500,600,700,800,900,1000,1200 boyuna tamamlanır (fark serbest uca).
+Plan: ST4_Plan_ID_Ciz_2027_20261102_180928.dll (değişmedi).
+
+---- önceki teslim ----
+
+GÜNCEL — 1/100 PAFTA SEÇENEĞİ (AÇILIM/DETAYLAR) + ÖLÇEK SORAN PLAN KOMUTLARI / AUTOCAD 2027 / 02.11.2026 15:35
+
+Tek yükleme adresi: NETLOAD/GUNCEL_2027 (masaüstü GUNCEL DLL kısayolu).
+Plan: ST4_Plan_ID_Ciz_2027_20261102_180928.dll — DENEME2 1/100: pilye/düz/ilave aralıkları ×1,5 (yazılar çubuğa binmez). Radye Donatı (TEMELDONATI) ve Mantar Döşeme de 1/50 – 1/100 sorar. 1/25 açılım formlarında "Pafta ölçeği: 1/50 pafta / 1/100 pafta (×2)": Kapama Detayı, Kiriş Açılımı, Kiriş Çiz, Sürekli Temel, Kolon Düşey. 1/100 pafta seçilince açılım yazı, ölçü, tarama ve antetiyle iki kat büyük çizilir (ölçü değerleri aynı kalır). Kolon Aplikasyon 1/100'de eklenen düşey/kapama açılımları kendiliğinden ×2.
+Yardımcı: ST4_Yardimci_2027_20261102_180937.dll — Döşeme Donatı formunda "Plan ölçeği 1/50 – 1/100" (1/100: yazı ve donatı aralıkları ×1,5). Temel Hatılı, Temel Çukuru, Temel Detayı, Merdiven, Parapet, Kuranglez, Sehpa Donatısı formlarında aynı "Pafta ölçeği" seçeneği.
+
+---- önceki teslim ----
+GÜNCEL — ÖLÇEK SORAN PLAN KOMUTLARI / AUTOCAD 2027 / 02.11.2026 15:00
+Plan: ST4_Plan_ID_Ciz_2027_20261102_150617.dll — BEYKENT sekmesinde 1/50 ve 1/100 düğmeleri birleşti: "Temel Planı" (TEMELST4), "Kolon Aplikasyon" (KOLONST4), "Kalıp Planı" (KALIPST4); form açılınca ölçek (1/50 – 1/100) sorulur, son seçim hatırlanır. Kalıp Deneme (DENEME1) ve Kalıp Deneme 2 (DENEME2) de ölçek sorar; 1/100'de denemelerdeki tüm yazılar (kat başlığı, ölçü, donatı yazısı dahil) diğer planlar gibi 1,5 kat büyür. Eski TEMEL50ST4/TEMEL100ST4 vb. komut satırından çalışmaya devam eder. Önceki tüm Plan düzeltmeleri dahil.
+Yardımcı: ST4_Yardimci_2027_20261101_180538.dll (değişmedi). Core Console çizim testi geçti; canlı AutoCAD form denemesi yok.
+
+---- önceki teslim ----
+GÜNCEL — GPR'SİZ ANTET DEPREM BİLGİSİ + GPR'SİZ KAPAMA DONATISI + EĞİMLİ KAPAMA PERDESİ + MANTAR DÖŞEME + KIRISCIZ / AUTOCAD 2027 / 02.11.2026 00:35
+
+Tek yükleme adresi: NETLOAD/GUNCEL_2027 (masaüstü GUNCEL DLL kısayolu).
+Plan: ST4_Plan_ID_Ciz_2027_20261102_003226.dll — antet deprem bilgisi (A sınıfı, R, D, zemin sınıfı, DTS) ST4 başlığından: GPR'siz de dolu, GPR'li projelerde yanlış okunan A sınıfı düzeldi (ör. A5/A23 → A31); BYS yalnız GPR'den (GPR yoksa uyarı). GPR yoksa (veya GPR'de panel bölümü yoksa) kapama perdesi donatısı .SWX'ten (KAPAMADETAY, KOLON50 perde görünüşü, KOLONDUSEY; GPR'li çizimle birebir aynı); kapama perdesinde sağ/sol kot farklıysa üst kenar eğik, alt kenar düz (alçak uç − h): BINAKESITI, BINAGORUNUS, SERBESTKESIT, kesit dilimleri, KAPAMADETAY (eğik üst, iki uç kotu, donatı boyu), KOLONDUSEY, plan perde kot takımı alt kotu; BEYKENT Yapı grubuna "Mantar Döşeme" (MANTARDOSEME, Monolit simge) eklendi; yeni KIRISCIZ (18:37: Tek etriye seçeneği; bant kiriş döşeme = h; ø yazmadan donatı 3 16 / 316 → 3ø16, etriye 10 10 20): ST4 gerekmeden formda mesnet/açıklık/donatı girilir, KIRISACILIMLARI motoruyla 1/25 açılım çizilir (konsol, saplama kiriş, son kat, .kiris kaydet/aç).
+Yardımcı: ST4_Yardimci_2027_20261101_180538.dll — Home şeridi Donatı grubuna "Kiriş Çiz" düğmesi (komut Plan DLL'inde; Plan yüklü olmalı).
+BEYKENT sekmesi Kiriş grubunda da "Kiriş Çiz". Core Console çizim testleri geçti; canlı AutoCAD form/çizim denemesi yok.
+
+---- önceki teslim ----
+GÜNCEL — HASIR KÖŞEGEN (BOYUTU DEĞİŞEN PANEL) / AUTOCAD 2027 / 30.10.2026 17:27
+
+Tek yükleme adresi: NETLOAD/GUNCEL_2027 (masaüstü GUNCEL DLL kısayolu).
+Yardımcı: ST4_Yardimci_2027_20261030_172538.dll — HASIRDONATI: kesilmiş/uyarlanmış hasır panellerine (ör. 335x215, 500x140) de köşegen çizilir.
+Plan: ST4_Plan_ID_Ciz_2027_20261030_152926.dll (aynı) — GPR kolon adı kesilmesi I/J düğümüyle çözülür; GPR kolon tablosu yoksa perde Hcr TBDY ile hesaplanır.
+AutoCAD'i yeniden başlatın; kurulu otomatik yükleyici iki güncel DLL'yi açılışta yükler.
+Sekmeyi seçmek: BEYKENT. Canlı AutoCAD çizim denemesi yok.
+
+---- önceki teslim ----
 GÜNCEL — BEYKENT PLAN SEKMESİ / AUTOCAD 2027 / 23.10.2026
 
 Tek yükleme adresi: NETLOAD/GUNCEL_2027 (masaüstü GUNCEL DLL kısayolu).
 Yardımcı: ST4_Yardimci_2027_20261023_213059.dll — DOSEMEDONATI: uzak etiketli uzun konsol (D1-19/D1-05) kot devamı + önceki düzeltmeler (21:31).
-Plan: ST4_Plan_ID_Ciz_2027_20261023_205205.dll — BEYKENT sekmesi, 6 grup / 19 komut.
-AutoCAD'i yeniden başlatın; bu iki güncel DLL'yi birer kez NETLOAD edin.
+Plan: ST4_Plan_ID_Ciz_2027_20261024_145505.dll — BEYKENT sekmesi, 7 grup / 20 komut; Deneme > Kalıp Deneme (DENEME1).
+AutoCAD'i yeniden başlatın; kurulu otomatik yükleyici iki güncel DLL'yi açılışta yükler.
 Sekmeyi seçmek: BEYKENT. Gizlemek: BEYKENTKAPAT. Eski Plan paleti: STAPANEL (elle).
 Test/derleme/Core Console geçti; canlı UI kontrolü kullanıcıda.
 
@@ -544,3 +689,85 @@ Kesit kiriş üstü kolon hizasından geçmez; kolon etriyesi kiriş içinde kı
 24.10.2026 01:10 — Kiriş gövdesi mesnette bindirmez (Claude)
 Güncel Plan: GUNCEL_2027/ST4_Plan_ID_Ciz_2027_20261024_010706.dll; Yardımcı 213059 aynı.
 Kiriş açılımında gövde her mesnette kendi yüzünden max(50φ, ℓb) kadar girer; komşusuyla ℓb bindirmez. Canlı AutoCAD denenmedi.
+
+
+24.10.2026 15:19 — GUNCEL_2027: Plan ST4_Plan_ID_Ciz_2027_20261024_151248.dll (DENEME2 / Kalip Deneme 2 + BEYKENT Deneme dugmesi) + Yardimci 213059. Eski paket arsiv/GUNCEL_2027_20261024_151852_778.
+
+24.10.2026 16:10 — GUNCEL_2027: Plan ST4_Plan_ID_Ciz_2027_20261024_155556.dll (DENEME2: GPR yerine gercek doseme donatisi, Yardimci DOSEMEDONATI cekirdegi) + Yardimci 213059. Eski paket arsiv/GUNCEL_2027_20261024_160951_823.
+
+24.10.2026 16:21 — GUNCEL_2027: Plan ST4_Plan_ID_Ciz_2027_20261024_161830.dll (DENEME2: serit yalniz ayni eksen dogrultusundaki dosemelerden gecer) + Yardimci 213059. Eski paket arsiv/GUNCEL_2027_20261024_162042_564.
+
+24.10.2026 16:29 — GUNCEL_2027: Plan ST4_Plan_ID_Ciz_2027_20261024_162811.dll (DENEME2 Y donatisi: egik bolgede de tam duseydeki gibi ilave solda, yazi asagidan yukari) + Yardimci 213059. Eski paket arsiv/GUNCEL_2027_20261024_162911_140.
+
+24.10.2026 16:50 — GUNCEL_2027: Plan ST4_Plan_ID_Ciz_2027_20261024_164938.dll (DENEME2: donati dogrudan DMX, kot ST4, ALT DUZ ALAN yok, Y>90 diger taraf) + Yardimci 213059. Eski paket arsiv/GUNCEL_2027_20261024_165017_645.
+
+24.10.2026 17:03 — GUNCEL_2027: Plan ST4_Plan_ID_Ciz_2027_20261024_170243.dll (doseme etiketi egik dosemede kendi sinirinda; DENEME2 yigin tasmasi duzeltmesi) + Yardimci 213059. Eski paket arsiv/GUNCEL_2027_20261024_170329_417.
+
+24.10.2026 17:37 — GUNCEL_2027: Plan ST4_Plan_ID_Ciz_2027_20261024_173607.dll (DENEME2: doseme ST4 sinirindan taninir, etiketsiz/ucgen doseme kendi merkezinden) + Yardimci 213059. Eski paket arsiv/GUNCEL_2027_20261024_173702_237.
+
+24.10.2026 17:44 — GUNCEL_2027: Plan ST4_Plan_ID_Ciz_2027_20261024_174220.dll (DENEME2: kirissiz komsu dosemeler, tekrar cizim yok) + Yardimci 213059. Eski paket arsiv/GUNCEL_2027_20261024_174334_438.
+
+24.10.2026 17:57 — GUNCEL_2027: Plan ST4_Plan_ID_Ciz_2027_20261024_175452.dll (DENEME2 donati adimi ~8x hizli, NTS modeli/BOUNDARY yok) + Yardimci 213059. Eski paket arsiv/GUNCEL_2027_20261024_175740_543.
+
+24.10.2026 18:32 — GUNCEL_2027: Plan ST4_Plan_ID_Ciz_2027_20261024_182951.dll (KALIP50/DENEME2 plan cizimi ~1,6x hizli, cikti birebir) + Yardimci 213059. Eski paket arsiv/GUNCEL_2027_20261024_183153_282.
+
+24.10.2026 18:46 — GUNCEL_2027: Plan ST4_Plan_ID_Ciz_2027_20261024_184346.dll (DENEME2: ayni siradaki dosemelerin donatisi tek hatta — sira hizasi) + Yardimci 213059. Eski paket arsiv/GUNCEL_2027_20261024_184545_575.
+
+24.10.2026 18:57 — GUNCEL_2027: Plan ST4_Plan_ID_Ciz_2027_20261024_185511.dll (DENEME2: ara sahanlik etiket/donatisi yok; donati alt/sag 1/5 hizasinda, sira hizasi korunur) + Yardimci 213059. Eski paket arsiv/GUNCEL_2027_20261024_185634_121.
+
+24.10.2026 19:19 — GUNCEL_2027: Plan ST4_Plan_ID_Ciz_2027_20261024_191806.dll (DENEME2: hiza bandi alt/sag kenardan 0,15-3/5; 3/5 asilirsa hizalanmaz, merkez kesitiyle) + Yardimci 213059. Eski paket arsiv/GUNCEL_2027_20261024_191918_344.
+
+24.10.2026 19:57 — GUNCEL_2027: Plan ST4_Plan_ID_Ciz_2027_20261024_195554.dll (DENEME2: 1/5 ve 3/5 hizasi alt duz donatiya gore) + Yardimci 213059. Eski paket arsiv/GUNCEL_2027_20261024_195710_328.
+
+24.10.2026 21:36 — GUNCEL_2027: Plan ST4_Plan_ID_Ciz_2027_20261024_213405.dll (DENEME2: donati adedi STA4CAD gibi = tavan(cubuga dik net genislik / aralik); duz, pilye, montaj, mesnet ve konsol ilavesi) + Yardimci 213059. Eski paket arsiv/GUNCEL_2027_20261024_213601_333.
+
+24.10.2026 21:52 — GUNCEL_2027: Plan ST4_Plan_ID_Ciz_2027_20261024_214811.dll (DENEME2: 90 derece ustu egik Y donatisinda 1/5 hizasi alt duz yerine mesnet ilavesine gore; acilmazsa son deneme alt duz 1/5) + Yardimci 213059. Eski paket arsiv/GUNCEL_2027_20261024_215147_131.
+
+24.10.2026 22:03 — GUNCEL_2027: Plan ST4_Plan_ID_Ciz_2027_20261024_220117.dll (DENEME2: EKSEN X/Y arti cizgileri simdilik cizilmez; donati ayni) + Yardimci 213059. Eski paket arsiv/GUNCEL_2027_20261024_220326_190.
+
+24.10.2026 22:11 — GUNCEL_2027: Plan ST4_Plan_ID_Ciz_2027_20261024_220847.dll (DENEME2: hiza hedefi 1/5 yerine 1/6, ust sinir 3/5 yerine 1/2) + Yardimci 213059. Eski paket arsiv/GUNCEL_2027_20261024_221048_310.
+
+24.10.2026 22:39 — GUNCEL_2027: Plan ST4_Plan_ID_Ciz_2027_20261024_223659.dll (DENEME2 hizlandirma: genislik isini kisa+tembel+onbellek, otomatikte mesnet adi aramasi yok; cikti birebir) + Yardimci 213059. Eski paket arsiv/GUNCEL_2027_20261024_223909_208.
+
+24.10.2026 23:00 — GUNCEL_2027: Plan ST4_Plan_ID_Ciz_2027_20261024_225845.dll (kalip plani KALIP50/100/ST4/DENEME: durum cubugunda ilerleme gostergesi - kat/kopya/asama, yuzde, gecen sure; sonda cizim suresi mesaji; cizim ayni) + Yardimci 213059. Eski paket arsiv/GUNCEL_2027_20261024_230032_680.
+
+24.10.2026 23:14 — GUNCEL_2027: Plan ST4_Plan_ID_Ciz_2027_20261024_230826.dll (Plan ID ve Yardimci komutlarinda 5 sn uzeri cizimde "Ciziliyor..." penceresi: mavi cubuk, kalip planinda yuzde+asama, digerlerinde kayan cubuk, gecen sure; durum cubugu gostergesi kaldirildi) + Yardimci 213059. Eski paket arsiv/GUNCEL_2027_20261024_231354_163.
+
+24.10.2026 23:22 — GUNCEL_2027: Plan ST4_Plan_ID_Ciz_2027_20261024_232023.dll (Ciziliyor penceresi algilama duzeltmesi: "yanit vermiyor" yerine komut cizim suresi - istem/diyalog beklemesi haric 5 sn; kalip plani baslayinca dogrudan baslar) + Yardimci 213059. Eski paket arsiv/GUNCEL_2027_20261024_232223_146.
+
+24.10.2026 23:33 — GUNCEL_2027: Plan ST4_Plan_ID_Ciz_2027_20261024_232813.dll (Ciziliyor penceresine tani gunlugu %TEMP%\ST4_CizimIzleyici.log; gercek AutoCAD 2027 GUI testinde pencere 5. sn de goruldu) + Yardimci 213059. Eski paket arsiv/GUNCEL_2027_20261024_232903_663.
+
+24.10.2026 23:40 — GUNCEL_2027: Plan ST4_Plan_ID_Ciz_2027_20261024_233825.dll (Ciziliyor penceresi AutoCAD arkasinda kaliyordu: WS_EX_TOPMOST + her yenilemede en uste; GUI testinde ustte goruldu) + Yardimci 213059. Eski paket arsiv/GUNCEL_2027_20261024_233908_057.
+
+26.10.2026 16:43 — GUNCEL_2027: Yardimci ST4_Yardimci_2027_20261026_164244.dll (yeni SEHIMTABLOSU / -SEHIMTABLOSU: STA4 projesinden secilen katin kiris+doseme ANI sehim tablosu, mm; Genel Duzenleme seridinde) + Plan 233825. DOSEMEDONATI kaynagi 213059 ile ayni (24.10 yayimlanmamis degisiklikler dahil edilmedi). Eski paket arsiv/GUNCEL_2027_20261026_164320_461.
+
+26.10.2026 18:13 — GUNCEL_2027: Yardimci ST4_Yardimci_2027_20261026_181247.dll (SEHIMTABLOSU artik STA4 gibi UZUN SURELI ters sehim, 1 ondalik, isaretli; kiris ve doseme ayri metraj tarzi tablolar, aralari 15 cm, baslikta tarama yok) + Plan 165023. Eski paket arsiv/GUNCEL_2027_20261026_181313_003.
+
+26.10.2026 18:21 — GUNCEL_2027: Yardimci ST4_Yardimci_2027_20261026_182044.dll (SEHIMTABLOSU tablosu DONATIMETRAJ demir tablosu duzeninde: cerceveli baslik kutusu, ayri sutun basligi kutusu, IC ANTET cizgiler, ANTET BASLIK 2 basliklar, ortali yazilar) + Plan 165023. Eski paket arsiv/GUNCEL_2027_20261026_182108_883.
+
+26.10.2026 18:30 — GUNCEL_2027: Yardimci ST4_Yardimci_2027_20261026_182941.dll (SEHIMTABLOSU ust baslik yazisi 10) + Plan 165023. Eski paket arsiv/GUNCEL_2027_20261026_182956_392.
+
+26.10.2026 19:42 — GUNCEL_2027: Yardimci ST4_Yardimci_2027_20261026_194125.dll (yeni BETONKALIP / -BETONKALIP: STA4 projesinden TEMEL, SUBASMAN ve kat kat beton m3 (brut) / kalip m2 tablosu, eleman kirilimli veya kat basina tek satir; Genel Duzenleme seridinde) + Plan 165023. DOSEMEDONATI kaynagi 213059 ile ayni. Eski paket arsiv/GUNCEL_2027_20261026_194157_318.
+
+26.10.2026 20:12 — GUNCEL_2027: Yardimci ST4_Yardimci_2027_20261026_201134.dll (SEHIMTABLOSU ve BETONKALIP tablolari 570 genislik - DONATIMETRAJ toplam tablosu ile ayni; ana baslik 15; alt aciklamalar kaldirildi) + Plan 165023. Ara paket 201025 (notlu) ve onceki paket arsivde.
+
+26.10.2026 20:55 — GUNCEL_2027: Yardimci ST4_Yardimci_2027_20261026_205437.dll (BETONKALIP: temel elemanlari kot dilimiyle kesisimi bir kez sayar; CK_20827_2_02 TEMEL 803.44 m3) + Plan 165023. Eski paket arsiv/GUNCEL_2027_20261026_205520_861.
+
+27.10.2026 13:53 — GUNCEL_2027: Plan ST4_Plan_ID_Ciz_2027_20261027_133752.dll (yeni SERBESTKESIT: plan uzerinde gosterilen hattan 1/200 sematik bina kesiti + plana kesit isareti; BEYKENT > Yapi > Serbest Kesit) + Yardimci 205437. Eski paket arsiv/GUNCEL_2027_20261027_135303_124.
+
+28.10.2026 15:50 — GUNCEL_2027: Plan ST4_Plan_ID_Ciz_2027_20261028_155009.dll (SUREKLITEMELACILIMLARI: tek perde/kolon altindaki temelde (HHO_01 T-8, SZ-14 25/290) donati cizilmiyordu; beton uclari konsol acikligi sayilir) + Yardimci 205437. Eski paket arsiv/GUNCEL_2027_20261028_155024_260.
+
+28.10.2026 16:00 — GUNCEL_2027: Plan ST4_Plan_ID_Ciz_2027_20261028_155906.dll (SUREKLITEMELACILIMLARI konsol uclarinda montaj/duz 6 cm paspayla biter; onceki 155009 beton yuzune gidiyordu) + Yardimci 205437. Eski paket arsiv/GUNCEL_2027_20261028_155949_212.
+- 28.10.2026 19:46 GUNCEL_2027 = Plan ST4_Plan_ID_Ciz_2027_20261028_194517.dll (RADYELEGANTKARSILASTIRMA + Codex form hafızası) + Yardımcı 20261026_205437 (Claude).
+- 28.10.2026 20:39 GUNCEL_2027 = Plan ST4_Plan_ID_Ciz_2027_20261028_203734.dll (KOLONDUSEY / KOLON aplikasyon formlari: 'Kolon kiris bolgesi etriyeleri' Normal aralik / Siklastirilsin) + Yardimci 20261026_205437 (Claude). Eski paket arsiv/GUNCEL_2027_20261028_203910_431.
+- 28.10.2026 23:23 GUNCEL_2027 = Plan ST4_Plan_ID_Ciz_2027_20261028_232036.dll (KOLONDUSEY poligon ara baslik: sarkan kisimlarda esit aralik; ara baslik etiketi saplanan kol ucunu da sayar) + Yardimci 20261026_205437 (Claude). Eski paket arsiv/GUNCEL_2027_20261028_232338_906.
+- 30.10.2026 18:28 GUNCEL_2027 = Plan ST4_Plan_ID_Ciz_2027_20261030_182652.dll (TEMELDONATI / RADYELEGANTKARSILASTIRMA: geometri ozyinelemesinde yigin tasmasi -> AutoCAD cokmesi duzeltildi) + Yardimci 20261030_172538 (Claude). Eski paket arsiv/GUNCEL_2027_20261030_182745_598.
+- 30.10.2026 18:46 GUNCEL_2027 = Plan ST4_Plan_ID_Ciz_2027_20261030_184447.dll (GPR yoksa veya GPR'de YAPI AKS tablosu yoksa aks isimleri .AKS dosyasindan: once nx satir X, sonra ny satir Y) + Yardimci 20261030_172538 (Claude). Eski paket arsiv/GUNCEL_2027_20261030_184603_025.
+- 30.10.2026 20:08 GUNCEL_2027 = Yardimci ST4_Yardimci_2027_20261030_200737.dll (yeni MIMARIBOSLUK: mimari kat planindan kalip planina saft/doseme boslugu aktarimi; kolon eslesmesiyle otomatik hizalama, zayif adaylar ve farklar MIMARI KONTROL katmaninda) + Plan 20261030_184447 (Claude). Eski paket arsiv/GUNCEL_2027_20261030_200822_183.
+- 30.10.2026 20:40 GUNCEL_2027 = Yardimci ST4_Yardimci_2027_20261030_203158.dll (yeni MIMARIMERDIVEN: mimari merdiven kollarini kaliba MERDIVEN rihtlari + MERDIVEN YAZI cikis hatti/daire/ucgen olarak aktarir; MIMARIBOSLUK ayni) + Plan 20261030_184447 (Claude).
+- 30.10.2026 21:03 GUNCEL_2027 = Yardimci ST4_Yardimci_2027_20261030_210142.dll (MIMARIBOSLUK/MIMARIMERDIVEN mimariyi ayri DWG dosyasindan okur [Dosya/Cizim], birden cok kat varsa sira/blok/baslikla secim; Home seridinde ayri Mimari grubu) + Plan 20261030_184447 (Claude).
+- 30.10.2026 21:12 GUNCEL_2027 = Yardimci ST4_Yardimci_2027_20261030_210922.dll (MIMARIBOSLUK/MIMARIMERDIVEN mimari modu: mimari projede plan secilir, sonuc kalip katmanlarinda mimarinin uzerine cizilir, statige kopyalanir) + Plan 20261030_184447 (Claude).
+- 30.10.2026 21:32 GUNCEL_2027 = Yardimci ST4_Yardimci_2027_20261030_212733.dll (yeni MIMARIKAT: mimari projede kat kat pencere, saft/baca + merdiven onaysiz cizilir; H.B. hava bacasi, yazi merkezi ile kazan bacasi; MIMARIBOSLUK/MIMARIMERDIVEN ayni kat kat akis) + Plan 20261030_184447 (Claude).
+- 30.10.2026 22:30 GUNCEL_2027 = Yardimci ST4_Yardimci_2027_20261030_222846.dll (MIMARIKAT: yazi etrafindan sinir (cizgiyle cizilmis saft/asansor/H.B.), bitisik bacalar tek bosluk, merdiven 'zaten cizili' duzeltmesi; 9 proje olcumu tam 22->114) + Plan 20261030_184447 (Claude).
+- 30.10.2026 23:16 GUNCEL_2027 = Yardimci ST4_Yardimci_2027_20261030_231350.dll (MIMARIKAT/MIMARIMERDIVEN merdiven: plak siniri + goz DOSEME SINIRI (BEYKENT) katmaninda, ilk/son kenar cizgisi ayiklama, kesik/parcali riht tamamlama, dis merdiven ayirma; istemde cift [Kalip] giderildi) + Plan 20261030_184447 (Claude).
+- 30.10.2026 23:46 GUNCEL_2027 = Yardimci ST4_Yardimci_2027_20261030_234141.dll (MIMARIKAT merdiven: DOSEME SINIRI artik tam cevre degil, kalip aliskanligi gibi kol uc (sahanlik/kat) cizgileri + kollar arasi goz; her kolun iki ucu kenar, otesinde uzun kenar varsa uc cizgi riht kalir) + Plan 20261030_184447 (Claude).

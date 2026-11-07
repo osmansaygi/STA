@@ -1,0 +1,42 @@
+# Claude — DENEME2 donatı ↔ STA4CAD ka1.dwg karşılaştırma
+- Ajan: Claude Code
+- Güncelleme: 24.10.2026 21:38 (Europe/Istanbul)
+- Durum: tamamlandı — rezervasyon yok
+- Görev: OR_OTP_A/B/C için DENEME2 döşeme donatısı adet ve çap/aralığını STA4CAD'in OR_OTP_*_ka1.dwg çizimiyle karşılaştırmak; boy/açı/yön değişmez (kullanıcı: boy ve açı doğru).
+- Bulgu: otomatik (DMX) modda adet çubuk BOYUNDAN sayılıyordu (EstimateAdet(Lbar)). STA4 kuralı veriden: adet = ⌈çubuğa dik net genişlik / aralık⌉.
+- Değişen: ST4_Yardimci/DosemeDonatiRunner.cs (yalnız otomatik dallar: SpanRec.GenislikCm, AutoGenislikCm, AutoAdet, AutoSlabAreaAt; düz/pilye/montaj/ilave/konsol adedi); tools/Deneme2Sta4Karsilastir_20261024/** (yeni: Dump probu, DumpKa.ps1, RunDeneme2.ps1, Compare.cs, Yayin.ps1); docs/modul-durum/ST4_Plan_ID_Ciz.md, ST4_Yardimci.md; NETLOAD/OKU.txt.
+- Doğrulama: STA4/biz toplam çubuk A 4187/4320, B 7449/7463, C 9226/9368 (önce 3698/6744/8778); tam adet C 333/373 (hepsi ±1), A 103/126, B 156/203. Çap/aralık eşleşenlerde A 126/126, C 363/373, B 188/203. CK regresyon COMPLETE, kırmızı 1 (önceki ile aynı). Kısa ışın denemesi A'da bozduğu için geri alındı.
+- Derleme: Plan izole tools/PlanRibbonCheck/build 213405 0 hata/4 bilinen uyarı; Yardımcı izole (bu klasör ybuild) 0/0.
+- Yayın: NETLOAD/GUNCEL_2027 = Plan 20261024_213405 + Yardımcı 213059, hash PASS, eski arsiv/GUNCEL_2027_20261024_213601_333; yayındaki DLL Core Console'da A/B/C çıktı birebir. Canlı AutoCAD denenmedi.
+- Açık: tam bölünen genişlikte STA4 bazen +1; B eğik/yamuk döşemelerde dik genişlik kısa; B'de 15 çap/aralık farkı (eğik döşemeler) incelenmedi.
+
+## Devam — OR_OTP_B eğik döşemeler (24.10.2026 21:45)
+- Durum: aktif. Ayrılanlar: ST4_Yardimci/DosemeDonatiRunner.cs (yalnız otomatik adet/genişlik), ST4_Plan_ID_Ciz/Deneme2DosemeDonati.cs (gerekirse), tools/Deneme2Sta4Karsilastir_20261024/**; derleme tools/PlanRibbonCheck/build; yayında NETLOAD/GUNCEL_2027/**, NETLOAD/OKU.txt.
+- 21:55 kullanıcı: Y (düşey) 90° üstü donatılarda 1/5 kuralı alt düzden değil ilave donatıdan. Ayrılan ek: ST4_Yardimci/DosemeDonatiRunner.cs AutoAltDuzKaymasi yanına AutoHizaKaymasi; ST4_Plan_ID_Ciz/Deneme2DosemeDonati.cs AltDuzKaymasi.
+- 21:52 sonuç: 90° üstü eğik Y hizası ilaveye göre (DosemeDonatiRunner.AutoHizaKaymasi; Deneme2DosemeDonati.cs AltDuzKaymasi + 4. deneme alt düz 1/5). A/B yalnız eğik Y şeritleri değişti, C/CK aynı; B DB-31 son denemeyle çizili. Yayın Plan 214811 hash PASS (eski arsiv/GUNCEL_2027_20261024_215147_131), yayındaki DLL A/B/C birebir. Canlı AutoCAD denenmedi.
+- Durum: beklemede — sıradaki iş OR_OTP_B eğik/yamuk döşeme adet ve çap/aralık farkları (ayrılanlar: ST4_Yardimci/DosemeDonatiRunner.cs otomatik dallar, ST4_Plan_ID_Ciz/Deneme2DosemeDonati.cs, tools/Deneme2Sta4Karsilastir_20261024/**).
+- 22:05 kullanıcı: EKSEN çizgilerini şimdilik çizdirme. Ayrılan: ST4_Plan_ID_Ciz/PlanIdDrawingManager.cs (DrawDeneme2DosemeEksenArtilari yalnız çizim satırı); derleme/yayın aynı.
+- 22:03 sonuç: EKSEN artıları kapalı (PlanIdDrawingManager.cs bayrak + özet mesajı). Donatı birebir, EKSEN 0. Yayın Plan 220117 hash PASS (eski arsiv/GUNCEL_2027_20261024_220326_190). Canlı AutoCAD denenmedi.
+- Durum: beklemede — sıradaki iş OR_OTP_B eğik/yamuk döşeme adet ve çap/aralık farkları (ayrılanlar: ST4_Yardimci/DosemeDonatiRunner.cs otomatik dallar, ST4_Plan_ID_Ciz/Deneme2DosemeDonati.cs, tools/Deneme2Sta4Karsilastir_20261024/**).
+- 22:10 kullanıcı: 1/5 → 1/6, 3/5 → 1/2. Ayrılan: ST4_Plan_ID_Ciz/Deneme2DosemeDonati.cs (HedefKenarOrani, HizaMaxOrani + yorumlar); derleme/yayın aynı.
+- 22:11 sonuç: 1/6 ve 1/2 (Deneme2DosemeDonati.cs). Yayın Plan 220847 hash PASS (eski arsiv/GUNCEL_2027_20261024_221048_310), yayındaki DLL A/B/C birebir. Canlı AutoCAD denenmedi.
+- Durum: beklemede — sıradaki iş OR_OTP_B eğik/yamuk döşeme adet ve çap/aralık farkları (ayrılanlar: ST4_Yardimci/DosemeDonatiRunner.cs otomatik dallar, ST4_Plan_ID_Ciz/Deneme2DosemeDonati.cs, tools/Deneme2Sta4Karsilastir_20261024/**).
+- 22:25 kullanıcı: çizim yavaşladı. Ölçüm CK: genişlik 7,2 sn (donatı 7,5→14,4 sn); plan ~12 sn eski DLL ile de (geçici stabilite güç planı). Ayrılan: DosemeDonatiRunner.cs (genişlik tembel+önbellek), Deneme2DosemeDonati.cs (önbellek temizleme, süre slotu).
+- 22:39 sonuç: hızlandırma (DosemeDonatiRunner.cs tembel/önbellek genişlik, kısa ışın, otomatikte mesnet adı araması yok; Deneme2DosemeDonati.cs önbellek temizleme + genislik süre slotu). Çıktı A/B/C/CK birebir; CK donatı 14,4→7,2 sn. Yayın Plan 223659 hash PASS (eski arsiv/GUNCEL_2027_20261024_223909_208). Canlı AutoCAD denenmedi.
+- Durum: beklemede — sıradaki iş OR_OTP_B eğik/yamuk döşeme adet ve çap/aralık farkları (ayrılanlar: ST4_Yardimci/DosemeDonatiRunner.cs otomatik dallar, ST4_Plan_ID_Ciz/Deneme2DosemeDonati.cs, tools/Deneme2Sta4Karsilastir_20261024/**).
+- 22:50 kullanıcı: kalıp planı çizimine süre gösteren yükleme çubuğu. Ayrılan: ST4_Plan_ID_Ciz/KalipIlerleme.cs (yeni), ST4_Plan_ID_Ciz/PlanIdDrawingManager.cs (DrawFormworkPlan50Core ilerleme çağrıları), ST4_Plan_ID_Ciz/Deneme2DosemeDonati.cs (Run ilerleme), ST4_Plan_ID_Ciz/CommandEntry.cs (DENEME2 bölümleri); derleme/yayın aynı.
+- Durum: aktif.
+- 23:00 sonuç: ilerleme göstergesi (KalipIlerleme.cs yeni; PlanIdDrawingManager.cs, Deneme2DosemeDonati.cs, CommandEntry.cs DENEME2). Çizim birebir. Yayın Plan 225845 hash PASS (eski arsiv/GUNCEL_2027_20261024_230032_680). Canlı AutoCAD denenmedi.
+- Durum: beklemede — sıradaki iş OR_OTP_B eğik/yamuk döşeme adet ve çap/aralık farkları (ayrılanlar: ST4_Yardimci/DosemeDonatiRunner.cs otomatik dallar, ST4_Plan_ID_Ciz/Deneme2DosemeDonati.cs, tools/Deneme2Sta4Karsilastir_20261024/**).
+- 23:10 kullanıcı: pencere (Çiziliyor..., klasik mavi) 5 sn üstü tüm çizimlerde. Ayrılan ek: ST4_Plan_ID_Ciz/CizimIzleyici.cs (yeni), ST4_Plan_ID_Ciz/CommandEntry.cs Initialize/Terminate (izleyici kur/kaldır).
+- 23:14 sonuç: Çiziliyor penceresi (CizimIzleyici.cs yeni, KalipIlerleme.cs durum, CommandEntry.cs Kur/Kaldir). Pencere testi PASS (sahte donma), çizim birebir, ribbon PASS. Yayın Plan 230826 hash PASS (eski arsiv/GUNCEL_2027_20261024_231354_163). Canlı AutoCAD denenmedi.
+- Durum: beklemede — sıradaki iş OR_OTP_B eğik/yamuk döşeme adet ve çap/aralık farkları (ayrılanlar: ST4_Yardimci/DosemeDonatiRunner.cs otomatik dallar, ST4_Plan_ID_Ciz/Deneme2DosemeDonati.cs, tools/Deneme2Sta4Karsilastir_20261024/**).
+- 23:25 kullanıcı: pencere yine çıkmadı. Neden: IsHungAppWindow — AutoCAD uzun işte mesaj kuyruğuna bakıyor, "donmuş" sayılmıyor. Düzeltme: komut süresi − giriş bekleme (Editor Prompting/Prompted olayları, kalıcı diyalogda ana pencere devre dışı). Ayrılan: ST4_Plan_ID_Ciz/CizimIzleyici.cs.
+- 23:22 sonuç: algılama komut süresi − istem/diyalog (CizimIzleyici.cs; KalipIlerleme.cs → KalipBasladi/KalipBitti). PencereTest PASS, çizim birebir. Yayın Plan 232023 hash PASS (eski arsiv/GUNCEL_2027_20261024_232223_146). Canlı AutoCAD denenmedi.
+- Durum: beklemede — sıradaki iş OR_OTP_B eğik/yamuk döşeme adet ve çap/aralık farkları (ayrılanlar: ST4_Yardimci/DosemeDonatiRunner.cs otomatik dallar, ST4_Plan_ID_Ciz/Deneme2DosemeDonati.cs, tools/Deneme2Sta4Karsilastir_20261024/**).
+- 23:30 kullanıcı: DENEME2de hâlâ çıkmıyor. Tanı: CizimIzleyici günlüğü (%TEMP%\ST4_CizimIzleyici.log) + GUI AutoCAD ile probe denemesi.
+- 23:33 sonuç: tanı günlüğü + GUI AutoCAD testi (GuiTest.ps1): pencere 5 sn sonra görünür, ekran görüntüsü alındı. Yayın Plan 232813 hash PASS (eski arsiv/GUNCEL_2027_20261024_232903_663). Kullanıcı büyük olasılıkla önceki (IsHungAppWindow) sürümü denemişti.
+- Durum: beklemede — sıradaki iş OR_OTP_B eğik/yamuk döşeme farkları.
+- 23:40 tanı: form exstyle WS_EX_TOPMOST yok (ShowWithoutActivation/NOACTIVATE ile TopMost uygulanmamış); WindowFromPoint form ortasında AutoCAD çerçevesi → pencere AutoCADin arkasında. Kullanıcının K_BLG_03 denemesi günlükte gorunur=True. Düzeltme: CreateParams WS_EX_TOPMOST + SetWindowPos(HWND_TOPMOST, NOACTIVATE) her tick.
+- 23:40 sonuç: TOPMOST düzeltmesi (CizimIzleyici.cs). GUI testinde pencere AutoCAD üstünde görünür (WindowFromPoint = form). Yayın Plan 233825 hash PASS (eski arsiv/GUNCEL_2027_20261024_233908_057).
+- Durum: beklemede — sıradaki iş OR_OTP_B eğik/yamuk döşeme farkları.

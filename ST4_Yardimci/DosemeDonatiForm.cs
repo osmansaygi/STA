@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
+using Beykent.Monolit.Girdi;
 using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
 using SdFont = System.Drawing.Font;
 
@@ -15,9 +16,8 @@ namespace ST4Yardimci
     {
         private static DosemeDonatiForm _instance;
 
-        private readonly RadioButton _rbSerbest;
-        private readonly RadioButton _rbX;
-        private readonly RadioButton _rbY;
+        private readonly SegmentSecim _yon;
+        private readonly SegmentSecim _olcek;
         private readonly ListBox _lstSinir;
         private readonly ListBox _lstMesnet;
         private readonly ListBox _lstBosluk;
@@ -46,6 +46,10 @@ namespace ST4Yardimci
             BaFormSession.Attach("DOSEMEDONATI", _instance);
             BaFormSession.EndPick("DOSEMEDONATI");
         }
+
+        /// <summary>Plan ölçeği 1/100: donatı yazıları ve aralıkları ×1,5 (pafta_olcek.ini, dosemedonati).</summary>
+        internal static bool Olcek100 => BaPaftaOlcek.Yuz(OlcekAnahtar);
+        private const string OlcekAnahtar = "dosemedonati";
 
         public static void Shutdown()
         {
@@ -97,25 +101,18 @@ namespace ST4Yardimci
             DosemeDonatiRunner.EnsureYonLoaded();
 
             int y = 10;
-            Controls.Add(MakeLabel("Donatı yönü (GPR yazı: X kırmızı / Y mavi)", 12, y)); y += 20;
-            _rbSerbest = MakeRadio("Serbest", 12, y);
-            _rbX = MakeRadio("X yönü", 110, y);
-            _rbY = MakeRadio("Y yönü", 200, y);
-            ApplyYonToRadios(DosemeDonatiRunner.Yon);
-            EventHandler yonChanged = (s, e) =>
+            // Yön ve ölçek ortak SegmentSecim; kayıt yolları aynı (DosemeDonatiRunner.SaveYon, BaPaftaOlcek "dosemedonati").
+            _yon = new SegmentSecim("Serbest", "X yönü", "Y yönü");
+            ApplyYonToSegment(DosemeDonatiRunner.Yon);
+            _yon.SeciliDegisti += (s, e) =>
             {
-                if (_rbX.Checked) DosemeDonatiRunner.Yon = DosemeDonatiRunner.DonatiYonu.X;
-                else if (_rbY.Checked) DosemeDonatiRunner.Yon = DosemeDonatiRunner.DonatiYonu.Y;
-                else DosemeDonatiRunner.Yon = DosemeDonatiRunner.DonatiYonu.Serbest;
+                DosemeDonatiRunner.Yon = SeciliYon();
                 try { DosemeDonatiRunner.SaveYon(); } catch { }
             };
-            _rbSerbest.CheckedChanged += yonChanged;
-            _rbX.CheckedChanged += yonChanged;
-            _rbY.CheckedChanged += yonChanged;
-            Controls.Add(_rbSerbest);
-            Controls.Add(_rbX);
-            Controls.Add(_rbY);
-            y += 32;
+
+            // Bu formda 1/100 = yazı ve aralık ×1,5 (DosemeDonatiRunner); etiket bu anlamı korur.
+            _olcek = new SegmentSecim("1/50 pafta", "1/100 pafta (×1,5)") { Secili = Olcek100 ? 1 : 0 };
+            _olcek.SeciliDegisti += (s, e) => { try { BaPaftaOlcek.Kaydet(OlcekAnahtar, _olcek.Secili == 1); } catch { } };
 
             var btnAyar = MakeButton("Konsol donatı ayarları…", 12, y, 344);
             btnAyar.Click += (s, e) =>
@@ -179,7 +176,8 @@ namespace ST4Yardimci
 
             // Kompakt, içerik odaklı form düzeni.
             var ui = BeginCompact(370);
-            ui.Section("Donatı yönü").Options(_rbSerbest, _rbX, _rbY);
+            ui.Section("Donatı yönü  (GPR yazı: X kırmızı / Y mavi)").Control(_yon);
+            ui.Section("Pafta ölçeği").Control(_olcek);
             ui.Section(null).Actions(btnAyar);
             ui.Tabs(146,
                 ui.Page("Konsol", p => p.Layers(_lstSinir, ui.LayerButtons(_lstSinir))),
@@ -207,13 +205,16 @@ namespace ST4Yardimci
             return base.ProcessCmdKey(ref msg, keyData);
         }
 
-        private void ApplyYonToRadios(DosemeDonatiRunner.DonatiYonu yon)
+        private void ApplyYonToSegment(DosemeDonatiRunner.DonatiYonu yon)
         {
-            _rbSerbest.Checked = yon == DosemeDonatiRunner.DonatiYonu.Serbest;
-            _rbX.Checked = yon == DosemeDonatiRunner.DonatiYonu.X;
-            _rbY.Checked = yon == DosemeDonatiRunner.DonatiYonu.Y;
-            if (!_rbSerbest.Checked && !_rbX.Checked && !_rbY.Checked)
-                _rbSerbest.Checked = true;
+            _yon.Secili = yon == DosemeDonatiRunner.DonatiYonu.X ? 1 : yon == DosemeDonatiRunner.DonatiYonu.Y ? 2 : 0;
+        }
+
+        private DosemeDonatiRunner.DonatiYonu SeciliYon()
+        {
+            if (_yon.Secili == 1) return DosemeDonatiRunner.DonatiYonu.X;
+            if (_yon.Secili == 2) return DosemeDonatiRunner.DonatiYonu.Y;
+            return DosemeDonatiRunner.DonatiYonu.Serbest;
         }
 
         private void RefreshLists()
@@ -298,9 +299,7 @@ namespace ST4Yardimci
             {
                 var doc = AcApp.DocumentManager.MdiActiveDocument;
                 if (doc == null) return;
-                if (_rbX.Checked) DosemeDonatiRunner.Yon = DosemeDonatiRunner.DonatiYonu.X;
-                else if (_rbY.Checked) DosemeDonatiRunner.Yon = DosemeDonatiRunner.DonatiYonu.Y;
-                else DosemeDonatiRunner.Yon = DosemeDonatiRunner.DonatiYonu.Serbest;
+                DosemeDonatiRunner.Yon = SeciliYon();
                 try { DosemeDonatiRunner.SaveYon(); } catch { }
                 DosemeDonatiSettings.Save();
                 _starting = true;
@@ -312,16 +311,6 @@ namespace ST4Yardimci
                 _starting = false;
             }
         }
-
-        private static RadioButton MakeRadio(string text, int x, int y) => new RadioButton
-        {
-            Text = text,
-            Location = new Point(x, y),
-            AutoSize = true,
-            ForeColor = Color.White,
-            BackColor = Color.Transparent,
-            Cursor = Cursors.Hand
-        };
 
         private static Label MakeLabel(string text, int x, int y) => new Label
         {

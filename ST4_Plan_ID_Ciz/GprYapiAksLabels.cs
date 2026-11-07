@@ -11,7 +11,7 @@ namespace ST4PlanIdCiz
     /// <summary>GPR sayfasındaki "YAPI AKS BİLGİLERİ" tablosundan X/Y aks isimlerini okur.</summary>
     public static class GprYapiAksLabels
     {
-        /// <summary>Aynı dizindeki .GPR dosyasından aks etiketlerini modele yazar.</summary>
+        /// <summary>Aynı dizindeki .GPR dosyasından aks etiketlerini modele yazar; GPR veya tablosu yoksa .AKS dosyasından.</summary>
         public static void TryMergeFromGprBesideSt4(string st4Path, St4Model model)
         {
             if (model == null || string.IsNullOrEmpty(st4Path)) return;
@@ -22,23 +22,26 @@ namespace ST4PlanIdCiz
             if (string.IsNullOrEmpty(dir)) return;
             string gpr = Path.Combine(dir, baseName + ".GPR");
             if (!File.Exists(gpr)) gpr = Path.Combine(dir, baseName + ".gpr");
-            if (!File.Exists(gpr)) return;
-            try
+            if (File.Exists(gpr))
             {
-                Parse(gpr, model);
+                try
+                {
+                    Parse(gpr, model);
+                }
+                catch { /* GPR okunamazsa .AKS veya varsayılan etiketler */ }
             }
-            catch { /* GPR okunamazsa varsayılan etiketler */ }
             if (model.GprAxisXLabelByRow.Count == 0 && model.GprAxisYLabelByRow.Count == 0)
                 TryFillFromAksBesideSt4(st4Path, model);
         }
 
         /// <summary>
-        /// GPR aks tablosu boşsa .AKS: ilk dolu blok X, ikinci blok Y.
-        /// Adet ST4 aks sayısıyla aynı değilse yazılmaz.
+        /// STA4CAD .AKS: satır başına bir isim (4 karakter, boş olabilir), ST4 /Axis data/ sırasıyla
+        /// önce X akslarının tamamı, ardından Y aksları. Boş isimler varsayılan etikette kalır.
         /// </summary>
         private static void TryFillFromAksBesideSt4(string st4Path, St4Model model)
         {
-            if (model.AxisX.Count == 0 && model.AxisY.Count == 0) return;
+            int nx = model.AxisX.Count, ny = model.AxisY.Count;
+            if (nx == 0 && ny == 0) return;
             string dir = Path.GetDirectoryName(st4Path);
             string baseName = Path.GetFileNameWithoutExtension(st4Path);
             if (string.IsNullOrEmpty(dir) || string.IsNullOrEmpty(baseName)) return;
@@ -46,31 +49,23 @@ namespace ST4PlanIdCiz
             if (!File.Exists(aks)) aks = Path.Combine(dir, baseName + ".aks");
             if (!File.Exists(aks)) return;
             string[] lines;
-            try { lines = File.ReadAllLines(aks); }
-            catch { return; }
-            var groups = new List<List<string>>();
-            List<string> cur = null;
-            foreach (string raw in lines)
+            try
             {
-                string t = (raw ?? string.Empty).Trim();
-                if (t.Length == 0)
-                {
-                    cur = null;
-                    continue;
-                }
-                if (cur == null)
-                {
-                    cur = new List<string>();
-                    groups.Add(cur);
-                }
-                cur.Add(t);
+                lines = WindowsAnsiEncodings.TryGet(1254, out Encoding enc1254)
+                    ? File.ReadAllLines(aks, enc1254)
+                    : File.ReadAllLines(aks);
             }
-            if (groups.Count < 2) return;
-            if (groups[0].Count != model.AxisX.Count || groups[1].Count != model.AxisY.Count) return;
-            for (int i = 0; i < groups[0].Count; i++)
-                model.GprAxisXLabelByRow[i + 1] = groups[0][i];
-            for (int i = 0; i < groups[1].Count; i++)
-                model.GprAxisYLabelByRow[i + 1] = groups[1][i];
+            catch { return; }
+            for (int i = 0; i < nx && i < lines.Length; i++)
+            {
+                string t = (lines[i] ?? string.Empty).Trim();
+                if (t.Length > 0) model.GprAxisXLabelByRow[i + 1] = t;
+            }
+            for (int j = 0; j < ny && nx + j < lines.Length; j++)
+            {
+                string t = (lines[nx + j] ?? string.Empty).Trim();
+                if (t.Length > 0) model.GprAxisYLabelByRow[j + 1] = t;
+            }
         }
 
         private static void Parse(string gprPath, St4Model model)

@@ -1,0 +1,12 @@
+# Claude — TEMELDETAY tek kademe: alt temel kesimi, donatı izi, yatay metraj tablosu
+- Ajan: Claude Code
+- Güncelleme: 07.11.2026 21:15 (Europe/Istanbul)
+- Durum: tamamlandı (bkz. son satır)
+- Görev: Yardımcı temel detayı (tek taraflı kademe) alt temel kesimi zigzag yerine düz çizgi; alt temelde üst temeldeki gibi donatı izi + noktalar; kademe uzunluğuna göre kesite dik (yatay) donatı metraj tablosu (temel hatılı/parapet gibi).
+- Kontrol: protokol + son 2 gün kayıtları (aktif yok). Görev başı GUNCEL_2027 = Plan 20261107_201357 + Yardımcı 20261107_194557. Yeni komut yok → şerit/simge değişmez.
+- Ayrılan: ST4_Yardimci/TemelCekuruRunner.DetayCut.cs, ST4_Yardimci/TemelCekuruRunner.Detay.cs, ST4_Yardimci/TemelCekuruRunner.cs (gerekirse), tools/TemelDetayKesim20261107/** (izole derleme buildYrd/objYrd + Core Console), docs/modul-durum/ST4_Yardimci.md, NETLOAD/OKU.txt; yayında NETLOAD/GUNCEL_2027/**, NETLOAD/arsiv.
+- Sonuç (21:06): TemelCekuruRunner.DetayCut.cs — zigzag kesme işareti yerine KESIT SINIRI düz çizgi (±5); DrawDetailLowerTraces (alt temel üst/alt DONATI IZI çizgisi kesit sınırından perdenin uzak çubuğuna, iz noktaları yakın çubuktan sınır−paspayına eşit aralık; perde içi sıra noktaları da iz katmanında); DrawDetailYatayMetraj + YatayStokParcalari (perde iç/dış yatay, çift kademede çukur tabanı üst/alt; boy kademe−2 paspayı, 1200/60). TemelCekuruRunner.cs Apply'da çağrı.
+- Doğrulama: izole net10/2027 Release 0/0. Core Console + PDF: sağ (kullanıcı ayarı), sol, çift kademe, 2500 cm (2×1200 + 210). Kullanıcı temeldetay.ini geçici değiştirildi, yedekten geri alındı (cmp eşit). Test-TemelDetayGeometry.ps1 PS5.1'de HEAD'de de derlenmiyor (pwsh yok). Canlı AutoCAD denenmedi.
+- Yayın: GUNCEL_2027 = Yardımcı 20261107_210530 + Plan 20261107_201357, Publish51 PASS, arşiv NETLOAD/arsiv/GUNCEL_2027_20261107_210555_418. Commit yok.
+- Durum: tamamlandı — rezervasyon yok.
+- Ek (kullanıcı): yatay metraj boyuna iki uç gönye (alt temel kalınlığı − 2 paspayı; 1000 → L=1050). Yayın GUNCEL_2027 = Yardımcı ST4_Yardimci_2027_20261107_211129 + Plan 20261107_201357, Publish51 PASS. Tamamlandı.

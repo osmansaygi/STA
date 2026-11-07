@@ -5,6 +5,7 @@ using System.Windows.Forms;
 using Autodesk.AutoCAD.DatabaseServices;
 using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
 using SdFont = System.Drawing.Font;
+using Beykent.Monolit.Girdi;
 
 namespace ST4Yardimci
 {
@@ -17,8 +18,8 @@ namespace ST4Yardimci
 
         private readonly ComboBox _cmbPreset;
         private readonly ComboBox _cmbDimStyle;
-        private readonly TextBox _txtBandWidth;
-        private readonly TextBox _txtTekCiftSinir;
+        private readonly OlcuKutusu _txtBandWidth;
+        private readonly OlcuKutusu _txtTekCiftSinir;
         private readonly CheckBox _chkToplamOlcu;
         private readonly CheckBox _chkCiftOlcu;
         private readonly ListBox _lstLayers;
@@ -33,6 +34,7 @@ namespace ST4Yardimci
         private readonly Button _btnClose;
         private bool _syncing;
         private bool _switchingPreset;
+        private readonly GirdiDenetci Denetci = new GirdiDenetci();
 
         public static void ShowOrActivate()
         {
@@ -97,29 +99,14 @@ namespace ST4Yardimci
             _cmbDimStyle.SelectedIndexChanged += (s, e) => PushSettings();
             Controls.Add(_cmbDimStyle); y += 36;
 
-            Controls.Add(MakeLabel("Bant genişliği (cm)", 12, y)); y += 20;
-            _txtBandWidth = new TextBox
-            {
-                Location = new Point(12, y),
-                Size = new Size(120, 24),
-                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
-                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
-                BorderStyle = BorderStyle.FixedSingle
-            };
+            // Alt sınır PlanOlcuSettings ile aynı (≥ 1 cm); üst sınır yoktu, geniş tutuldu. Varsayılan şablon değerleri 15/40.
+            _txtBandWidth = Denetci.Ekle(new OlcuKutusu("Bant genişliği", "cm", 1, 10000, 15, 2));
             _txtBandWidth.Leave += (s, e) => PushSettings();
-            Controls.Add(_txtBandWidth); y += 32;
+            Controls.Add(_txtBandWidth); y += 52;
 
-            Controls.Add(MakeLabel("Tek/çift ölçü sınırı (cm)", 12, y)); y += 20;
-            _txtTekCiftSinir = new TextBox
-            {
-                Location = new Point(12, y),
-                Size = new Size(120, 24),
-                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
-                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
-                BorderStyle = BorderStyle.FixedSingle
-            };
+            _txtTekCiftSinir = Denetci.Ekle(new OlcuKutusu("Tek/çift sınırı", "cm", 1, 10000, 40, 2));
             _txtTekCiftSinir.Leave += (s, e) => PushSettings();
-            Controls.Add(_txtTekCiftSinir); y += 32;
+            Controls.Add(_txtTekCiftSinir); y += 52;
 
             _chkToplamOlcu = new CheckBox
             {
@@ -198,18 +185,35 @@ namespace ST4Yardimci
             }
             catch { StartPosition = FormStartPosition.CenterScreen; }
 
+            Denetci.HataKurali(() => KatmanGerekli() && _lstLayers.Items.Count == 0
+                ? "Ölçülendirilecek en az bir katman ekleyin" : null);
             RefreshFromDrawing();
 
             // Kompakt, içerik odaklı form düzeni.
             var ui = BeginCompact(360);
             ui.Section("Ölçü ayarları").Field("Hazır şablon", _cmbPreset).Field("Ölçü stili", _cmbDimStyle)
-                .Field("Bant genişliği · cm", _txtBandWidth).Field("Tek/çift sınırı · cm", _txtTekCiftSinir)
+                .Field("Bant genişliği", _txtBandWidth).Field("Tek/çift sınırı", _txtTekCiftSinir)
                 .Choices(_chkToplamOlcu, _chkCiftOlcu);
-            ui.Tabs(132,
-                ui.Page("Ana katmanlar", p => p.Layers(_lstLayers, _btnAdd, _btnDelList, _btnRemove)),
-                ui.Page("Çift ölçü katmanları", p => p.Layers(_lstCiftLayers, _btnCiftAdd, _btnCiftDelList, _btnCiftRemove)));
+            ui.Section("Ölçülendirilecek katmanlar").Layers(_lstLayers, _btnAdd, _btnDelList, _btnRemove);
+            // Çift ölçü katmanları yalnız "Çift ölçü" açıkken görünür (liste ve kaydı korunur).
+            ui.Section("Çift ölçü katmanları").Layers(_lstCiftLayers, _btnCiftAdd, _btnCiftDelList, _btnCiftRemove)
+                .When(() => _chkCiftOlcu.Checked);
+            ui.Section(null).Control(Denetci.Serit, 44);
             ui.Footer(_btnRun, _btnClose);
             ui.Finish();
+            Denetci.Guncelle();
+        }
+
+        /// <summary>Radye/mantar/sürekli şablonları katman ister (eski MessageBox kuralı).</summary>
+        private bool KatmanGerekli()
+        {
+            string preset = PlanOlcuSettings.ActivePresetName ?? "";
+            string ascii = preset
+                .Replace('İ', 'I').Replace('ı', 'i')
+                .Replace('Ü', 'U').Replace('ü', 'u');
+            return preset.IndexOf("RADYE", StringComparison.OrdinalIgnoreCase) >= 0
+                || preset.IndexOf("MANTAR", StringComparison.OrdinalIgnoreCase) >= 0
+                || ascii.IndexOf("SUREKLI", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -220,7 +224,7 @@ namespace ST4Yardimci
                 Close();
                 return true;
             }
-            if (keyData == Keys.Enter || keyData == Keys.Return || keyData == Keys.Space)
+            if ((keyData == Keys.Enter || keyData == Keys.Return || keyData == Keys.Space) && !(ActiveControl is Button))
             {
                 StartMeasure();
                 return true;
@@ -297,10 +301,8 @@ namespace ST4Yardimci
                 }
                 if (idx >= 0) _cmbDimStyle.SelectedIndex = idx;
 
-                _txtBandWidth.Text = PlanOlcuSettings.BandWidthCm.ToString(
-                    "0.##", System.Globalization.CultureInfo.InvariantCulture);
-                _txtTekCiftSinir.Text = PlanOlcuSettings.TekCiftSinirCm.ToString(
-                    "0.##", System.Globalization.CultureInfo.InvariantCulture);
+                _txtBandWidth.Deger = PlanOlcuSettings.BandWidthCm;
+                _txtTekCiftSinir.Deger = PlanOlcuSettings.TekCiftSinirCm;
                 _chkToplamOlcu.Checked = PlanOlcuSettings.PlaceTotalDim;
                 _chkCiftOlcu.Checked = PlanOlcuSettings.PlaceCiftOlcu;
 
@@ -310,6 +312,7 @@ namespace ST4Yardimci
             finally
             {
                 _syncing = false;
+                Denetci.Guncelle();
             }
         }
 
@@ -356,14 +359,9 @@ namespace ST4Yardimci
             if (_syncing) return;
             if (_cmbDimStyle.SelectedItem is string st)
                 PlanOlcuSettings.DimStyleName = st;
-            if (double.TryParse((_txtBandWidth.Text ?? "").Trim().Replace(',', '.'),
-                    System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture, out double bw) && bw >= 1.0)
-                PlanOlcuSettings.BandWidthCm = bw;
-            if (double.TryParse((_txtTekCiftSinir.Text ?? "").Trim().Replace(',', '.'),
-                    System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture, out double lim) && lim >= 1.0)
-                PlanOlcuSettings.TekCiftSinirCm = lim;
+            // Geçersiz değer kaydedilmez; kutuda kırmızı görünür ve Ölçü al çalışmaz.
+            if (_txtBandWidth.Gecerli) PlanOlcuSettings.BandWidthCm = _txtBandWidth.Deger;
+            if (_txtTekCiftSinir.Gecerli) PlanOlcuSettings.TekCiftSinirCm = _txtTekCiftSinir.Deger;
             PlanOlcuSettings.PlaceTotalDim = _chkToplamOlcu.Checked;
             PlanOlcuSettings.PlaceCiftOlcu = _chkCiftOlcu.Checked;
             PlanOlcuSettings.SetLayers(CollectList(_lstLayers));
@@ -396,6 +394,7 @@ namespace ST4Yardimci
                 lst.Items.Remove(name);
             }
             PushSettings();
+            Denetci.Guncelle();
         }
 
         private void StartLayerPick(bool add, bool cift)
@@ -464,6 +463,7 @@ namespace ST4Yardimci
                         return;
                 lst.Items.Add(layerName);
                 _instance.PushSettings();
+                _instance.Denetci.Guncelle();
             }
             catch { }
         }
@@ -492,6 +492,7 @@ namespace ST4Yardimci
                     FillList(_instance._lstCiftLayers, PlanOlcuSettings.GetCiftLayers());
                 else
                     FillList(_instance._lstLayers, PlanOlcuSettings.GetLayers());
+                _instance.Denetci.Guncelle();
             }
             catch { }
         }
@@ -506,7 +507,7 @@ namespace ST4Yardimci
                 Close();
                 return;
             }
-            if (e.KeyCode == Keys.Enter || e.KeyCode == Keys.Return || e.KeyCode == Keys.Space)
+            if ((e.KeyCode == Keys.Enter || e.KeyCode == Keys.Return || e.KeyCode == Keys.Space) && !(ActiveControl is Button))
             {
                 e.Handled = true;
                 e.SuppressKeyPress = true;
@@ -517,20 +518,8 @@ namespace ST4Yardimci
         private void StartMeasure()
         {
             PushSettings();
-            string preset = PlanOlcuSettings.ActivePresetName ?? "";
-            string ascii = preset
-                .Replace('İ', 'I').Replace('ı', 'i')
-                .Replace('Ü', 'U').Replace('ü', 'u');
-            bool needsLayers =
-                preset.IndexOf("RADYE", StringComparison.OrdinalIgnoreCase) >= 0
-                || preset.IndexOf("MANTAR", StringComparison.OrdinalIgnoreCase) >= 0
-                || ascii.IndexOf("SUREKLI", StringComparison.OrdinalIgnoreCase) >= 0;
-            if (needsLayers && PlanOlcuSettings.GetLayers().Count == 0)
-            {
-                MessageBox.Show(this, "Ölçülendirilecek en az bir katman ekleyin.", "Plan Ölçü",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
+            // Sayı ve katman hataları şeritte (KatmanGerekli kuralı).
+            if (!Denetci.Onayla()) return;
             try
             {
                 var doc = AcApp.DocumentManager.MdiActiveDocument;

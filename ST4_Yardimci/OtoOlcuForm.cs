@@ -5,6 +5,7 @@ using System.Windows.Forms;
 using Autodesk.AutoCAD.DatabaseServices;
 using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
 using SdFont = System.Drawing.Font;
+using Beykent.Monolit.Girdi;
 
 namespace ST4Yardimci
 {
@@ -24,7 +25,7 @@ namespace ST4Yardimci
         private readonly CheckBox _chkIkinciToplam;
         private readonly Label _lblStyle;
         private readonly ComboBox _cmbDimStyle;
-        private readonly ComboBox _cmbOlcuTipi;
+        private readonly SegmentSecim _segOlcuTipi;
         private readonly Button _btnAdd1;
         private readonly Button _btnDelList1;
         private readonly Button _btnRemove1;
@@ -40,6 +41,7 @@ namespace ST4Yardimci
         private readonly int _yAfterPreset;
         private bool _syncing;
         private bool _switchingPreset;
+        private readonly GirdiDenetci Denetci = new GirdiDenetci();
 
         public static void ShowOrActivate()
         {
@@ -134,15 +136,13 @@ namespace ST4Yardimci
 
             _lblOlcuTipi = MakeLabel("Ölçü tipi", 12, y);
             Controls.Add(_lblOlcuTipi); y += 20;
-            _cmbOlcuTipi = MakeCombo(12, y, 300);
-            _cmbOlcuTipi.Items.Add("Tek ölçü");
-            _cmbOlcuTipi.Items.Add("Çift ölçü");
-            _cmbOlcuTipi.SelectedIndexChanged += (s, e) =>
+            _segOlcuTipi = new SegmentSecim("Tek ölçü", "Çift ölçü");
+            _segOlcuTipi.SeciliDegisti += (s, e) =>
             {
                 UpdateSecondVisibility();
                 PushSettings();
             };
-            Controls.Add(_cmbOlcuTipi); y += 34;
+            Controls.Add(_segOlcuTipi); y += 34;
             _yAfterOlcuTipi = y;
 
             _pnlSecond = new Panel
@@ -214,6 +214,7 @@ namespace ST4Yardimci
             }
             catch { StartPosition = FormStartPosition.CenterScreen; }
 
+            DenetciKur();
             RefreshFromDrawing();
             UpdateSecondVisibility();
 
@@ -222,19 +223,33 @@ namespace ST4Yardimci
             var ui = BeginCompact(360);
             ui.Section("Hazır şablon").Template(_cmbPreset, _btnPresetAdd, _btnPresetRemove);
             ui.Section("Ölçü ayarları").Field(_lblStyle, _cmbDimStyle)
-                .FieldWhen(() => !OtoOlcuSettings.IsAksOlcuPreset, _lblOlcuTipi, _cmbOlcuTipi);
+                .FieldWhen(() => !OtoOlcuSettings.IsAksOlcuPreset, _lblOlcuTipi, _segOlcuTipi);
             ui.Section("1. ölçü katmanları").Layers(_lstLayers1, _btnAdd1, _btnDelList1, _btnRemove1).When(() => !OtoOlcuSettings.IsAksOlcuPreset);
             ui.Section("2. ölçü katmanları").Layers(_lstLayers2, _btnAdd2, _btnDelList2, _btnRemove2).Choices(_chkIkinciToplam)
-                .When(() => !OtoOlcuSettings.IsAksOlcuPreset && _cmbOlcuTipi.SelectedIndex == 1);
+                .When(() => !OtoOlcuSettings.IsAksOlcuPreset && _segOlcuTipi.Secili == 1);
             ui.Section(null).Control(_lblAksHint).When(() => OtoOlcuSettings.IsAksOlcuPreset);
+            ui.Section(null).Control(Denetci.Serit, 44);
             ui.Footer(_btnRun, _btnClose);
             ui.Finish();
+            Denetci.Guncelle();
+        }
+
+        /// <summary>Katman listesi kuralları (eski MessageBox uyarıları) şeritte.</summary>
+        private void DenetciKur()
+        {
+            // Sayı alanı yok: "Varsayılana dön" bu formda bir şey yapmaz.
+            Denetci.VarsayilanDugmesi.Visible = false;
+            Denetci.HataKurali(() => !OtoOlcuSettings.IsAksOlcuPreset && _lstLayers1.Items.Count == 0
+                ? "1. ölçü için en az bir katman ekleyin" : null);
+            Denetci.HataKurali(() => !OtoOlcuSettings.IsAksOlcuPreset && _segOlcuTipi.Secili == 1
+                && !_chkIkinciToplam.Checked && _lstLayers2.Items.Count == 0
+                ? "Çift ölçüde 2. ölçü katmanı ekleyin veya «İkinci ölçü toplam» seçin" : null);
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
             if (keyData == Keys.Escape) { PushSettings(); Close(); return true; }
-            if (keyData == Keys.Enter || keyData == Keys.Return || keyData == Keys.Space)
+            if ((keyData == Keys.Enter || keyData == Keys.Return || keyData == Keys.Space) && !(ActiveControl is Button))
             {
                 StartMeasure();
                 return true;
@@ -254,14 +269,15 @@ namespace ST4Yardimci
             _btnDelList1.Visible = !aks;
             _btnRemove1.Visible = !aks;
             _lblOlcuTipi.Visible = !aks;
-            _cmbOlcuTipi.Visible = !aks;
+            _segOlcuTipi.Visible = !aks;
 
-            bool cift = !aks && _cmbOlcuTipi.SelectedIndex == 1;
+            bool cift = !aks && _segOlcuTipi.Secili == 1;
             _pnlSecond.Visible = cift;
 
             _btnPresetRemove.Enabled = !aks;
             _cmbDimStyle.Enabled = !aks;
 
+            Denetci.Guncelle();
             if (CompactLayoutReady) { RefreshCompactLayout(); return; }
 
             int y;
@@ -359,7 +375,7 @@ namespace ST4Yardimci
                 }
                 if (idx >= 0) _cmbDimStyle.SelectedIndex = idx;
 
-                _cmbOlcuTipi.SelectedIndex = OtoOlcuSettings.Sablon == OtoOlcuSablon.CiftOlcu ? 1 : 0;
+                _segOlcuTipi.Secili = OtoOlcuSettings.Sablon == OtoOlcuSablon.CiftOlcu ? 1 : 0;
                 _chkIkinciToplam.Checked = OtoOlcuSettings.IkinciOlcuToplam;
 
                 FillList(_lstLayers1, OtoOlcuSettings.GetLayers(OtoOlcuLayerList.Birinci));
@@ -527,7 +543,7 @@ namespace ST4Yardimci
             }
             if (_cmbDimStyle.SelectedItem is string st)
                 OtoOlcuSettings.DimStyleName = st;
-            OtoOlcuSettings.Sablon = _cmbOlcuTipi.SelectedIndex == 1
+            OtoOlcuSettings.Sablon = _segOlcuTipi.Secili == 1
                 ? OtoOlcuSablon.CiftOlcu
                 : OtoOlcuSablon.TekOlcu;
             OtoOlcuSettings.IkinciOlcuToplam = _chkIkinciToplam.Checked;
@@ -560,6 +576,7 @@ namespace ST4Yardimci
                 lst.Items.Remove(name);
             }
             PushSettings();
+            Denetci.Guncelle();
         }
 
         private void StartLayerPick(OtoOlcuLayerList target, bool add)
@@ -618,6 +635,7 @@ namespace ST4Yardimci
                         return;
                 lst.Items.Add(layerName);
                 _instance.PushSettings();
+                _instance.Denetci.Guncelle();
             }
             catch { }
         }
@@ -634,6 +652,7 @@ namespace ST4Yardimci
                 }
                 FillList(_instance._lstLayers1, OtoOlcuSettings.GetLayers(OtoOlcuLayerList.Birinci));
                 FillList(_instance._lstLayers2, OtoOlcuSettings.GetLayers(OtoOlcuLayerList.Ikinci));
+                _instance.Denetci.Guncelle();
             }
             catch { }
         }
@@ -648,7 +667,7 @@ namespace ST4Yardimci
                 Close();
                 return;
             }
-            if (e.KeyCode == Keys.Enter || e.KeyCode == Keys.Return || e.KeyCode == Keys.Space)
+            if ((e.KeyCode == Keys.Enter || e.KeyCode == Keys.Return || e.KeyCode == Keys.Space) && !(ActiveControl is Button))
             {
                 e.Handled = true;
                 e.SuppressKeyPress = true;
@@ -661,24 +680,8 @@ namespace ST4Yardimci
         private void StartMeasure()
         {
             PushSettings();
-            if (!OtoOlcuSettings.IsAksOlcuPreset)
-            {
-                if (OtoOlcuSettings.GetLayers(OtoOlcuLayerList.Birinci).Count == 0)
-                {
-                    MessageBox.Show(this, "1. ölçü için en az bir katman ekleyin.", "Oto Ölçü",
-                        MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    return;
-                }
-                if (OtoOlcuSettings.Sablon == OtoOlcuSablon.CiftOlcu &&
-                    !OtoOlcuSettings.IkinciOlcuToplam &&
-                    OtoOlcuSettings.GetLayers(OtoOlcuLayerList.Ikinci).Count == 0)
-                {
-                    MessageBox.Show(this,
-                        "Çift ölçüde 2. ölçü katmanı ekleyin veya «İkinci ölçü toplam» seçin.",
-                        "Oto Ölçü", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    return;
-                }
-            }
+            // Katman eksikleri şeritte (DenetciKur).
+            if (!Denetci.Onayla()) return;
             try
             {
                 var doc = AcApp.DocumentManager.MdiActiveDocument;

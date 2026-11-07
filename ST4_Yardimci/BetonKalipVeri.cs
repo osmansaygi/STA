@@ -49,7 +49,7 @@ namespace ST4Yardimci
         // ------------------------------------------------------------------ geometri
         private sealed class Kol { public int No, Kat, Yerel, Bx, By; public double Ust, Alt, X1, X2, Y1, Y2, Alan, Cevre; public bool Poligon; public Polygon Pol; }
         /// <summary>Kiriş; Ps/Pe başlangıç/bitiş noktasının kiriş doğrultusundaki, C aksın dik doğrultudaki koordinatı (aks kesişimlerinden).</summary>
-        private sealed class Kir { public int No, Kat, B, H, Aks, S, E, Kod, I, J, Sira; public bool Panel; public double Ps, Pe, C, X1, Y1, X2, Y2; }
+        private sealed class Kir { public int No, Kat, B, H, Aks, S, E, Kod, I, J, Sira; public bool Panel, Mantar; public double Ps, Pe, C, X1, Y1, X2, Y2; }
         /// <summary>Döşeme; X/Y köşe kesişimlerinin sınır kutusu, Oran = gerçek dörtgen alanı / kutu alanı (eğik akslarda &lt; 1).</summary>
         private sealed class Dos { public int No, Kat, Dk, F5, Sira; public double X1, X2, Y1, Y2, Oran = 1; public (double x, double y)[] Q; }
 
@@ -236,6 +236,30 @@ namespace ST4Yardimci
                 }
             int td = g.Taban(g.Dosemeler.Select(x => x.No));
             foreach (var x in g.Dosemeler) x.Kat = x.No / td;
+
+            // /Slabs Data/: mantar fiktif kirişleri (kayıt başına tek satır; alanlar Beams Data 1. satırı gibi).
+            // Döşemeyle aynı kalınlıktaki bant döşeme betonunda zaten var. Döşemeden derin olan kiriş sayılır:
+            // döşeme bandı kenar taşması olarak düşülür, kiriş b·h·Ln ve Ln·(bw + d1 + d2) → fark sarkan kısım + yan kalıplar.
+            k = Sec("/Slabs Data/");
+            if (k >= 0)
+                for (int i = k + 1; i < l.Length && !l[i].StartsWith("/"); i++)
+                {
+                    var f = F(l[i]); int no = N(f[0]); if (no == 0) break;
+                    var x = new Kir
+                    {
+                        No = no, B = N(Al(f, 1)), H = N(Al(f, 2)), Aks = N(Al(f, 4)), S = N(Al(f, 5)), E = N(Al(f, 6)), Kod = N(Al(f, 7)),
+                        Kat = no / tb, Mantar = true
+                    };
+                    var p1 = g.Kes(x.Aks, x.S); var p2 = g.Kes(x.Aks, x.E);
+                    x.X1 = p1.x; x.Y1 = p1.y; x.X2 = p2.x; x.Y2 = p2.y;
+                    bool xYon = x.Aks >= 2000;
+                    x.Ps = xYon ? p1.x : p1.y; x.Pe = xYon ? p2.x : p2.y; x.C = xYon ? (p1.y + p2.y) / 2 : (p1.x + p2.x) / 2;
+                    int dk = Math.Max(YanKalinlik(g, x, -1), YanKalinlik(g, x, +1));
+                    if (dk == 0) dk = g.Dosemeler.Where(d => d.Kat == x.Kat).Select(d => d.Dk).DefaultIfEmpty(0).Max();
+                    if (x.B <= 0 || x.H <= dk) continue;
+                    x.Sira = g.Kirisler.Count;
+                    g.Kirisler.Add(x);
+                }
             return g;
         }
 
@@ -244,7 +268,18 @@ namespace ST4Yardimci
         {
             double a = k.C, b = k.B / 100.0;
             double b1 = k.Kod == 1 ? a - b : k.Kod == -1 ? a : a - b / 2;
+            if (k.Mantar) b1 = Merkez(a, k.Kod, b) - b / 2;   // mantar kirişte kaçıklık mm (örn. 250, −150) de kullanılır
             return (b1, b1 + b, Math.Min(k.Ps, k.Pe), Math.Max(k.Ps, k.Pe));
+        }
+
+        /// <summary>Mantar kirişin bir yan yüzüne (yan −1 / +1) değen döşeme kalınlığı (cm); açıklık ortasında bant dışı nokta, yoksa 0.</summary>
+        private static int YanKalinlik(Geo g, Kir k, int yan)
+        {
+            var (b1, b2, s1, s2) = Bant(g, k);
+            double m = (s1 + s2) / 2, o = yan < 0 ? b1 - 0.05 : b2 + 0.05;
+            double x = k.Aks >= 2000 ? m : o, y = k.Aks >= 2000 ? o : m;
+            return g.Dosemeler.Where(d => d.Kat == k.Kat && x > d.X1 && x < d.X2 && y > d.Y1 && y < d.Y2)
+                .Select(d => d.Dk).DefaultIfEmpty(0).Max();
         }
 
         /// <summary>Köşeleri (cx, cy) etrafında derece cinsinden döndürülmüş çokgen.</summary>
@@ -261,12 +296,15 @@ namespace ST4Yardimci
             return iz < 1e-9 ? 1 : Math.Sqrt(dx * dx + dy * dy) / iz;
         }
 
+        /// <summary>Sürekli kirişin sonraki parçası: aynı numara, aynı kaynak (Beams Data / mantar Slabs Data).</summary>
+        private static bool Ayni(Kir onceki, Kir k) => onceki.No == k.No && onceki.Mantar == k.Mantar;
+
         /// <summary>Aynı numaralı ardışık kiriş kayıtları (sürekli kiriş) tek grup.</summary>
         private static List<List<Kir>> Gruplar(Geo g, int kat)
         {
             var res = new List<List<Kir>>();
             foreach (var k in g.Kirisler.Where(x => x.Kat == kat))
-                if (res.Count > 0 && res[res.Count - 1][res[res.Count - 1].Count - 1].No == k.No) res[res.Count - 1].Add(k);
+                if (res.Count > 0 && Ayni(res[res.Count - 1][res[res.Count - 1].Count - 1], k)) res[res.Count - 1].Add(k);
                 else res.Add(new List<Kir> { k });
             return res;
         }
@@ -320,7 +358,8 @@ namespace ST4Yardimci
                 var (ta, tb) = UcTasma(g, grp);
                 float Ln = L - ta - tb;
                 double s1 = Math.Min(k0.Ps, kn.Pe), s2 = Math.Max(k0.Ps, kn.Pe);
-                int d1 = k0.H - YanDoseme(g, k0, -1, s1, s2), d2 = k0.H - YanDoseme(g, k0, +1, s1, s2);
+                int d1 = k0.H - (k0.Mantar ? YanKalinlik(g, k0, -1) : YanDoseme(g, k0, -1, s1, s2));
+                int d2 = k0.H - (k0.Mantar ? YanKalinlik(g, k0, +1) : YanDoseme(g, k0, +1, s1, s2));
                 Iz?.Add(string.Format(Inv, "K|{0}|{1}|B{2} H{3} L{4:F3} Ln{5:F3} d1 {6} d2 {7}", kat, k0.No, k0.B, k0.H, L, Ln, d1, d2));
                 sk += panel ? Ln * 2 * k0.H / 100f : Ln * (k0.B + d1 + d2) / 100f;
                 sb += k0.B / 100f * (k0.H / 100f) * Ln;
@@ -333,7 +372,7 @@ namespace ST4Yardimci
         {
             foreach (var k in g.Kirisler.Where(x => x.Kat == c.Kat))
             {
-                if (k.Sira > 0 && g.Kirisler[k.Sira - 1].No == k.No) continue;   // birleşik kirişin 2.+ parçası
+                if (k.Sira > 0 && Ayni(g.Kirisler[k.Sira - 1], k)) continue;   // birleşik kirişin 2.+ parçası
                 var (b1, b2, s1, s2) = Bant(g, k);
                 bool xYon = k.Aks >= 2000;
                 double c1 = xYon ? c.X1 : c.Y1, c2 = xYon ? c.X2 : c.Y2, d1 = xYon ? c.Y1 : c.X1, d2 = xYon ? c.Y2 : c.X2;
@@ -361,7 +400,7 @@ namespace ST4Yardimci
         private static (float l, float r, float b, float t) KenarTasma(Geo g, Dos d)
         {
             float l = 0, r = 0, b = 0, t = 0;
-            foreach (var k in g.Kirisler.Where(k => k.Kat == d.Kat))
+            foreach (var k in g.Kirisler.Where(k => k.Kat == d.Kat && !k.Mantar))   // mantar bandı DosemeKat'ta kesişimle düşülür
             {
                 var (b1, b2, s1, s2) = Bant(g, k);
                 double c = k.C;
@@ -400,9 +439,22 @@ namespace ST4Yardimci
                     double ox = Math.Min(x2, c.X2) - Math.Max(x1, c.X1), oy = Math.Min(y2, c.Y2) - Math.Max(y1, c.Y1);
                     if (ox > E && oy > E) delik += ox * oy;
                 }
-                Iz?.Add(string.Format(Inv, "D|{0}|{1}|d{2} lx{3:F3} ly{4:F3} delik{5:F3}", kat, d.No, d.Dk, lx, ly, delik));
-                sk += (float)(alan - delik);
-                sb += alan * (d.Dk / 100f);
+                // Derin mantar kirişi: Ln bandının döşeme net alanıyla kesişimi döşemeden düşülür (kiriş b·h·Ln sayar).
+                double mantar = 0;
+                if (Math.Abs(d.F5) <= d.Dk * 10)
+                    foreach (var k in g.Kirisler.Where(k => k.Kat == kat && k.Mantar))
+                    {
+                        var (b1, b2, s1, s2) = Bant(g, k);
+                        var (ta, tbs) = UcTasma(g, new List<Kir> { k });
+                        s1 += ta; s2 -= tbs;
+                        bool xYon = k.Aks >= 2000;
+                        double ox = xYon ? Math.Min(x2, s2) - Math.Max(x1, s1) : Math.Min(x2, b2) - Math.Max(x1, b1);
+                        double oy = xYon ? Math.Min(y2, b2) - Math.Max(y1, b1) : Math.Min(y2, s2) - Math.Max(y1, s1);
+                        if (ox > E && oy > E) mantar += ox * oy;
+                    }
+                Iz?.Add(string.Format(Inv, "D|{0}|{1}|d{2} lx{3:F3} ly{4:F3} delik{5:F3} mantar{6:F3}", kat, d.No, d.Dk, lx, ly, delik, mantar));
+                sk += (float)(alan - delik - mantar);
+                sb += (float)(alan - mantar) * (d.Dk / 100f);
             }
             return new BetonKalip { Beton = sb, Kalip = sk };
         }

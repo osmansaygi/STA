@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -42,8 +42,10 @@ namespace ST4PlanIdCiz
         private const double KirisAcilimKutupCm = 30.0;
         /// <summary>Kolon aralığı düğüme bu kadar yakınsa mesnet sayılır.</summary>
         private const double KirisAcilimKolonYakinCm = 20.0;
-        /// <summary>Boyuna donatı net paspayı (cm). Montaj, alt düz, ilave ve gövde dağılımı buna göre.</summary>
-        private const double KirisAcilimMontajPaspayiCm = 5.5;
+        private double _kirisYatayNetBoslukCm = 4.0, _kirisDuseyNetBoslukCm = 3.0, _kirisPaspayiCm = 4.0;
+        // Mevcut çizim merkez farkı: görünüşte 1.5 cm, şematik kesitte 1 cm.
+        private double KirisAcilimEtriyePaspayiCm => _surekliTemelAcilim ? 4.0 : _kirisPaspayiCm;
+        private double KirisAcilimMontajPaspayiCm => _surekliTemelAcilim ? 5.5 : _kirisPaspayiCm + 1.5;
         /// <summary>Montaj donatısı etiketinin kiriş üst çizgisinden aşağı mesafesi (cm).</summary>
         private const double KirisAcilimMontajEtiketUsttenCm = 12.0;
         /// <summary>Yüzdeki iki çubuk sırası arası (cm). TBDY: boyuna çubuklar arası ≥ 2.5 cm.</summary>
@@ -51,7 +53,7 @@ namespace ST4PlanIdCiz
         /// <summary>Üst ve alt donatı seviyeleri arasında kalan gövdeye bu kadar pay bırakılır (cm).</summary>
         private const double KirisAcilimGovdeKenarPayiCm = 2.0;
         /// <summary>Alt düz donatı net paspayı (cm).</summary>
-        private const double KirisAcilimDuzPaspayiCm = 5.5;
+        private double KirisAcilimDuzPaspayiCm => KirisAcilimMontajPaspayiCm;
         /// <summary>Alt düz donatı etiketi merkezinin kiriş alt çizgisinden yukarı mesafesi (cm).</summary>
         private const double KirisAcilimDuzEtiketAlttanCm = 12.0;
         /// <summary>Montaj donatısı çizgi katmanı (EnsureLayers'ta tanımlı).</summary>
@@ -70,7 +72,7 @@ namespace ST4PlanIdCiz
         /// <summary>Alt ilave rengi (ACI 1). Sol ve sağ aynı.</summary>
         private const short KirisAcilimRenkIlaveAlt = 1;
         /// <summary>Üst ilave montajın bu kadar altında, alt ilave düz donatının bu kadar üstünde (cm). Yalnız çizim; boy hesabına girmez.</summary>
-        private const double KirisAcilimIlaveAyirCm = 3.0;
+        private double KirisAcilimIlaveAyirCm => _surekliTemelAcilim ? 3.0 : _kirisDuseyNetBoslukCm;
         /// <summary>Gönye köşe yayı (cm). Çizim yarıçapı.</summary>
         private const double KirisAcilimGonyeYaricapCm = 3.0;
         /// <summary>Birinci gönye düşey bacağı en az bu kadar (cm). Kiriş yüksekliğinin yarısı daha büyükse o geçerli.</summary>
@@ -295,6 +297,13 @@ namespace ST4PlanIdCiz
                 return false;
             }
             _kirisAltIkinciGonyeKaldir = !_surekliTemelAcilim && secenekler?.AltIkinciGonyeKaldir == true;
+            // Her komutta yeniden ata; önceki kiriş çiziminin ayarları temel çizimine taşınmasın.
+            _kirisYatayNetBoslukCm = secenekler?.YatayNetBoslukCm ?? 4.0;
+            _kirisDuseyNetBoslukCm = secenekler?.DuseyNetBoslukCm ?? 3.0;
+            _kirisPaspayiCm = secenekler?.PaspayiCm ?? 4.0;
+            if (!_surekliTemelAcilim && new[] { _kirisYatayNetBoslukCm, _kirisDuseyNetBoslukCm, _kirisPaspayiCm }
+                .Any(v => double.IsNaN(v) || double.IsInfinity(v) || v < 0.5 || v > 15.0))
+            { ed.WriteMessage("\nKIRISACILIMLARI: Net boşluk ve paspayı 0.5–15 cm arasında olmalı."); return false; }
             _kirisAcilimSt4Path = st4Path; _kirisAcilimEd = ed; _kirisFilizHazir = false; _kirisFilizSahibi.Clear();
 
             var floors = new List<FloorInfo>();
@@ -315,6 +324,18 @@ namespace ST4PlanIdCiz
                     ? "\nSUREKLITEMELACILIMLARI: Destek kati bulunamadi."
                     : "\nKIRISACILIMLARI: Kat bulunamadi.");
                 return false;
+            }
+
+            if (!_surekliTemelAcilim)
+            {
+                var dar = floors.SelectMany(f => GetRawBeamsOnFloor(f.FloorNo))
+                    .FirstOrDefault(b => b != null && b.IsWallFlag != 1 &&
+                        (b.WidthCm <= 2 * (_kirisPaspayiCm + 1.5) || b.HeightCm <= 2 * (_kirisPaspayiCm + 1.5)));
+                if (dar != null)
+                {
+                    ed.WriteMessage("\nKIRISACILIMLARI: {0} kirişinde seçilen paspayına yeterli kesit kalmıyor. Paspayını kontrol edin.", KirisAcilimEtiket(dar, 1));
+                    return false;
+                }
             }
 
             int maxNo = 0;
@@ -363,9 +384,11 @@ namespace ST4PlanIdCiz
                 EnsurePlanLayer(tr, db, LayerIzdusum, 253, LineWeight.LineWeight020, useDashed: true);
                 var ucTipi = _surekliTemelAcilim
                     ? new Dictionary<BeamInfo, KirisAcilimUcBilgi>()
+                    : _kirisManuel != null ? new Dictionary<BeamInfo, KirisAcilimUcBilgi>(_kirisManuel.UcTipi)
                     : KirisAcilimReadUcTipi(st4Path);
                 var montaj = _surekliTemelAcilim
                     ? SurekliTemelReadDonati(st4Path)
+                    : _kirisManuel != null ? new Dictionary<BeamInfo, KirisAcilimMontajBilgi>(_kirisManuel.Montaj)
                     : KirisAcilimReadMontaj(st4Path);
                 KirisKesitMontajHazirla(montaj);
                 EnsurePlanLayer(tr, db, LayerEtiketCizgisi, 64, LineWeight.LineWeight015, useDashed: false);
@@ -395,6 +418,8 @@ namespace ST4PlanIdCiz
                     string title;
                     if (_surekliTemelAcilim)
                         title = "SUREKLI TEMEL ACILIMI  (1/25)";
+                    else if (_kirisManuel != null)
+                        title = "KIRIS ACILIMI  (1/25)";
                     else
                     {
                         string kat = string.IsNullOrEmpty(floor.ShortName) ? floor.FloorNo.ToString(CultureInfo.InvariantCulture) : floor.ShortName;
@@ -483,6 +508,7 @@ namespace ST4PlanIdCiz
             foreach (var beam in GetRawBeamsOnFloor(floorNo))
             {
                 if (beam == null || beam.IsWallFlag == 1 || beam.HeightCm <= 1.0) continue;
+                if (_kirisManuel != null && _kirisManuel.Yardimci.Contains(beam)) continue;
                 if (!_axisService.TryIntersect(beam.FixedAxisId, beam.StartAxisId, out Point2d p0)) continue;
                 if (!_axisService.TryIntersect(beam.FixedAxisId, beam.EndAxisId, out Point2d p1)) continue;
                 Vector2d v = p1 - p0;
@@ -1724,7 +1750,7 @@ namespace ST4PlanIdCiz
                 solSerbest, sagSerbest, sapBolgeleri, out var sikBolgeleri, ucIz);
             var etiketBolgeleri = KirisAcilimEtriyeEtiketBolgeleri(net0 + 5.0, net1 - 5.0, sik, orta, sikBolgeleri);
             if (konsol)
-                KirisAcilimKonsolEtriyeDizilimi(net0, net1, sik, solSerbest, ucIz, out etiketBolgeleri);
+                KirisAcilimKonsolEtriyeDizilimi(net0, net1, sik, solSerbest, ucIz, out etiketBolgeleri, KirisAcilimEtriyePaspayiCm);
             double olcuAlt = double.MaxValue;
             for (int i = i0; i <= i1; i++)
                 olcuAlt = Math.Min(olcuAlt, yShift + Math.Min(chain[i].Kot0, chain[i].Kot1) - chain[i].Beam.HeightCm);
@@ -1773,7 +1799,7 @@ namespace ST4PlanIdCiz
                     double top = yShift + KirisAcilimKotAt(chain, i, i, x);
                     double bot = top - span.Beam.HeightCm;
                     if (top - bot > 8.0)
-                        KirisAcilimCizgi(tr, ms, x0 + x, bot + 4.0, x0 + x, top - 4.0, LayerEtriye);
+                        KirisAcilimCizgi(tr, ms, x0 + x, bot + KirisAcilimEtriyePaspayiCm, x0 + x, top - KirisAcilimEtriyePaspayiCm, LayerEtriye);
                     break;
                 }
             }
@@ -1832,14 +1858,14 @@ namespace ST4PlanIdCiz
 
         private static List<double> KirisAcilimKonsolEtriyeDizilimi(
             double net0, double net1, double sik, bool solSerbest, bool ucIz,
-            out List<(double Lo, double Hi, double Aralik, int Adet)> etiketler)
+            out List<(double Lo, double Hi, double Aralik, int Adet)> etiketler, double cover = 4.0)
         {
             var tum = new List<double>();
             etiketler = new List<(double Lo, double Hi, double Aralik, int Adet)>();
             if (sik <= 0 || net1 - net0 <= 5.0) return tum;
             double ilk = solSerbest ? net1 - 5.0 : net0 + 5.0;
             // İz varsa iç yüz sınırdır; yoksa görünüşteki etriyenin 4 cm örtüsü.
-            double sinir = solSerbest ? net0 + (ucIz ? 0.0 : 4.0) : net1 - (ucIz ? 0.0 : 4.0);
+            double sinir = solSerbest ? net0 + (ucIz ? 0.0 : cover) : net1 - (ucIz ? 0.0 : cover);
             double yon = solSerbest ? -1.0 : 1.0;
             double boy = yon * (sinir - ilk);
             if (boy < 0) return tum;
@@ -1952,7 +1978,7 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>Saplama yüzlerinden h/2 taşan bölgeyi aralığa ortalı tamamlar ve mesnet sarılmasıyla birleştirir.</summary>
-        private static List<double> KirisAcilimEtriyeKonumlari(
+        private List<double> KirisAcilimEtriyeKonumlari(
             double net0, double net1, double sik, double orta, double solBoy, double sagBoy,
             bool solSerbest, bool sagSerbest, List<(double Lo, double Hi)> sapBolgeleri,
             out List<(double Lo, double Hi)> sikBolgeleri, bool konsolUcIz = false)
@@ -1963,7 +1989,7 @@ namespace ST4PlanIdCiz
             orta = KirisAcilimEtriyeOrtaAralik(sik, orta, solSerbest, sagSerbest);
             if (solSerbest || sagSerbest)
             {
-                var tum = KirisAcilimKonsolEtriyeDizilimi(net0, net1, sik, solSerbest, konsolUcIz, out _);
+                var tum = KirisAcilimKonsolEtriyeDizilimi(net0, net1, sik, solSerbest, konsolUcIz, out _, KirisAcilimEtriyePaspayiCm);
                 for (int i = 0; i < tum.Count; i++)
                     if (i < 2 || i >= tum.Count - 2) xs.Add(tum[i]);
                 return xs;
@@ -2408,7 +2434,7 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>Gövde gönyesi 12φ. Üst yarı aşağı, alt yarı yukarı kıvrılır; paspayını geçmez.</summary>
-        private static void KirisAcilimGovdeGonye(
+        private void KirisAcilimGovdeGonye(
             List<Point2d> pts, bool sola, double x, double y, double h, double usttenCm, double phiCm)
         {
             if (pts == null || phiCm <= 0) return;
@@ -2475,7 +2501,7 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>İlave donatı seviyeleri. Üst ilaveler kiriş üstünden, alt ilaveler altından 5,5 cm içeride; çift sıra 1 çap aralıkla.</summary>
-        private static double[] KirisAcilimIlaveSeviye(double h, bool ust)
+        private double[] KirisAcilimIlaveSeviye(double h, bool ust)
         {
             double y = ust ? KirisAcilimMontajPaspayiCm : h - KirisAcilimDuzPaspayiCm;
             return new[] { y, y - 1.2 };
@@ -2739,7 +2765,7 @@ namespace ST4PlanIdCiz
         /// BEA kod 3 sol (ST4 başlangıç) konsol, kod 4 sağ konsol. Çizim yönü uçları çevirebilir.
         /// Serbest uç gönyesi beton yüzünden paspayı kadar içeride.
         /// </summary>
-        private static void KirisAcilimKonsolUclari(
+        private void KirisAcilimKonsolUclari(
             List<KirisAcilimSpan> chain, int i0, int i1,
             Dictionary<BeamInfo, KirisAcilimUcBilgi> ucTipi, List<KirisAcilimSaplama> gorunus, double x0,
             out bool solSerbest, out bool sagSerbest, out double xSolGonye, out double xSagGonye)
@@ -2857,7 +2883,7 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>Çubuk kotu komşu kirişin içinde, her iki yüzden paspayı kadar içeride mi.</summary>
-        private static bool KirisAcilimIlaveSigar(
+        private bool KirisAcilimIlaveSigar(
             List<KirisAcilimSpan> chain, int j0, int j1, double yShift, double xChain, double yBar)
         {
             if (chain[j0]?.Beam == null) return false;
@@ -2899,7 +2925,7 @@ namespace ST4PlanIdCiz
         /// <summary>
         /// Çubuk komşu gövdeye paspayı içinde girebiliyorsa komşunun bu mesnete bakan yüzü (zincir X).
         /// </summary>
-        private static bool KirisAcilimDevamYuzu(
+        private bool KirisAcilimDevamYuzu(
             List<KirisAcilimSpan> chain, int i0, int i1,
             KirisAcilimSupport[] sup, List<KirisAcilimSaplama> gorunus,
             double yShift, bool sola, double yBar, out double yuzChain)
@@ -2916,7 +2942,7 @@ namespace ST4PlanIdCiz
         /// Gönye düşey boşluğu. Yan kirişin kotu veya yüksekliği farklıysa iki kesitin
         /// birlikte kapladığı yükseklik kullanılır. İlave 3 cm'si hesaba katılmaz.
         /// </summary>
-        private static double KirisAcilimGonyeRoom(
+        private double KirisAcilimGonyeRoom(
             List<KirisAcilimSpan> chain, int i0, int i1, double yShift,
             bool sola, bool ust, bool ilave, double yBar, double ownH, out double birlesikH)
         {
@@ -3225,7 +3251,7 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>Basit dikdörtgen çubuk: 5,5 cm paspayı içeride, kendi renginde.</summary>
-        private static void KirisAcilimCubuk(
+        private void KirisAcilimCubuk(
             Transaction tr, BlockTableRecord ms, double topY, double botY,
             double xA, double xB, bool ust, short renk)
         {
@@ -4213,7 +4239,7 @@ namespace ST4PlanIdCiz
         /// Yaylar dahil gerçek boyu bir üst 5 cm katına uzatır; yeni gönye eklenmez.
         /// Mevcut gönye odası veya düz uçta mesnet/paspayı payı kullanılır; lb kısalmaz.
         /// </summary>
-        private static double KirisAcilimDuzUcKesitOda(Point2d tip, Point2d yan,
+        private double KirisAcilimDuzUcKesitOda(Point2d tip, Point2d yan,
             double xMin, double xMax, double top0, double top1, double h)
         {
             double len = tip.GetDistanceTo(yan), width = xMax - xMin;
@@ -4234,7 +4260,7 @@ namespace ST4PlanIdCiz
             return room;
         }
 
-        private static double KirisAcilimDuzUcOda(List<KirisAcilimSpan> chain, List<Point2d> pts,
+        private double KirisAcilimDuzUcOda(List<KirisAcilimSpan> chain, List<Point2d> pts,
             double x0, double yShift, bool left)
         {
             if (chain == null || pts == null || pts.Count < 2 || KirisAcilimPtsUcGonye(pts, left)) return 0;
@@ -4249,7 +4275,7 @@ namespace ST4PlanIdCiz
             return room;
         }
 
-        private static void KirisAcilimMontajBesTamamla(
+        private void KirisAcilimMontajBesTamamla(
             List<Point2d> pts, ref double boy, bool hookL, bool hookR,
             double xa, double xb, double odaL, double odaR, double hkL, double hkR,
             double duzOdaL = 0, double duzOdaR = 0)
@@ -4304,7 +4330,7 @@ namespace ST4PlanIdCiz
             return boy;
         }
 
-        private static double KirisAcilimBesUzatmaOda(List<Point2d> pts, bool sol, bool hook,
+        private double KirisAcilimBesUzatmaOda(List<Point2d> pts, bool sol, bool hook,
             double xa, double xb, double oda, double hk)
         {
             if (pts == null || pts.Count < 2) return 0;
@@ -4348,7 +4374,7 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>Gönye kuyruğunu eksik kadar uzatır. Düşey bacak kesitte, yatay kuyruk kirişin içinde kalır.</summary>
-        private static bool KirisAcilimMontajUcUzat(
+        private bool KirisAcilimMontajUcUzat(
             List<Point2d> pts, bool sol, double xa, double xb, double ek, double oda, double hk)
         {
             if (pts == null || pts.Count < 2 || ek < 0.05) return false;
@@ -6145,6 +6171,9 @@ namespace ST4PlanIdCiz
                 return string.Format(CultureInfo.InvariantCulture, "T-{0} ({1}/{2})",
                     no, (int)Math.Round(beam.WidthCm), (int)Math.Round(beam.HeightCm));
             }
+            if (_kirisManuel != null && _kirisManuel.Adlar.TryGetValue(beam, out string manuelAd))
+                return string.Format(CultureInfo.InvariantCulture, "{0} ({1}/{2})",
+                    manuelAd, (int)Math.Round(beam.WidthCm), (int)Math.Round(beam.HeightCm));
             int floorNo = GetBeamFloorNo(beam.BeamId);
             FloorInfo floor = null;
             if (_model.Floors != null)

@@ -20,12 +20,55 @@ namespace ST4PlanIdCiz
         {
             _kapamaDonatiFromSwx = false;
             if (_gprPerdePanelDonati != null && _gprPerdePanelDonati.Count > 0) return;
-            if (TryLoadKapamaDonatiFromSwx(st4SourcePath, out Dictionary<int, GprPerdePanelDonati> map)
+            if ((TryLoadKapamaDonatiFromSwx(st4SourcePath, out Dictionary<int, GprPerdePanelDonati> map)
+                    || TryLoadKapamaDonatiFromSwxSirali(st4SourcePath, out map))
                 && map != null && map.Count > 0)
             {
                 _gprPerdePanelDonati = map;
                 _kapamaDonatiFromSwx = true;
             }
+        }
+
+        /// <summary>
+        /// GPR'siz (veya GPR'de panel bölümü yok): .SWX kayıt i = Beams Data'daki i. kapama perdesi.
+        /// Kayıt sayısı kapama perdesi sayısına eşit değilse eşleme yapılmaz (yanlış perdeye donatı yazılmasın).
+        /// Bx/By: panel boyu asgari As'tan (SwxKapamaDonati.Rec.PanelBoyuCm); bulunamazsa boş, görünüş çizilen açıklığı kullanır.
+        /// </summary>
+        private bool TryLoadKapamaDonatiFromSwxSirali(string st4SourcePath, out Dictionary<int, GprPerdePanelDonati> map)
+        {
+            map = null;
+            if (_model?.Beams == null) return false;
+            SwxKapamaDonati.Rec?[] recs = SwxKapamaDonati.ReadSirali(SwxKapamaDonati.ResolvePath(st4SourcePath));
+            if (recs.Length == 0) return false;
+            var walls = new List<BeamInfo>();
+            foreach (BeamInfo beam in _model.Beams)
+                if (beam != null && beam.IsWallFlag == 1) walls.Add(beam);
+            if (walls.Count != recs.Length) return false;
+
+            var dict = new Dictionary<int, GprPerdePanelDonati>();
+            for (int i = 0; i < walls.Count; i++)
+            {
+                if (!recs[i].HasValue) continue;
+                SwxKapamaDonati.Rec r = recs[i].Value;
+                int floorNo = GetBeamFloorNo(walls[i].BeamId);
+                int wallNo = GetBeamNumero(walls[i].BeamId);
+                double boy = r.PanelBoyuCm(walls[i].WidthCm);
+                dict[GprPerdePanelDonatiParser.Key(floorNo, wallNo)] = new GprPerdePanelDonati
+                {
+                    FloorNo = floorNo,
+                    WallNo = wallNo,
+                    LayerCount = 2,
+                    BarCount = r.BarCount,
+                    DiaMm = r.DiaMm,
+                    YatayDiaMm = r.YatayDiaMm,
+                    YataySpacingCm = r.YataySpacingCm,
+                    BxCm = boy,
+                    ByCm = boy > 0.0 ? walls[i].WidthCm : 0.0
+                };
+            }
+            if (dict.Count == 0) return false;
+            map = dict;
+            return true;
         }
 
         private bool TryLoadKapamaDonatiFromSwx(string st4SourcePath, out Dictionary<int, GprPerdePanelDonati> map)

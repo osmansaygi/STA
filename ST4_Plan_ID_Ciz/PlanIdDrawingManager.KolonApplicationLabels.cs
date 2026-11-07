@@ -36,8 +36,10 @@ namespace ST4PlanIdCiz
             }
             ApplyRebarMaterialsFromSt4(st4SourcePath);
             EnsureKapamaPerdeDonatiFromSwx(st4SourcePath);
-            if (_kolonDuseyGpr == null || _kolonDuseyGpr.Count == 0)
+            bool gprKolonTablosuVar = _kolonDuseyGpr != null && _kolonDuseyGpr.Count > 0;
+            if (!gprKolonTablosuVar)
                 TryFillKolonDuseyFromSmx(st4SourcePath, ed);
+            TryFillKolonDuseyHcrFromTbdy(st4SourcePath, ed, gprKolonTablosuVar);
             ApplyKolonDuseyNetAralikCapBuyutme(st4SourcePath, ed);
         }
 

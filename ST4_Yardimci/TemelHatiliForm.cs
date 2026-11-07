@@ -2,7 +2,7 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
-using SdFont = System.Drawing.Font;
+using Beykent.Monolit.Girdi;
 
 namespace ST4Yardimci
 {
@@ -66,21 +66,19 @@ namespace ST4Yardimci
         }
     }
 
-    /// <summary>Temel Hatılı formu — plandan çiz (sonra) / manuel çiz.</summary>
+    /// <summary>
+    /// Temel Hatılı formu — plandan çiz / manuel çiz. Ortak girdi kuralları (07.11.2026):
+    /// birimli ölçü kutusu, tek satır donatı (ø sabit), segment pafta seçimi, alt durum şeridi.
+    /// </summary>
     internal sealed class TemelHatiliForm : Beykent.Monolit.MonolitForm
     {
         private static TemelHatiliForm _instance;
 
-        private readonly NumericUpDown _numTemelH;
-        private readonly NumericUpDown _numKotu;
-        private readonly NumericUpDown _numDoseme;
-        private readonly NumericUpDown _numHatilH;
-        private readonly NumericUpDown _numHatilW;
-        private readonly NumericUpDown _numPas;
-        private readonly NumericUpDown _numDikeyCap;
-        private readonly NumericUpDown _numDikeyAralik;
-        private readonly NumericUpDown _numYatayCap;
-        private readonly NumericUpDown _numYatayAralik;
+        internal readonly OlcuKutusu TemelH, Kot, Doseme, HatilH, HatilW, Pas;
+        internal readonly DonatiKutusu Dusey, Yatay;
+        internal readonly SegmentSecim Olcek;
+        internal readonly GirdiDenetci Denetci = new GirdiDenetci();
+        internal readonly Button BtnManuel, BtnPlan, BtnKapat;
         private bool _starting;
 
         public static void ShowOrActivate()
@@ -121,7 +119,6 @@ namespace ST4Yardimci
                     _instance.BeginInvoke(new Action(HideTemporarily));
                     return;
                 }
-                
                 BaFormSession.BeginPick("TEMELHATILI");
                 _instance.Visible = false;
             }
@@ -132,43 +129,44 @@ namespace ST4Yardimci
         {
             TemelHatiliSettings.EnsureLoaded();
             Text = "Temel Hatılı";
-            FormBorderStyle = FormBorderStyle.FixedToolWindow;
             StartPosition = FormStartPosition.Manual;
             ShowInTaskbar = false;
             MinimizeBox = false;
             MaximizeBox = false;
-            ClientSize = new Size(420, 292);
-            BackColor = Beykent.Monolit.StandardFormTheme.Bg;
-            ForeColor = Beykent.Monolit.StandardFormTheme.Text;
-            Font = new SdFont("Segoe UI", 8.5f);
             KeyPreview = true;
 
-            int y = 8;
-            _numTemelH = AddRow("Temel yükseklik", "cm", 0, ref y, 20, 400, 1, 0, (decimal)TemelHatiliSettings.TemelYuksekligiCm);
-            _numKotu = AddRow("Temel üst kot", "cm", 0, ref y, -8000, 8000, 1, 0, (decimal)TemelHatiliSettings.TemelUstKotuCm);
-            _numDoseme = AddRow("Döşeme kalınlık", "cm", 0, ref y, 0, 80, 1, 0, (decimal)TemelHatiliSettings.DosemeKalinligiCm);
-            _numHatilH = AddRow("Hatıl yükseklik", "cm", 0, ref y, 20, 400, 1, 0, (decimal)TemelHatiliSettings.HatilYuksekligiCm);
-            _numHatilW = AddRow("Hatıl kalınlık", "cm", 0, ref y, 10, 80, 1, 0, (decimal)TemelHatiliSettings.HatilKalinligiCm);
-            _numPas = AddRow("Paspayı", "cm", 0, ref y, 2, 20, 0.5m, 1, (decimal)TemelHatiliSettings.PaspayiCm);
+            // Varsayılanlar TemelHatiliSettings ilk değerleriyle aynı ("Varsayılana dön").
+            TemelH = Denetci.Ekle(new OlcuKutusu("Temel yüksekliği", "cm", 20, 400, 40) { AdimDegeri = 5 });
+            Kot = Denetci.Ekle(new OlcuKutusu("Temel üst kotu", "cm", -8000, 8000, -80) { AdimDegeri = 5 });
+            Doseme = Denetci.Ekle(new OlcuKutusu("Döşeme kalınlığı", "cm", 0, 80, 15));
+            HatilH = Denetci.Ekle(new OlcuKutusu("Hatıl yüksekliği", "cm", 20, 400, 120) { AdimDegeri = 5 });
+            HatilW = Denetci.Ekle(new OlcuKutusu("Hatıl kalınlığı", "cm", 10, 80, 20) { AdimDegeri = 5 });
+            Pas = Denetci.Ekle(new OlcuKutusu("Paspayı", "cm", 2, 20, 3, 1, 0.5));
+            Dusey = Denetci.Ekle(new DonatiKutusu("Düşey donatı", 10, 20));
+            Yatay = Denetci.Ekle(new DonatiKutusu("Yatay donatı", 10, 20));
+            Olcek = new SegmentSecim("1/50 pafta", "1/100 pafta (×2)") { Secili = BaPaftaOlcek.Yuz("temelhatili") ? 1 : 0 };
+            Olcek.SeciliDegisti += (s, e) => BaPaftaOlcek.Kaydet("temelhatili", Olcek.Secili == 1);
+            LoadFromSettings();
 
-            y = 8;
-            _numDikeyCap = AddRow("Dikey çap", "mm", 1, ref y, 8, 40, 1, 0, (decimal)TemelHatiliSettings.DikeyCapMm);
-            _numDikeyAralik = AddRow("Dikey aralık", "cm", 1, ref y, 5, 50, 1, 0, (decimal)TemelHatiliSettings.DikeyAralikCm);
-            _numYatayCap = AddRow("Yatay çap", "mm", 1, ref y, 8, 40, 1, 0, (decimal)TemelHatiliSettings.YatayCapMm);
-            _numYatayAralik = AddRow("Yatay aralık", "cm", 1, ref y, 5, 50, 1, 0, (decimal)TemelHatiliSettings.YatayAralikCm);
+            Denetci.HataKurali(() => HatilH.Deger <= Doseme.Deger
+                ? "Hatıl yüksekliği döşeme kalınlığından büyük olmalı" : null, HatilH, Doseme);
+            Denetci.HataKurali(() =>
+            {
+                double gerekli = 2 * Pas.Deger + 2 * (Dusey.CapMm + Yatay.CapMm) / 10.0;
+                return gerekli >= HatilW.Deger
+                    ? "Donatı sığmıyor: 2·paspayı + 2·(øD+øY) = " + GirdiTema.Yaz(gerekli, 1) + " cm ≥ hatıl kalınlığı" : null;
+            }, HatilW, Pas, Dusey, Yatay);
+            Denetci.UyariKurali(() => AralikUyarisi("Düşey", Dusey.AralikCm));
+            Denetci.UyariKurali(() => AralikUyarisi("Yatay", Yatay.AralikCm));
 
-            int yBtn = 252;
-            var btnPlan = MakeButton("Plandan çiz", 10, yBtn, 100, false);
-            btnPlan.Click += (s, e) => OnPlan();
-            var btnManuel = MakeButton("Manuel çiz", 116, yBtn, 100, true);
-            btnManuel.Click += (s, e) => OnManuel();
-            var btnClose = MakeButton("Kapat", 222, yBtn, 70, false);
-            btnClose.Click += (s, e) => Close();
-            Controls.Add(btnPlan);
-            Controls.Add(btnManuel);
-            Controls.Add(btnClose);
+            BtnPlan = new Button { Text = "Plandan çiz" };
+            BtnManuel = new Button { Text = "Manuel çiz" };
+            BtnKapat = new Button { Text = "Kapat" };
+            BtnPlan.Click += (s, e) => Calistir("TEMELHATILIPLAN ");
+            BtnManuel.Click += (s, e) => Calistir("TEMELHATILICIZ ");
+            BtnKapat.Click += (s, e) => Close();
 
-            FormClosing += (s, e) => { try { PushSettings(); } catch { } };
+            FormClosing += (s, e) => { try { if (Denetci.Uygun) PushSettings(); } catch { } };
             FormClosed += (s, e) =>
             {
                 if (ReferenceEquals(_instance, this))
@@ -188,15 +186,32 @@ namespace ST4Yardimci
                 StartPosition = FormStartPosition.CenterScreen;
             }
 
-            // Kompakt, içerik odaklı form düzeni.
-            var ui = BeginCompact(350);
-            ui.Tabs(202,
-                ui.Page("Kesit", p => p.Field("Temel yüksekliği · cm", _numTemelH).Field("Temel üst kotu · cm", _numKotu)
-                    .Field("Döşeme kalınlığı · cm", _numDoseme).Field("Hatıl yük. / en · cm", _numHatilH, _numHatilW).Field("Paspayı · cm", _numPas)),
-                ui.Page("Donatı", p => p.Field("Düşey · Ø mm / ara cm", _numDikeyCap, _numDikeyAralik)
-                    .Field("Yatay · Ø mm / ara cm", _numYatayCap, _numYatayAralik)));
-            ui.Footer(btnManuel, btnClose, btnPlan);
+            var ui = BeginCompact(390);
+            ui.Section("Temel ve döşeme")
+                .Field("Temel yüksekliği", TemelH)
+                .Field("Temel üst kotu", Kot)
+                .Field("Döşeme kalınlığı", Doseme);
+            ui.Section("Hatıl")
+                .Field("Yükseklik / kalınlık", HatilH, HatilW)
+                .Field("Paspayı", Pas);
+            ui.Section("Donatı  (ø çap / aralık)")
+                .Field("Düşey", Dusey)
+                .Field("Yatay", Yatay)
+                .Hint("Plandan çizimde çaplar plandaki hatıl tipinden alınır.");
+            ui.Section("Pafta ölçeği · detay 1/25").Control(Olcek);
+            ui.Section(null).Control(Denetci.Serit, 44);
+            ui.Footer(BtnManuel, BtnKapat, BtnPlan);
+            ui.Tip(Doseme, "0 girilirse döşeme bandı çizilmez.");
             ui.Finish();
+            Denetci.Guncelle();
+        }
+
+        private string AralikUyarisi(string ad, double aralik)
+        {
+            double sinir = Math.Min(1.5 * HatilW.Deger, 30);
+            return aralik > sinir + 1e-9
+                ? ad + " aralık " + GirdiTema.Yaz(aralik, 1) + " cm > " + GirdiTema.Yaz(sinir, 1) + " cm (≤ 1,5·t ve ≤ 30 cm önerilir)"
+                : null;
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -206,9 +221,9 @@ namespace ST4Yardimci
                 Close();
                 return true;
             }
-            if (keyData == Keys.Enter || keyData == Keys.Return)
+            if ((keyData == Keys.Enter || keyData == Keys.Return) && !(ActiveControl is Button))
             {
-                OnManuel();
+                Calistir("TEMELHATILICIZ ");
                 return true;
             }
             return base.ProcessCmdKey(ref msg, keyData);
@@ -216,36 +231,38 @@ namespace ST4Yardimci
 
         private void LoadFromSettings()
         {
-            _numTemelH.Value = Clamp(_numTemelH, (decimal)TemelHatiliSettings.TemelYuksekligiCm);
-            _numKotu.Value = Clamp(_numKotu, (decimal)TemelHatiliSettings.TemelUstKotuCm);
-            _numDoseme.Value = Clamp(_numDoseme, (decimal)TemelHatiliSettings.DosemeKalinligiCm);
-            _numHatilH.Value = Clamp(_numHatilH, (decimal)TemelHatiliSettings.HatilYuksekligiCm);
-            _numHatilW.Value = Clamp(_numHatilW, (decimal)TemelHatiliSettings.HatilKalinligiCm);
-            _numPas.Value = Clamp(_numPas, (decimal)TemelHatiliSettings.PaspayiCm);
-            _numDikeyCap.Value = Clamp(_numDikeyCap, (decimal)TemelHatiliSettings.DikeyCapMm);
-            _numDikeyAralik.Value = Clamp(_numDikeyAralik, (decimal)TemelHatiliSettings.DikeyAralikCm);
-            _numYatayCap.Value = Clamp(_numYatayCap, (decimal)TemelHatiliSettings.YatayCapMm);
-            _numYatayAralik.Value = Clamp(_numYatayAralik, (decimal)TemelHatiliSettings.YatayAralikCm);
+            TemelH.Deger = TemelHatiliSettings.TemelYuksekligiCm;
+            Kot.Deger = TemelHatiliSettings.TemelUstKotuCm;
+            Doseme.Deger = TemelHatiliSettings.DosemeKalinligiCm;
+            HatilH.Deger = TemelHatiliSettings.HatilYuksekligiCm;
+            HatilW.Deger = TemelHatiliSettings.HatilKalinligiCm;
+            Pas.Deger = TemelHatiliSettings.PaspayiCm;
+            Dusey.Ayarla(CapYuvarla(TemelHatiliSettings.DikeyCapMm), TemelHatiliSettings.DikeyAralikCm);
+            Yatay.Ayarla(CapYuvarla(TemelHatiliSettings.YatayCapMm), TemelHatiliSettings.YatayAralikCm);
         }
 
-        private void PushSettings()
+        private static int CapYuvarla(double mm) => (int)Math.Round(mm, MidpointRounding.AwayFromZero);
+
+        /// <summary>Runner'ın okuduğu ayar alanları değişmeden doldurulur.</summary>
+        internal void PushSettings()
         {
-            TemelHatiliSettings.TemelYuksekligiCm = (double)_numTemelH.Value;
-            TemelHatiliSettings.TemelUstKotuCm = (double)_numKotu.Value;
-            TemelHatiliSettings.DosemeKalinligiCm = (double)_numDoseme.Value;
-            TemelHatiliSettings.HatilYuksekligiCm = (double)_numHatilH.Value;
-            TemelHatiliSettings.HatilKalinligiCm = (double)_numHatilW.Value;
-            TemelHatiliSettings.PaspayiCm = (double)_numPas.Value;
-            TemelHatiliSettings.DikeyCapMm = (double)_numDikeyCap.Value;
-            TemelHatiliSettings.DikeyAralikCm = (double)_numDikeyAralik.Value;
-            TemelHatiliSettings.YatayCapMm = (double)_numYatayCap.Value;
-            TemelHatiliSettings.YatayAralikCm = (double)_numYatayAralik.Value;
+            TemelHatiliSettings.TemelYuksekligiCm = TemelH.Deger;
+            TemelHatiliSettings.TemelUstKotuCm = Kot.Deger;
+            TemelHatiliSettings.DosemeKalinligiCm = Doseme.Deger;
+            TemelHatiliSettings.HatilYuksekligiCm = HatilH.Deger;
+            TemelHatiliSettings.HatilKalinligiCm = HatilW.Deger;
+            TemelHatiliSettings.PaspayiCm = Pas.Deger;
+            TemelHatiliSettings.DikeyCapMm = Dusey.CapMm;
+            TemelHatiliSettings.DikeyAralikCm = Dusey.AralikCm;
+            TemelHatiliSettings.YatayCapMm = Yatay.CapMm;
+            TemelHatiliSettings.YatayAralikCm = Yatay.AralikCm;
             TemelHatiliSettings.Save();
         }
 
-        private void OnPlan()
+        private void Calistir(string komut)
         {
             if (_starting) return;
+            if (!Denetci.Onayla()) return;
             PushSettings();
             try
             {
@@ -253,103 +270,12 @@ namespace ST4Yardimci
                 if (doc == null) return;
                 _starting = true;
                 HideTemporarily();
-                doc.SendStringToExecute("TEMELHATILIPLAN ", true, false, false);
+                doc.SendStringToExecute(komut, true, false, false);
             }
             catch
             {
                 _starting = false;
             }
-        }
-
-        private void OnManuel()
-        {
-            if (_starting) return;
-            PushSettings();
-            try
-            {
-                var doc = AcApp.DocumentManager.MdiActiveDocument;
-                if (doc == null) return;
-                _starting = true;
-                HideTemporarily();
-                doc.SendStringToExecute("TEMELHATILICIZ ", true, false, false);
-            }
-            catch
-            {
-                _starting = false;
-            }
-        }
-
-        /// <summary>col 0 = sol, 1 = sağ. Satır yüksekliği 26 px.</summary>
-        private NumericUpDown AddRow(string label, string unit, int col, ref int y,
-            decimal min, decimal max, decimal inc, int decimals, decimal val)
-        {
-            int x0 = col == 0 ? 10 : 215;
-            var lbl = new Label
-            {
-                Text = label,
-                Location = new Point(x0, y + 3),
-                AutoSize = false,
-                Size = new Size(100, 18),
-                ForeColor = Beykent.Monolit.StandardFormTheme.TextMuted,
-                BackColor = Color.Transparent
-            };
-            Controls.Add(lbl);
-            var n = MakeNum(x0 + 102, y, 58, min, max, inc, decimals, val);
-            Controls.Add(n);
-            var u = new Label
-            {
-                Text = unit,
-                Location = new Point(x0 + 162, y + 3),
-                AutoSize = true,
-                ForeColor = Beykent.Monolit.StandardFormTheme.TextMuted,
-                BackColor = Color.Transparent
-            };
-            Controls.Add(u);
-            y += 26;
-            return n;
-        }
-
-        private static decimal Clamp(NumericUpDown n, decimal v)
-        {
-            if (v < n.Minimum) return n.Minimum;
-            if (v > n.Maximum) return n.Maximum;
-            return v;
-        }
-
-        private static Button MakeButton(string text, int x, int y, int w, bool accent)
-        {
-            var b = new Button
-            {
-                Text = text,
-                Location = new Point(x, y),
-                Size = new Size(w, 26),
-                FlatStyle = FlatStyle.Flat,
-                BackColor = Beykent.Monolit.StandardFormTheme.BgAlt,
-                ForeColor = accent ? Beykent.Monolit.StandardFormTheme.Accent : Beykent.Monolit.StandardFormTheme.Text,
-                Cursor = Cursors.Hand
-            };
-            b.FlatAppearance.BorderColor = Beykent.Monolit.StandardFormTheme.InputBorder;
-            b.FlatAppearance.MouseOverBackColor = Beykent.Monolit.StandardFormTheme.BgHover;
-            return b;
-        }
-
-        private static NumericUpDown MakeNum(int x, int y, int w, decimal min, decimal max, decimal inc, int decimals, decimal val)
-        {
-            var n = new NumericUpDown
-            {
-                Location = new Point(x, y),
-                Size = new Size(w, 22),
-                Minimum = min,
-                Maximum = max,
-                Increment = inc,
-                DecimalPlaces = decimals,
-                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
-                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
-                BorderStyle = BorderStyle.FixedSingle
-            };
-            n.Value = Clamp(n, val);
-            YardimciUi.StripUpDownButtons(n);
-            return n;
         }
     }
 }

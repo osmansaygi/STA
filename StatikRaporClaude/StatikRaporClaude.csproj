@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>StatikRaporClaude</RootNamespace>
+    <AssemblyName>StatikRaporClaude</AssemblyName>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationIcon>Varliklar\rapor-yapi.ico</ApplicationIcon>
+    <Version>0.16.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="Varliklar\**" CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="Varliklar\rapor-yapi.ico" LogicalName="StatikRaporClaude.UygulamaSimgesi" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="PDFsharp" Version="6.2.0" />
+  </ItemGroup>
+
+  <!-- Masaüstü kısayolu bin\Uygulama\StatikRaporClaude.exe'yi açar: her Release derlemesi oraya da kopyalanır.
+       Uygulama açıksa kopya atlanır (uyarı), derleme başarısız olmaz. -->
+  <Target Name="KisayolKlasorunuGuncelle" AfterTargets="Build"
+          Condition="'$(Configuration)' == 'Release' And '$([System.IO.Path]::GetFullPath($(OutDir)))' != '$([System.IO.Path]::GetFullPath($(MSBuildProjectDirectory)\bin\Uygulama\))'">
+    <ItemGroup>
+      <UygulamaDosyasi Include="$(OutDir)**\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(UygulamaDosyasi)" DestinationFiles="@(UygulamaDosyasi->'$(MSBuildProjectDirectory)\bin\Uygulama\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" ContinueOnError="WarnAndContinue" Retries="0" />
+  </Target>
+
+</Project>

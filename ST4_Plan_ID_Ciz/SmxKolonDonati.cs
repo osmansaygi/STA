@@ -66,27 +66,20 @@ namespace ST4PlanIdCiz
             return list;
         }
 
-        /// <summary>GPR ile aynı sözdizimi: 2x3ø14+2x2ø14(govde). Perdede yüz adedi 0 ise 9ø14+7ø12.</summary>
+        /// <summary>GPR ile aynı sözdizimi: 2x3ø14+2x2ø14(govde).</summary>
         public static string FormatDonati(Rec r)
         {
             if (r.Bars <= 0 || r.BarDia < 6) return null;
-            if (r.Faces > 0)
-            {
-                string s = r.Faces.ToString(CultureInfo.InvariantCulture) + "x"
-                    + r.Bars.ToString(CultureInfo.InvariantCulture) + "\u00F8"
-                    + r.BarDia.ToString(CultureInfo.InvariantCulture);
-                if (r.WebBars > 0 && r.WebDia >= 6)
-                    s += "+" + r.Faces.ToString(CultureInfo.InvariantCulture) + "x"
-                        + r.WebBars.ToString(CultureInfo.InvariantCulture) + "\u00F8"
-                        + r.WebDia.ToString(CultureInfo.InvariantCulture) + "(govde)";
-                return s;
-            }
-            string p = r.Bars.ToString(CultureInfo.InvariantCulture) + "\u00F8"
+            // Yüz adedi 0 (perde, 60/25 vb.) = iki yüz: GPR 2×6ø14+2×5ø12(govde) (CK_20827_2_01: 157/157).
+            if (r.Faces <= 0) r.Faces = 2;
+            string s = r.Faces.ToString(CultureInfo.InvariantCulture) + "x"
+                + r.Bars.ToString(CultureInfo.InvariantCulture) + "\u00F8"
                 + r.BarDia.ToString(CultureInfo.InvariantCulture);
             if (r.WebBars > 0 && r.WebDia >= 6)
-                p += "+" + r.WebBars.ToString(CultureInfo.InvariantCulture) + "\u00F8"
-                    + r.WebDia.ToString(CultureInfo.InvariantCulture);
-            return p;
+                s += "+" + r.Faces.ToString(CultureInfo.InvariantCulture) + "x"
+                    + r.WebBars.ToString(CultureInfo.InvariantCulture) + "\u00F8"
+                    + r.WebDia.ToString(CultureInfo.InvariantCulture) + "(govde)";
+            return s;
         }
 
         /// <summary>2ø10/15/8. Aralıklar kolon sarılma ayrıştırmasının okuduğu /s biçiminde.</summary>

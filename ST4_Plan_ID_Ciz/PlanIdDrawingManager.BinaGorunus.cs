@@ -636,8 +636,11 @@ namespace ST4PlanIdCiz
                 {
                     double zu = floorLevelCm + Math.Max(beam.Point1KotCm, beam.Point2KotCm);
                     double h = beam.HeightCm > 0 ? beam.HeightCm : (beam.IsWallFlag == 1 ? 40.0 : 30.0);
-                    AddBinaGorunusPlan(faces, bakis, BeamFootprintPoly(beam), zu - h, zu);
+                    var zTop = EgimliPerdeUstKotU(beam, floorLevelCm, (px, py) => BinaGorunusU(bakis, px, py));
+                    AddBinaGorunusPlan(faces, bakis, BeamFootprintPoly(beam), floorLevelCm + PerdeAltKotRelCm(beam, h), zu, zTop);
                 }
+                foreach (var (_, poly, zb, zt) in BinaViewMushroomBeams(floorNo, floorLevelCm))
+                    AddBinaGorunusPlan(faces, bakis, poly, zb, zt);
 
                 var extra = GetColumnTableExtraData(floor);
                 foreach (var col in _model.Columns)
@@ -686,7 +689,7 @@ namespace ST4PlanIdCiz
             }
         }
 
-        private void AddBinaGorunusPlan(List<BinaGorunusFace> faces, BinaGorunusBakis bakis, Geometry plan, double z0, double z1)
+        private void AddBinaGorunusPlan(List<BinaGorunusFace> faces, BinaGorunusBakis bakis, Geometry plan, double z0, double z1, Func<double, double> zTop = null)
         {
             if (plan == null || plan.IsEmpty) return;
             if (z1 < z0)
@@ -704,11 +707,11 @@ namespace ST4PlanIdCiz
             {
                 var part = solid.GetGeometryN(i);
                 if (!(part is Polygon)) continue;
-                AddBinaGorunusProjectedRect(faces, bakis, part, z0, z1);
+                AddBinaGorunusProjectedRect(faces, bakis, part, z0, z1, zTop);
             }
         }
 
-        private void AddBinaGorunusProjectedRect(List<BinaGorunusFace> faces, BinaGorunusBakis bakis, Geometry planPoly, double z0, double z1)
+        private void AddBinaGorunusProjectedRect(List<BinaGorunusFace> faces, BinaGorunusBakis bakis, Geometry planPoly, double z0, double z1, Func<double, double> zTop = null)
         {
             double u0 = double.MaxValue, u1 = double.MinValue, depth = double.MaxValue;
             var coords = planPoly.Coordinates;
@@ -725,14 +728,7 @@ namespace ST4PlanIdCiz
             }
             if (u1 - u0 < 0.5 || double.IsInfinity(depth)) return;
 
-            Coordinate[] ring =
-            {
-                new Coordinate(u0, z0),
-                new Coordinate(u1, z0),
-                new Coordinate(u1, z1),
-                new Coordinate(u0, z1),
-                new Coordinate(u0, z0)
-            };
+            Coordinate[] ring = EgimliUstHalka(u0, u1, z0, z1, zTop);
             try
             {
                 var rect = _ntsDrawFactory.CreatePolygon(_ntsDrawFactory.CreateLinearRing(ring));

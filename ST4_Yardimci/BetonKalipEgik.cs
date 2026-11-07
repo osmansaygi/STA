@@ -99,7 +99,7 @@ namespace ST4Yardimci
         private static BetonKalip KolonKatEgik(Geo g, int kat)
         {
             double sk = 0, sb = 0;
-            var bantlar = g.Kirisler.Where(x => x.Kat == kat && !(x.Sira > 0 && g.Kirisler[x.Sira - 1].No == x.No))
+            var bantlar = g.Kirisler.Where(x => x.Kat == kat && !(x.Sira > 0 && Ayni(g.Kirisler[x.Sira - 1], x)))
                 .Select(x => BantKur(x, x)).Where(x => x != null).ToList();
             foreach (var c in g.Kolonlar.Where(c => c.Kat == kat))
             {

@@ -4,6 +4,7 @@
 |-------|---------------|--------------------|---------|
 | ST4 Yardımcı | [ST4_Yardimci.md](ST4_Yardimci.md) | `KURANGLEZ` / `HASIRDONATI` | Kuranglez + hasır donatı |
 | Plan ID çiz | [ST4_Plan_ID_Ciz.md](ST4_Plan_ID_Ciz.md) | `KALIP50` / `KOLONDUSEY` | [Sürekli temel beton görünüşü](ST4_Plan_ID_Ciz.SurekliGorunus.md) |
+| Statik rapor (Claude) | [StatikRaporClaude.md](StatikRaporClaude.md) | `StatikRaporClaude/` masaüstü | 0.8: analiz dosyalarından GPR'siz rapor (FEA3D, radye, özel tablolar, metraj, hesap çıktıları) |
 
 Yeni modül eklenince bu tabloya bir satır + aynı isimde `.md` ekle.
 

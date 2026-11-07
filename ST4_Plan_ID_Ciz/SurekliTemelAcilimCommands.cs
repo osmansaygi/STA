@@ -19,6 +19,7 @@ namespace ST4PlanIdCiz
         [CommandMethod("SUREKLITEMELACILIMLARI")]
         public void SurekliTemelAcilimlari()
         {
+            if (!PlanLisans.EnsureOrWarn()) return;
             var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
             try
@@ -54,10 +55,17 @@ namespace ST4PlanIdCiz
                 var insRes = ed.GetPoint(new PromptPointOptions(prompt) { AllowNone = false });
                 if (insRes.Status != PromptStatus.OK) return;
                 var manager = new PlanIdDrawingManager(model);
+                long ilkHandle = db.Handseed.Value;
                 if (manager.DrawSurekliTemelAcilimlariSecenekli(db, ed, insRes.Value, st4Path, secenekler))
                 {
-                    try { manager.KirisAcilimGorunumeAl(ed); }
-                    catch { /* görünüm başarısız olsa da çizim kalsın */ }
+                    // 1/100 pafta: açılım (yazı/ölçü/antet) ×2; görünüm büyütülmüş çizime alınır.
+                    if (secenekler.Pafta100)
+                        BeykentOrtak.PaftaOlcek.BuyutYeni(db, ilkHandle, insRes.Value, ed: ed);
+                    else
+                    {
+                        try { manager.KirisAcilimGorunumeAl(ed); }
+                        catch { /* görünüm başarısız olsa da çizim kalsın */ }
+                    }
                 }
             }
             catch (System.Exception ex)

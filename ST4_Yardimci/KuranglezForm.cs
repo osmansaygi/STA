@@ -2,9 +2,8 @@ using System;
 using System.Globalization;
 using System.Windows.Forms;
 using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
-using SdFont = System.Drawing.Font;
 using SdPoint = System.Drawing.Point;
-using SdSize = System.Drawing.Size;
+using Beykent.Monolit.Girdi;
 
 namespace ST4Yardimci
 {
@@ -164,14 +163,21 @@ namespace ST4Yardimci
         }
     }
 
+    /// <summary>
+    /// Kuranglez formu. Ortak girdi kuralları (07.11.2026): birimli ölçü kutusu,
+    /// tek satır donatı (ø sabit), segment beton/pafta seçimi, alt durum şeridi.
+    /// </summary>
     internal sealed class KuranglezForm : Beykent.Monolit.MonolitForm
     {
         static KuranglezForm _instance;
-        bool _starting;
+        bool _starting, _loading;
 
-        readonly NumericUpDown _boy, _en, _kapama, _perde, _yuk, _temel, _kot;
-        readonly ComboBox _beton, _duseyCap, _yatayCap;
-        readonly NumericUpDown _duseyAr, _yatayAr, _pas, _adet;
+        static readonly int[] BetonSiniflari = { 25, 30, 35, 40 };
+
+        readonly OlcuKutusu _boy, _en, _kapama, _perde, _yuk, _temel, _kot, _pas, _adet;
+        readonly DonatiKutusu _dusey, _yatay;
+        readonly SegmentSecim _beton, _olcek;
+        readonly GirdiDenetci Denetci = new GirdiDenetci();
 
         public static void ShowOrActivate()
         {
@@ -222,49 +228,46 @@ namespace ST4Yardimci
         {
             KuranglezSettings.EnsureLoaded();
             Text = "Kuranglez Detayı  1/25";
-            FormBorderStyle = FormBorderStyle.FixedToolWindow;
             StartPosition = FormStartPosition.Manual;
             ShowInTaskbar = false;
             MinimizeBox = false;
             MaximizeBox = false;
-            BackColor = Beykent.Monolit.StandardFormTheme.Bg;
-            ForeColor = Beykent.Monolit.StandardFormTheme.Text;
-            Font = new SdFont("Segoe UI", 9f);
             KeyPreview = true;
 
-            const int pad = 12;
-            const int colW = 312;
-            const int colH = 232;
-            var geo = Group("Geometri", pad, pad, colW, colH);
-            int y = 24;
-            _boy = Row(geo, "Boy (açıklık)", ref y, 40, 2000, 1, 0, (decimal)KuranglezSettings.BoyCm);
-            _en = Row(geo, "En (açıklık)", ref y, 40, 2000, 1, 0, (decimal)KuranglezSettings.EnCm);
-            _kapama = Row(geo, "Kapama perde", ref y, 12, 80, 1, 0, (decimal)KuranglezSettings.KapamaCm);
-            _perde = Row(geo, "Kuranglez perde", ref y, 10, 40, 1, 0, (decimal)KuranglezSettings.PerdeCm);
-            _yuk = Row(geo, "Yükseklik (temelden)", ref y, 40, 800, 1, 0, (decimal)KuranglezSettings.YukseklikCm);
-            _temel = Row(geo, "Temel kalınlığı", ref y, 20, 200, 1, 0, (decimal)KuranglezSettings.TemelCm);
-            _kot = Row(geo, "Temel üst kotu", ref y, -5000, 500, 1, 0,
-                (decimal)Math.Round(KuranglezSettings.TemelUstKotM * 100.0), "cm");
-            Controls.Add(geo);
+            // Sınırlar eski NumericUpDown Min/Max ile aynı; varsayılanlar KuranglezSettings ilk değerleri.
+            _boy = Denetci.Ekle(new OlcuKutusu("Açıklık boy", "cm", 40, 2000, 270) { AdimDegeri = 5 });
+            _en = Denetci.Ekle(new OlcuKutusu("Açıklık en", "cm", 40, 2000, 100) { AdimDegeri = 5 });
+            _kapama = Denetci.Ekle(new OlcuKutusu("Kapama perde", "cm", 12, 80, 25));
+            _perde = Denetci.Ekle(new OlcuKutusu("Kuranglez perde", "cm", 10, 40, 15));
+            _yuk = Denetci.Ekle(new OlcuKutusu("Yükseklik", "cm", 40, 800, 270) { AdimDegeri = 5 });
+            _temel = Denetci.Ekle(new OlcuKutusu("Temel kalınlığı", "cm", 20, 200, 35) { AdimDegeri = 5 });
+            // Kot kutusu cm (Standart A); ayar metre olarak saklanır.
+            _kot = Denetci.Ekle(new OlcuKutusu("Temel üst kotu", "cm", -5000, 500, -270) { AdimDegeri = 5 });
+            _beton = new SegmentSecim("C25", "C30", "C35", "C40") { Secili = 1 };
+            _dusey = Denetci.Ekle(new DonatiKutusu("Düşey donatı", 10, 20, 8, 20, 5, 40));
+            _yatay = Denetci.Ekle(new DonatiKutusu("Yatay donatı", 8, 20, 8, 20, 5, 40));
+            _pas = Denetci.Ekle(new OlcuKutusu("Kuranglez paspayı", "cm", 2, 8, 3, 1, 0.5));
+            _adet = Denetci.Ekle(new OlcuKutusu("Adet", "adet", 1, 999, 1));
+            _olcek = new SegmentSecim("1/50 pafta", "1/100 pafta (×2)") { Secili = BaPaftaOlcek.Yuz("kuranglez") ? 1 : 0 };
+            _olcek.SeciliDegisti += (s, e) => BaPaftaOlcek.Kaydet("kuranglez", _olcek.Secili == 1);
+            Denetci.SegmentIzle(_beton);
+            LoadFromSettings();
 
-            var don = Group("Donatı", pad + colW + 10, pad, colW, colH);
-            y = 24;
-            _beton = BetonRow(don, ref y, KuranglezSettings.BetonFck);
-            _duseyCap = CapRow(don, "Düşey donatı", ref y, KuranglezSettings.DuseyCapMm, out _duseyAr, KuranglezSettings.DuseyAralikCm);
-            _yatayCap = CapRow(don, "Yatay donatı", ref y, KuranglezSettings.YatayCapMm, out _yatayAr, KuranglezSettings.YatayAralikCm);
-            _pas = Row(don, "Kuranglez paspayı", ref y, 2, 8, 0.5m, 1, (decimal)KuranglezSettings.PaspayiCm);
-            _adet = Row(don, "Adet (metraj)", ref y, 1, 999, 1, 0, KuranglezSettings.Adet, "");
-            Controls.Add(don);
+            // Ayar aralıkları tam sayı cm saklanır (KuranglezSettings int).
+            Denetci.HataKurali(() => TamSayiDegil(_dusey.AralikCm) ? "Düşey aralık tam sayı cm olmalı" : null, _dusey);
+            Denetci.HataKurali(() => TamSayiDegil(_yatay.AralikCm) ? "Yatay aralık tam sayı cm olmalı" : null, _yatay);
+            // Fiziksel kontroller KuranglezSettings.Validate ile aynı kaynaktan (eski MessageBox yerine şerit).
+            Denetci.HataKurali(() =>
+            {
+                if (_loading) return null;
+                Push();
+                return KuranglezSettings.Validate();
+            }, _boy, _en, _kapama, _perde, _yuk, _temel, _pas, _dusey, _yatay, _adet);
 
-            int formW = pad * 2 + colW * 2 + 10;
-            int btnY = pad + colH + 12;
-            var btn = MakeButton("Kuranglez çiz", formW - pad - 220, btnY, 130, true);
+            var btn = new Button { Text = "Kuranglez çiz" };
             btn.Click += (s, e) => OnRun();
-            var close = MakeButton("Kapat", formW - pad - 82, btnY, 82, false);
+            var close = new Button { Text = "Kapat" };
             close.Click += (s, e) => Close();
-            Controls.Add(btn);
-            Controls.Add(close);
-            ClientSize = new SdSize(formW, btnY + 38);
 
             FormClosing += (s, e) =>
             {
@@ -286,16 +289,27 @@ namespace ST4Yardimci
             }
             catch { StartPosition = FormStartPosition.CenterScreen; }
 
-            // Kompakt, içerik odaklı form düzeni.
-            var ui = BeginCompact(360);
-            ui.Tabs(212,
-                ui.Page("Geometri", p => p.Field("Açıklık boy / en · cm", _boy, _en).Field("Kapama / perde · cm", _kapama, _perde)
-                    .Field("Temelden yük. · cm", _yuk).Field("Temel kalınlığı · cm", _temel).Field("Temel üst kotu · cm", _kot)),
-                ui.Page("Donatı ve metraj", p => p.Field("Beton sınıfı", _beton).Field("Düşey · Ø mm / ara cm", _duseyCap, _duseyAr)
-                    .Field("Yatay · Ø mm / ara cm", _yatayCap, _yatayAr).Field("Paspayı · cm", _pas).Field("Adet", _adet)));
+            var ui = BeginCompact(390);
+            ui.Section("Geometri")
+                .Field("Açıklık boy / en", _boy, _en)
+                .Field("Kapama / perde", _kapama, _perde)
+                .Field("Temelden yükseklik", _yuk)
+                .Field("Temel kalınlığı", _temel)
+                .Field("Temel üst kotu", _kot);
+            ui.Section("Donatı  (ø çap / aralık)")
+                .Field("Beton sınıfı", _beton)
+                .Field("Düşey", _dusey)
+                .Field("Yatay", _yatay)
+                .Field("Paspayı", _pas);
+            ui.Section("Metraj").Field("Adet", _adet);
+            ui.Section("Pafta ölçeği · detay 1/25").Control(_olcek);
+            ui.Section(null).Control(Denetci.Serit, 44);
             ui.Footer(btn, close);
             ui.Finish();
+            Denetci.Guncelle();
         }
+
+        static bool TamSayiDegil(double v) => Math.Abs(v - Math.Round(v)) > 1e-9;
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
@@ -304,7 +318,7 @@ namespace ST4Yardimci
                 Close();
                 return true;
             }
-            if (keyData == Keys.Enter || keyData == Keys.Return)
+            if ((keyData == Keys.Enter || keyData == Keys.Return) && !(ActiveControl is Button))
             {
                 OnRun();
                 return true;
@@ -314,32 +328,25 @@ namespace ST4Yardimci
 
         void LoadFromSettings()
         {
-            Set(_boy, KuranglezSettings.BoyCm);
-            Set(_en, KuranglezSettings.EnCm);
-            Set(_kapama, KuranglezSettings.KapamaCm);
-            Set(_perde, KuranglezSettings.PerdeCm);
-            Set(_yuk, KuranglezSettings.YukseklikCm);
-            Set(_temel, KuranglezSettings.TemelCm);
-            Set(_kot, Math.Round(KuranglezSettings.TemelUstKotM * 100.0));
-            SelectBeton(_beton, KuranglezSettings.BetonFck);
-            SelectCap(_duseyCap, KuranglezSettings.DuseyCapMm);
-            SelectCap(_yatayCap, KuranglezSettings.YatayCapMm);
-            Set(_duseyAr, KuranglezSettings.DuseyAralikCm);
-            Set(_yatayAr, KuranglezSettings.YatayAralikCm);
-            Set(_pas, KuranglezSettings.PaspayiCm);
-            Set(_adet, KuranglezSettings.Adet);
-        }
-
-        bool TryPush()
-        {
-            Push();
-            string err = KuranglezSettings.Validate();
-            if (err != null)
+            _loading = true;
+            try
             {
-                MessageBox.Show(err, "Kuranglez", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return false;
+                _boy.Deger = KuranglezSettings.BoyCm;
+                _en.Deger = KuranglezSettings.EnCm;
+                _kapama.Deger = KuranglezSettings.KapamaCm;
+                _perde.Deger = KuranglezSettings.PerdeCm;
+                _yuk.Deger = KuranglezSettings.YukseklikCm;
+                _temel.Deger = KuranglezSettings.TemelCm;
+                _kot.Deger = Math.Round(KuranglezSettings.TemelUstKotM * 100.0);
+                int bi = Array.IndexOf(BetonSiniflari, KuranglezSettings.BetonFck);
+                _beton.Secili = bi >= 0 ? bi : 1;
+                _dusey.Ayarla(KuranglezSettings.DuseyCapMm, KuranglezSettings.DuseyAralikCm);
+                _yatay.Ayarla(KuranglezSettings.YatayCapMm, KuranglezSettings.YatayAralikCm);
+                _pas.Deger = KuranglezSettings.PaspayiCm;
+                _adet.Deger = KuranglezSettings.Adet;
             }
-            return true;
+            finally { _loading = false; }
+            Denetci.Guncelle();
         }
 
         void TryPushQuiet()
@@ -347,29 +354,31 @@ namespace ST4Yardimci
             try { Push(); } catch { }
         }
 
+        /// <summary>Runner'ın okuduğu ayar alanları değişmeden doldurulur.</summary>
         void Push()
         {
-            KuranglezSettings.BoyCm = (double)_boy.Value;
-            KuranglezSettings.EnCm = (double)_en.Value;
-            KuranglezSettings.KapamaCm = (double)_kapama.Value;
-            KuranglezSettings.PerdeCm = (double)_perde.Value;
-            KuranglezSettings.YukseklikCm = (double)_yuk.Value;
-            KuranglezSettings.TemelCm = (double)_temel.Value;
-            KuranglezSettings.TemelUstKotM = (double)_kot.Value / 100.0;
-            KuranglezSettings.BetonFck = ReadBeton(_beton);
-            KuranglezSettings.DuseyCapMm = ReadCap(_duseyCap, 10);
-            KuranglezSettings.DuseyAralikCm = (int)_duseyAr.Value;
-            KuranglezSettings.YatayCapMm = ReadCap(_yatayCap, 8);
-            KuranglezSettings.YatayAralikCm = (int)_yatayAr.Value;
-            KuranglezSettings.PaspayiCm = (double)_pas.Value;
-            KuranglezSettings.Adet = (int)_adet.Value;
+            KuranglezSettings.BoyCm = _boy.Deger;
+            KuranglezSettings.EnCm = _en.Deger;
+            KuranglezSettings.KapamaCm = _kapama.Deger;
+            KuranglezSettings.PerdeCm = _perde.Deger;
+            KuranglezSettings.YukseklikCm = _yuk.Deger;
+            KuranglezSettings.TemelCm = _temel.Deger;
+            KuranglezSettings.TemelUstKotM = _kot.Deger / 100.0;
+            KuranglezSettings.BetonFck = BetonSiniflari[_beton.Secili];
+            KuranglezSettings.DuseyCapMm = _dusey.CapMm;
+            KuranglezSettings.DuseyAralikCm = (int)Math.Round(_dusey.AralikCm);
+            KuranglezSettings.YatayCapMm = _yatay.CapMm;
+            KuranglezSettings.YatayAralikCm = (int)Math.Round(_yatay.AralikCm);
+            KuranglezSettings.PaspayiCm = _pas.Deger;
+            KuranglezSettings.Adet = (int)_adet.Deger;
             if (KuranglezSettings.Adet < 1) KuranglezSettings.Adet = 1;
         }
 
         void OnRun()
         {
             if (_starting) return;
-            if (!TryPush()) return;
+            if (!Denetci.Onayla()) return;
+            Push();
             KuranglezSettings.Save();
             try
             {
@@ -380,163 +389,6 @@ namespace ST4Yardimci
                 doc.SendStringToExecute("KURANGLEZCIZ ", true, false, false);
             }
             catch { _starting = false; }
-        }
-
-        static GroupBox Group(string title, int x, int y, int w, int h)
-        {
-            return new GroupBox
-            {
-                Text = title,
-                Location = new SdPoint(x, y),
-                Size = new SdSize(w, h),
-                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
-                BackColor = Beykent.Monolit.StandardFormTheme.BgAlt
-            };
-        }
-
-        NumericUpDown Row(Control host, string label, ref int y, decimal min, decimal max, decimal inc, int dec, decimal val, string unit = "cm")
-        {
-            host.Controls.Add(Lbl(label, 12, y + 3));
-            var n = Num(168, y, 72, min, max, inc, dec, val);
-            host.Controls.Add(n);
-            if (!string.IsNullOrEmpty(unit))
-                host.Controls.Add(Lbl(unit, 246, y + 3));
-            y += 28;
-            return n;
-        }
-
-        ComboBox BetonRow(Control host, ref int y, int fck)
-        {
-            host.Controls.Add(Lbl("Beton sınıfı", 12, y + 3));
-            var c = new ComboBox
-            {
-                Location = new SdPoint(168, y),
-                Size = new SdSize(72, 22),
-                DropDownStyle = ComboBoxStyle.DropDownList,
-                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
-                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
-                FlatStyle = FlatStyle.Flat
-            };
-            foreach (int f in new[] { 25, 30, 35, 40 })
-                c.Items.Add("C" + f.ToString(CultureInfo.InvariantCulture));
-            SelectBeton(c, fck);
-            host.Controls.Add(c);
-            y += 28;
-            return c;
-        }
-
-        ComboBox CapRow(Control host, string label, ref int y, int cap, out NumericUpDown aralik, int aralikVal)
-        {
-            host.Controls.Add(Lbl(label, 12, y + 3));
-            var c = new ComboBox
-            {
-                Location = new SdPoint(168, y),
-                Size = new SdSize(64, 22),
-                DropDownStyle = ComboBoxStyle.DropDownList,
-                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
-                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
-                FlatStyle = FlatStyle.Flat
-            };
-            foreach (int d in new[] { 8, 10, 12, 14, 16, 18, 20 })
-                c.Items.Add("\u00F8" + d.ToString(CultureInfo.InvariantCulture));
-            SelectCap(c, cap);
-            host.Controls.Add(c);
-            host.Controls.Add(Lbl("/", 236, y + 3));
-            aralik = Num(250, y, 52, 5, 40, 1, 0, aralikVal);
-            host.Controls.Add(aralik);
-            y += 28;
-            return c;
-        }
-
-        static Label Lbl(string text, int x, int y)
-        {
-            return new Label
-            {
-                Text = text,
-                Location = new SdPoint(x, y),
-                AutoSize = true,
-                ForeColor = Beykent.Monolit.StandardFormTheme.TextMuted,
-                BackColor = Beykent.Monolit.StandardFormTheme.BgAlt
-            };
-        }
-
-        static NumericUpDown Num(int x, int y, int w, decimal min, decimal max, decimal inc, int dec, decimal val)
-        {
-            var n = new NumericUpDown
-            {
-                Location = new SdPoint(x, y),
-                Size = new SdSize(w, 22),
-                Minimum = min,
-                Maximum = max,
-                Increment = inc,
-                DecimalPlaces = dec,
-                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
-                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
-                BorderStyle = BorderStyle.FixedSingle
-            };
-            n.Value = Clamp(n, val);
-            YardimciUi.StripUpDownButtons(n);
-            return n;
-        }
-
-        static Button MakeButton(string text, int x, int y, int w, bool accent)
-        {
-            var b = new Button
-            {
-                Text = text,
-                Location = new SdPoint(x, y),
-                Size = new SdSize(w, 26),
-                FlatStyle = FlatStyle.Flat,
-                BackColor = Beykent.Monolit.StandardFormTheme.BgAlt,
-                ForeColor = accent ? Beykent.Monolit.StandardFormTheme.Accent : Beykent.Monolit.StandardFormTheme.Text,
-                Font = accent ? new SdFont("Segoe UI", 9f, System.Drawing.FontStyle.Bold) : new SdFont("Segoe UI", 9f),
-                UseVisualStyleBackColor = false
-            };
-            b.FlatAppearance.BorderColor = Beykent.Monolit.StandardFormTheme.InputBorder;
-            b.FlatAppearance.BorderSize = 1;
-            return b;
-        }
-
-        static void Set(NumericUpDown n, double v) => n.Value = Clamp(n, (decimal)v);
-
-        static decimal Clamp(NumericUpDown n, decimal v)
-        {
-            if (v < n.Minimum) return n.Minimum;
-            if (v > n.Maximum) return n.Maximum;
-            return v;
-        }
-
-        static void SelectCap(ComboBox c, int mm)
-        {
-            string t = "\u00F8" + mm.ToString(CultureInfo.InvariantCulture);
-            int i = c.Items.IndexOf(t);
-            c.SelectedIndex = i >= 0 ? i : 0;
-        }
-
-        static void SelectBeton(ComboBox c, int fck)
-        {
-            string t = "C" + fck.ToString(CultureInfo.InvariantCulture);
-            int i = c.Items.IndexOf(t);
-            c.SelectedIndex = i >= 0 ? i : 1;
-        }
-
-        static int ReadCap(ComboBox c, int fallback)
-        {
-            string s = c.SelectedItem as string;
-            if (string.IsNullOrEmpty(s)) return fallback;
-            int n = 0;
-            for (int i = 0; i < s.Length; i++)
-            {
-                if (s[i] >= '0' && s[i] <= '9') n = n * 10 + (s[i] - '0');
-            }
-            return n > 0 ? n : fallback;
-        }
-
-        static int ReadBeton(ComboBox c)
-        {
-            int n = ReadCap(c, 30);
-            if (n < 25) return 30;
-            return n;
         }
     }
 }

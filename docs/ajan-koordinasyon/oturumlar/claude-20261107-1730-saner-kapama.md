@@ -1,0 +1,12 @@
+# Claude — SANER_01 kapama perde açılımı kontrolü
+- Ajan: Claude Code
+- Güncelleme: 07.11.2026 18:20 (Europe/Istanbul)
+- Durum: tamamlandı — rezervasyon yok
+- Görev: Kullanıcı SANER_01.ST4 kapama perde açılımlarında (KAPAMADETAY) yanlışlık gördü; kontrol.
+- Kontrol: protokol + son 2 gün kayıtları (aktif kayıt yok). Görev başı GUNCEL_2027 = Plan 20261107_171305 + Yardımcı 20261107_143240.
+- Ayrılan: şimdilik salt okunur inceleme; Core Console çıktıları tools/EgimliPerde20261101/out/saner_* (yalnız yeni adlı dosyalar).
+- Bulgu (17:50): açılım yığını kat gruplarını en küçük perde numarasına (MinWallNo) göre birleştiriyor; hizalama da numarayla. SANER'de ZEMIN perdeleri farklı numaralı: P201 (X=11) Y=0'daki PB-01 ile, P202+P203 (X=5.05) Y=1.35'teki PB-02/PB-16 ile yığılmış; PB-14 ve PB-03/PB-15 paftalarında ZEMIN kısmı yok.
+- Ayrılan: ST4_Plan_ID_Ciz/PlanIdDrawingManager.cs (DrawAlignedWallGroupsAsSeparateCopiesWithAnchors), ST4_Plan_ID_Ciz/PlanIdDrawingManager.PerdeGorunus.cs (Flush/yığın anahtarı), ST4_Plan_ID_Ciz/PlanIdDrawingManager.PerdeYigin.cs (yeni), tools/SanerKapama20261107/** (izole derleme), docs/modul-durum/ST4_Plan_ID_Ciz.md, NETLOAD/OKU.txt; yayında NETLOAD/GUNCEL_2027/**, NETLOAD/arsiv.
+- Sonuç: yeni ST4_Plan_ID_Ciz/PlanIdDrawingManager.PerdeYigin.cs (PerdeStackAnchor, TryFindPerdeStackAnchor: aynı doğrultu + plan kesişim alanı > 1,5·t², yedek aynı aks + ortak numara; AllocatePerdeStackKey; RecordPerdeStackAnchor). PlanIdDrawingManager.cs DrawAlignedWallGroupsAsSeparateCopiesWithAnchors görünüş modunda geometrik çapa + StackKey (plan kopya varlıkları/kapsamı bu anahtarla); görünüşsüz KOLON50 eski numara mantığı. PerdeGorunus.cs: Kolon50GorunusPending.StackKey, Flush GroupBy(StackKey), sayfa kapsamı yığın anahtarıyla.
+- Doğrulama: izole Release net10/2027 0 hata/bilinen uyarılar (tools/SanerKapama20261107/BuildPlan.ps1). Core Console SANER_01 (tools/EgimliPerde20261101/out/saner_yeni*.pdf): P-01 | P-02,P-16 | P-01,P-14 | P-02,P-03,P-15 (3 kat). Gerileme eski 171305 / yeni, model alanı dahil tüm geometri: KI_OTP_03, KI_OTP_07, ESN_C_OTP, FHNS_J_03, FHM_01, CP_OTP, ARD_OTP1_01 birebir. Canlı AutoCAD yok.
+- Yayın: GUNCEL_2027 = Plan 20261107_172931 + Yardımcı 20261107_143240, Publish51 PASS, arşiv NETLOAD/arsiv/GUNCEL_2027_20261107_173216_875. Commit yok.

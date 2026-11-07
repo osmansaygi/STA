@@ -1,0 +1,96 @@
+using System;
+using System.Management;
+using Autodesk.AutoCAD.ApplicationServices;
+using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
+
+namespace ST4PlanIdCiz
+{
+    /// <summary>
+    /// Makine UUID kilidi (Yardımcı MachineLicense ile aynı liste): yalnızca izinli bilgisayarlarda çalışır.
+    /// DLL başka PC'ye kopyalanınca komutlar reddedilir. Yeni PC: .cursor/rules/st4-yardimci-lisans-makineler.mdc.
+    /// </summary>
+    internal static class PlanLisans
+    {
+        /// <summary>İzinli anakart UUID listesi (büyük/küçük harf duyarsız).</summary>
+        private static readonly string[] AllowedUuids =
+        {
+            // Ofis — DESKTOP-I49ATPJ / BEYKENT-2
+            "4C4C4544-0037-5110-8052-C4C04F354A34",
+            // Geliştirme — DESKTOP-MHC1B2K / BEYKENT
+            "4C4C4544-0052-4E10-8057-C2C04F583634",
+        };
+
+        private static bool? _cachedOk;
+
+        /// <summary>Kilit yalnız ofis paketinde (OFIS_KILIT: net48 ve /p:OfisPaketi=true); geliştirme 2027 derlemesinde şimdilik kapalı.</summary>
+        private static readonly bool KilitAcik =
+#if OFIS_KILIT
+            true;
+#else
+            false;
+#endif
+
+        public static bool IsAllowed()
+        {
+            if (!KilitAcik)
+                return true;
+            if (_cachedOk.HasValue)
+                return _cachedOk.Value;
+
+            string uuid = TryReadMachineUuid();
+            bool ok = false;
+            if (!string.IsNullOrWhiteSpace(uuid))
+            {
+                foreach (string allowed in AllowedUuids)
+                {
+                    if (string.Equals(allowed, uuid, StringComparison.OrdinalIgnoreCase))
+                    {
+                        ok = true;
+                        break;
+                    }
+                }
+            }
+            _cachedOk = ok;
+            return ok;
+        }
+
+        /// <summary>İzin yoksa komut mesajı yazar ve false döner.</summary>
+        public static bool EnsureOrWarn()
+        {
+            if (IsAllowed())
+                return true;
+
+            try
+            {
+                Document doc = AcApp.DocumentManager.MdiActiveDocument;
+                doc?.Editor.WriteMessage(
+                    "\nST4 PLAN ID: Bu bilgisayar için lisans yok. Program kopyalanmış veya yetkisiz makine.");
+            }
+            catch { }
+            return false;
+        }
+
+        private static string TryReadMachineUuid()
+        {
+            try
+            {
+                using (var searcher = new ManagementObjectSearcher(
+                    "SELECT UUID FROM Win32_ComputerSystemProduct"))
+                using (ManagementObjectCollection results = searcher.Get())
+                {
+                    foreach (ManagementBaseObject mo in results)
+                    {
+                        object v = mo["UUID"];
+                        if (v == null) continue;
+                        string s = v.ToString().Trim();
+                        if (s.Length > 0 &&
+                            !string.Equals(s, "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF", StringComparison.OrdinalIgnoreCase))
+                            return s;
+                    }
+                }
+            }
+            catch { }
+            return null;
+        }
+    }
+}

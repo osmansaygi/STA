@@ -1,0 +1,13 @@
+<Project>
+  <!-- Yayın derlemesi: başka oturumun yayımlanmamış DosemeDonatiRunner değişiklikleri yerine HEAD (= GUNCEL 213059) kaynağı. -->
+  <Target Name="ExcludeSharedGeneratedSources" BeforeTargets="CoreCompile">
+    <ItemGroup>
+      <Compile Remove="obj\**\*.cs;bin\**\*.cs;$(MSBuildProjectDirectory)\obj\**\*.cs;$(MSBuildProjectDirectory)\bin\**\*.cs" />
+      <Compile Remove="DosemeDonatiRunner.cs;DosemeDonatiRunner.AltDuzAlan.cs" />
+      <Compile Include="$(MSBuildThisFileDirectory)headsrc\DosemeDonatiRunner.cs;$(MSBuildThisFileDirectory)headsrc\DosemeDonatiRunner.AltDuzAlan.cs" />
+    </ItemGroup>
+  </Target>
+  <Target Name="CopyToNetloadFolder" />
+  <Target Name="CopyToNetload2027Folder" />
+  <Target Name="ShowDllPath" />
+</Project>

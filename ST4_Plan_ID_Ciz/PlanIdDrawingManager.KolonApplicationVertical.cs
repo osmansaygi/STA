@@ -12,7 +12,7 @@ namespace ST4PlanIdCiz
 
         private double DrawApplicationVerticalDetails(
             Database db, Editor ed, string st4SourcePath,
-            List<int> floorGroup, double left, double bottom)
+            List<int> floorGroup, double left, double bottom, double paftaCarpani = 1.0)
         {
             var ids = new List<ObjectId>();
             _kolonDuseyLastMainAntetBounds = null;
@@ -45,8 +45,11 @@ namespace ST4PlanIdCiz
                         ((Entity)moveTr.GetObject(id, OpenMode.ForWrite)).TransformBy(move);
                 moveTr.Commit();
             }
+            // 1/100 aplikasyon paftası: 1/25 açılım (yazı/ölçü/antet) ×2, sol-alt köşe sabit.
+            if (paftaCarpani > 1.0 + 1e-9)
+                BeykentOrtak.PaftaOlcek.Buyut(db, ids, new Point3d(left, bottom, 0), paftaCarpani);
             ed?.WriteMessage("\nAPLIKASYON: antetli 1/25 acilim saga yerlestirildi.");
-            return left + bounds.MaxPoint.X - bounds.MinPoint.X;
+            return left + (bounds.MaxPoint.X - bounds.MinPoint.X) * Math.Max(1.0, paftaCarpani);
         }
     }
 }

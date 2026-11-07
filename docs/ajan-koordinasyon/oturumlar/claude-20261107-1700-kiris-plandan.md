@@ -1,0 +1,11 @@
+# Claude — KIRISCIZ: kalıp planından mesnet/Ln/ad/b/h seçimi
+- Ajan: Claude Code
+- Güncelleme: 07.11.2026 17:16 (Europe/Istanbul)
+- Durum: tamamlandı
+- Görev: Yardımcı/Plan "Kiriş Çiz" (KIRISCIZ) formuna kalıp planından mesnet enleri, Ln, kiriş adı ve b/h okuyan "Kalıp planından al" düğmesi.
+- Kontrol: protokol + son 2 gün kayıtları (aktif kayıt yok; mantar-zımbalama, betonkalıp, ofis-setup tamamlandı). Görev başı GUNCEL_2027 = Plan 20261107_164029 + Yardımcı 20261107_143240; yükleyici NETLOAD\GUNCEL_2027 hedefli. Yeni komut yok → şerit/simge değişmez.
+- Ayrılan: ST4_Plan_ID_Ciz/KirisManuelForm.cs, ST4_Plan_ID_Ciz/KirisManuelCommands.cs, ST4_Plan_ID_Ciz/KirisManuelPlanSecim.cs + KirisManuelPlanOkuma.cs (yeni), tools/KirisPlandan20261107/** (izole derleme buildPlan/objPlan + Probe), docs/modul-durum/ST4_Plan_ID_Ciz.md, NETLOAD/OKU.txt; yayında NETLOAD/GUNCEL_2027/**, NETLOAD/arsiv.
+- Sonuç (17:14): KirisManuelPlanOkuma.cs (yeni, AutoCAD'siz: Araliklardan, TryEtiket, Uygula, Ozet), KirisManuelPlanSecim.cs (yeni: StartUserInteraction, sıralı yüz seçimi Konsol/Geri/Enter, birim sorusu, tarama/kapalı PL → Kolon, "AD (b/h)" yazısı → ad/b/h), KirisManuelForm.cs ("Kalıp planından al…" düğmesi + PlandanAl), KirisManuelCommands.cs (TryShow'a seçici). Şerit/simge değişmedi (yeni komut yok).
+- Doğrulama: izole Release net10/2027 0 hata/3 bilinen uyarı (tools/KirisPlandan20261107/BuildPlan.ps1). Core Console Probe (Run.ps1): etiket 8/8, aralık 5/5, sentetik plan 5 senaryo doğru (Dogrula True). Gerçek SANER_ka1/ka2 DWG dökümü: etiket "PB-01 (25/520)" tek yazı, kolon taraması poliçizgi halkalı, birim 1/100 metre. -KIRISCIZ t1 eski 164029 / yeni 320 nesne birebir. Form önizleme out/form.png. Canlı AutoCAD yok.
+- Yayın: GUNCEL_2027 = Plan 20261107_171305 + Yardımcı 20261107_143240, Publish51 PASS, arşiv NETLOAD/arsiv/GUNCEL_2027_20261107_171411_566. Commit yok.
+- Durum: tamamlandı — rezervasyon yok.

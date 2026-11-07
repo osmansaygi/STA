@@ -108,14 +108,16 @@ namespace ST4PlanIdCiz
         }
 
         internal static void Run(Document doc, IReadOnlyList<Deneme2EksenKaydi> kayitlar, long startHandle,
-            IReadOnlyDictionary<int, (DmxDosemeDonati.Rec Rec, double? UstKotM)> dmxBySlabId = null)
+            IReadOnlyDictionary<int, (DmxDosemeDonati.Rec Rec, double? UstKotM)> dmxBySlabId = null, double yaziCarpani = 1.0)
         {
             // Şeritler boyunca model alanı dizini bir kez (taramalar yalnız ilgili katman/kutu); hata olsa da bırakılır.
             DosemeDonatiRunner.BeginAutoSession();
+            DosemeDonatiRunner.AutoYaziCarpani = yaziCarpani;
             using KalipIlerleme ilerleme = KalipIlerleme.BaslatYoksa("DENEME2 donati", doc?.Editor);
             try { RunCore(doc, kayitlar, startHandle, dmxBySlabId); }
             finally
             {
+                DosemeDonatiRunner.AutoYaziCarpani = 1.0;
                 DosemeDonatiRunner.EndAutoSession();
                 DosemeDonatiRunner.AutoTimes = null;
             }

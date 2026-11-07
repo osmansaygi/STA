@@ -48,11 +48,14 @@ class Program
         var tab = OwnTab();
         Check(ComponentManager.Ribbon.Tabs.Count == 4 && home.IsActive && home.Panels.Count == 1,
             "one new tab, existing Home/Yardimci and active tab preserved");
-        Check(tab.Panels.Select(p => p.Source.Title).SequenceEqual(new[] { "Temel", "Kolon", "Kiriş", "Yapı", "Detay / İskele", "Metraj" }),
-            "six groups follow the approved option 4 order");
+        Check(tab.Panels.Select(p => p.Source.Title).SequenceEqual(new[] { "Temel", "Kolon", "Kiriş", "Yapı", "Detay / İskele", "Metraj", "Deneme" }),
+            "seven groups with a separate Deneme panel");
         var buttons = tab.Panels.SelectMany(p => p.Source.Items.OfType<RibbonButton>()).ToArray();
-        Check(buttons.Length == 19 && buttons.Select(b => b.CommandParameter).Distinct().Count() == 19,
-            "19 distinct existing commands");
+        Check(buttons.Length == 23 && buttons.Select(b => b.CommandParameter).Distinct().Count() == 23,
+            "23 distinct existing commands");
+        Check(tab.Panels.Single(p => p.Source.Title == "Yapı").Source.Items.OfType<RibbonButton>()
+            .Count(b => Equals(b.CommandParameter, "ST4PLANID")) == 1,
+            "ST4PLANID is available exactly once in the Yapi panel");
         foreach (var button in buttons)
         {
             Check(button.Size == RibbonItemSize.Large && button.ShowText && button.LargeImage is BitmapImage image

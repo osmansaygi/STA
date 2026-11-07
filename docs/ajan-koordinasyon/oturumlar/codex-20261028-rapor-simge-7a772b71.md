@@ -1,0 +1,16 @@
+# Codex — Rapor programı simge alternatifleri
+- Ajan: Codex / bu sohbet.
+- Tarih: 28.10.2026 Europe/Istanbul.
+- Durum: aktif.
+- Görev: StatikRaporClaude için 5 yeni uygulama simgesi alternatifi; seçim için önizleme.
+- Ayrılan: bu kayıt; output/StatikRaporClaude/SimgeAlternatifleri20261028/**. Program kaynakları, başka ajan alanı ve DLL/derleme değişmez.
+- Kontrol: protokol ve önceki kayıtlar, rapor durumu, güncel T8 teslimi ve NETLOAD listesi okundu. Yeni komut/menü/yayın yok.
+- Yöntem: imagegen yerleşik araç; beş ayrı tasarım.
+- Sonuç: 5 ayrı image_gen PNG üretildi ve output/StatikRaporClaude/SimgeAlternatifleri20261028/ altına kopyalandı; prompts.txt tam istemleri içerir. Beş görsel incelendi, RGBA/şeffaflık kontrol edildi. Seçim aşamasıdır; programa simge uygulanmadı, derleme/DLL yayını yok.
+- Durum: tamamlandı; dosya ayırmaları serbest.
+- Devam: kullanıcı 1 numarayı seçti; programa uygulama yetkisi. Durum aktif.
+- Kapsam: StatikRaporClaude/Varliklar/rapor-yapi.png ve rapor-yapi.ico; StatikRaporClaude/StatikRaporClaude.csproj (uygulama simgesi/kaynak); StatikRaporClaude/UI/AnaForm.cs (pencere simgesi); StatikRaporClaude/bin, obj ve bin/Uygulama Release çıktıları; docs/modul-durum/StatikRaporClaude.md; bu kayıt. Masaüstü Statik Rapor (Claude).lnk simgesi gerekirse aynı ICO'ya yönlendirilir.
+- Koordinasyon: eski Cursor beklemede kaydı mevcut; kullanıcı doğrudan simgeyi seçip uygulamayı yetkilendirdi. Yalnız simge kapsamı; rapor/hesap davranışı değişmez. Güncel Claude radye işi tamamlandı; ortak AutoCAD/NETLOAD çıktısına yazılmaz.
+- Uygulama sonucu: 1 numara PNG + 9 boyutlu ICO (16/20/24/32/40/48/64/128/256). EXE ve AnaForm simgesi, masaüstü kısayolu güncel. Eski kısayol output/StatikRaporClaude/SimgeAlternatifleri20261028/ içinde yedek.
+- Doğrulama: Release net10.0-windows 0 hata/1 mevcut CS8321; bin/Uygulama exe+DLL hash PASS; --ekran proje yüklemeden exit=0 ve başlık simgesi görsel PASS. Genel Verify-Project: YardimciStartup PASS; StaStartup görev dışı eksik PlanLisans fixture nedeniyle FAIL; bu alana müdahale edilmedi. Modül kaydı güncellendi. AutoCAD DLL kopyalama/canlı AutoCAD testi yok.
+- Durum: tamamlandı; tüm dosya/çıktı ayırmaları serbest. Commit yok.

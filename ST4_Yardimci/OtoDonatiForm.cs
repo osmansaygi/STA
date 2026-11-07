@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Globalization;
 using System.Windows.Forms;
+using Beykent.Monolit.Girdi;
 using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
 using SdFont = System.Drawing.Font;
 
@@ -10,35 +11,27 @@ namespace ST4Yardimci
 {
     /// <summary>
     /// Oto Donatı — radye / mantar ana alt+üst. Enter/Space → çizim; sağ tık / Esc → çık.
+    /// Ortak girdi kuralları (07.11.2026): birimli ölçü kutusu, tek satır donatı (ø sabit), alt durum şeridi.
     /// </summary>
     internal sealed class OtoDonatiForm : Beykent.Monolit.MonolitForm
     {
-        private const int FormW = 300;
-        private const int Pad = 12;
-        private const int Gap = 10;
-        private const int FieldH = 24;
-
         private static OtoDonatiForm _instance;
 
-        private readonly int _fieldW;
-        private readonly int _col2X;
+        // Eski cap listesindeki ilk değer — kayıtlı çap uygun değilse bu seçilir (eski SelectCap davranışı).
+        private const int VarsayilanCap = 8;
+        private static readonly int[] CapListesi = { 8, 10, 12, 14, 16, 18, 20, 22, 25, 28, 32 };
 
-        private readonly RadioButton _rbRadye;
-        private readonly RadioButton _rbMantar;
+        private readonly SegmentSecim _tip;
         private readonly Label _lblKalinlik;
-        private readonly TextBox _txtKalinlik;
-        private readonly TextBox _txtPaspayi;
-        private readonly TextBox _txtUstKot;
-        private readonly TextBox _txtGonyeBoyu;
-        private readonly TextBox _txtAnalizEsigi;
-        private readonly ComboBox _cmbAltCap;
-        private readonly ComboBox _cmbUstCap;
-        private readonly TextBox _txtAltAralik;
-        private readonly TextBox _txtUstAralik;
-        private readonly ComboBox _cmbAltCapY;
-        private readonly ComboBox _cmbUstCapY;
-        private readonly TextBox _txtAltAralikY;
-        private readonly TextBox _txtUstAralikY;
+        private readonly OlcuKutusu _txtKalinlik;
+        private readonly OlcuKutusu _txtPaspayi;
+        private readonly OlcuKutusu _txtUstKot;
+        private readonly OlcuKutusu _txtGonyeBoyu;
+        private readonly OlcuKutusu _txtAnalizEsigi;
+        private readonly DonatiKutusu _ustX;
+        private readonly DonatiKutusu _ustY;
+        private readonly DonatiKutusu _altX;
+        private readonly DonatiKutusu _altY;
         private readonly ComboBox _cmbSehpaCap;
         private readonly GonyeSemasiPanel _gonyeSemasi;
         private readonly CheckBox _chkAltCiz;
@@ -47,8 +40,9 @@ namespace ST4Yardimci
         private readonly Button _btnManuel;
         private readonly Button _btnRun;
         private readonly Button _btnClose;
+        private readonly GirdiDenetci Denetci = new GirdiDenetci();
         private bool _starting;
-        /// <summary>Tip radio değişiminde UI↔profil senkronunu bastırmak için.</summary>
+        /// <summary>Tip seçimi değişiminde UI↔profil senkronunu bastırmak için.</summary>
         private bool _suppressTipSwitch;
 
         public static void ShowOrActivate()
@@ -91,7 +85,7 @@ namespace ST4Yardimci
                     _instance.BeginInvoke(new Action(HideTemporarily));
                     return;
                 }
-                
+
                 BaFormSession.BeginPick("OTODONATI");
                 _instance.Visible = false;
             }
@@ -123,106 +117,54 @@ namespace ST4Yardimci
             Font = new SdFont("Segoe UI", 9f);
             KeyPreview = true;
 
-            int contentW = FormW - Pad * 2;
-            _fieldW = (contentW - Gap) / 2;
-            _col2X = Pad + _fieldW + Gap;
-
-            int y = 10;
-
-            _rbRadye = MakeRadio("Radye temel", Pad, y);
-            _rbMantar = MakeRadio("Mantar döşeme", Pad + 118, y);
+            _tip = new SegmentSecim("Radye temel", "Mantar döşeme");
             _suppressTipSwitch = true;
-            if (OtoDonatiSettings.Tip == OtoDonatiTip.MantarDoseme)
-                _rbMantar.Checked = true;
-            else
-                _rbRadye.Checked = true;
+            _tip.Secili = OtoDonatiSettings.Tip == OtoDonatiTip.MantarDoseme ? 1 : 0;
             _suppressTipSwitch = false;
-            _rbRadye.CheckedChanged += OnTipRadioChanged;
-            _rbMantar.CheckedChanged += OnTipRadioChanged;
-            Controls.Add(_rbRadye);
-            Controls.Add(_rbMantar);
-            y += 26;
+            _tip.SeciliDegisti += OnTipChanged;
 
-            _lblKalinlik = MakeLabel("Temel kalınlığı (cm)", Pad, y);
-            Controls.Add(_lblKalinlik);
-            Controls.Add(MakeLabel("Paspayı (cm)", _col2X, y)); y += 16;
-            _txtKalinlik = MakeText(Pad, y, FormatNum(OtoDonatiSettings.KalinlikCm, 1));
-            _txtPaspayi = MakeText(_col2X, y, FormatNum(OtoDonatiSettings.PaspayiCm, 1));
-            y += FieldH + 8;
+            // Sınırlar eski TryPushSettings doğrulamasıyla aynı. Üst kot cm gösterilir, UstKotM (metre) kaydedilir.
+            _lblKalinlik = new Label { Text = "Temel kalınlığı", AutoSize = true };
+            _txtKalinlik = Denetci.Ekle(new OlcuKutusu("Kalınlık", "cm", 1, 500, OtoDonatiSettings.KalinlikCm, 1));
+            _txtPaspayi = Denetci.Ekle(new OlcuKutusu("Paspayı", "cm", 0.5, 20, OtoDonatiSettings.PaspayiCm, 1, 0.5));
+            _txtUstKot = Denetci.Ekle(new OlcuKutusu("Üst kot", "cm", -10000, 30000, OtoDonatiSettings.UstKotM * 100.0, 2, 5));
+            _txtGonyeBoyu = Denetci.Ekle(new OlcuKutusu("Gönye max", "cm", 1, 200, OtoDonatiSettings.GonyeBoyuMaxCm, 1));
+            _txtAnalizEsigi = Denetci.Ekle(new OlcuKutusu("Analiz eşiği", "cm", 1, 5000, OtoDonatiSettings.AnalizEsigiCm, 1, 5));
+            // Çap ø8–ø32 (eski liste), aralık 5–80 cm (eski doğrulama).
+            _ustX = Denetci.Ekle(new DonatiKutusu("Üst X", Cap(OtoDonatiSettings.UstDonatiCapMm), OtoDonatiSettings.UstAralikCm, 8, 32, 5, 80));
+            _ustY = Denetci.Ekle(new DonatiKutusu("Üst Y", Cap(OtoDonatiSettings.UstDonatiCapYMm), OtoDonatiSettings.UstAralikYCm, 8, 32, 5, 80));
+            _altX = Denetci.Ekle(new DonatiKutusu("Alt X", Cap(OtoDonatiSettings.AltDonatiCapMm), OtoDonatiSettings.AltAralikCm, 8, 32, 5, 80));
+            _altY = Denetci.Ekle(new DonatiKutusu("Alt Y", Cap(OtoDonatiSettings.AltDonatiCapYMm), OtoDonatiSettings.AltAralikYCm, 8, 32, 5, 80));
 
-            Controls.Add(MakeLabel("Üst kot (cm)", Pad, y));
-            Controls.Add(MakeLabel("Gönye max (cm)", _col2X, y)); y += 16;
-            _txtUstKot = MakeText(Pad, y, FormatNum(OtoDonatiSettings.UstKotM * 100.0, 2));
-            _txtGonyeBoyu = MakeText(_col2X, y, FormatNum(OtoDonatiSettings.GonyeBoyuMaxCm, 1));
-            y += FieldH + 8;
-
-            Controls.Add(MakeLabel("Analiz eşiği (cm)", Pad, y)); y += 16;
-            _txtAnalizEsigi = MakeText(Pad, y, FormatNum(OtoDonatiSettings.AnalizEsigiCm, 1));
-            y += FieldH + 8;
-
-            Controls.Add(MakeLabel("Üst çap (mm)", Pad, y));
-            Controls.Add(MakeLabel("Üst aralık (cm)", _col2X, y)); y += 16;
-            _cmbUstCap = MakeCapCombo(Pad, y, OtoDonatiSettings.UstDonatiCapMm);
-            _txtUstAralik = MakeText(_col2X, y, FormatNum(OtoDonatiSettings.UstAralikCm, 1));
-            Controls.Add(_cmbUstCap);
-            y += FieldH + 8;
-
-            Controls.Add(MakeLabel("Alt çap (mm)", Pad, y));
-            Controls.Add(MakeLabel("Alt aralık (cm)", _col2X, y)); y += 16;
-            _cmbAltCap = MakeCapCombo(Pad, y, OtoDonatiSettings.AltDonatiCapMm);
-            _txtAltAralik = MakeText(_col2X, y, FormatNum(OtoDonatiSettings.AltAralikCm, 1));
-            Controls.Add(_cmbAltCap);
-            y += FieldH + 8;
-
-            _cmbUstCapY = MakeCapCombo(Pad, y, OtoDonatiSettings.UstDonatiCapYMm);
-            _txtUstAralikY = MakeText(_col2X, y, FormatNum(OtoDonatiSettings.UstAralikYCm, 1));
-            Controls.Add(_cmbUstCapY);
-            y += FieldH + 8;
-            _cmbAltCapY = MakeCapCombo(Pad, y, OtoDonatiSettings.AltDonatiCapYMm);
-            _txtAltAralikY = MakeText(_col2X, y, FormatNum(OtoDonatiSettings.AltAralikYCm, 1));
-            Controls.Add(_cmbAltCapY);
-            y += FieldH + 8;
-
-            Controls.Add(MakeLabel("Gönye", Pad, y)); y += 16;
-            int gonyeH = 120;
-            _gonyeSemasi = new GonyeSemasiPanel
-            {
-                Size = new Size(contentW, gonyeH),
-                Location = new Point(Pad, y)
-            };
+            _gonyeSemasi = new GonyeSemasiPanel { Size = new Size(276, 120) };
             _gonyeSemasi.SetGonye(
                 OtoDonatiSettings.UstGonyeSol,
                 OtoDonatiSettings.UstGonyeSag,
                 OtoDonatiSettings.AltGonyeSol,
                 OtoDonatiSettings.AltGonyeSag);
-            Controls.Add(_gonyeSemasi); y += gonyeH + 10;
+            Controls.Add(_gonyeSemasi);
 
-            _chkAltCiz = MakeCheck("Alt donatı çizilsin", Pad, y, OtoDonatiSettings.AltDonatiCiz);
-            Controls.Add(_chkAltCiz); y += 22;
-            _chkUstCiz = MakeCheck("Üst donatı çizilsin", Pad, y, OtoDonatiSettings.UstDonatiCiz);
-            Controls.Add(_chkUstCiz); y += 22;
+            _chkAltCiz = MakeCheck("Alt donatı", OtoDonatiSettings.AltDonatiCiz);
+            _chkUstCiz = MakeCheck("Üst donatı", OtoDonatiSettings.UstDonatiCiz);
+            _chkSehpa = MakeCheck("Sehpa donatısı çiz", OtoDonatiSettings.SehpaDonatisi);
+            Controls.Add(_chkAltCiz);
+            Controls.Add(_chkUstCiz);
+            Controls.Add(_chkSehpa);
+            _cmbSehpaCap = MakeCapCombo(OtoDonatiSettings.SehpaCapMm);
+            Controls.Add(_cmbSehpaCap);
+            _chkSehpa.CheckedChanged += (s, e) => { if (!_chkSehpa.Checked) SehpaAlanlariniGeriAl(); Denetci.Guncelle(); };
 
-            _chkSehpa = MakeCheck("Sehpa donatısı", Pad, y, OtoDonatiSettings.SehpaDonatisi);
-            Controls.Add(_chkSehpa); y += 30;
-            _cmbSehpaCap = MakeCapCombo(Pad, y, OtoDonatiSettings.SehpaCapMm);
-            _cmbSehpaCap.Enabled = _chkSehpa.Checked;
-            _chkSehpa.CheckedChanged += (s, e) => _cmbSehpaCap.Enabled = _chkSehpa.Checked;
-            Controls.Add(_cmbSehpaCap); y += FieldH + 8;
+            Denetci.HataKurali(() => !_chkAltCiz.Checked && !_chkUstCiz.Checked
+                ? "Alt veya üst donatıdan en az biri çizilsin" : null);
+            _chkAltCiz.CheckedChanged += (s, e) => Denetci.Guncelle();
+            _chkUstCiz.CheckedChanged += (s, e) => Denetci.Guncelle();
 
-            _btnManuel = MakeButton("Manuel donatı at", Pad, y, contentW, accent: false);
+            _btnManuel = MakeButton("Manuel donatı at", accent: false);
             _btnManuel.Click += OnManuel;
-            Controls.Add(_btnManuel);
-            y += 28 + 8;
-
-            _btnRun = MakeButton("Donatı çiz", Pad, y, contentW - 86, accent: true);
+            _btnRun = MakeButton("Donatı çiz", accent: true);
             _btnRun.Click += OnRun;
-            _btnClose = MakeButton("Kapat", Pad + contentW - 80, y, 80, accent: false);
+            _btnClose = MakeButton("Kapat", accent: false);
             _btnClose.Click += (s, e) => Close();
-            Controls.Add(_btnRun);
-            Controls.Add(_btnClose);
-            y += 28 + 10;
-
-            ClientSize = new Size(FormW, y);
 
             MouseDown += OnFormMouseDown;
 
@@ -253,25 +195,34 @@ namespace ST4Yardimci
                 StartPosition = FormStartPosition.CenterScreen;
             }
 
-            // Kompakt, içerik odaklı form düzeni.
             var ui = BeginCompact(360);
-            ui.Tip(_chkAltCiz, _chkAltCiz.Text); ui.Tip(_chkUstCiz, _chkUstCiz.Text); ui.Tip(_chkSehpa, _chkSehpa.Text);
-            _chkAltCiz.Text = "Alt donatı"; _chkUstCiz.Text = "Üst donatı"; _chkSehpa.Text = "Sehpa";
-            ui.Section(null).Options(_rbRadye, _rbMantar);
+            ui.Section(null).Control(_tip);
+            ui.Section("Kesit")
+                .Field("Paspayı", _txtPaspayi);
+            ui.Section("Donatı  (ø çap / aralık)")
+                .Field("Üst X", _ustX)
+                .Field("Üst Y", _ustY)
+                .Field("Alt X", _altX)
+                .Field("Alt Y", _altY)
+                .Options(_chkAltCiz, _chkUstCiz);
+            ui.Section("Gönye ve analiz")
+                .Field("En büyük gönye", _txtGonyeBoyu)
+                .Field("Analiz eşiği", _txtAnalizEsigi)
+                .Control(_gonyeSemasi, 120);
+            ui.Section("Sehpa")
+                .Options(_chkSehpa)
+                .FieldWhen(() => _chkSehpa.Checked, new Label { Text = "Sehpa çapı" }, _cmbSehpaCap)
+                .FieldWhen(() => _chkSehpa.Checked, _lblKalinlik, _txtKalinlik)
+                .FieldWhen(() => _chkSehpa.Checked, new Label { Text = "Üst kot" }, _txtUstKot);
+            ui.Section(null).Control(Denetci.Serit, 44);
+            ui.Tip(_chkAltCiz, "Alt donatı çizilsin"); ui.Tip(_chkUstCiz, "Üst donatı çizilsin");
+            ui.Tip(_chkSehpa, "Temel antetinin üstüne sehpa detayı çizilir.");
             ui.Tip(_cmbSehpaCap, "Sehpa donatı çapı (mm) — temel antetinin üstüne sehpa detayı çizilir.");
-            ui.Tabs(330,
-                ui.Page("Kesit ve donatı", p => p.Field(_lblKalinlik, _txtKalinlik).Field("Paspayı · cm", _txtPaspayi)
-                    .Field("Üst kot · cm", _txtUstKot)
-                    .Field("Üst X · Ø mm / ara cm", _cmbUstCap, _txtUstAralik)
-                    .Field("Üst Y · Ø mm / ara cm", _cmbUstCapY, _txtUstAralikY)
-                    .Field("Alt X · Ø mm / ara cm", _cmbAltCap, _txtAltAralik)
-                    .Field("Alt Y · Ø mm / ara cm", _cmbAltCapY, _txtAltAralikY)
-                    .Choices(_chkAltCiz, _chkUstCiz, _chkSehpa)
-                    .Field("Sehpa · Ø mm", _cmbSehpaCap)),
-                ui.Page("Gönye ve analiz", p => p.Field("En büyük gönye · cm", _txtGonyeBoyu).Field("Analiz eşiği · cm", _txtAnalizEsigi)
-                    .Control(_gonyeSemasi, 120)));
+            ui.Tip(_txtKalinlik, "Yalnız sehpa detayında kullanılır.");
+            ui.Tip(_txtUstKot, "Yalnız sehpa detayında, çizimde kot yazısı bulunamazsa kullanılır.");
             ui.Footer(_btnRun, _btnClose, _btnManuel);
             ui.Finish();
+            Denetci.Guncelle();
             foreach (Control c in Controls) WireRightClick(c);
         }
 
@@ -297,8 +248,10 @@ namespace ST4Yardimci
             }
             if (keyData == Keys.Enter || keyData == Keys.Return || keyData == Keys.Space)
             {
+                if (ActiveControl is Button)
+                    return base.ProcessCmdKey(ref msg, keyData);
                 if (keyData == Keys.Space &&
-                    (ActiveControl is TextBox || ActiveControl is ComboBox))
+                    (ActiveControl is GirdiKutusu || ActiveControl is TextBoxBase || ActiveControl is ComboBox))
                     return base.ProcessCmdKey(ref msg, keyData);
                 OnRun(this, EventArgs.Empty);
                 return true;
@@ -309,23 +262,28 @@ namespace ST4Yardimci
         private void UpdateKalinlikLabel()
         {
             if (_lblKalinlik == null) return;
-            _lblKalinlik.Text = _rbMantar != null && _rbMantar.Checked
-                ? "Döşeme kalınlığı (cm)"
-                : "Temel kalınlığı (cm)";
+            _lblKalinlik.Text = _tip != null && _tip.Secili == 1
+                ? "Döşeme kalınlığı"
+                : "Temel kalınlığı";
         }
+
+        /// <summary>Sehpa kapanınca gizlenen hatalı alanlar son geçerli değere döner (gizli hata komutu kilitlemesin).</summary>
+        private void SehpaAlanlariniGeriAl()
+        {
+            if (!_txtKalinlik.Gecerli) _txtKalinlik.Deger = _txtKalinlik.Deger;
+            if (!_txtUstKot.Gecerli) _txtUstKot.Deger = _txtUstKot.Deger;
+        }
+
+        private OtoDonatiTip SeciliTip => _tip.Secili == 1 ? OtoDonatiTip.MantarDoseme : OtoDonatiTip.RadyeTemel;
 
         /// <summary>
         /// Tip değişince: eski tipin alanlarını belleğe yaz → Tip güncelle → yeni tipin alanlarını forma yükle.
         /// </summary>
-        private void OnTipRadioChanged(object sender, EventArgs e)
+        private void OnTipChanged(object sender, EventArgs e)
         {
             if (_suppressTipSwitch) return;
-            var rb = sender as RadioButton;
-            if (rb == null || !rb.Checked) return;
 
-            OtoDonatiTip newTip = _rbMantar.Checked
-                ? OtoDonatiTip.MantarDoseme
-                : OtoDonatiTip.RadyeTemel;
+            OtoDonatiTip newTip = SeciliTip;
             OtoDonatiTip oldTip = OtoDonatiSettings.Tip;
             if (newTip == oldTip)
             {
@@ -333,7 +291,7 @@ namespace ST4Yardimci
                 return;
             }
 
-            // Radio zaten yeni tipi gösteriyor; alanları ESKİ profile yaz (Tip henüz değişmedi).
+            // Seçim zaten yeni tipi gösteriyor; alanları ESKİ profile yaz (Tip henüz değişmedi).
             PushFieldsQuietTo(oldTip);
             OtoDonatiSettings.Tip = newTip;
             LoadFieldsFromActiveProfile();
@@ -344,10 +302,7 @@ namespace ST4Yardimci
         private void LoadFromSettings()
         {
             _suppressTipSwitch = true;
-            if (OtoDonatiSettings.Tip == OtoDonatiTip.MantarDoseme)
-                _rbMantar.Checked = true;
-            else
-                _rbRadye.Checked = true;
+            _tip.Secili = OtoDonatiSettings.Tip == OtoDonatiTip.MantarDoseme ? 1 : 0;
             _suppressTipSwitch = false;
             LoadFieldsFromActiveProfile();
             UpdateKalinlikLabel();
@@ -355,19 +310,15 @@ namespace ST4Yardimci
 
         private void LoadFieldsFromActiveProfile()
         {
-            _txtKalinlik.Text = FormatNum(OtoDonatiSettings.KalinlikCm, 1);
-            _txtPaspayi.Text = FormatNum(OtoDonatiSettings.PaspayiCm, 1);
-            _txtUstKot.Text = FormatNum(OtoDonatiSettings.UstKotM * 100.0, 2);
-            _txtGonyeBoyu.Text = FormatNum(OtoDonatiSettings.GonyeBoyuMaxCm, 1);
-            _txtAnalizEsigi.Text = FormatNum(OtoDonatiSettings.AnalizEsigiCm, 1);
-            SelectCap(_cmbAltCap, OtoDonatiSettings.AltDonatiCapMm);
-            SelectCap(_cmbUstCap, OtoDonatiSettings.UstDonatiCapMm);
-            _txtAltAralik.Text = FormatNum(OtoDonatiSettings.AltAralikCm, 1);
-            _txtUstAralik.Text = FormatNum(OtoDonatiSettings.UstAralikCm, 1);
-            SelectCap(_cmbAltCapY, OtoDonatiSettings.AltDonatiCapYMm);
-            SelectCap(_cmbUstCapY, OtoDonatiSettings.UstDonatiCapYMm);
-            _txtAltAralikY.Text = FormatNum(OtoDonatiSettings.AltAralikYCm, 1);
-            _txtUstAralikY.Text = FormatNum(OtoDonatiSettings.UstAralikYCm, 1);
+            _txtKalinlik.Deger = OtoDonatiSettings.KalinlikCm;
+            _txtPaspayi.Deger = OtoDonatiSettings.PaspayiCm;
+            _txtUstKot.Deger = OtoDonatiSettings.UstKotM * 100.0;
+            _txtGonyeBoyu.Deger = OtoDonatiSettings.GonyeBoyuMaxCm;
+            _txtAnalizEsigi.Deger = OtoDonatiSettings.AnalizEsigiCm;
+            _altX.Ayarla(Cap(OtoDonatiSettings.AltDonatiCapMm), OtoDonatiSettings.AltAralikCm);
+            _ustX.Ayarla(Cap(OtoDonatiSettings.UstDonatiCapMm), OtoDonatiSettings.UstAralikCm);
+            _altY.Ayarla(Cap(OtoDonatiSettings.AltDonatiCapYMm), OtoDonatiSettings.AltAralikYCm);
+            _ustY.Ayarla(Cap(OtoDonatiSettings.UstDonatiCapYMm), OtoDonatiSettings.UstAralikYCm);
             SelectCap(_cmbSehpaCap, OtoDonatiSettings.SehpaCapMm);
             _gonyeSemasi.SetGonye(
                 OtoDonatiSettings.UstGonyeSol,
@@ -375,75 +326,29 @@ namespace ST4Yardimci
                 OtoDonatiSettings.AltGonyeSol,
                 OtoDonatiSettings.AltGonyeSag);
             _chkSehpa.Checked = OtoDonatiSettings.SehpaDonatisi;
-            _cmbSehpaCap.Enabled = _chkSehpa.Checked;
             _chkAltCiz.Checked = OtoDonatiSettings.AltDonatiCiz;
             _chkUstCiz.Checked = OtoDonatiSettings.UstDonatiCiz;
+            Denetci.Guncelle();
         }
 
         private bool TryPushSettings()
         {
-            if (!TryParseDouble(_txtKalinlik.Text, out double kal) || kal < 1 || kal > 500)
-            {
-                Warn("Kalınlık geçersiz (cm).");
-                return false;
-            }
-            if (!TryParseDouble(_txtPaspayi.Text, out double pas) || pas < 0.5 || pas > 20)
-            {
-                Warn("Paspayı geçersiz (cm).");
-                return false;
-            }
-            if (!TryParseDouble(_txtUstKot.Text, out double kot) || kot < -10000 || kot > 30000)
-            {
-                Warn("Üst kot geçersiz (cm).");
-                return false;
-            }
-            if (!TryParseDouble(_txtGonyeBoyu.Text, out double gonyeMax) || gonyeMax < 1 || gonyeMax > 200)
-            {
-                Warn("Gönye boyu max geçersiz (cm).");
-                return false;
-            }
-            if (!TryParseDouble(_txtAnalizEsigi.Text, out double analiz) || analiz < 1 || analiz > 5000)
-            {
-                Warn("Analiz eşiği geçersiz (cm).");
-                return false;
-            }
-            if (!TryParseDouble(_txtAltAralik.Text, out double aAr) || aAr < 5 || aAr > 80)
-            {
-                Warn("Alt X aralık geçersiz (cm).");
-                return false;
-            }
-            if (!TryParseDouble(_txtUstAralik.Text, out double uAr) || uAr < 5 || uAr > 80)
-            {
-                Warn("Üst X aralık geçersiz (cm).");
-                return false;
-            }
-            if (!TryParseDouble(_txtAltAralikY.Text, out double aArY) || aArY < 5 || aArY > 80)
-            {
-                Warn("Alt Y aralık geçersiz (cm).");
-                return false;
-            }
-            if (!TryParseDouble(_txtUstAralikY.Text, out double uArY) || uArY < 5 || uArY > 80)
-            {
-                Warn("Üst Y aralık geçersiz (cm).");
-                return false;
-            }
+            if (!Denetci.Onayla()) return false;
 
-            OtoDonatiSettings.Tip = _rbMantar.Checked
-                ? OtoDonatiTip.MantarDoseme
-                : OtoDonatiTip.RadyeTemel;
-            OtoDonatiSettings.KalinlikCm = kal;
-            OtoDonatiSettings.PaspayiCm = pas;
-            OtoDonatiSettings.UstKotM = kot / 100.0;
-            OtoDonatiSettings.GonyeBoyuMaxCm = gonyeMax;
-            OtoDonatiSettings.AnalizEsigiCm = analiz;
-            OtoDonatiSettings.AltDonatiCapMm = ParseCap(_cmbAltCap);
-            OtoDonatiSettings.UstDonatiCapMm = ParseCap(_cmbUstCap);
-            OtoDonatiSettings.AltAralikCm = aAr;
-            OtoDonatiSettings.UstAralikCm = uAr;
-            OtoDonatiSettings.AltDonatiCapYMm = ParseCap(_cmbAltCapY);
-            OtoDonatiSettings.UstDonatiCapYMm = ParseCap(_cmbUstCapY);
-            OtoDonatiSettings.AltAralikYCm = aArY;
-            OtoDonatiSettings.UstAralikYCm = uArY;
+            OtoDonatiSettings.Tip = SeciliTip;
+            OtoDonatiSettings.KalinlikCm = _txtKalinlik.Deger;
+            OtoDonatiSettings.PaspayiCm = _txtPaspayi.Deger;
+            OtoDonatiSettings.UstKotM = _txtUstKot.Deger / 100.0;
+            OtoDonatiSettings.GonyeBoyuMaxCm = _txtGonyeBoyu.Deger;
+            OtoDonatiSettings.AnalizEsigiCm = _txtAnalizEsigi.Deger;
+            OtoDonatiSettings.AltDonatiCapMm = _altX.CapMm;
+            OtoDonatiSettings.UstDonatiCapMm = _ustX.CapMm;
+            OtoDonatiSettings.AltAralikCm = _altX.AralikCm;
+            OtoDonatiSettings.UstAralikCm = _ustX.AralikCm;
+            OtoDonatiSettings.AltDonatiCapYMm = _altY.CapMm;
+            OtoDonatiSettings.UstDonatiCapYMm = _ustY.CapMm;
+            OtoDonatiSettings.AltAralikYCm = _altY.AralikCm;
+            OtoDonatiSettings.UstAralikYCm = _ustY.AralikCm;
             OtoDonatiSettings.SehpaCapMm = ParseCap(_cmbSehpaCap);
             OtoDonatiSettings.UstGonyeSol = _gonyeSemasi.UstSol;
             OtoDonatiSettings.UstGonyeSag = _gonyeSemasi.UstSag;
@@ -452,11 +357,6 @@ namespace ST4Yardimci
             OtoDonatiSettings.AltDonatiCiz = _chkAltCiz.Checked;
             OtoDonatiSettings.UstDonatiCiz = _chkUstCiz.Checked;
             OtoDonatiSettings.SehpaDonatisi = _chkSehpa.Checked;
-            if (!_chkAltCiz.Checked && !_chkUstCiz.Checked)
-            {
-                Warn("Alt veya üst donatıdan en az biri çizilsin.");
-                return false;
-            }
             return true;
         }
 
@@ -465,9 +365,7 @@ namespace ST4Yardimci
         {
             try
             {
-                OtoDonatiSettings.Tip = _rbMantar.Checked
-                    ? OtoDonatiTip.MantarDoseme
-                    : OtoDonatiTip.RadyeTemel;
+                OtoDonatiSettings.Tip = SeciliTip;
                 PushFieldsQuietTo(OtoDonatiSettings.Tip);
             }
             catch { }
@@ -475,7 +373,7 @@ namespace ST4Yardimci
 
         /// <summary>
         /// Form alanlarını belirtilen profile yazar; Tip property'sine dokunmaz.
-        /// Tip değiştirirken eski profili kaydetmek için kullanılır.
+        /// Tip değiştirirken eski profili kaydetmek için kullanılır. Geçersiz alan profile yazılmaz.
         /// </summary>
         private void PushFieldsQuietTo(OtoDonatiTip tip)
         {
@@ -483,28 +381,15 @@ namespace ST4Yardimci
             {
                 var p = OtoDonatiSettings.ProfileFor(tip);
                 if (p == null) return;
-                if (TryParseDouble(_txtKalinlik.Text, out double kal) && kal >= 1 && kal <= 500)
-                    p.KalinlikCm = kal;
-                if (TryParseDouble(_txtPaspayi.Text, out double pas) && pas >= 0.5 && pas <= 20)
-                    p.PaspayiCm = pas;
-                if (TryParseDouble(_txtUstKot.Text, out double kot) && kot >= -10000 && kot <= 30000)
-                    p.UstKotM = kot / 100.0;
-                if (TryParseDouble(_txtGonyeBoyu.Text, out double gonyeMax) && gonyeMax >= 1 && gonyeMax <= 200)
-                    p.GonyeBoyuMaxCm = gonyeMax;
-                if (TryParseDouble(_txtAnalizEsigi.Text, out double analiz) && analiz >= 1 && analiz <= 5000)
-                    p.AnalizEsigiCm = analiz;
-                if (TryParseDouble(_txtAltAralik.Text, out double aAr) && aAr >= 5 && aAr <= 80)
-                    p.AltAralikCm = aAr;
-                if (TryParseDouble(_txtUstAralik.Text, out double uAr) && uAr >= 5 && uAr <= 80)
-                    p.UstAralikCm = uAr;
-                if (TryParseDouble(_txtAltAralikY.Text, out double aArY) && aArY >= 5 && aArY <= 80)
-                    p.AltAralikYCm = aArY;
-                if (TryParseDouble(_txtUstAralikY.Text, out double uArY) && uArY >= 5 && uArY <= 80)
-                    p.UstAralikYCm = uArY;
-                p.AltDonatiCapMm = ParseCap(_cmbAltCap);
-                p.UstDonatiCapMm = ParseCap(_cmbUstCap);
-                p.AltDonatiCapYMm = ParseCap(_cmbAltCapY);
-                p.UstDonatiCapYMm = ParseCap(_cmbUstCapY);
+                if (_txtKalinlik.Gecerli) p.KalinlikCm = _txtKalinlik.Deger;
+                if (_txtPaspayi.Gecerli) p.PaspayiCm = _txtPaspayi.Deger;
+                if (_txtUstKot.Gecerli) p.UstKotM = _txtUstKot.Deger / 100.0;
+                if (_txtGonyeBoyu.Gecerli) p.GonyeBoyuMaxCm = _txtGonyeBoyu.Deger;
+                if (_txtAnalizEsigi.Gecerli) p.AnalizEsigiCm = _txtAnalizEsigi.Deger;
+                if (_altX.Gecerli) { p.AltDonatiCapMm = _altX.CapMm; p.AltAralikCm = _altX.AralikCm; }
+                if (_ustX.Gecerli) { p.UstDonatiCapMm = _ustX.CapMm; p.UstAralikCm = _ustX.AralikCm; }
+                if (_altY.Gecerli) { p.AltDonatiCapYMm = _altY.CapMm; p.AltAralikYCm = _altY.AralikCm; }
+                if (_ustY.Gecerli) { p.UstDonatiCapYMm = _ustY.CapMm; p.UstAralikYCm = _ustY.AralikCm; }
                 p.SehpaCapMm = ParseCap(_cmbSehpaCap);
                 p.UstGonyeSol = _gonyeSemasi.UstSol;
                 p.UstGonyeSag = _gonyeSemasi.UstSag;
@@ -555,27 +440,9 @@ namespace ST4Yardimci
             }
         }
 
-        private static void Warn(string msg)
-        {
-            try
-            {
-                AcApp.DocumentManager.MdiActiveDocument?.Editor.WriteMessage("\nOto Donatı: " + msg);
-            }
-            catch { }
-            MessageBox.Show(msg, "Oto Donatı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-        }
-
-        private static string FormatNum(double v, int decimals)
-        {
-            return v.ToString("0." + new string('#', decimals), CultureInfo.CurrentCulture);
-        }
-
-        private static bool TryParseDouble(string text, out double v)
-        {
-            if (double.TryParse(text, NumberStyles.Float, CultureInfo.CurrentCulture, out v))
-                return true;
-            return double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out v);
-        }
+        /// <summary>Kayıtlı çap ø8–ø32 standart değilse eski liste davranışı gibi ilk çap (ø8) seçilir.</summary>
+        private static int Cap(int mm)
+            => mm >= 8 && mm <= 32 && Array.IndexOf(DonatiKutusu.StandartCaplar, mm) >= 0 ? mm : VarsayilanCap;
 
         private static int ParseCap(ComboBox cmb)
         {
@@ -598,29 +465,9 @@ namespace ST4Yardimci
             if (cmb.Items.Count > 0) cmb.SelectedIndex = 0;
         }
 
-        private static Label MakeLabel(string text, int x, int y) => new Label
+        private static CheckBox MakeCheck(string text, bool on) => new CheckBox
         {
             Text = text,
-            Location = new Point(x, y),
-            AutoSize = true,
-            ForeColor = Beykent.Monolit.StandardFormTheme.Text,
-            BackColor = Color.Transparent
-        };
-
-        private static RadioButton MakeRadio(string text, int x, int y) => new RadioButton
-        {
-            Text = text,
-            Location = new Point(x, y),
-            AutoSize = true,
-            ForeColor = Beykent.Monolit.StandardFormTheme.Text,
-            BackColor = Color.Transparent,
-            FlatStyle = FlatStyle.Standard
-        };
-
-        private static CheckBox MakeCheck(string text, int x, int y, bool on) => new CheckBox
-        {
-            Text = text,
-            Location = new Point(x, y),
             AutoSize = true,
             ForeColor = Beykent.Monolit.StandardFormTheme.Text,
             BackColor = Color.Transparent,
@@ -628,53 +475,11 @@ namespace ST4Yardimci
             Checked = on
         };
 
-        /// <summary>
-        /// Kenarlıklı kutu + BorderStyle.None TextBox — yazı düşey ortalı.
-        /// Host paneli forma eklenir; dönüş değeri iç TextBox.
-        /// </summary>
-        private TextBox MakeText(int x, int y, string text)
-        {
-            var host = new Panel
-            {
-                Location = new Point(x, y),
-                Size = new Size(_fieldW, FieldH),
-                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
-                BorderStyle = BorderStyle.FixedSingle
-            };
-            var t = new TextBox
-            {
-                BorderStyle = BorderStyle.None,
-                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
-                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
-                Font = Font,
-                Text = text,
-                TabStop = true
-            };
-            host.Controls.Add(t);
-            EventHandler layout = (s, e) =>
-            {
-                int th = TextRenderer.MeasureText("Ag", t.Font).Height;
-                int innerH = Math.Max(th, 14);
-                t.Height = Math.Min(innerH, Math.Max(1, host.ClientSize.Height - 2));
-                t.Width = Math.Max(0, host.ClientSize.Width - 6);
-                t.Left = 3;
-                t.Top = Math.Max(0, (host.ClientSize.Height - t.Height) / 2);
-            };
-            host.Resize += layout;
-            host.HandleCreated += layout;
-            t.FontChanged += (s, e) => layout(s, e);
-            layout(null, EventArgs.Empty);
-            Controls.Add(host);
-            return t;
-        }
-
-        private Button MakeButton(string text, int x, int y, int w, bool accent)
+        private Button MakeButton(string text, bool accent)
         {
             var b = new Button
             {
                 Text = text,
-                Location = new Point(x, y),
-                Size = new Size(w, 28),
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Beykent.Monolit.StandardFormTheme.BgAlt,
                 ForeColor = accent ? Beykent.Monolit.StandardFormTheme.Accent : Beykent.Monolit.StandardFormTheme.Text,
@@ -688,19 +493,17 @@ namespace ST4Yardimci
             return b;
         }
 
-        private ComboBox MakeCapCombo(int x, int y, int selectedMm)
+        private ComboBox MakeCapCombo(int selectedMm)
         {
             var c = new ComboBox
             {
-                Location = new Point(x, y),
-                Size = new Size(_fieldW, FieldH),
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
                 ForeColor = Beykent.Monolit.StandardFormTheme.Text,
                 FlatStyle = FlatStyle.Flat,
                 Font = Font
             };
-            foreach (int d in new[] { 8, 10, 12, 14, 16, 18, 20, 22, 25, 28, 32 })
+            foreach (int d in CapListesi)
                 c.Items.Add(d.ToString(CultureInfo.InvariantCulture));
             SelectCap(c, selectedMm);
             return c;

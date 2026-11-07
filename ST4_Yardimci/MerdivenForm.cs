@@ -3,7 +3,7 @@ using System.Drawing;
 using System.Globalization;
 using System.Windows.Forms;
 using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
-using SdFont = System.Drawing.Font;
+using Beykent.Monolit.Girdi;
 
 namespace ST4Yardimci
 {
@@ -93,24 +93,25 @@ namespace ST4Yardimci
     /// <summary>
     /// Merdiven formu — MERDIVEN modal açar; Plandan çiz → form kapanır, komut çizime devam eder.
     /// Çizim bitince form açılmaz; Enter/Space MERDIVEN tekrarlar → form yeniden açılır.
+    /// Ortak girdi kuralları (07.11.2026): birimli ölçü kutusu, tek satır donatı, segment pafta, durum şeridi.
     /// </summary>
     internal sealed class MerdivenForm : Beykent.Monolit.MonolitForm
     {
         private static MerdivenForm _instance;
 
-        private readonly NumericUpDown _numKat;
-        private readonly NumericUpDown _numAltKot;
-        private readonly NumericUpDown _numAdet;
-        private readonly NumericUpDown _numBenzerKat;
-        private readonly NumericUpDown _numDoseme;
-        private readonly NumericUpDown _numKirisH;
-        private readonly NumericUpDown _numPaspayi;
-        private readonly NumericUpDown _numAnaAralik;
-        private readonly NumericUpDown _numTevziAralik;
+        private readonly OlcuKutusu _numKat;
+        private readonly OlcuKutusu _numAltKot;
+        private readonly OlcuKutusu _numAdet;
+        private readonly OlcuKutusu _numBenzerKat;
+        private readonly OlcuKutusu _numDoseme;
+        private readonly OlcuKutusu _numKirisH;
+        private readonly OlcuKutusu _numPaspayi;
         private readonly CheckBox _chkTemel;
-        private readonly NumericUpDown _numTemelKal;
-        private readonly ComboBox _cmbAna;
-        private readonly ComboBox _cmbTevzi;
+        private readonly OlcuKutusu _numTemelKal;
+        private readonly DonatiKutusu _ana;
+        private readonly DonatiKutusu _tevzi;
+        private readonly SegmentSecim _olcek;
+        private readonly GirdiDenetci Denetci = new GirdiDenetci();
 
         /// <summary>Modal form. true = «Plandan çiz» (ayarlar kaydedildi).</summary>
         public static bool ShowModalAndAcceptDraw()
@@ -140,102 +141,38 @@ namespace ST4Yardimci
         {
             MerdivenSettings.EnsureLoaded();
             Text = "Merdiven";
-            FormBorderStyle = FormBorderStyle.FixedToolWindow;
             StartPosition = FormStartPosition.Manual;
             ShowInTaskbar = false;
             MinimizeBox = false;
             MaximizeBox = false;
-            ClientSize = new Size(280, 280);
-            BackColor = Beykent.Monolit.StandardFormTheme.Bg;
-            ForeColor = Beykent.Monolit.StandardFormTheme.Text;
-            Font = new SdFont("Segoe UI", 8.5f);
             KeyPreview = true;
             DialogResult = DialogResult.Cancel;
 
-            int y = 8;
-            _numKat = AddRow("Kat yükseklik", "cm", ref y, 50, 600, 1, 0,
-                (decimal)MerdivenSettings.KatYuksekligiCm);
-            _numAltKot = AddRow("Alt kot", "cm", ref y, -5000, 5000, 1, 0,
-                (decimal)MerdivenSettings.AltKotCm);
-            _numAdet = AddRow("Adet", "ad", ref y, 1, 50, 1, 0,
-                MerdivenSettings.BenzerAdet);
-            _numBenzerKat = AddRow("Benzer kat", "kat", ref y, 1, 40, 1, 0,
-                MerdivenSettings.BenzerKat);
-            _numDoseme = AddRow("Döşeme kalınlık", "cm", ref y, 8, 40, 1, 0,
-                (decimal)MerdivenSettings.DosemeKalinligiCm);
-            _numKirisH = AddRow("Kiriş yükseklik*", "cm", ref y, 20, 150, 1, 0,
-                (decimal)MerdivenSettings.KirisYuksekligiCm);
+            // Sınırlar eski NumericUpDown Min/Max ile aynı; varsayılanlar MerdivenSettings ilk değerleri.
+            _numKat = Denetci.Ekle(new OlcuKutusu("Kat yüksekliği", "cm", 50, 600, 300) { AdimDegeri = 5 });
+            _numAltKot = Denetci.Ekle(new OlcuKutusu("Alt kot", "cm", -5000, 5000, 0) { AdimDegeri = 5 });
+            _numAdet = Denetci.Ekle(new OlcuKutusu("Adet", "ad", 1, 50, 1));
+            _numBenzerKat = Denetci.Ekle(new OlcuKutusu("Benzer kat", "kat", 1, 40, 1));
+            _numDoseme = Denetci.Ekle(new OlcuKutusu("Döşeme kalınlığı", "cm", 8, 40, 15));
+            _numKirisH = Denetci.Ekle(new OlcuKutusu("Kiriş yüksekliği", "cm", 20, 150, 50) { AdimDegeri = 5 });
+            _chkTemel = new CheckBox { Text = "Temel var", AutoSize = true, Checked = MerdivenSettings.TemelVar };
+            _numTemelKal = Denetci.Ekle(new OlcuKutusu("Temel kalınlığı", "cm", 10, 200, 50) { AdimDegeri = 5 });
+            // Çap listesi eskiden ø8–ø25, aralık 8–40 cm.
+            _ana = Denetci.Ekle(new DonatiKutusu("Ana donatı", 12, 20, 8, 25, 8, 40));
+            _tevzi = Denetci.Ekle(new DonatiKutusu("Tevzi donatı", 8, 20, 8, 25, 8, 40));
+            _numPaspayi = Denetci.Ekle(new OlcuKutusu("Paspayı", "cm", 1, 5, 3, 1, 0.5));
+            _olcek = new SegmentSecim("1/50 pafta", "1/100 pafta (×2)") { Secili = BaPaftaOlcek.Yuz("merdiven") ? 1 : 0 };
+            _olcek.SeciliDegisti += (s, e) => BaPaftaOlcek.Kaydet("merdiven", _olcek.Secili == 1);
+            LoadFromSettings();
 
-            _chkTemel = new CheckBox
-            {
-                Text = "Temel var",
-                Location = new Point(10, y + 2),
-                AutoSize = true,
-                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
-                BackColor = Color.Transparent,
-                Checked = MerdivenSettings.TemelVar
-            };
-            _chkTemel.CheckedChanged += (s, e) =>
-            {
-                _numTemelKal.Enabled = _chkTemel.Checked;
-            };
-            Controls.Add(_chkTemel);
-
-            var lblTemel = new Label
-            {
-                Text = "kalınlık",
-                Location = new Point(108, y + 3),
-                AutoSize = false,
-                Size = new Size(52, 18),
-                ForeColor = Beykent.Monolit.StandardFormTheme.TextMuted,
-                BackColor = Color.Transparent
-            };
-            Controls.Add(lblTemel);
-            _numTemelKal = MakeNum(162, y, 58, 10, 200, 1, 0,
-                (decimal)MerdivenSettings.TemelKalinligiCm);
-            _numTemelKal.Enabled = MerdivenSettings.TemelVar;
-            Controls.Add(_numTemelKal);
-            Controls.Add(new Label
-            {
-                Text = "cm",
-                Location = new Point(222, y + 3),
-                AutoSize = true,
-                ForeColor = Beykent.Monolit.StandardFormTheme.TextMuted,
-                BackColor = Color.Transparent
-            });
-            y += 26;
-
-            _cmbAna = AddCapSlashRow("Ana donatı", ref y, MerdivenSettings.AnaDonatiCapMm,
-                (decimal)MerdivenSettings.AnaDonatiAralikCm, out _numAnaAralik);
-            _cmbTevzi = AddCapSlashRow("Tevzi donatı", ref y, MerdivenSettings.TevziDonatiCapMm,
-                (decimal)MerdivenSettings.TevziAralikCm, out _numTevziAralik);
-            _numPaspayi = AddRow("Paspayı", "cm", ref y, 1, 5, 0.5m, 1,
-                (decimal)MerdivenSettings.PaspayiCm);
-
-            var hint = new Label
-            {
-                Text = "Seç → numara + S kesit (+donatı). *kiriş h.",
-                Location = new Point(10, y + 2),
-                AutoSize = false,
-                Size = new Size(260, 18),
-                ForeColor = Beykent.Monolit.StandardFormTheme.TextMuted,
-                BackColor = Color.Transparent
-            };
-            Controls.Add(hint);
-            y += 24;
-
-            var btnPlan = MakeButton("Plandan çiz", 10, y, 110, true);
+            var btnPlan = new Button { Text = "Plandan çiz" };
             btnPlan.Click += (s, e) => OnPlan();
-            var btnClose = MakeButton("Kapat", 126, y, 70, false);
+            var btnClose = new Button { Text = "Kapat" };
             btnClose.Click += (s, e) =>
             {
                 DialogResult = DialogResult.Cancel;
                 Close();
             };
-            Controls.Add(btnPlan);
-            Controls.Add(btnClose);
-            ClientSize = new Size(280, y + 36);
-            AcceptButton = btnPlan;
             CancelButton = btnClose;
 
             FormClosing += (s, e) => { try { PushSettings(); } catch { } };
@@ -255,17 +192,24 @@ namespace ST4Yardimci
                 StartPosition = FormStartPosition.CenterScreen;
             }
 
-            // Kompakt, içerik odaklı form düzeni.
-            var ui = BeginCompact(330);
-            _chkTemel.Text = "Temel kal. · cm";
-            ui.Tabs(208,
-                ui.Page("Geometri", p => p.Field("Kat yüksekliği · cm", _numKat).Field("Alt kot · cm", _numAltKot)
-                    .Field("Döşeme / kiriş · cm", _numDoseme, _numKirisH).Field("Adet / benzer kat", _numAdet, _numBenzerKat)
-                    .Field(_chkTemel, _numTemelKal)),
-                ui.Page("Donatı", p => p.Field("Ana · Ø mm / ara cm", _cmbAna, _numAnaAralik)
-                    .Field("Tevzi · Ø mm / ara cm", _cmbTevzi, _numTevziAralik).Field("Paspayı · cm", _numPaspayi).Control(hint)));
+            var ui = BeginCompact(390);
+            ui.Section("Geometri")
+                .Field("Kat yüksekliği", _numKat)
+                .Field("Alt kot", _numAltKot)
+                .Field("Döşeme / kiriş*", _numDoseme, _numKirisH)
+                .Field("Adet / benzer kat", _numAdet, _numBenzerKat)
+                .Options(_chkTemel)
+                .FieldWhen(() => _chkTemel.Checked, new Label { Text = "Temel kalınlığı" }, _numTemelKal);
+            ui.Section("Donatı  (ø çap / aralık)")
+                .Field("Ana", _ana)
+                .Field("Tevzi", _tevzi)
+                .Field("Paspayı", _numPaspayi)
+                .Hint("Seç → numara + S kesit (+donatı). *kiriş h.: plandan okunamazsa.");
+            ui.Section("Pafta ölçeği · detay 1/25").Control(_olcek);
+            ui.Section(null).Control(Denetci.Serit, 44);
             ui.Footer(btnPlan, btnClose);
             ui.Finish();
+            Denetci.Guncelle();
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -276,7 +220,7 @@ namespace ST4Yardimci
                 Close();
                 return true;
             }
-            if (keyData == Keys.Enter || keyData == Keys.Return)
+            if ((keyData == Keys.Enter || keyData == Keys.Return) && !(ActiveControl is Button))
             {
                 OnPlan();
                 return true;
@@ -284,169 +228,45 @@ namespace ST4Yardimci
             return base.ProcessCmdKey(ref msg, keyData);
         }
 
+        private void LoadFromSettings()
+        {
+            _numKat.Deger = MerdivenSettings.KatYuksekligiCm;
+            _numAltKot.Deger = MerdivenSettings.AltKotCm;
+            _numAdet.Deger = MerdivenSettings.BenzerAdet;
+            _numBenzerKat.Deger = MerdivenSettings.BenzerKat;
+            _numDoseme.Deger = MerdivenSettings.DosemeKalinligiCm;
+            _numKirisH.Deger = MerdivenSettings.KirisYuksekligiCm;
+            _numTemelKal.Deger = MerdivenSettings.TemelKalinligiCm;
+            _ana.Ayarla(MerdivenSettings.AnaDonatiCapMm, MerdivenSettings.AnaDonatiAralikCm);
+            _tevzi.Ayarla(MerdivenSettings.TevziDonatiCapMm, MerdivenSettings.TevziAralikCm);
+            _numPaspayi.Deger = MerdivenSettings.PaspayiCm;
+        }
+
         private void OnPlan()
         {
+            if (!Denetci.Onayla()) return;
             PushSettings();
             DialogResult = DialogResult.OK;
             Close();
         }
 
+        /// <summary>Runner'ın okuduğu ayar alanları değişmeden doldurulur.</summary>
         private void PushSettings()
         {
-            MerdivenSettings.KatYuksekligiCm = (double)_numKat.Value;
-            MerdivenSettings.AltKotCm = (double)_numAltKot.Value;
-            MerdivenSettings.BenzerAdet = (int)_numAdet.Value;
-            MerdivenSettings.BenzerKat = (int)_numBenzerKat.Value;
-            MerdivenSettings.DosemeKalinligiCm = (double)_numDoseme.Value;
-            MerdivenSettings.KirisYuksekligiCm = (double)_numKirisH.Value;
+            MerdivenSettings.KatYuksekligiCm = _numKat.Deger;
+            MerdivenSettings.AltKotCm = _numAltKot.Deger;
+            MerdivenSettings.BenzerAdet = (int)_numAdet.Deger;
+            MerdivenSettings.BenzerKat = (int)_numBenzerKat.Deger;
+            MerdivenSettings.DosemeKalinligiCm = _numDoseme.Deger;
+            MerdivenSettings.KirisYuksekligiCm = _numKirisH.Deger;
             MerdivenSettings.TemelVar = _chkTemel.Checked;
-            MerdivenSettings.TemelKalinligiCm = (double)_numTemelKal.Value;
-            MerdivenSettings.AnaDonatiCapMm = ParseCap(_cmbAna);
-            MerdivenSettings.TevziDonatiCapMm = ParseCap(_cmbTevzi);
-            MerdivenSettings.AnaDonatiAralikCm = (double)_numAnaAralik.Value;
-            MerdivenSettings.TevziAralikCm = (double)_numTevziAralik.Value;
-            MerdivenSettings.PaspayiCm = (double)_numPaspayi.Value;
+            MerdivenSettings.TemelKalinligiCm = _numTemelKal.Deger;
+            MerdivenSettings.AnaDonatiCapMm = _ana.CapMm;
+            MerdivenSettings.TevziDonatiCapMm = _tevzi.CapMm;
+            MerdivenSettings.AnaDonatiAralikCm = _ana.AralikCm;
+            MerdivenSettings.TevziAralikCm = _tevzi.AralikCm;
+            MerdivenSettings.PaspayiCm = _numPaspayi.Deger;
             MerdivenSettings.Save();
-        }
-
-        private NumericUpDown AddRow(string label, string unit, ref int y,
-            decimal min, decimal max, decimal inc, int decimals, decimal val)
-        {
-            Controls.Add(new Label
-            {
-                Text = label,
-                Location = new Point(10, y + 3),
-                AutoSize = false,
-                Size = new Size(110, 18),
-                ForeColor = Beykent.Monolit.StandardFormTheme.TextMuted,
-                BackColor = Color.Transparent
-            });
-            var n = MakeNum(122, y, 58, min, max, inc, decimals, val);
-            Controls.Add(n);
-            Controls.Add(new Label
-            {
-                Text = unit,
-                Location = new Point(182, y + 3),
-                AutoSize = true,
-                ForeColor = Beykent.Monolit.StandardFormTheme.TextMuted,
-                BackColor = Color.Transparent
-            });
-            y += 26;
-            return n;
-        }
-
-        /// <summary>Çap kutusu, sağında yalnız «/» ve aralık. Birim yazısı yok.</summary>
-        private ComboBox AddCapSlashRow(string label, ref int y, int selectedMm, decimal aralikCm,
-            out NumericUpDown aralik)
-        {
-            Controls.Add(new Label
-            {
-                Text = label,
-                Location = new Point(10, y + 3),
-                AutoSize = false,
-                Size = new Size(110, 18),
-                ForeColor = Beykent.Monolit.StandardFormTheme.TextMuted,
-                BackColor = Color.Transparent
-            });
-            var c = MakeCapCombo(122, y, 52, selectedMm);
-            Controls.Add(c);
-            Controls.Add(new Label
-            {
-                Text = "/",
-                Location = new Point(176, y + 3),
-                AutoSize = true,
-                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
-                BackColor = Color.Transparent
-            });
-            aralik = MakeNum(190, y, 52, 8, 40, 1, 0, aralikCm);
-            Controls.Add(aralik);
-            y += 26;
-            return c;
-        }
-
-        private static decimal Clamp(NumericUpDown n, decimal v)
-        {
-            if (v < n.Minimum) return n.Minimum;
-            if (v > n.Maximum) return n.Maximum;
-            return v;
-        }
-
-        private static int ParseCap(ComboBox cmb)
-        {
-            if (cmb.SelectedItem is string s)
-            {
-                int v;
-                if (int.TryParse(s, out v)) return v;
-            }
-            return 12;
-        }
-
-        private static void SelectCap(ComboBox cmb, int mm)
-        {
-            string key = mm.ToString(CultureInfo.InvariantCulture);
-            for (int i = 0; i < cmb.Items.Count; i++)
-            {
-                if (cmb.Items[i] is string s && s == key)
-                {
-                    cmb.SelectedIndex = i;
-                    return;
-                }
-            }
-            if (cmb.Items.Count > 0) cmb.SelectedIndex = 0;
-        }
-
-        private static Button MakeButton(string text, int x, int y, int w, bool accent)
-        {
-            var b = new Button
-            {
-                Text = text,
-                Location = new Point(x, y),
-                Size = new Size(w, 26),
-                FlatStyle = FlatStyle.Flat,
-                BackColor = Beykent.Monolit.StandardFormTheme.BgAlt,
-                ForeColor = accent ? Beykent.Monolit.StandardFormTheme.Accent : Beykent.Monolit.StandardFormTheme.Text,
-                Cursor = Cursors.Hand
-            };
-            b.FlatAppearance.BorderColor = Beykent.Monolit.StandardFormTheme.InputBorder;
-            b.FlatAppearance.MouseOverBackColor = Beykent.Monolit.StandardFormTheme.BgHover;
-            return b;
-        }
-
-        private static NumericUpDown MakeNum(int x, int y, int w, decimal min, decimal max,
-            decimal inc, int decimals, decimal val)
-        {
-            var n = new NumericUpDown
-            {
-                Location = new Point(x, y),
-                Size = new Size(w, 22),
-                Minimum = min,
-                Maximum = max,
-                Increment = inc,
-                DecimalPlaces = decimals,
-                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
-                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
-                BorderStyle = BorderStyle.FixedSingle
-            };
-            n.Value = Clamp(n, val);
-            YardimciUi.StripUpDownButtons(n);
-            return n;
-        }
-
-        private static ComboBox MakeCapCombo(int x, int y, int w, int selectedMm)
-        {
-            var c = new ComboBox
-            {
-                Location = new Point(x, y),
-                Size = new Size(w, 22),
-                DropDownStyle = ComboBoxStyle.DropDownList,
-                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
-                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
-                FlatStyle = FlatStyle.Flat
-            };
-            foreach (int d in new[] { 8, 10, 12, 14, 16, 18, 20, 22, 25 })
-                c.Items.Add(d.ToString(CultureInfo.InvariantCulture));
-            SelectCap(c, selectedMm);
-            return c;
         }
     }
 }

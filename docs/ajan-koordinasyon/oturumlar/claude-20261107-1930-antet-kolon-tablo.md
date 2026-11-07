@@ -1,0 +1,11 @@
+# Claude — KOLONDUSEY2 iç antet kolon tablosu (isim ızgarası + EBAT + ADET)
+- Ajan: Claude Code
+- Güncelleme: 07.11.2026 19:30 (Europe/Istanbul)
+- Durum: tamamlandı (bkz. son satır)
+- Görev: İç antet sol üstteki kolon isim yazısı yerine tablo: KOLONLAR ızgarası (sarı ACI 2), EBAT (yeşil ACI 3, poligonda yok), ADET (kırmızı ACI 1); TOPLAM - n ADET yazısı tabloya taşınır.
+- Kontrol: protokol + son kayıtlar (aktif yok). Görev başı GUNCEL_2027 = Plan 20261107_190427 + Yardımcı 20261107_143240.
+- Ayrılan: ST4_Plan_ID_Ciz/PlanIdDrawingManager.PerdeGorunus.cs (DrawPerdeGorunusAntetFrames kat-kat dalı), ST4_Plan_ID_Ciz/PlanIdDrawingManager.KolonDuseyYerlesim.cs, ST4_Plan_ID_Ciz/PlanIdDrawingManager.KolonDusey.cs (ebat yakalama + çağrı), tools/PoligonKesitAci20261107/**, docs/modul-durum/ST4_Plan_ID_Ciz.md, NETLOAD/OKU.txt; yayında NETLOAD/GUNCEL_2027/**, NETLOAD/arsiv.
+- Sonuç (19:20): KolonDuseyYerlesim.cs (tablo ölçü/çizim, ebat yakalama alanı, tepe payı tablo yüksekliği), PerdeGorunus.cs (kat id'li dalda tablo; TOPLAM yazısı yok; filiz notu tablo altı), KolonDusey.cs (ebat yakalama DrawKolonKesitKatBoyutEtiket, ebat/adet sözlükleri kat satırında).
+- Doğrulama: izole Release net10/2027 0 hata; Core Console SANER_01 / CK kat-kat PDF (out/t_sa_z, t_ck_z) tablo doğru. Canlı AutoCAD yok.
+- Yayın: GUNCEL_2027 = Plan 20261107_191829 + Yardımcı 20261107_143240, Publish51 PASS, arşiv NETLOAD/arsiv/GUNCEL_2027_20261107_191926_136. Commit yok.
+- Durum: tamamlandı — rezervasyon yok.

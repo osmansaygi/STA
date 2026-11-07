@@ -1,0 +1,11 @@
+# Claude — HASIRDONATI boyutu değişen panelde köşegen
+- Ajan: Claude Code
+- Güncelleme: 30.10.2026 17:27 (Europe/Istanbul)
+- Durum: tamamlandı — rezervasyon yok
+- Görev: Kesilmiş/uyarlanmış hasır panellerinde (335×215, 335×140, 500×140) köşegen çizilmiyordu.
+- Kontrol: protokol, son 2 gün kayıtları (aktif çakışma yok), GUNCEL_2027 (Plan 20261030_152926 + Yardımcı 20261029_163542), ST4_GUNCEL_2027.bundle → NETLOAD\GUNCEL_2027.
+- Sebep: sx≠sy olunca şablon çapraz Line'ı TransformBy'ı reddediyor; TryTransformClone yalnız Polyline'ı kurtarıyordu, Line siliniyordu → diagonal bulunamıyor, yerine çizilmiyordu.
+- Değişiklik: ST4_Yardimci/HasirDonatiRunner.cs — TryTransformClone'a Line uç dönüşümü; CloneSheetExploded'da çapraz bulunamazsa diagA→diagB yeni Line (HASIR CIZGI). Tam boy davranışı değişmedi.
+- Doğrulama: izole net10/2027 derleme 0/0 (tools/HasirSiluet20261029/build2027, 20261030_172538). Core Console probe tools/HasirDiagonal20261030/Probe (PlaceSheets reflection): eski DLL 500×215=1, 335×215/500×140/335×140=0 köşegen; yeni 4/4, diğer parça sayısı aynı (9).
+- Yayın: GUNCEL_2027 = Yardımcı 20261030_172538 + Plan 20261030_152926, Publish51 hash PASS, eski arsiv/GUNCEL_2027_20261030_172707_780. NETLOAD/AutoCAD2027 eski Yardımcı klasörleri tools/netload-yedek/20261030_eski. Commit yok.
+- Canlı AutoCAD: kullanıcı doğruladı (30.10.2026) — "HASIR TAMAM"; temel çökmesi de yok (Plan 20261030_182652).

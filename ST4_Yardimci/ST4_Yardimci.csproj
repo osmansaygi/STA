@@ -14,6 +14,10 @@
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <!-- Geliştirme (Debug): şifreleme yok. Ofis/dağıtım: Release veya /p:SkipObfuscar=false -->
     <SkipObfuscar Condition="'$(SkipObfuscar)' == '' and '$(Configuration)' == 'Debug'">true</SkipObfuscar>
+    <!-- Geliştirme bilgisayarı (AutoCAD 2027) derlemesi şimdilik kilitsiz/şifresiz. Ofis paketi /p:OfisPaketi=true
+         (2027 Release'te de makine kilidi + Obfuscar). net48 her zaman kilitli. -->
+    <SkipObfuscar Condition="'$(SkipObfuscar)' == '' and '$(AutoCAD2027Build)' == 'true' and '$(OfisPaketi)' != 'true'">true</SkipObfuscar>
+    <DefineConstants Condition="'$(AutoCAD2027Build)' != 'true' or '$(OfisPaketi)' == 'true'">$(DefineConstants);OFIS_KILIT</DefineConstants>
     <!-- Home şeridi grupları (eski BAPANEL yerine) net48 ofis paketinde ve 2027'de. -->
     <DefineConstants>$(DefineConstants);BA_HOME_RIBBON</DefineConstants>
   </PropertyGroup>

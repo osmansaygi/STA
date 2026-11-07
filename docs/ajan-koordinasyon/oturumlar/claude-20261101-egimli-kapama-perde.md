@@ -1,0 +1,11 @@
+# Claude — Eğimli kapama perdesi (sağ/sol kot farklı)
+- Ajan: Claude Code
+- Güncelleme: 01.11.2026 22:55 (Europe/Istanbul)
+- Durum: tamamlandı — rezervasyon yok
+- Görev: Kullanıcı: kapama perdelerinde sağ ve sol kotlar farklı olabiliyor; etkilenen komutlarda düzelt (ARD_OTP1_01.st4, bina kesitinde basamaklı çizim).
+- Kontrol: protokol + son 2 gün kayıtları (aktif çakışan iş yok), GUNCEL_2027 görev başı Plan 20261101_210908 + Yardımcı 180538.
+- Bulgu: ST4 p[11]/p[12] uç kotları; h alçak uçtaki yükseklik (ARD: 181 h=320 0→68, 182 h=388 68→170, 185 h=490 170; KI_OTP_03 alt kotlar −300/−414 tutarlı). Kod her yerde üst = Max(kot), alt = Max − h kullanıyordu → basamak + yanlış alt/temel kotu (KAPAMADETAY'da temel −10.67).
+- Değişen: ST4_Plan_ID_Ciz/PlanIdDrawingManager.EgimliPerde.cs (yeni), BinaGorunus.cs, BinaKesit.cs, SerbestKesit.cs, Sections.cs (TryAddSliceCutLine egimliPerde), KolonDusey.cs (perde ziyareti), PerdeGorunus.cs (KAPAMADETAY/KOLON50 görünüş, AddGorunusPerdeDonati zTopAtX, GorunusLineBag.AddDiag), PlanIdDrawingManager.cs (kolon tablosu kiriş farkı, plan perde kot takımı alt kotu); tools/EgimliPerde20261101/** (Probe EP_RUN, Run.ps1, Plot.ps1); docs/modul-durum/ST4_Plan_ID_Ciz.md; NETLOAD/OKU.txt.
+- Doğrulama: izole Release net10/2027 0 hata/4 bilinen uyarı (20261101_224626). Core Console ARD: BINAKESITI X eğik üst + perde altı kat tabanına (eski basamaklı ve hatalı alt kutular), KAPAMADETAY P-81/82 eğik üst, temel −11.95/−11.35 (eski −10.67), kot −7.47/−6.45; KI_OTP_03 KAPAMADETAY P-47 eğik üst, düşey donatı eğim altında kancalı. Regresyon eski 210908 / yeni: CK, FHM_01, CP_OTP (eğimsiz kapama) tüm blok geometrisi birebir.
+- Yayın: GUNCEL_2027 = Plan 20261101_224626 + Yardımcı 180538, Publish51 PASS, arşiv GUNCEL_2027_20261101_225318_952. Canlı AutoCAD denenmedi. Commit yok.
+- Açık: kesit hattı perde boyunca giderse kesit dilimi orta noktadaki üst kotla dikdörtgen; plan kot takımı üstte büyük kotu yazar (alt kot düzeltildi).

@@ -6,6 +6,7 @@ alwaysApply: true
 # Ajan koordinasyonu
 
 - Her görevin başında ve düzenleme öncesinde `docs/ajan-koordinasyon/PROTOKOL.md` ile `docs/ajan-koordinasyon/oturumlar/` içindeki aktif kayıtları oku ve protokolü uygula.
+- PROTOKOL'deki "Her görevde zorunlu kontrol" adımlarını her görevde uygula: son 2 günün tüm kayıtları (tamamlananlar dahil), menü/ribbon düzeni, `ST4_GUNCEL_2027.bundle` otomatik yükleyicisi ve `NETLOAD/GUNCEL_2027/` içeriği. Yayınlanmamış değişikliği "eklendi" diye sunma.
 - Her sohbet için ayrı kayıt oluştur; dosya sahipliğini ve ortak çıktı kaynaklarını düzenlemeden önce bildir.
 - Başka aktif kaydın dosyasına veya ortak çıktı kaynağına çakışan işlem yapma. Bağımsız işe devam et; çakışan işi kullanıcıya bildir.
 - Dosyayı değiştirmeden hemen önce diskten tekrar oku; başkasının değişikliğini geri alma.

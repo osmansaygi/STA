@@ -3,7 +3,7 @@ using System.Drawing;
 using System.Globalization;
 using System.Windows.Forms;
 using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
-using SdFont = System.Drawing.Font;
+using Beykent.Monolit.Girdi;
 
 namespace ST4Yardimci
 {
@@ -87,29 +87,33 @@ namespace ST4Yardimci
         }
     }
 
+    /// <summary>
+    /// Temel detayı formu. Ortak girdi kuralları (07.11.2026); alan sırası, etiketleri, sınırları
+    /// ve bileşenleri Temel Çukuru formuyla birebir aynıdır (ayarlar ayrı tutulur).
+    /// </summary>
     internal sealed class TemelDetayForm : Beykent.Monolit.MonolitForm
     {
         private static TemelDetayForm _instance;
 
-        private readonly NumericUpDown _ustKot;
-        private readonly NumericUpDown _aci;
-        private readonly NumericUpDown _sol;
-        private readonly NumericUpDown _sag;
-        private readonly NumericUpDown _hatil;
-        private readonly NumericUpDown _hatilGen;
-        private readonly NumericUpDown _doseme;
-        private readonly NumericUpDown _ust;
-        private readonly NumericUpDown _alt;
-        private readonly NumericUpDown _gen;
-        private readonly NumericUpDown _uzunluk;
-        private readonly NumericUpDown _ustSag;
+        private readonly OlcuKutusu _ustKot;
+        private readonly OlcuKutusu _aci;
+        private readonly OlcuKutusu _sol;
+        private readonly OlcuKutusu _sag;
+        private readonly OlcuKutusu _hatil;
+        private readonly OlcuKutusu _hatilGen;
+        private readonly OlcuKutusu _doseme;
+        private readonly OlcuKutusu _ust;
+        private readonly OlcuKutusu _alt;
+        private readonly OlcuKutusu _gen;
+        private readonly OlcuKutusu _uzunluk;
+        private readonly OlcuKutusu _ustSag;
         private readonly CheckBox _solKademe;
         private readonly CheckBox _sagKademe;
-        private readonly NumericUpDown _pas;
-        private readonly ComboBox _ustCap;
-        private readonly NumericUpDown _ustAralik;
-        private readonly ComboBox _altCap;
-        private readonly NumericUpDown _altAralik;
+        private readonly OlcuKutusu _pas;
+        private readonly DonatiKutusu _ustDonati;
+        private readonly DonatiKutusu _altDonati;
+        private readonly SegmentSecim _olcek;
+        private readonly GirdiDenetci Denetci = new GirdiDenetci();
         private bool _starting;
 
         public static void ShowOrActivate()
@@ -160,64 +164,48 @@ namespace ST4Yardimci
         {
             TemelDetaySettings.EnsureLoaded();
             Text = "Temel Detayı";
-            FormBorderStyle = FormBorderStyle.FixedToolWindow;
             StartPosition = FormStartPosition.Manual;
             ShowInTaskbar = false;
             MinimizeBox = false;
             MaximizeBox = false;
-            AutoScaleMode = AutoScaleMode.None;
-            BackColor = Beykent.Monolit.StandardFormTheme.Bg;
-            ForeColor = Beykent.Monolit.StandardFormTheme.Text;
-            Font = new SdFont("Segoe UI", 8.5f);
             KeyPreview = true;
 
-            const int formW = 492;
-            int y = 8;
-            Section("Kesit", ref y);
-            _pas = Cell(0, y, "Paspayı", "cm", 2, 10, 0.5m, 1, (decimal)TemelDetaySettings.PaspayiCm);
-            _ustKot = Cell(1, y, "Üst kot (yüksek)", "cm", -5000, 5000, 1, 0, (decimal)TemelDetaySettings.TemelUstKotuCm);
-            y += 28;
-            _solKademe = new CheckBox { Text = "Sol kademe", Checked = TemelDetaySettings.SolKademe, Location = new Point(12, y), AutoSize = true };
-            _sagKademe = new CheckBox { Text = "Sağ kademe", Checked = TemelDetaySettings.SagKademe, Location = new Point(252, y), AutoSize = true };
-            Controls.Add(_solKademe);
-            Controls.Add(_sagKademe);
-            y += 28;
-            _sol = Cell(0, y, "Sol kademe yük.", "cm", 1, 600, 1, 0, (decimal)TemelDetaySettings.SolCukurCm);
-            _sag = Cell(1, y, "Sağ kademe yük.", "cm", 1, 600, 1, 0, (decimal)TemelDetaySettings.SagCukurCm);
-            y += 28;
-            _ust = Cell(0, y, "Sol üst kalınlık", "cm", 15, 200, 1, 0, (decimal)TemelDetaySettings.UstTemelYuksekligiCm);
-            _ustSag = Cell(1, y, "Sağ üst kalınlık", "cm", 15, 200, 1, 0, (decimal)TemelDetaySettings.SagUstTemelYuksekligiCm);
-            y += 28;
-            _alt = Cell(0, y, "Alt temel kalınlık", "cm", 20, 200, 1, 0, (decimal)TemelDetaySettings.AltTemelYuksekligiCm);
-            _gen = Cell(1, y, "İç açıklık", "cm", 40, 2000, 1, 0, (decimal)TemelDetaySettings.TemelGenisligiCm);
-            y += 28;
-            _aci = Cell(0, y, "Grobeton açısı", "°", 50, 89, 1, 0, (decimal)TemelDetaySettings.GrobetonAcisi);
-            _uzunluk = Cell(1, y, "Kademe uzunluğu", "cm", 20, 20000, 1, 0, (decimal)TemelDetaySettings.KademeUzunluguCm);
-            y += 32;
+            // Sınırlar eski NumericUpDown Min/Max ile aynı; varsayılanlar TemelDetaySettings ilk değerleri.
+            _ustKot = Denetci.Ekle(new OlcuKutusu("Temel üst kotu", "cm", -5000, 5000, TemelCekuruSettings.TemplateTemelUstKotuCm) { AdimDegeri = 5 });
+            _solKademe = new CheckBox { Text = "Sol kademe", Checked = TemelDetaySettings.SolKademe, AutoSize = true };
+            _sagKademe = new CheckBox { Text = "Sağ kademe", Checked = TemelDetaySettings.SagKademe, AutoSize = true };
+            _sol = Denetci.Ekle(new OlcuKutusu("Sol kademe yüksekliği", "cm", 1, 600, TemelCekuruSettings.TemplateCukurDerinligiCm) { AdimDegeri = 5 });
+            _sag = Denetci.Ekle(new OlcuKutusu("Sağ kademe yüksekliği", "cm", 1, 600, TemelCekuruSettings.TemplateCukurDerinligiCm) { AdimDegeri = 5 });
+            _ust = Denetci.Ekle(new OlcuKutusu("Sol üst temel", "cm", 15, 200, TemelCekuruSettings.TemplateUstTemelYuksekligiCm) { AdimDegeri = 5 });
+            _ustSag = Denetci.Ekle(new OlcuKutusu("Sağ üst temel", "cm", 15, 200, TemelCekuruSettings.TemplateUstTemelYuksekligiCm) { AdimDegeri = 5 });
+            _alt = Denetci.Ekle(new OlcuKutusu("Alt temel", "cm", 20, 200, TemelCekuruSettings.TemplateAltTemelYuksekligiCm) { AdimDegeri = 5 });
+            _gen = Denetci.Ekle(new OlcuKutusu("İç açıklık", "cm", 40, 2000, TemelCekuruSettings.TemplateTemelGenisligiCm) { AdimDegeri = 5 });
+            _uzunluk = Denetci.Ekle(new OlcuKutusu("Kademe uzunluğu", "cm", 20, 20000, 200) { AdimDegeri = 5 });
+            _aci = Denetci.Ekle(new OlcuKutusu("Grobeton açısı", "°", 50, 89, TemelCekuruSettings.TemplateGrobetonAcisi));
+            _hatil = Denetci.Ekle(new OlcuKutusu("Hatıl yüksekliği", "cm", 0, 250, TemelCekuruSettings.TemplateHatilYuksekligiCm) { AdimDegeri = 5 });
+            _hatilGen = Denetci.Ekle(new OlcuKutusu("Hatıl genişliği", "cm", 15, 80, TemelCekuruSettings.TemplateHatilGenisligiCm) { AdimDegeri = 5 });
+            _doseme = Denetci.Ekle(new OlcuKutusu("Subasman", "cm", 5, 40, TemelCekuruSettings.TemplateSubasmanYuksekligiCm));
+            _pas = Denetci.Ekle(new OlcuKutusu("Paspayı", "cm", 2, 10, 3, 1, 0.5));
+            // Çap listesi eskiden ø8–ø25, aralık 5–40 cm tam sayı.
+            _ustDonati = Denetci.Ekle(new DonatiKutusu("Üst donatı", TemelCekuruSettings.TemplateUstCapMm, TemelCekuruSettings.TemplateUstAralikCm, 8, 25, 5, 40));
+            _altDonati = Denetci.Ekle(new DonatiKutusu("Alt donatı", TemelCekuruSettings.TemplateAltCapMm, TemelCekuruSettings.TemplateAltAralikCm, 8, 25, 5, 40));
+            _olcek = new SegmentSecim("1/50 pafta", "1/100 pafta (×2)") { Secili = BaPaftaOlcek.Yuz("temeldetay") ? 1 : 0 };
+            _olcek.SeciliDegisti += (s, e) => BaPaftaOlcek.Kaydet("temeldetay", _olcek.Secili == 1);
             _solKademe.CheckedChanged += (s, e) => UpdateKademeControls();
             _sagKademe.CheckedChanged += (s, e) => UpdateKademeControls();
-            UpdateKademeControls();
-            Section("Hatıl ve döşeme", ref y);
-            _hatil = Cell(0, y, "Hatıl yüksekliği", "cm", 0, 250, 1, 0, (decimal)TemelDetaySettings.HatilYuksekligiCm);
-            _hatilGen = Cell(1, y, "Hatıl genişliği", "cm", 15, 80, 1, 0, (decimal)TemelDetaySettings.HatilGenisligiCm);
-            y += 28;
-            _doseme = Cell(0, y, "Subasman yük.", "cm", 5, 40, 1, 0, (decimal)TemelDetaySettings.SubasmanYuksekligiCm);
-            y += 32;
+            LoadFromSettings();
 
-            Section("Donatı", ref y);
-            _ustCap = AddCapSlash("Üst donatı", ref y, TemelDetaySettings.UstCapMm,
-                TemelDetaySettings.UstAralikCm, out _ustAralik);
-            _altCap = AddCapSlash("Alt donatı", ref y, TemelDetaySettings.AltCapMm,
-                TemelDetaySettings.AltAralikCm, out _altAralik);
+            Denetci.HataKurali(() => _pas.Deger * 2.0 + 2.0 > _alt.Deger
+                ? "Paspayı, alt temel yüksekliğine sığmıyor" : null, _pas, _alt);
+            Denetci.HataKurali(() => !_solKademe.Checked && !_sagKademe.Checked
+                ? "Sol veya sağ kademeden en az birini seçin" : null);
+            Denetci.HataKurali(() => TamSayiDegil(_ustDonati.AralikCm) ? "Üst donatı aralığı tam sayı cm olmalı" : null, _ustDonati);
+            Denetci.HataKurali(() => TamSayiDegil(_altDonati.AralikCm) ? "Alt donatı aralığı tam sayı cm olmalı" : null, _altDonati);
 
-            int yBtn = y + 4;
-            ClientSize = new Size(formW, yBtn + 36);
-            var btn = MakeButton("Çiz", formW - 168, yBtn, 80, true);
+            var btn = new Button { Text = "Çiz" };
             btn.Click += (s, e) => OnCiz();
-            var close = MakeButton("Kapat", formW - 80, yBtn, 68, false);
+            var close = new Button { Text = "Kapat" };
             close.Click += (s, e) => Close();
-            Controls.Add(btn);
-            Controls.Add(close);
 
             FormClosing += (s, e) => { try { PushSettings(); } catch { } };
             FormClosed += (s, e) =>
@@ -240,17 +228,31 @@ namespace ST4Yardimci
                 StartPosition = FormStartPosition.CenterScreen;
             }
 
-            // Kompakt, içerik odaklı form düzeni.
-            var ui = BeginCompact(420);
-            ui.Tabs(260,
-                ui.Page("Kesit", p => p.Field("Paspayı / üst kot · cm", _pas, _ustKot).Choices(_solKademe, _sagKademe)
-                    .Field("Sol / sağ kademe · cm", _sol, _sag).Field("Sol / sağ üst temel · cm", _ust, _ustSag)
-                    .Field("Alt temel / açıklık · cm", _alt, _gen).Field("Grobeton açısı · °", _aci).Field("Kademe uzunluğu · cm", _uzunluk)),
-                ui.Page("Hatıl ve donatı", p => p.Field("Hatıl yük. / en · cm", _hatil, _hatilGen).Field("Subasman · cm", _doseme)
-                    .Field("Üst · Ø mm / ara cm", _ustCap, _ustAralik).Field("Alt · Ø mm / ara cm", _altCap, _altAralik)));
+            var ui = BeginCompact(390);
+            ui.Section("Kesit")
+                .Field("Temel üst kotu", _ustKot)
+                .Options(_solKademe, _sagKademe)
+                .Field("Sol / sağ kademe yük.", _sol, _sag)
+                .Field("Sol / sağ üst temel", _ust, _ustSag)
+                .Field("Alt temel", _alt)
+                .Field("İç açıklık / kademe boyu", _gen, _uzunluk)
+                .Field("Grobeton açısı", _aci);
+            ui.Section("Hatıl ve döşeme")
+                .Field("Hatıl yük. / genişlik", _hatil, _hatilGen)
+                .Field("Subasman", _doseme);
+            ui.Section("Donatı  (ø çap / aralık)")
+                .Field("Paspayı", _pas)
+                .Field("Üst", _ustDonati)
+                .Field("Alt", _altDonati);
+            ui.Section("Pafta ölçeği · detay 1/25").Control(_olcek);
+            ui.Section(null).Control(Denetci.Serit, 44);
             ui.Footer(btn, close);
+            ui.Tip(_ustKot, "Yüksek taraftaki temel üst kotu.");
             ui.Finish();
+            Denetci.Guncelle();
         }
+
+        private static bool TamSayiDegil(double v) => Math.Abs(v - Math.Round(v)) > 1e-9;
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
@@ -259,7 +261,7 @@ namespace ST4Yardimci
                 Close();
                 return true;
             }
-            if (keyData == Keys.Enter || keyData == Keys.Return)
+            if ((keyData == Keys.Enter || keyData == Keys.Return) && !(ActiveControl is Button))
             {
                 OnCiz();
                 return true;
@@ -269,75 +271,64 @@ namespace ST4Yardimci
 
         private void LoadFromSettings()
         {
-            _ustKot.Value = Clamp(_ustKot, (decimal)TemelDetaySettings.TemelUstKotuCm);
-            _aci.Value = Clamp(_aci, (decimal)TemelDetaySettings.GrobetonAcisi);
-            _sol.Value = Clamp(_sol, (decimal)TemelDetaySettings.SolCukurCm);
-            _sag.Value = Clamp(_sag, (decimal)TemelDetaySettings.SagCukurCm);
-            _hatil.Value = Clamp(_hatil, (decimal)TemelDetaySettings.HatilYuksekligiCm);
-            _hatilGen.Value = Clamp(_hatilGen, (decimal)TemelDetaySettings.HatilGenisligiCm);
-            _doseme.Value = Clamp(_doseme, (decimal)TemelDetaySettings.SubasmanYuksekligiCm);
-            _ust.Value = Clamp(_ust, (decimal)TemelDetaySettings.UstTemelYuksekligiCm);
-            _alt.Value = Clamp(_alt, (decimal)TemelDetaySettings.AltTemelYuksekligiCm);
-            _gen.Value = Clamp(_gen, (decimal)TemelDetaySettings.TemelGenisligiCm);
-            _uzunluk.Value = Clamp(_uzunluk, (decimal)TemelDetaySettings.KademeUzunluguCm);
-            _ustSag.Value = Clamp(_ustSag, (decimal)TemelDetaySettings.SagUstTemelYuksekligiCm);
+            _ustKot.Deger = TemelDetaySettings.TemelUstKotuCm;
+            _aci.Deger = TemelDetaySettings.GrobetonAcisi;
+            _sol.Deger = TemelDetaySettings.SolCukurCm;
+            _sag.Deger = TemelDetaySettings.SagCukurCm;
+            _hatil.Deger = TemelDetaySettings.HatilYuksekligiCm;
+            _hatilGen.Deger = TemelDetaySettings.HatilGenisligiCm;
+            _doseme.Deger = TemelDetaySettings.SubasmanYuksekligiCm;
+            _ust.Deger = TemelDetaySettings.UstTemelYuksekligiCm;
+            _alt.Deger = TemelDetaySettings.AltTemelYuksekligiCm;
+            _gen.Deger = TemelDetaySettings.TemelGenisligiCm;
+            _uzunluk.Deger = TemelDetaySettings.KademeUzunluguCm;
+            _ustSag.Deger = TemelDetaySettings.SagUstTemelYuksekligiCm;
             _solKademe.Checked = TemelDetaySettings.SolKademe;
             _sagKademe.Checked = TemelDetaySettings.SagKademe;
+            _pas.Deger = TemelDetaySettings.PaspayiCm;
+            _ustDonati.Ayarla(TemelDetaySettings.UstCapMm, TemelDetaySettings.UstAralikCm);
+            _altDonati.Ayarla(TemelDetaySettings.AltCapMm, TemelDetaySettings.AltAralikCm);
             UpdateKademeControls();
-            _pas.Value = Clamp(_pas, (decimal)TemelDetaySettings.PaspayiCm);
-            SelectCap(_ustCap, TemelDetaySettings.UstCapMm);
-            _ustAralik.Value = Clamp(_ustAralik, TemelDetaySettings.UstAralikCm);
-            SelectCap(_altCap, TemelDetaySettings.AltCapMm);
-            _altAralik.Value = Clamp(_altAralik, TemelDetaySettings.AltAralikCm);
         }
 
+        /// <summary>Runner'ın okuduğu ayar alanları değişmeden doldurulur.</summary>
         private void PushSettings()
         {
-            TemelDetaySettings.TemelUstKotuCm = (double)_ustKot.Value;
-            TemelDetaySettings.GrobetonAcisi = (double)_aci.Value;
-            TemelDetaySettings.SolCukurCm = (double)_sol.Value;
-            TemelDetaySettings.SagCukurCm = (double)_sag.Value;
-            TemelDetaySettings.HatilYuksekligiCm = (double)_hatil.Value;
-            TemelDetaySettings.HatilGenisligiCm = (double)_hatilGen.Value;
-            TemelDetaySettings.SubasmanYuksekligiCm = (double)_doseme.Value;
-            TemelDetaySettings.UstTemelYuksekligiCm = (double)_ust.Value;
-            TemelDetaySettings.AltTemelYuksekligiCm = (double)_alt.Value;
-            TemelDetaySettings.TemelGenisligiCm = (double)_gen.Value;
-            TemelDetaySettings.KademeUzunluguCm = (double)_uzunluk.Value;
-            TemelDetaySettings.SagUstTemelYuksekligiCm = (double)_ustSag.Value;
+            TemelDetaySettings.TemelUstKotuCm = _ustKot.Deger;
+            TemelDetaySettings.GrobetonAcisi = _aci.Deger;
+            TemelDetaySettings.SolCukurCm = _sol.Deger;
+            TemelDetaySettings.SagCukurCm = _sag.Deger;
+            TemelDetaySettings.HatilYuksekligiCm = _hatil.Deger;
+            TemelDetaySettings.HatilGenisligiCm = _hatilGen.Deger;
+            TemelDetaySettings.SubasmanYuksekligiCm = _doseme.Deger;
+            TemelDetaySettings.UstTemelYuksekligiCm = _ust.Deger;
+            TemelDetaySettings.AltTemelYuksekligiCm = _alt.Deger;
+            TemelDetaySettings.TemelGenisligiCm = _gen.Deger;
+            TemelDetaySettings.KademeUzunluguCm = _uzunluk.Deger;
+            TemelDetaySettings.SagUstTemelYuksekligiCm = _ustSag.Deger;
             TemelDetaySettings.SolKademe = _solKademe.Checked;
             TemelDetaySettings.SagKademe = _sagKademe.Checked;
-            TemelDetaySettings.PaspayiCm = (double)_pas.Value;
-            TemelDetaySettings.UstCapMm = ParseCap(_ustCap);
-            TemelDetaySettings.UstAralikCm = (int)_ustAralik.Value;
-            TemelDetaySettings.AltCapMm = ParseCap(_altCap);
-            TemelDetaySettings.AltAralikCm = (int)_altAralik.Value;
+            TemelDetaySettings.PaspayiCm = _pas.Deger;
+            TemelDetaySettings.UstCapMm = _ustDonati.CapMm;
+            TemelDetaySettings.UstAralikCm = (int)Math.Round(_ustDonati.AralikCm);
+            TemelDetaySettings.AltCapMm = _altDonati.CapMm;
+            TemelDetaySettings.AltAralikCm = (int)Math.Round(_altDonati.AralikCm);
             TemelDetaySettings.Save();
         }
 
+        /// <summary>Kapalı kademenin yükseklik ve üst temel alanları pasif (eski davranış).</summary>
         private void UpdateKademeControls()
         {
             _sol.Enabled = _ust.Enabled = _solKademe.Checked;
             _sag.Enabled = _ustSag.Enabled = _sagKademe.Checked;
+            Denetci.Guncelle();
         }
+
         private void OnCiz()
         {
             if (_starting) return;
+            if (!Denetci.Onayla()) return;
             PushSettings();
-            if (TemelDetaySettings.PaspayiCm * 2.0 + 2.0 > TemelDetaySettings.AltTemelYuksekligiCm)
-            {
-                MessageBox.Show(
-                    "Paspayı, alt temel yüksekliğine sığmıyor.",
-                    "Temel Detayı",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
-                return;
-            }
-            if (!TemelDetaySettings.SolKademe && !TemelDetaySettings.SagKademe)
-            {
-                MessageBox.Show("Sol veya sağ kademeden en az birini seçin.", "Temel Detayı");
-                return;
-            }
             try
             {
                 var doc = AcApp.DocumentManager.MdiActiveDocument;
@@ -350,162 +341,6 @@ namespace ST4Yardimci
             {
                 _starting = false;
             }
-        }
-
-        private void Section(string title, ref int y)
-        {
-            var bar = new Panel
-            {
-                Location = new Point(12, y),
-                Size = new Size(468, 22),
-                BackColor = Beykent.Monolit.StandardFormTheme.BgAlt
-            };
-            bar.Controls.Add(new Label
-            {
-                Text = title,
-                Location = new Point(8, 3),
-                AutoSize = true,
-                ForeColor = Beykent.Monolit.StandardFormTheme.Accent,
-                BackColor = Color.Transparent,
-                Font = new SdFont(Font, FontStyle.Bold)
-            });
-            Controls.Add(bar);
-            y += 28;
-        }
-
-        private NumericUpDown Cell(int col, int y, string label, string unit,
-            decimal min, decimal max, decimal inc, int decimals, decimal val)
-        {
-            int x = 12 + col * 240;
-            Controls.Add(new Label
-            {
-                Text = label,
-                Location = new Point(x, y + 3),
-                AutoSize = false,
-                Size = new Size(108, 18),
-                ForeColor = Beykent.Monolit.StandardFormTheme.TextMuted,
-                BackColor = Color.Transparent
-            });
-            var n = new NumericUpDown
-            {
-                Location = new Point(x + 110, y),
-                Size = new Size(58, 22),
-                Minimum = min,
-                Maximum = max,
-                Increment = inc,
-                DecimalPlaces = decimals,
-                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
-                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
-                BorderStyle = BorderStyle.FixedSingle
-            };
-            n.Value = Clamp(n, val);
-            YardimciUi.StripUpDownButtons(n);
-            Controls.Add(n);
-            Controls.Add(new Label
-            {
-                Text = unit,
-                Location = new Point(x + 172, y + 3),
-                AutoSize = true,
-                ForeColor = Beykent.Monolit.StandardFormTheme.TextMuted,
-                BackColor = Color.Transparent
-            });
-            return n;
-        }
-
-        private ComboBox AddCapSlash(string label, ref int y, int selectedMm, int aralikCm, out NumericUpDown aralik)
-        {
-            Controls.Add(new Label
-            {
-                Text = label,
-                Location = new Point(12, y + 3),
-                AutoSize = false,
-                Size = new Size(108, 18),
-                ForeColor = Beykent.Monolit.StandardFormTheme.TextMuted,
-                BackColor = Color.Transparent
-            });
-            var c = new ComboBox
-            {
-                Location = new Point(122, y),
-                Size = new Size(52, 22),
-                DropDownStyle = ComboBoxStyle.DropDownList,
-                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
-                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
-                FlatStyle = FlatStyle.Flat
-            };
-            foreach (int d in new[] { 8, 10, 12, 14, 16, 18, 20, 22, 25 })
-                c.Items.Add(d.ToString(CultureInfo.InvariantCulture));
-            SelectCap(c, selectedMm);
-            Controls.Add(c);
-            Controls.Add(new Label
-            {
-                Text = "/",
-                Location = new Point(180, y + 3),
-                AutoSize = true,
-                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
-                BackColor = Color.Transparent
-            });
-            aralik = new NumericUpDown
-            {
-                Location = new Point(196, y),
-                Size = new Size(52, 22),
-                Minimum = 5,
-                Maximum = 40,
-                Increment = 1,
-                DecimalPlaces = 0,
-                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
-                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
-                BorderStyle = BorderStyle.FixedSingle
-            };
-            aralik.Value = Clamp(aralik, aralikCm);
-            YardimciUi.StripUpDownButtons(aralik);
-            Controls.Add(aralik);
-            y += 28;
-            return c;
-        }
-
-        private static int ParseCap(ComboBox cmb)
-        {
-            if (cmb.SelectedItem is string s && int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out int v))
-                return v;
-            return 16;
-        }
-
-        private static void SelectCap(ComboBox cmb, int mm)
-        {
-            string key = mm.ToString(CultureInfo.InvariantCulture);
-            for (int i = 0; i < cmb.Items.Count; i++)
-            {
-                if (cmb.Items[i] is string s && s == key)
-                {
-                    cmb.SelectedIndex = i;
-                    return;
-                }
-            }
-            if (cmb.Items.Count > 0) cmb.SelectedIndex = 0;
-        }
-
-        private static decimal Clamp(NumericUpDown n, decimal v)
-        {
-            if (v < n.Minimum) return n.Minimum;
-            if (v > n.Maximum) return n.Maximum;
-            return v;
-        }
-
-        private static Button MakeButton(string text, int x, int y, int w, bool accent)
-        {
-            var b = new Button
-            {
-                Text = text,
-                Location = new Point(x, y),
-                Size = new Size(w, 26),
-                FlatStyle = FlatStyle.Flat,
-                BackColor = Beykent.Monolit.StandardFormTheme.BgAlt,
-                ForeColor = accent ? Beykent.Monolit.StandardFormTheme.Accent : Beykent.Monolit.StandardFormTheme.Text,
-                Cursor = Cursors.Hand
-            };
-            b.FlatAppearance.BorderColor = Beykent.Monolit.StandardFormTheme.InputBorder;
-            b.FlatAppearance.MouseOverBackColor = Beykent.Monolit.StandardFormTheme.BgHover;
-            return b;
         }
     }
 }

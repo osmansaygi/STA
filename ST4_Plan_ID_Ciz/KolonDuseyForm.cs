@@ -5,6 +5,7 @@ using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Windows.Forms;
+using Beykent.Monolit.Girdi;
 using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
 using SdFont = System.Drawing.Font;
 using ST4AksCizCSharp;
@@ -16,6 +17,8 @@ namespace ST4PlanIdCiz
     {
         /// <summary>true = 1/25, false = 1/50.</summary>
         public static bool Olcek25 { get; set; }
+        /// <summary>true = 1/100 paftaya konacak: açılım (yazı/ölçü/antet dahil) ×2.</summary>
+        public static bool Pafta100 { get; set; }
 
         /// <summary>
         /// 0 = katları tüm al (tek düşey görünüş),
@@ -30,64 +33,101 @@ namespace ST4PlanIdCiz
         /// <summary>Son seçilen «son kat» adı (kat sınırla diyaloğu).</summary>
         public static string SonKatAdi { get; set; }
 
+        /// <summary>
+        /// Perde başlığında Hcr→normal ℓu farkı &gt; 20 cm ise ara katlarda sabit ortalama ℓu.
+        /// Yalnız perde / poligon kol başlığı; kolon formu değişmez.
+        /// </summary>
+        public static bool BaslikGecisAktif { get; set; }
+
+        /// <summary>Hcr üstündeki geçiş kat sayısı (hepsi aynı ara ℓu). 1–10.</summary>
+        public static int BaslikGecisKatSayisi { get; set; } = 1;
+
+        /// <summary>
+        /// Kolon-kiriş birleşim bölgesi etriyeleri: false = normal aralık (sj = 10 cm),
+        /// true = sıklaştırma bölgesi aralığı (10 cm'yi aşmaz).
+        /// </summary>
+        public static bool KirisBolgesiSiklastir { get; set; }
+
+        /// <summary>
+        /// Tüm kolon boyunca sıklaştırma aralığında etriye (orta ve bindirme bölgesi dahil).
+        /// Birleşim bölgesi de sıklaştırılır.
+        /// </summary>
+        public static bool TumKolonSiklastir { get; set; }
+
         public static bool KatKatCiz => KatModu == 1 || KatModu == 2;
         public static bool BenzerKatBirlestir => KatModu == 2;
 
         static bool _loaded;
 
-        static string IniPath()
-        {
-            string dir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "ST4_Plan_ID_Ciz");
-            try { Directory.CreateDirectory(dir); } catch { }
-            return Path.Combine(dir, "kolondusey.ini");
-        }
-
         public static void EnsureLoaded()
         {
             if (_loaded) return;
             _loaded = true;
-            try
-            {
-                string path = IniPath();
-                if (!File.Exists(path)) return;
-                foreach (string raw in File.ReadAllLines(path))
-                {
-                    string line = (raw ?? "").Trim();
-                    if (line.Length == 0 || line[0] == ';' || line[0] == '#') continue;
-                    int eq = line.IndexOf('=');
-                    if (eq <= 0) continue;
-                    string key = line.Substring(0, eq).Trim();
-                    string val = line.Substring(eq + 1).Trim();
-                    if (string.Equals(key, "Olcek25", StringComparison.OrdinalIgnoreCase))
-                        Olcek25 = val == "1" || string.Equals(val, "true", StringComparison.OrdinalIgnoreCase);
-                    else if (string.Equals(key, "KatModu", StringComparison.OrdinalIgnoreCase)
-                             && int.TryParse(val, NumberStyles.Integer, CultureInfo.InvariantCulture, out int km)
-                             && km >= 0 && km <= 2)
-                        KatModu = km;
-                    else if (string.Equals(key, "KatSinirla", StringComparison.OrdinalIgnoreCase))
-                        KatSinirla = val == "1" || string.Equals(val, "true", StringComparison.OrdinalIgnoreCase);
-                    else if (string.Equals(key, "SonKatAdi", StringComparison.OrdinalIgnoreCase))
-                        SonKatAdi = val;
-                }
-            }
-            catch { }
+            var saved = PlanFormSettings.Load("kolondusey");
+            Olcek25 = saved.Bool("Olcek25", Olcek25);
+            Pafta100 = saved.Bool("Pafta100", Pafta100);
+            KatModu = saved.Int("KatModu", KatModu, 0, 2);
+            KatSinirla = saved.Bool("KatSinirla", KatSinirla);
+            SonKatAdi = saved.Text("SonKatAdi", SonKatAdi);
+            BaslikGecisAktif = saved.Bool("BaslikGecisAktif", BaslikGecisAktif);
+            BaslikGecisKatSayisi = saved.Int("BaslikGecisKatSayisi", BaslikGecisKatSayisi, 1, 10);
+            KirisBolgesiSiklastir = saved.Bool("KirisBolgesiSiklastir", KirisBolgesiSiklastir);
+            TumKolonSiklastir = saved.Bool("TumKolonSiklastir", TumKolonSiklastir);
         }
 
         public static void Save()
         {
             EnsureLoaded();
-            try
+            PlanFormSettings.Load("kolondusey").Set("Olcek25", Olcek25).Set("Pafta100", Pafta100).Set("KatModu", KatModu)
+                .Set("KatSinirla", KatSinirla).Set("SonKatAdi", SonKatAdi)
+                .Set("BaslikGecisAktif", BaslikGecisAktif)
+                .Set("BaslikGecisKatSayisi", BaslikGecisKatSayisi)
+                .Set("KirisBolgesiSiklastir", KirisBolgesiSiklastir)
+                .Set("TumKolonSiklastir", TumKolonSiklastir).Save();
+        }
+
+        /// <summary>Kolon kiriş bölgesi etriye aralığı: 0 normal, 1 kiriş bölgesi, 2 tüm kolon sıklaştırma.</summary>
+        public static SegmentSecim CreateKirisBolgesiEtriyeSecim()
+        {
+            EnsureLoaded();
+            return new SegmentSecim("Normal aralık", "Kiriş bölgesi", "Tüm kolon")
             {
-                var sb = new StringBuilder();
-                sb.AppendLine("Olcek25=" + (Olcek25 ? "1" : "0"));
-                sb.AppendLine("KatModu=" + KatModu.ToString(CultureInfo.InvariantCulture));
-                sb.AppendLine("KatSinirla=" + (KatSinirla ? "1" : "0"));
-                sb.AppendLine("SonKatAdi=" + (SonKatAdi ?? ""));
-                File.WriteAllText(IniPath(), sb.ToString(), Encoding.UTF8);
-            }
-            catch { }
+                Secili = TumKolonSiklastir ? 2 : (KirisBolgesiSiklastir ? 1 : 0)
+            };
+        }
+
+        public static void PushKirisBolgesiFrom(SegmentSecim secim)
+        {
+            if (secim == null) return;
+            EnsureLoaded();
+            TumKolonSiklastir = secim.Secili == 2;
+            KirisBolgesiSiklastir = secim.Secili >= 1;
+            Save();
+        }
+
+        /// <summary>Başlık geçiş tik + kat sayısı (1–10, tam sayı).</summary>
+        public static void CreateBaslikGecisControls(out CheckBox chk, out OlcuKutusu kat)
+        {
+            EnsureLoaded();
+            chk = new CheckBox
+            {
+                Text = "Başlık kademeli geçiş",
+                AutoSize = true,
+                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
+                BackColor = Color.Transparent,
+                Checked = BaslikGecisAktif
+            };
+            kat = new OlcuKutusu("Geçiş kat sayısı", "kat", 1, 10, 1);
+            kat.Deger = Math.Max(1, Math.Min(10, BaslikGecisKatSayisi));
+        }
+
+        public static void PushBaslikGecisFrom(CheckBox chk, OlcuKutusu kat)
+        {
+            if (chk == null || kat == null) return;
+            EnsureLoaded();
+            BaslikGecisAktif = chk.Checked;
+            BaslikGecisKatSayisi = (int)Math.Round(kat.Deger);
+            Save();
         }
     }
 
@@ -96,12 +136,14 @@ namespace ST4PlanIdCiz
     /// </summary>
     internal sealed class KolonDuseyForm : Beykent.Monolit.MonolitForm
     {
-        private readonly ComboBox _cmbOlcek;
-        private readonly CheckBox _chkTum;
-        private readonly CheckBox _chkAyri;
-        private readonly CheckBox _chkBenzer;
+        private readonly SegmentSecim _olcek;
+        private readonly SegmentSecim _pafta;
+        private readonly SegmentSecim _katModu;
         private readonly CheckBox _chkSinirla;
-        private bool _syncing;
+        private readonly CheckBox _chkBaslikGecis;
+        private readonly OlcuKutusu _baslikGecisKat;
+        private readonly SegmentSecim _kirisBolgesi;
+        private readonly GirdiDenetci _denetci = new GirdiDenetci();
 
         /// <summary>Modal form. true = Çiz (ayarlar kaydedildi).</summary>
         public static bool ShowModalAndAccept()
@@ -148,8 +190,6 @@ namespace ST4PlanIdCiz
                 if (dr != DialogResult.OK) return false;
                 allowed = f.BuildAllowedUpToSonKat();
                 if (allowed == null || allowed.Count == 0) return false;
-                KolonDuseySettings.SonKatAdi = f.SelectedSonKatAdi;
-                KolonDuseySettings.Save();
                 return true;
             }
         }
@@ -169,55 +209,33 @@ namespace ST4PlanIdCiz
             KeyPreview = true;
             DialogResult = DialogResult.Cancel;
 
-            int y = 74;
-            Controls.Add(MkLabel("Ölçek", 12, y + 3, 70));
-            _cmbOlcek = new ComboBox
+            // Ortak kural 3/4: detay ölçeği (Olcek25) ve pafta ölçeği (Pafta100) ayrı sorulardır; ikisi de segment.
+            _olcek = new SegmentSecim("1/50", "1/25") { Secili = KolonDuseySettings.Olcek25 ? 1 : 0 };
+            _pafta = new SegmentSecim("1/50 pafta", "1/100 pafta (×2)") { Secili = KolonDuseySettings.Pafta100 ? 1 : 0 };
+            // Eski elle dışlanan üç tik (tüm al / ayrı al / benzer birleştir) → tek segment; KatModu 0/1/2 aynı.
+            _katModu = new SegmentSecim("Tüm katlar", "Kat kat", "Benzer katlar")
             {
-                Location = new Point(90, y),
-                Size = new Size(160, 22),
-                DropDownStyle = ComboBoxStyle.DropDownList,
-                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
+                Secili = Math.Max(0, Math.Min(2, KolonDuseySettings.KatModu))
+            };
+            _chkSinirla = new CheckBox
+            {
+                Text = "Kat sınırla",
+                AutoSize = true,
                 ForeColor = Beykent.Monolit.StandardFormTheme.Text,
-                FlatStyle = FlatStyle.Flat
+                BackColor = Color.Transparent,
+                Checked = KolonDuseySettings.KatSinirla
             };
-            _cmbOlcek.Items.Add("1/50");
-            _cmbOlcek.Items.Add("1/25");
-            _cmbOlcek.SelectedIndex = KolonDuseySettings.Olcek25 ? 1 : 0;
-            Controls.Add(_cmbOlcek);
-            y += 32;
-
-            Controls.Add(MkLabel("Kat alma", 12, y, 200));
-            y += 20;
-
-            _chkTum = MkCheck("Katları tüm al", 12, y, KolonDuseySettings.KatModu == 0);
-            _chkTum.CheckedChanged += (s, e) => OnKatTick(_chkTum);
-            Controls.Add(_chkTum);
-            y += 24;
-
-            _chkAyri = MkCheck("Katları ayrı al", 12, y, KolonDuseySettings.KatModu == 1);
-            _chkAyri.CheckedChanged += (s, e) => OnKatTick(_chkAyri);
-            Controls.Add(_chkAyri);
-            y += 24;
-
-            _chkBenzer = MkCheck("Benzer katları birleştir", 12, y, KolonDuseySettings.KatModu == 2);
-            _chkBenzer.CheckedChanged += (s, e) => OnKatTick(_chkBenzer);
-            Controls.Add(_chkBenzer);
-            y += 26;
-
-            _chkSinirla = MkCheck("Kat sınırla", 12, y, KolonDuseySettings.KatSinirla);
             Controls.Add(_chkSinirla);
-            y += 30;
 
-            EnsureOneKatChecked();
+            KolonDuseySettings.CreateBaslikGecisControls(out _chkBaslikGecis, out _baslikGecisKat);
+            _denetci.Ekle(_baslikGecisKat);
+            Controls.Add(_chkBaslikGecis);
 
-            var btnCiz = MkButton("Çiz", 12, y, 100, true);
-            btnCiz.Click += (s, e) =>
-            {
-                PushSettings();
-                DialogResult = DialogResult.OK;
-                Close();
-            };
-            var btnIptal = MkButton("İptal", 120, y, 80, false);
+            _kirisBolgesi = KolonDuseySettings.CreateKirisBolgesiEtriyeSecim();
+
+            var btnCiz = MkButton("Çiz", 12, 0, 100, true);
+            btnCiz.Click += (s, e) => Ciz();
+            var btnIptal = MkButton("İptal", 120, 0, 80, false);
             btnIptal.Click += (s, e) =>
             {
                 DialogResult = DialogResult.Cancel;
@@ -227,7 +245,7 @@ namespace ST4PlanIdCiz
             Controls.Add(btnIptal);
             AcceptButton = btnCiz;
             CancelButton = btnIptal;
-            ClientSize = new Size(270, y + 40);
+            ClientSize = new Size(270, 320);
 
 
             try
@@ -241,14 +259,27 @@ namespace ST4PlanIdCiz
                 StartPosition = FormStartPosition.CenterScreen;
             }
 
-            // Kompakt, içerik odaklı form düzeni.
-            var ui = BeginCompact(300);
-            ui.Section("Çizim").Field("Ölçek", _cmbOlcek);
-            ui.Tip(_chkTum, _chkTum.Text); ui.Tip(_chkAyri, _chkAyri.Text); ui.Tip(_chkBenzer, _chkBenzer.Text);
-            _chkTum.Text = "Tüm katlar"; _chkAyri.Text = "Kat kat"; _chkBenzer.Text = "Benzer katlar";
-            ui.Section("Katların çizimi").Options(_chkTum, _chkAyri, _chkBenzer).Choices(_chkSinirla);
+            var ui = BeginCompact(320);
+            ui.Section("Katların çizimi").Control(_katModu).Choices(_chkSinirla);
+            ui.Tip(_katModu, "Tüm katlar: tek düşey görünüş · Kat kat: her kat ayrı satır · Benzer katlar: benzer katları birleştir");
+            ui.Section("Kolon etriye sıklaştırma").Field("Aralık", _kirisBolgesi);
+            ui.Section("Perde başlığı")
+                .Choices(_chkBaslikGecis)
+                .FieldWhen(() => _chkBaslikGecis.Checked, new Label { Text = "Geçiş kat sayısı" }, _baslikGecisKat);
+            ui.Section("Çizim").Field("Ölçek", _olcek);
+            ui.Section("Pafta ölçeği").Control(_pafta);
+            ui.Section(null).Control(_denetci.Serit, 44);
             ui.Footer(btnCiz, btnIptal);
             ui.Finish();
+            _denetci.Guncelle();
+        }
+
+        private void Ciz()
+        {
+            if (!_denetci.Onayla()) return;
+            PushSettings();
+            DialogResult = DialogResult.OK;
+            Close();
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -259,71 +290,23 @@ namespace ST4PlanIdCiz
                 Close();
                 return true;
             }
-            if (keyData == Keys.Enter || keyData == Keys.Return)
+            if ((keyData == Keys.Enter || keyData == Keys.Return) && !(ActiveControl is Button))
             {
-                PushSettings();
-                DialogResult = DialogResult.OK;
-                Close();
+                Ciz();
                 return true;
             }
             return base.ProcessCmdKey(ref msg, keyData);
         }
 
-        private void OnKatTick(CheckBox source)
-        {
-            if (_syncing) return;
-            _syncing = true;
-            try
-            {
-                if (source.Checked)
-                {
-                    if (!ReferenceEquals(source, _chkTum)) _chkTum.Checked = false;
-                    if (!ReferenceEquals(source, _chkAyri)) _chkAyri.Checked = false;
-                    if (!ReferenceEquals(source, _chkBenzer)) _chkBenzer.Checked = false;
-                }
-                EnsureOneKatChecked();
-            }
-            finally
-            {
-                _syncing = false;
-            }
-        }
-
-        private void EnsureOneKatChecked()
-        {
-            if (_chkTum.Checked || _chkAyri.Checked || _chkBenzer.Checked) return;
-            _chkTum.Checked = true;
-        }
-
         private void PushSettings()
         {
-            KolonDuseySettings.Olcek25 = _cmbOlcek.SelectedIndex == 1;
-            if (_chkBenzer.Checked) KolonDuseySettings.KatModu = 2;
-            else if (_chkAyri.Checked) KolonDuseySettings.KatModu = 1;
-            else KolonDuseySettings.KatModu = 0;
+            KolonDuseySettings.Olcek25 = _olcek.Secili == 1;
+            KolonDuseySettings.Pafta100 = _pafta.Secili == 1;
+            KolonDuseySettings.KatModu = _katModu.Secili;
             KolonDuseySettings.KatSinirla = _chkSinirla.Checked;
-            KolonDuseySettings.Save();
+            KolonDuseySettings.PushBaslikGecisFrom(_chkBaslikGecis, _baslikGecisKat);
+            KolonDuseySettings.PushKirisBolgesiFrom(_kirisBolgesi);
         }
-
-        private static Label MkLabel(string text, int x, int y, int w) => new Label
-        {
-            Text = text,
-            Location = new Point(x, y),
-            AutoSize = false,
-            Size = new Size(w, 18),
-            ForeColor = Beykent.Monolit.StandardFormTheme.TextMuted,
-            BackColor = Color.Transparent
-        };
-
-        private static CheckBox MkCheck(string text, int x, int y, bool on) => new CheckBox
-        {
-            Text = text,
-            Location = new Point(x, y),
-            AutoSize = true,
-            ForeColor = Beykent.Monolit.StandardFormTheme.Text,
-            BackColor = Color.Transparent,
-            Checked = on
-        };
 
         private static Button MkButton(string text, int x, int y, int w, bool accent)
         {
@@ -360,6 +343,7 @@ namespace ST4PlanIdCiz
 
         public KolonDuseyKatSinirForm(List<(int fi, string name, double elev)> items)
         {
+            KolonDuseySettings.EnsureLoaded();
             _items = items ?? new List<(int fi, string name, double elev)>();
             Text = "Kat sınırla — son kat";
             FormBorderStyle = FormBorderStyle.FixedToolWindow;
@@ -406,6 +390,9 @@ namespace ST4PlanIdCiz
             var btnOk = MkBtn("Tamam", 12, y, 100, true);
             btnOk.Click += (s, e) =>
             {
+                if (_cmbSon.SelectedIndex < 0) return;
+                KolonDuseySettings.SonKatAdi = SelectedSonKatAdi;
+                KolonDuseySettings.Save();
                 DialogResult = DialogResult.OK;
                 Close();
             };

@@ -32,7 +32,12 @@ namespace ST4PlanIdCiz
                     result.Add((Kontur(face, tip, slab, a), a, Kontur(face, tip, slab, b), b, lane));
                 }
             }
-            Zincir(true, sol); Zincir(false, sag);
+            Zincir(true, sol);
+            int sagOnce = result.Count;
+            Zincir(false, sag);
+            // Bant kiriş (döşeme = h): sağ zincir tek parça tam yükseklikse toplam aynı ölçüyü tekrarlar.
+            if (result.Count - sagOnce == 1 && Math.Abs(result[sagOnce].Item2 + h) < 1e-6 && Math.Abs(result[sagOnce].Item4) < 1e-6)
+                return result;
             result.Add((Kontur(w, w + 15, sag, -h), -h, Kontur(w, w + 15, sag, 0), 0,
                 sag.HasValue ? w + 35 : w + 10));
             return result;
@@ -57,14 +62,14 @@ namespace ST4PlanIdCiz
             public int Sira;
         }
 
-        private static List<double> KirisKesitSiraXleri(double b, int count, double diameter, List<double> fixedXs = null, double cover = 5)
+        private static List<double> KirisKesitSiraXleri(double b, int count, double diameter, List<double> fixedXs = null, double cover = 5, double net = 4)
         {
             var anchors = fixedXs == null
                 ? KirisKesitEtriyeKutulari(b, cover - 1).SelectMany(v => new[] { v.Lo + 1, v.Hi - 1 }).OrderBy(v => v).ToList()
                 : fixedXs.Concat(new[] { cover, b - cover }).Distinct().OrderBy(v => v).ToList();
             if (count <= 0 || anchors.Count == 0) return new List<double>();
-            double pitch = 4.0 + diameter;
-            if (count < anchors.Count)
+            double pitch = net + diameter;
+            if (count < anchors.Count || anchors.Zip(anchors.Skip(1), (a, c) => c - a).Any(d => d < pitch - 1e-8))
             {
                 int n = Math.Min(count, Math.Max(1, (int)Math.Floor((b - 2 * cover) / pitch + 1e-8) + 1));
                 return Enumerable.Range(0, n).Select(i => n == 1 ? cover : cover + (b - 2 * cover) * i / (n - 1)).ToList();
@@ -96,7 +101,7 @@ namespace ST4PlanIdCiz
             return xs;
         }
 
-        private static List<KirisKesitCubuk> KirisKesitCubukYerlesimi(double b, double h, List<KirisKesitSira> bars, bool monUst = true, double cover = 5)
+        private static List<KirisKesitCubuk> KirisKesitCubukYerlesimi(double b, double h, List<KirisKesitSira> bars, bool monUst = true, double cover = 5, double yatayNet = 4, double duseyNet = 3)
         {
             var result = new List<KirisKesitCubuk>();
             foreach (bool top in new[] { true, false })
@@ -118,18 +123,18 @@ namespace ST4PlanIdCiz
                 {
                     double maxDia = pending.Max(r => r.Cap) / 10.0;
                     int mainCount = pending.Count(r => r.Tur == "mon" || r.Tur == "duz");
-                    var mainXs = mainCount > 0 ? KirisKesitSiraXleri(b, mainCount, maxDia, cover: cover) : new List<double>();
+                    var mainXs = mainCount > 0 ? KirisKesitSiraXleri(b, mainCount, maxDia, cover: cover, net: yatayNet) : new List<double>();
                     var xs = mainCount > 0 && mainXs.Count == mainCount && pending.Count > mainCount
-                        ? KirisKesitSiraXleri(b, pending.Count, maxDia, mainXs, cover)
-                        : KirisKesitSiraXleri(b, pending.Count, maxDia, cover: cover);
+                        ? KirisKesitSiraXleri(b, pending.Count, maxDia, mainXs, cover, yatayNet)
+                        : KirisKesitSiraXleri(b, pending.Count, maxDia, cover: cover, net: yatayNet);
                     if (xs.Count == 0) break;
                     // Tek taşan çubuk yalnız sol köşeye düşmesin: 1. sıradan bir eksilt, 2. sırada iki köşe.
                     if (row == 0 && pending.Count > xs.Count && pending.Count - xs.Count == 1 && xs.Count >= 3)
                     {
                         int want = xs.Count - 1;
                         xs = mainCount > 0 && mainXs.Count == mainCount && want > mainCount
-                            ? KirisKesitSiraXleri(b, want, maxDia, mainXs, cover)
-                            : KirisKesitSiraXleri(b, want, maxDia, cover: cover);
+                            ? KirisKesitSiraXleri(b, want, maxDia, mainXs, cover, yatayNet)
+                            : KirisKesitSiraXleri(b, want, maxDia, cover: cover, net: yatayNet);
                         if (xs.Count == 0) break;
                     }
                     var corners = KirisKesitEtriyeKutulari(b, cover - 1).SelectMany(v => new[] { v.Lo + 1, v.Hi - 1 }).ToList();
@@ -138,7 +143,7 @@ namespace ST4PlanIdCiz
                         .ThenBy(xx => corners.Any(c => Math.Abs(c - xx) < 1e-7) ? 0 : 1).ThenBy(xx => xx).ToList();
                     var selected = pending.Take(slots.Count).ToList();
                     double rowDia = selected.Max(r => r.Cap) / 10.0;
-                    if (row > 0) depth += previousDia * 0.5 + 3.0 + rowDia * 0.5;
+                    if (row > 0) depth += previousDia * 0.5 + duseyNet + rowDia * 0.5;
                     for (int i = 0; i < selected.Count; i++)
                         result.Add(new KirisKesitCubuk { Donati = selected[i], Sira = row,
                             Merkez = new Point2d(slots[i], top ? -depth : -h + depth) });
@@ -438,13 +443,16 @@ namespace ST4PlanIdCiz
             }
         }
 
+        /// <summary>KIRISCIZ "Tek etriye": geniş kirişte de tek kapalı etriye (yalnız çizim süresince açık).</summary>
+        private static bool _kirisTekEtriye;
+
         private static List<(double Lo, double Hi)> KirisKesitEtriyeKutulari(double b, double cover = 4)
         {
             double width = b - 2 * cover;
             var boxes = new List<(double Lo, double Hi)>();
             if (width <= 2.0) return boxes;
             int count = 1;
-            while (width / (2 * count - 1) > 35.0 + 1e-8) count++;
+            while (!_kirisTekEtriye && width / (2 * count - 1) > 35.0 + 1e-8) count++;
             double step = width / (2 * count - 1);
             for (int i = 0; i < count; i++) boxes.Add((cover + i * step, cover + (i + count) * step));
             return boxes;
@@ -500,7 +508,7 @@ namespace ST4PlanIdCiz
                     montaj[beam] = m;
                 }
                 if (m.EtriyeCap <= 0) continue;
-                int need = 2 * KirisKesitEtriyeKutulari(beam.WidthCm).Count;
+                int need = 2 * KirisKesitEtriyeKutulari(beam.WidthCm, KirisAcilimEtriyePaspayiCm).Count;
                 string note = "";
                 if (m.Cap > 0 && m.Adet > 0 && m.Adet < need)
                 { note = "MON " + m.Adet + "→" + need; m.Adet = need; }
@@ -625,7 +633,7 @@ namespace ST4PlanIdCiz
             var xs = new List<double>();
             if (tur == "mon" || tur == "duz")
             {
-                foreach (var box in KirisKesitEtriyeKutulari(b)) { xs.Add(box.Lo + 1.0); xs.Add(box.Hi - 1.0); }
+                foreach (var box in KirisKesitEtriyeKutulari(b, cover - 1)) { xs.Add(box.Lo + 1.0); xs.Add(box.Hi - 1.0); }
                 xs.Sort();
                 if (n < xs.Count) xs.Clear();
                 if (xs.Count > 0 && xs.Count < n)
@@ -840,7 +848,8 @@ namespace ST4PlanIdCiz
                     Adet = g.Sum(r => r.Adet), Derinlik = g.First().Derinlik })
                 .OrderBy(r => r.Tur == "mon" || r.Tur == "duz" ? 0 : 1).ToList();
             bool monUst = KirisAcilimMontajUstYuz;
-            var layout = KirisKesitCubukYerlesimi(w, h, labelRows, monUst, _surekliTemelAcilim ? 6 : 5);
+            var layout = KirisKesitCubukYerlesimi(w, h, labelRows, monUst, _surekliTemelAcilim ? 6 : _kirisPaspayiCm + 1,
+                _surekliTemelAcilim ? 4 : _kirisYatayNetBoslukCm, _surekliTemelAcilim ? 3 : _kirisDuseyNetBoslukCm);
             int topLabels = 0, bottomLabels = 0;
             foreach (var r in labelRows)
             {
@@ -866,7 +875,7 @@ namespace ST4PlanIdCiz
             if (k.Etriye > 0)
             {
                 // Kolon etriyesinin aynı 135° kancalı geometri ve açılım yolu.
-                double cover = _surekliTemelAcilim ? 5 : 4;
+                double cover = _surekliTemelAcilim ? 5 : _kirisPaspayiCm;
                 var boxes = KirisKesitEtriyeKutulari(w, cover);
                 foreach (var box in boxes)
                     AppendKolonKesitEtriyePline(tr, ms, x + box.Lo, y - h + cover, x + box.Hi, y - cover, 1.0, Math.Max(10.0, EtriyeAcilimKancaCm(k.Etriye)));

@@ -140,6 +140,58 @@ namespace ST4PlanIdCiz
             public double PlanOffsetX;
             public double PlanOffsetY;
             public int MinWallNo;
+            /// <summary>Açılım yığını anahtarı: katlar arasında plan üzerinde üst üste binen perde grupları aynı anahtarı alır (perde numarası farklı olsa da).</summary>
+            public int StackKey;
+            /// <summary>Plan kopyasının çizildiği satır üstü (kat başına satır, 150 cm aralık).</summary>
+            public double RowTopY = double.NaN;
+            /// <summary>Bu kat kopyasının varlıkları (KAPAMADETAY satır sıkıştırma).</summary>
+            public List<ObjectId> CopyIds;
+        }
+
+        /// <summary>
+        /// KAPAMADETAY: kopya satırları kat başına sabit (satır k = üst − 150·k); tek katlı / üst kat
+        /// yığında plan şeridi görünüşten uzak kalıyordu. Her yığının kullandığı satırlar yukarıdan
+        /// boşluksuz dizilir (sıra ve 150 cm aralık korunur); yığın kopya kapsamı yeniden hesaplanır.
+        /// </summary>
+        private void CompactKapamaCopyRows(Transaction tr, double firstCopyRowTopY)
+        {
+            if (tr == null || _kolon50GorunusPending == null || _kolon50GorunusPending.Count == 0) return;
+            const double satirAra = 150.0;
+            foreach (var stack in _kolon50GorunusPending.GroupBy(p => p.StackKey))
+            {
+                var rows = stack.Where(p => IsFiniteCoord(p.RowTopY)).Select(p => p.RowTopY)
+                    .Distinct().OrderByDescending(y => y).ToList();
+                if (rows.Count == 0) continue;
+                bool degisti = false;
+                var tumIds = new List<ObjectId>();
+                foreach (var p in stack)
+                {
+                    if (p.CopyIds != null) tumIds.AddRange(p.CopyIds);
+                    if (!IsFiniteCoord(p.RowTopY) || p.CopyIds == null || p.CopyIds.Count == 0) continue;
+                    int k = rows.IndexOf(p.RowTopY);
+                    double hedef = firstCopyRowTopY - satirAra * k;
+                    double dy = hedef - p.RowTopY;
+                    if (Math.Abs(dy) < 0.05) continue;
+                    var disp = Matrix3d.Displacement(new Vector3d(0, dy, 0));
+                    foreach (ObjectId id in p.CopyIds)
+                    {
+                        if (id.IsNull || id.IsErased) continue;
+                        try
+                        {
+                            if (tr.GetObject(id, OpenMode.ForWrite, false) is Entity ent)
+                                ent.TransformBy(disp);
+                        }
+                        catch { }
+                    }
+                    p.RowTopY = hedef;
+                    degisti = true;
+                }
+                if (degisti && _kolon50CopyExtentByWallNo != null)
+                {
+                    var kutu = KolonDuseyIdsKutu(tr, tumIds);
+                    if (kutu != null) _kolon50CopyExtentByWallNo[stack.Key] = kutu;
+                }
+            }
         }
 
         private List<(int wallNo, Envelope env)> FlushKolon50PerdeGorunus(Transaction tr, BlockTableRecord btr, double firstCopyRowTopY)
@@ -152,12 +204,17 @@ namespace ST4PlanIdCiz
             EnsurePlanLayer(tr, btr.Database, LayerCirozBeykent, 140, LineWeight.LineWeight020, useDashed: false);
             EnsurePlanLayer(tr, btr.Database, LayerYazi, 4, LineWeight.LineWeight020, useDashed: false);
             EnsurePerdeGorunusAntetLayers(tr, btr.Database);
+            if (string.Equals(_perdeGorunusAntetPrefix, "P-", StringComparison.Ordinal))
+                CompactKapamaCopyRows(tr, firstCopyRowTopY);
             double y0 = firstCopyRowTopY + Kolon50GorunusGapAboveCopyCm;
             var sheets = new List<(int wallNo, Envelope env)>();
             var isimler = new Dictionary<int, string>();
+            bool kapamaTablo = string.Equals(_perdeGorunusAntetPrefix, "P-", StringComparison.Ordinal);
+            _kapamaAntetKatTablo = kapamaTablo ? new Dictionary<int, List<(string kat, string perde, int t)>>() : null;
             foreach (var stack in _kolon50GorunusPending
-                .GroupBy(p => p.MinWallNo)
-                .OrderBy(g => g.Key))
+                .GroupBy(p => p.StackKey)
+                .OrderBy(g => g.Min(p => p.MinWallNo))
+                .ThenBy(g => g.Key))
             {
                 var list = stack.OrderBy(p => p.Floor.ElevationM).ToList();
                 var before = SnapshotKolon50BtrIds(btr);
@@ -178,7 +235,38 @@ namespace ST4PlanIdCiz
                     }
                     if (nos.Count == 0) nos.Add(stack.Key);
                     isimler[stack.Key] = FormatAntetBenzerIsimleri(nos, _perdeGorunusAntetPrefix);
+                    // Perde hattı tablosu: alttan üste kat adı | o kattaki perde numaraları | kalınlık.
+                    if (kapamaTablo)
+                    {
+                        var satir = new List<(string kat, string perde, int t)>();
+                        foreach (var fg in list.Where(p => p.Floor != null && p.PlanGroup != null)
+                            .GroupBy(p => p.Floor).OrderBy(gr => gr.Key.ElevationM))
+                        {
+                            var fNos = new List<int>();
+                            double tMax = 0.0;
+                            foreach (var p in fg)
+                                foreach (var it in p.PlanGroup)
+                                {
+                                    if (it.beam == null) continue;
+                                    fNos.Add(GetBeamNumero(it.beam.BeamId));
+                                    if (it.beam.WidthCm > tMax) tMax = it.beam.WidthCm;
+                                }
+                            if (fNos.Count == 0) continue;
+                            string kat = FormatKalipSchematicAntetFloorName(fg.Key);
+                            if (string.IsNullOrWhiteSpace(kat)) kat = fg.Key.Name ?? "";
+                            satir.Add((kat.Trim(), FormatAntetBenzerIsimleri(fNos, _perdeGorunusAntetPrefix),
+                                (int)Math.Round(tMax)));
+                        }
+                        if (satir.Count > 0) _kapamaAntetKatTablo[stack.Key] = satir;
+                    }
                 }
+            }
+            // Formda "Benzerleri beraber çiz": birebir aynı perde hatları tek antette (donatıya adet çarpanı).
+            if (kapamaTablo)
+            {
+                KapamaPerdeSettings.EnsureLoaded();
+                if (KapamaPerdeSettings.BenzerleriBirlestir)
+                    MergeKapamaBenzerHatlar(tr, sheets, isimler);
             }
             List<(int wallNo, Envelope env)> spaced;
             if (string.Equals(_perdeGorunusAntetPrefix, "P-", StringComparison.Ordinal))
@@ -227,35 +315,34 @@ namespace ST4PlanIdCiz
             foreach (var s in ordered)
             {
                 PerdeGorunusAntetX(s.env, out _, out _, out double oL, out double oR);
-                meta.Add((s.wallNo, s.env, oR - oL, OuterH(s.env), oL, OuterB(s.env)));
+                // Perde hattı tablosu (sol üst): tepe payı ve en küçük çerçeve genişliği.
+                KapamaAntetTabloPayi(s.wallNo, pad, g, out double tepe, out double minW);
+                double ow = Math.Max(oR - oL, minW);
+                meta.Add((s.wallNo, s.env, ow, OuterH(s.env) + tepe, oL, OuterB(s.env)));
             }
 
-            double Hnat = meta.Max(m => m.oh);
             double pay = KapamaAntetIcPayCm;
             double availH = KapamaSheetViewHeightCm - 2.0 * pay;
-            int maxRowsFit = 1;
-            for (int n = 1; n <= meta.Count; n++)
-            {
-                if (n * Hnat + (n - 1) * araCm <= availH + 0.05)
-                    maxRowsFit = n;
-                else
-                    break;
-            }
-            int kRows = Math.Min(maxRowsFit, meta.Count);
-
+            // Satır yükseklikleri ayrı (kolon düşey gibi): eski tek tip yöntemle değişken yükseklikli
+            // paketleme karşılaştırılır, en dar pafta seçilir; artan yükseklik satırlara eşit bölünür.
             var widths = meta.Select(m => m.ow).ToList();
-            var rows = KapamaPackMinWidthRows(widths, kRows, araCm);
+            var heights = meta.Select(m => m.oh).ToList();
+            var rows = PackKolonDuseyAntetRows(widths, heights, availH, araCm, out _);
             for (int r = 0; r < rows.Count; r++)
                 rows[r] = rows[r].OrderBy(i => meta[i].wallNo).ToList();
 
             int nRows = rows.Count;
-            double H = Hnat;
-            if (nRows > 0)
+            var rowH = new double[nRows];
+            double sumH = 0.0;
+            for (int r = 0; r < nRows; r++)
             {
-                double hFit = (availH - (nRows - 1) * araCm) / nRows;
-                if (hFit > H + 0.05) H = hFit;
+                rowH[r] = rows[r].Max(i => meta[i].oh);
+                sumH += rowH[r];
             }
-            _kapamaIcAntetUniformHeightCm = H;
+            double extraH = availH - sumH - Math.Max(0, nRows - 1) * araCm;
+            if (extraH > 0.05 && nRows > 0)
+                for (int r = 0; r < nRows; r++) rowH[r] += extraH / nRows;
+            _kapamaIcAntetUniformHeightCm = nRows > 0 ? rowH.Max() : meta.Max(m => m.oh);
             _kapamaIcFrameYByWallNo = new Dictionary<int, (double oy0, double oy1)>();
             _kapamaIcFrameXByWallNo = new Dictionary<int, (double ox0, double ox1)>();
 
@@ -266,7 +353,7 @@ namespace ST4PlanIdCiz
             for (int r = 0; r < rows.Count; r++)
             {
                 double rowOy1 = yTop;
-                double rowOy0 = yTop - H;
+                double rowOy0 = yTop - rowH[r];
                 double minMinY = double.MaxValue;
                 foreach (int i in rows[r])
                     minMinY = Math.Min(minMinY, meta[i].env.MinY);
@@ -284,7 +371,7 @@ namespace ST4PlanIdCiz
                     _kapamaIcFrameYByWallNo[m.wallNo] = (rowOy0, rowOy1);
                     x += m.ow + araCm;
                 }
-                yTop -= H + araCm;
+                yTop -= rowH[r] + araCm;
             }
 
             // Satırları SheetView kullanılabilir genişliğe (en geniş satır) doldur:
@@ -317,7 +404,8 @@ namespace ST4PlanIdCiz
                     int i = rows[r][k];
                     if (!moved.TryGetValue(meta[i].wallNo, out var env)) continue;
                     PerdeGorunusAntetX(env, out _, out _, out double oL, out double oR);
-                    w += (oR - oL) + (k > 0 ? araCm : 0.0);
+                    KapamaAntetTabloPayi(meta[i].wallNo, PerdeGorunusAntetPadCm, PerdeGorunusAntetGapCm, out _, out double minW0);
+                    w += Math.Max(oR - oL, minW0) + (k > 0 ? araCm : 0.0);
                 }
                 rowNaturalW[r] = w;
                 if (w > maxRowW) maxRowW = w;
@@ -348,7 +436,8 @@ namespace ST4PlanIdCiz
                     var m = meta[i];
                     if (!moved.TryGetValue(m.wallNo, out var env)) continue;
                     PerdeGorunusAntetX(env, out _, out _, out double oL, out double oR);
-                    double ow = oR - oL;
+                    KapamaAntetTabloPayi(m.wallNo, PerdeGorunusAntetPadCm, PerdeGorunusAntetGapCm, out _, out double minW1);
+                    double ow = Math.Max(oR - oL, minW1);
                     double newOw = ow + addEach;
                     double ox0 = x;
                     double ox1 = x + newOw;
@@ -914,7 +1003,7 @@ namespace ST4PlanIdCiz
 
                 var kapamaSheets = FlushKolon50PerdeGorunus(tr, btr, firstRowTopY);
                 TryDrawKapamaStandardAntet(tr, btr, kapamaSheets, insertLl, st4SourcePath, ed);
-                ed?.WriteMessage("\nKAPAMADETAY: {0} panel acilimi (plan kesit + gorunus, 1/50).", _kolon50GorunusPending.Select(p => p.MinWallNo).Distinct().Count());
+                ed?.WriteMessage("\nKAPAMADETAY: {0} panel acilimi (plan kesit + gorunus, 1/50).", _kolon50GorunusPending.Select(p => p.StackKey).Distinct().Count());
                 return true;
             }
             finally
@@ -955,8 +1044,9 @@ namespace ST4PlanIdCiz
                     if (it.beam == null) continue;
                     double zu = floorLevelCm + Math.Max(it.beam.Point1KotCm, it.beam.Point2KotCm);
                     double h = it.beam.HeightCm > 0 ? it.beam.HeightCm : 40.0;
+                    double zb = floorLevelCm + PerdeAltKotRelCm(it.beam, h);
                     zTop = double.IsNaN(zTop) ? zu : Math.Max(zTop, zu);
-                    zBot = double.IsNaN(zBot) ? zu - h : Math.Min(zBot, zu - h);
+                    zBot = double.IsNaN(zBot) ? zb : Math.Min(zBot, zb);
                 }
                 if (double.IsNaN(zTop) || double.IsNaN(zBot)) continue;
                 stories.Add((p, zBot, zTop, UnionPlanGroup(p.PlanGroup), UnionWallsOnly(p.PlanGroup)));
@@ -1057,7 +1147,9 @@ namespace ST4PlanIdCiz
             var wallTopZs = new List<double>();
             var allColHoles = new List<(double lo, double hi)>();
             var segs = new GorunusLineBag();
-            var wallRuns = new List<(double x0, double x1, double zBot, double zTop, bool lowest)>();
+            // zTop0/zTop1: x0/x1'deki üst kot (eğimli kapama perdesinde farklı, diğerlerinde zTop).
+            var wallRuns = new List<(double x0, double x1, double zBot, double zTop, bool lowest, double zTop0, double zTop1)>();
+            var egimliKotZs = new List<double>();
             var colRuns = new List<(double x0, double x1, double zTop, bool stub, ColumnAxisInfo col)>();
             var slabRuns = new List<(double x0, double x1, double zb, double zt)>();
 
@@ -1104,7 +1196,7 @@ namespace ST4PlanIdCiz
                     storyColHoles.Add((Math.Min(cr.x0, cr.x1), Math.Max(cr.x0, cr.x1)));
                 }
 
-                var pendingDonati = new List<(BeamInfo beam, double x0, double x1, double wallBot, double zu, bool continuesAbove, double slZb)>();
+                var pendingDonati = new List<(BeamInfo beam, double x0, double x1, double wallBot, double zu, bool continuesAbove, double slZb, Func<double, double> zTopAtX)>();
                 for (int i = 0; i < n; i++)
                 {
                     var planIt = st.p.PlanGroup[i];
@@ -1112,7 +1204,12 @@ namespace ST4PlanIdCiz
                     if (planIt.beam == null) continue;
                     double zu = floorLevelCm + Math.Max(planIt.beam.Point1KotCm, planIt.beam.Point2KotCm);
                     double h = planIt.beam.HeightCm > 0 ? planIt.beam.HeightCm : 40.0;
-                    double zbWall = zu - h;
+                    double zbWall = floorLevelCm + PerdeAltKotRelCm(planIt.beam, h);
+                    var stp = st.p;
+                    Func<double, double> zTopAtX = EgimliPerdeUstKotU(planIt.beam, floorLevelCm,
+                        (px, py) => PerdeGorunusX(new Point2d(px, py), stp.PlanOffsetX, stp.PlanOffsetY, stp.Rot, stp.Trf));
+                    if (zTopAtX != null)
+                        egimliKotZs.Add(floorLevelCm + Math.Min(planIt.beam.Point1KotCm, planIt.beam.Point2KotCm));
                     // Beton perde gövdesi temel üstüne iner; donatı hatıl/subasman üstünden başlar.
                     double wallBot = isLowest ? zTemelTop : zbWall;
                     double donatiBot = isLowest && IsFiniteCoord(zCikintiFinisTop)
@@ -1127,14 +1224,15 @@ namespace ST4PlanIdCiz
                         storyColHoles);
                     foreach (var sp in spans)
                     {
-                        wallRuns.Add((sp.x0, sp.x1, wallBot, zu, isLowest));
+                        wallRuns.Add((sp.x0, sp.x1, wallBot, zu, isLowest,
+                            zTopAtX != null ? zTopAtX(sp.x0) : zu, zTopAtX != null ? zTopAtX(sp.x1) : zu));
                         bool hasSlab = TryPickGorunusSlab(st.p.Floor, planIt.wall, st.p.PlanOffsetX, st.p.PlanOffsetY,
                             floorLevelCm, zTemelBot, zTemelTop, zu, out double slZb, out double slZt);
                         if (sp.x1 - sp.x0 > 1.0 && hasSlab)
                             slabRuns.Add((sp.x0, sp.x1, slZb, slZt));
                         bool continuesAbove = !isTopStory
                             || (nextFloor != null && HasWallNumeroOnFloor(nextFloor, GetBeamNumero(planIt.beam.BeamId)));
-                        pendingDonati.Add((planIt.beam, sp.x0, sp.x1, donatiBot, zu, continuesAbove, hasSlab ? slZb : double.NaN));
+                        pendingDonati.Add((planIt.beam, sp.x0, sp.x1, donatiBot, zu, continuesAbove, hasSlab ? slZb : double.NaN, zTopAtX));
                     }
                 }
                 var storySpanXs = pendingDonati.Select(p => (p.x0, p.x1)).ToList();
@@ -1155,7 +1253,7 @@ namespace ST4PlanIdCiz
                         zCirozAdet = zTemelTop;
                     AddGorunusPerdeDonati(tr, btr, st.p.Floor, p.beam, p.x0, p.x1, p.wallBot, p.zu,
                         isLowest, zTemelBot, p.continuesAbove, p.slZb, si, storyColHoles, storySpanXs, pi, Y,
-                        zYatayPlaceBot: zYatayPlace, zYatayAdetBot: zYatayAdet, zCirozAdetBot: zCirozAdet);
+                        zYatayPlaceBot: zYatayPlace, zYatayAdetBot: zYatayAdet, zCirozAdetBot: zCirozAdet, zTopAtX: p.zTopAtX);
                 }
             }
 
@@ -1189,9 +1287,15 @@ namespace ST4PlanIdCiz
             {
                 bool NearCol(double x) => colRuns.Any(c => Math.Abs(c.x0 - x) < 1.2 || Math.Abs(c.x1 - x) < 1.2);
                 if (!NearCol(w.x0))
-                    segs.AddV(w.x0, Y(w.zBot), Y(w.zTop), LayerPerde, SlabHolesAtX(w.x0, slabDraw, Y));
+                    segs.AddV(w.x0, Y(w.zBot), Y(w.zTop0), LayerPerde, SlabHolesAtX(w.x0, slabDraw, Y));
                 if (!NearCol(w.x1))
-                    segs.AddV(w.x1, Y(w.zBot), Y(w.zTop), LayerPerde, SlabHolesAtX(w.x1, slabDraw, Y));
+                    segs.AddV(w.x1, Y(w.zBot), Y(w.zTop1), LayerPerde, SlabHolesAtX(w.x1, slabDraw, Y));
+                if (Math.Abs(w.zTop0 - w.zTop1) > 0.5)
+                {
+                    // Eğimli kapama perdesi: üst kenar uçlardaki kotlar arasında eğik çizgi.
+                    segs.AddDiag(w.x0, Y(w.zTop0), w.x1, Y(w.zTop1), LayerPerde);
+                    continue;
+                }
                 bool slabAtTop = slabDraw.Any(s => Math.Abs(s.zt - w.zTop) < 2.0 && s.x1 > w.x0 && s.x0 < w.x1);
                 if (!slabAtTop)
                     segs.AddH(w.x0, w.x1, Y(w.zTop), LayerPerde, allColHoles);
@@ -1293,6 +1397,7 @@ namespace ST4PlanIdCiz
                 if (needSbKot) kotZs.Add(zSubasmanTop);
             }
             kotZs.AddRange(wallTopZs);
+            kotZs.AddRange(egimliKotZs);
             DrawPerdeGorunusKots(tr, btr, xMax + Kolon50GorunusDikeyOlcuSagaCm, Y, kotZs);
             double zTbOlcu = temelSpans.Count > 0
                 ? zTemelBot
@@ -1314,24 +1419,11 @@ namespace ST4PlanIdCiz
                 xMax + PerdeGorunusSagTasimCm,
                 y0,
                 yMax + Kolon50GorunusOlcuUstBoslukCm);
-            int wallKey = stack[0].MinWallNo;
-            if (_kolon50CopyExtentByWallNo != null)
-            {
-                var wallNos = new HashSet<int> { wallKey };
-                foreach (var p in stack)
-                {
-                    if (p.PlanGroup == null) continue;
-                    foreach (var it in p.PlanGroup)
-                    {
-                        if (it.beam != null) wallNos.Add(GetBeamNumero(it.beam.BeamId));
-                    }
-                }
-                foreach (int wn in wallNos)
-                {
-                    if (_kolon50CopyExtentByWallNo.TryGetValue(wn, out var ce) && ce != null)
-                        sheet = EnvelopeUtil.ExpandToInclude(sheet, ce);
-                }
-            }
+            // Plan kopya kapsamı yığın anahtarıyla tutulur (aynı numaralı perde başka katta başka yığında olabilir).
+            int wallKey = stack[0].StackKey;
+            if (_kolon50CopyExtentByWallNo != null
+                && _kolon50CopyExtentByWallNo.TryGetValue(wallKey, out var ce) && ce != null)
+                sheet = EnvelopeUtil.ExpandToInclude(sheet, ce);
             return sheet;
         }
 
@@ -1357,7 +1449,7 @@ namespace ST4PlanIdCiz
 
         private void EnsurePerdeGorunusAntetLayers(Transaction tr, Database db)
         {
-            EnsurePlanLayer(tr, db, LayerIcAntet, 152, LineWeight.LineWeight030, useDashed: false);
+            EnsurePlanLayer(tr, db, LayerIcAntet, 151, LineWeight.LineWeight025, useDashed: false);
             EnsurePlanLayer(tr, db, LayerIcOlcek, 8, LineWeight.LineWeight015, useDashed: false);
             EnsurePlanLayer(tr, db, LayerAntetText175, 1, LineWeight.LineWeight020, useDashed: false);
         }
@@ -1542,8 +1634,14 @@ namespace ST4PlanIdCiz
                 if (perSheetY)
                     yTxt -= 15.0;
                 bool hasKatId = !string.IsNullOrEmpty(katIdYazi);
+                // KAPAMADETAY perde hattı tablosu (sol üst): perde isimleri tabloda, şeritte yalnız ölçek.
+                List<(string kat, string perde, int t)> kapamaSatir = null;
+                bool kapamaTablosu = perSheetY && _kapamaAntetKatTablo != null
+                    && _kapamaAntetKatTablo.TryGetValue(item.wallNo, out kapamaSatir) && kapamaSatir != null && kapamaSatir.Count > 0;
+                if (kapamaTablosu)
+                    DrawKapamaAntetTablo(tr, btr, ox0, itemOy1, kapamaSatir);
                 // TEXT-175: kat id ↔ kolon id yer değişti. Kat id her antet şeridinde; kolon id antet sol üstte.
-                string stripSol = hasKatId ? katIdYazi : adlar;
+                string stripSol = hasKatId ? katIdYazi : (kapamaTablosu ? null : adlar);
                 ObjectId stripSolId = ObjectId.Null;
                 if (!string.IsNullOrEmpty(stripSol))
                 {
@@ -1554,7 +1652,9 @@ namespace ST4PlanIdCiz
                 }
                 // KOLONDUSEY2: her antette bir adet — kat-benzerkat kutusunun 40 cm üstünden 5 cm yukarı.
                 // Toplam = benzer kat × benzer kolon (bu antetteki grup).
-                if (hasKatId && !stripSolId.IsNull
+                // KOLONDUSEY2 kolon tablosu varken adet tablonun ADET hücresinde.
+                bool kolonTablo = hasKatId && toplamAdetBySheet != null && !string.IsNullOrEmpty(adlar);
+                if (!kolonTablo && hasKatId && !stripSolId.IsNull
                     && toplamAdetBySheet != null
                     && toplamAdetBySheet.TryGetValue(item.wallNo, out int toplamAdet)
                     && toplamAdet > 1)
@@ -1587,7 +1687,24 @@ namespace ST4PlanIdCiz
                 DrawBeamLabel(tr, btr, btr.Database,
                     new Point3d(lx1 - 12.0, yTxt, 0),
                     string.IsNullOrEmpty(olcekYazi) ? "OLCEK: 1/50" : olcekYazi, txtH, 0.0, LayerAntetText175, bottomLeftAligned: false);
-                if (hasKatId && !string.IsNullOrEmpty(adlar))
+                if (kolonTablo)
+                {
+                    // İç antet sol üst kolon tablosu: KOLONLAR ızgarası | EBAT | ADET.
+                    string ebat = null;
+                    _kolonDuseyAntetEbat?.TryGetValue(item.wallNo, out ebat);
+                    int adetT = 1;
+                    if (toplamAdetBySheet.TryGetValue(item.wallNo, out int at) && at > 0) adetT = at;
+                    double yTabloAlt = DrawKolonDuseyAntetTablo(tr, btr, ox0, ox1, itemOy1, adlar, ebat, adetT);
+                    if (!filizNotYazildi && !string.IsNullOrEmpty(filizNotYazi))
+                    {
+                        filizNotYazildi = true;
+                        DrawBeamLabel(tr, btr, btr.Database,
+                            new Point3d(ox0 + KolonDuseyOlcuCizimCm(20.0), yTabloAlt - KolonDuseyOlcuCizimCm(8.0), 0),
+                            filizNotYazi, 12.0, 0.0, LayerAntetText175,
+                            bottomLeftAligned: true, topAligned: true);
+                    }
+                }
+                else if (hasKatId && !string.IsNullOrEmpty(adlar))
                 {
                     // IC ANTET sol/sağ (ox0..ox1): yazı kutusu kenara yatayda ~20 cm yaklaşabilir.
                     double gap = KolonDuseyOlcuCizimCm(20.0);
@@ -2599,9 +2716,15 @@ namespace ST4PlanIdCiz
                     AddRaw(x, a, x, b, layer);
             }
 
+            private readonly List<(double ax, double ay, double bx, double by, string layer)> _diag =
+                new List<(double, double, double, double, string)>();
+
+            /// <summary>Eğik çizgi (eğimli perde üstü); birleştirmeye girmez.</summary>
+            public void AddDiag(double ax, double ay, double bx, double by, string layer) => _diag.Add((ax, ay, bx, by, layer));
+
             public void Flush(Transaction tr, BlockTableRecord btr)
             {
-                foreach (var s in MergeCollinear(_segs))
+                foreach (var s in MergeCollinear(_segs).Concat(_diag))
                 {
                     AppendEntity(tr, btr, new Line(new Point3d(s.ax, s.ay, 0), new Point3d(s.bx, s.by, 0))
                     {
@@ -3273,10 +3396,18 @@ namespace ST4PlanIdCiz
             Func<double, double> Y,
             double zYatayPlaceBot = double.NaN,
             double zYatayAdetBot = double.NaN,
-            double zCirozAdetBot = double.NaN)
+            double zCirozAdetBot = double.NaN,
+            Func<double, double> zTopAtX = null)
         {
             if (beam == null || tr == null || btr == null) return;
             if (_gprPerdePanelDonati == null || _gprPerdePanelDonati.Count == 0) return;
+            // Eğimli kapama perdesi: düşey donatı (x0 + 0,75·açıklık) hizasındaki üst kota kadar.
+            if (zTopAtX != null && x1 - x0 >= 20.0)
+            {
+                double xb = x0 + (x1 - x0) * 0.75;
+                if (xb < x0 + 5.0 || xb > x1 - 5.0) xb = (x0 + x1) * 0.5;
+                zTop = zTopAtX(xb);
+            }
             int wallNo = GetBeamNumero(beam.BeamId);
             int floorNo = floor != null ? floor.FloorNo : GetBeamFloorNo(beam.BeamId);
             int floorFromBeam = GetBeamFloorNo(beam.BeamId);

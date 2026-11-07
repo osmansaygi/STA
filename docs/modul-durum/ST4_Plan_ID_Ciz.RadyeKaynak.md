@@ -1,5 +1,14 @@
 # Radye donatı kaynağı incelemesi
 
+## GPR'siz düğüm As hesabı (RAD + SO1) — 2026-10-28
+
+- Araç ve tablo: `tools/RadyeAsGprsiz20261028/README.md`. Zincir: SO1 köşe Mx/My (bileşen 3/4) ortalaması → TS500T.COD zarfı (deprem ±tekil, 0.3 birleşimi yok, Mxy yok) → kendi + kenar komşu düğüm ortalaması → As dikdörtgen blok (k≈158 kg/cm², fyd=2800, d=h−7, ρmin=RAD 4. satır 1. alan).
+- N_ULK_02: As adımı GPR momentinden 76/77 tam; düzenli iç düğüm tasarım momenti 711/788 tam; uçtan uca abs(ΔAs) ≤ 0.25 oranı %91–99. Üçgen elemana bağlı düğümlerde sapma (X alt tepe biz 15.18 / GPR 10.84). Uygulama koduna bağlanmadı.
+- Üçgen turu: SO1'de üçgen K köşesi Mx ve J köşesi My katkısı 0 (bölen sabit) → statik %95–96; üçgende komşu yalnız I–J, J–K. Uçtan uca X alt tepe 12.91 / GPR 10.84; ilave düğümlerinde GPR'de olup bizde olmayan X alt 2, Y alt 1, Y üst 1. "Bağlı düğüm ortalaması" kuralı tam çözülmedi.
+- Üçüncü tur: iç düğüm %95, sınır düğümü %36–69, iki plak ortak sınır 1/72 tam. Web/yardım STA kuralını vermedi. İlave kararı ayrışan ciddi düğümler n29 (Y alt) ve n463 (X alt). Ayrıntı araç README'si.
+- Dördüncü tur (N_ULK_02, CP_03, K_BLG_03, VKF_01): As formülü çözüldü — k=0.85·fck/1.5, d=h−6.8, fy=2800; As > 0.0032858·b·(h−7) ise max(sınır, As(fyk/1.15)); min max(ρRAD, 0.001)·b·(h−7). Tüm noktalar ±0.25 içinde. Ortalama kuralı iç bölgede doğrulandı (%90–99.7); sınır/üçgen kuralı açık, kaçan ilave en çok ~5 cm²/m (K_BLG_03).
+- Beşinci tur (+MS_B_01; MS_A_01'de GPR yok, SO1 As tepesi 0): önerilen çözüm olası ortalama kurallarının zarfı. Mod 2: yalnız kaçan ilave N_ULK n29 (1.45) ve CP n549 (0.48). Mod 4 (sınırdaki üçgen düğümüne ek varyant): beş projede yalnız kaçan 0, fazladan uzak ilave 0–17 düğüm. Uygulamaya bağlanmadı.
+
 ## GPR radye bölümü ayrıldı — 2026-10-20 22:15
 
 - Kullanıcı temel sonuçlarını GPR’ye yazınca diğer okuyucular bozulmasın diye radye raporu (`RADYE ANALIZI` / `RADYE PROGRAMI` / `RADYE MAT TEMEL`) kesildi. Kolon, döşeme, perde, kapama, sürekli temel ve antet bu satırdan sonrasını okumaz.

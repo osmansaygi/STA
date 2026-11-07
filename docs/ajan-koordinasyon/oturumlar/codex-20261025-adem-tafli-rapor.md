@@ -1,0 +1,15 @@
+# Codex — A_TFL B+C rapor tasarımı
+- Ajan: Codex / bu sohbet
+- Tarih: 25.10.2026 Europe/Istanbul
+- Durum: aktif
+- Görev: A_TFL_RPR.pdf kapsamını STATIK/A_TFL.st4, GPR ve hesap kaynaklarıyla eşleştirerek sade modern + görsel teknik rapor oluşturma.
+- Ayrılan: tools/ATflRapor20261025/**; output/pdf/A_TFL_Yeniden_Tasarim/**; docs/modul-durum/A_TFL_Rapor.md; bu kayıt.
+- Girdi kaynakları salt okunur. Ortak kaynak/DLL/NETLOAD/derleme yok. Diğer aktif kayıtlarla dosya çakışması yok.
+- Başlangıç: koordinasyon, son kayıtlar, yükleyici hedefi ve GUNCEL_2027 listesi kontrol edildi. Plan 233825 / Yardımcı 213059; menü ve dağıtım değişikliği yok.
+- Açık: kaynak çözümleme, yeniden tasarım, içerik ve görsel doğrulama.
+- Uygulama: GPR 86 teknik sayfa / 5791 gövde kaydı ayrıştırıldı; 119 tablo hücrelerinden yeniden dizildi. Özel STA glyphleri özgün CourierSTA ile korunur; Türkçe metin Arial, lacivert başlık/açık satır şeridi. Kapak/özet/ST4 kat kotu/spektrum + 9 ana bölüm + 68 içindekiler girdisi. 9 özgün raster şema, modal/kat diyaframı/3 plan ve kapak planı 6 vektör yerleşimi.
+- Sayısal doğrulama: tablo hücreleri kaynağa birebir; 33983 sayısal token. GPR/SMX/KMX/DMX/TMX 10 örnek çapraz kontrol PASS. Girdi hashleri korunuyor. İlk bütün sayfa QA sonrası başlıkta kalan boş sayfa akışları ve modal dış çerçeve düzeltildi; son çıktı 177 sayfa, tekrar doğrulama/render sürüyor.
+- Son düzeltmeler önceki ara sayfa sayılarını geçersiz kılar: tablo ızgarası GPR ayraç koordinatlarından oluşturuldu; birleşik başlıklar SPAN, sayısal hücreler tam sayı genişliği/bölünmesiz; temel başlıklarına ilk grubu tutan yükseklik koruması, üs/kesir düzeni ve modal başlık-şekil aynı sayfa.
+- SON TESLİM: output/pdf/A_TFL_Yeniden_Tasarim/A_TFL_Statik_Betonarme_Raporu.pdf, 175 A4 sayfa / 1.618.729 bayt. Okuma_Notu.txt aynı klasörde. 68 dizin girdisi/136 bağlantı. Kaynak5791/5791, 119 tablo hücreleri birebir, 33983 sayısal öğe; 10 örnek çapraz kontrol PASS; girdi SHA256 aynı. verification.json güncel.
+- Görsel QA: son175sayfanın tümü teslim-render/ içinde, 9 teslim-contact görseli incelendi. Yakın örneklerde başlık, sayısal sütunlar, donatı/özel glyph, 3/4 üs, Fdi kesri, modal grafik ve vektör plan kontrol edildi. Yatay taşma yok, gövde7.3puanaltı yok.
+- Durum: tamamlandı; bu görevin dosya/çıktı rezervasyonları serbest. Kaynak proje/PDF/GPR ve AutoCAD kaynak/DLL/NETLOAD değişmedi; C# test/derleme/DLLkopyalama/canlıAutoCAD bu belge görevinde yok. Hesap yeniden çözülmedi; mühendislik uygunluğu değerlendirilmedi.

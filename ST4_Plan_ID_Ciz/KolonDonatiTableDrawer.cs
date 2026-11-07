@@ -836,6 +836,7 @@ namespace ST4PlanIdCiz
             {
                 int gprSearchFrom = 0;
                 int gprSectionCount = 0;
+                Dictionary<(int i, int j), string> gprNodeNames = null;
                 while (gprSearchFrom < lines.Length)
                 {
                     int iKolon = -1;
@@ -904,7 +905,9 @@ namespace ST4PlanIdCiz
                             }
                         }
                     }
-                    AppendKolonBetonarmeSection(lines, iKolon + 1, isGpr, result, hcrKeys, gprRawLines, iEnd, true);
+                    if (gprSectionCount == 1)
+                        gprNodeNames = LoadGprKolonNodeNumbers(filePath);
+                    AppendKolonBetonarmeSection(lines, iKolon + 1, isGpr, result, hcrKeys, gprRawLines, iEnd, true, gprNodeNames);
                     int nextFrom = iEnd;
                     if (nextFrom <= iKolon)
                         nextFrom = iKolon + 1;
@@ -1043,6 +1046,62 @@ namespace ST4PlanIdCiz
             return false;
         }
 
+        private static readonly Regex GprKolonNodeRx = new Regex(
+            @"(?<![A-Za-z])([IJ]):\s*(\d+)", RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+        /// <summary>
+        /// GPR yanındaki .COL (900 bayt; +0/+2 int16 üst/alt düğüm) ve .ST4 /Columns Data/ (aynı sıra):
+        /// (I, J) → kolon numarası metni (adım 1000 ise "014", 100 ise "14"). Dosya yoksa null.
+        /// </summary>
+        private static Dictionary<(int i, int j), string> LoadGprKolonNodeNumbers(string gprPath)
+        {
+            try
+            {
+                string st4 = Path.ChangeExtension(gprPath, ".st4");
+                string col = Path.ChangeExtension(gprPath, ".COL");
+                if (!File.Exists(st4) || !File.Exists(col)) return null;
+                string[] l = File.ReadAllLines(st4, Encoding.ASCII);
+                int step = 0;
+                for (int k = 4; k <= 5 && k < l.Length && step == 0; k++)
+                {
+                    string[] p = l[k].Split(',');
+                    if (p.Length >= 5 && int.TryParse(p[4].Trim(), out int s) && (s == 100 || s == 1000)) step = s;
+                }
+                var ids = new List<int>();
+                int at = Array.FindIndex(l, x => x.StartsWith("/Columns Data/", StringComparison.OrdinalIgnoreCase));
+                if (at < 0) return null;
+                for (int k = at + 1; k + 2 < l.Length && !l[k].StartsWith("/"); k += 3)
+                {
+                    if (!int.TryParse(l[k].Split(',')[0].Trim(), out int id) || id == 0) break;
+                    ids.Add(id);
+                }
+                if (ids.Count == 0) return null;
+                // Poligon kolonlar COL'de normal kolonlardan sonra, /Polygon columns/ sırasıyla (2 satır).
+                int pat = Array.FindIndex(l, x => x.StartsWith("/Polygon columns/", StringComparison.OrdinalIgnoreCase));
+                if (pat >= 0)
+                    for (int k = pat + 1; k + 1 < l.Length && !l[k].StartsWith("/"); k += 2)
+                    {
+                        if (!int.TryParse(l[k].Split(',')[0].Trim(), out int id) || id == 0) break;
+                        ids.Add(id);
+                    }
+                if (step == 0) step = ids.Max() >= 10000 ? 1000 : 100;
+                byte[] b = File.ReadAllBytes(col);
+                if (b.Length / 900 < ids.Count) return null;
+                var map = new Dictionary<(int i, int j), string>();
+                for (int r = 0; r < ids.Count; r++)
+                {
+                    int ni = BitConverter.ToInt16(b, r * 900), nj = BitConverter.ToInt16(b, r * 900 + 2);
+                    if (ni <= 0 || nj <= 0) continue;
+                    map[(ni, nj)] = (ids[r] % step).ToString(step == 1000 ? "000" : "00", CultureInfo.InvariantCulture);
+                }
+                return map;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
         private static int AppendKolonBetonarmeSection(
             string[] lines,
             int startIdx,
@@ -1051,7 +1110,8 @@ namespace ST4PlanIdCiz
             HashSet<string> hcrKeys = null,
             byte[][] gprRawLines = null,
             int lineEndExclusive = int.MaxValue,
-            bool gprKolonWindowOnly = false)
+            bool gprKolonWindowOnly = false,
+            Dictionary<(int i, int j), string> nodeNames = null)
         {
             // Çoklu bodrum: SB2-01 önce yakalanmalı; aksi halde S[BZAC]\d{1,4} yalnızca SB2 (kolon 2 sanılır).
             // S2B-01: STA4CAD çoklu bodrum; S2-01 normal kat — S\d+B-\d+ önce olmalı
@@ -1068,17 +1128,30 @@ namespace ST4PlanIdCiz
             string currentDonati = null, currentEtriye = null;
             bool inBlock = false;
             bool currentHcr = false;
+            int currentNodeI = 0, currentNodeJ = 0;
 
             void FlushCurrent()
             {
                 if (currentId != null && (currentDonati != null || currentEtriye != null))
                 {
+                    // STA kolon adını 6 karaktere keser (S3B-014 → S3B-01); I/J düğümüyle gerçek ada dön.
+                    int tire = currentId.IndexOf('-');
+                    if (nodeNames != null && tire > 0 && currentNodeI > 0 && currentNodeJ > 0 &&
+                        nodeNames.TryGetValue((currentNodeI, currentNodeJ), out string kolonNo))
+                    {
+                        string tamAd = currentId.Substring(0, tire + 1) + kolonNo;
+                        if (tamAd.Length > currentId.Length &&
+                            tamAd.StartsWith(currentId, StringComparison.OrdinalIgnoreCase))
+                            currentId = tamAd;
+                    }
                     string ebat = GetEbatString(currentBx, currentBy, currentBx != null && currentBx.Equals("Polygon", StringComparison.OrdinalIgnoreCase));
                     result[currentId] = (NormalizeDiameterSymbol(ebat ?? ""), NormalizeDiameterSymbol(currentDonati ?? ""), NormalizeDiameterSymbol(currentEtriye ?? ""));
                     if (currentHcr && hcrKeys != null)
                         hcrKeys.Add(currentId);
                 }
                 currentHcr = false;
+                currentNodeI = 0;
+                currentNodeJ = 0;
             }
 
             for (int i = startIdx; i < end; i++)
@@ -1163,6 +1236,14 @@ namespace ST4PlanIdCiz
                 }
                 else if (inBlock && currentId != null)
                 {
+                    if (nodeNames != null)
+                    {
+                        var mNode = GprKolonNodeRx.Match(content);
+                        if (mNode.Success && int.TryParse(mNode.Groups[2].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int node))
+                        {
+                            if (mNode.Groups[1].Value == "I") currentNodeI = node; else currentNodeJ = node;
+                        }
+                    }
                     if (GprKolonBlockLineHasHcr(content, (gprRawLines != null && i < gprRawLines.Length) ? gprRawLines[i] : null))
                         currentHcr = true;
                     var by = byRegex.Match(content);

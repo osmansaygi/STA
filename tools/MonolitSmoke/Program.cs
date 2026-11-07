@@ -19,7 +19,7 @@ class Program {
   using(var title=new Font("Segoe UI",20,FontStyle.Bold))using(var text=new Font("Segoe UI",10))
   using(var white=new SolidBrush(Color.FromArgb(233,238,244)))using(var muted=new SolidBrush(Color.FromArgb(167,181,195))) {
    g.Clear(Color.FromArgb(32,40,50));g.InterpolationMode=InterpolationMode.HighQualityBicubic;
-   g.DrawString("MONOLİT / 20 KOMUT",title,white,25,20);
+   g.DrawString("MONOLİT / 22 KOMUT",title,white,25,20);
    g.DrawString("Gerçek simge yükleyicisinden çıktı · 28 px / 32 px / 64 px",text,muted,27,62);
    for(int i=0;i<BaCommandIcons.Tools.Length;i++) {
     var tool=BaCommandIcons.Tools[i];
@@ -39,10 +39,10 @@ class Program {
    }
    board.Save(Path.Combine(dir,"panel-preview.png"),ImageFormat.Png);
   }
-  if(hashes.Count!=20)throw new Exception("Duplicate atlas cells");
+  if(hashes.Count!=22)throw new Exception("Duplicate atlas cells");
   selected.SetValue(null,false);
   foreach(var tool in BaCommandIcons.Tools)using(var icon=BaCommandIcons.Load(tool.Cmd,tool.Resource))if(icon==null)throw new Exception("Classic fallback missing "+tool.Cmd);
   File.WriteAllText(Path.Combine(dir,"validation.txt"),"PASS: 20 distinct Monolit icons, 32x32 RGBA, visible content and transparency.\nPASS: 20 classic fallbacks load.\nNo drawing commands invoked; no icon preference written.\n");
-  Console.WriteLine("PASS: all 20 Monolit icons and all classic fallbacks; preview: "+dir);
+  Console.WriteLine("PASS: all 22 Monolit icons and all classic fallbacks; preview: "+dir);
  }
 }

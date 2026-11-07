@@ -24,6 +24,14 @@ namespace ST4PlanIdCiz
         /// <summary>Zımbalama çevresi: sağlanan / gerekli (cm).</summary>
         public double UpSaglanan;
         public double UpGerekli;
+        /// <summary>Mantar döşeme: kat kısa adı (ST4 /Story/ "Z-" → "Z"); radyede null.</summary>
+        public string KatKisa;
+        /// <summary>Mantar döşeme: kolon no (SZ-12 → 12); radyede 0.</summary>
+        public int KolonNo;
+        /// <summary>Mantar döşeme: GPR "D=" toplam kalınlık (cm); radyede 0.</summary>
+        public double KalinlikCm;
+        /// <summary>Mantar döşeme: STA çizim etiketi "Lk=85 cm" (kol boyu, bilgi); yoksa 0.</summary>
+        public double LkCm;
     }
 
     /// <summary>
@@ -132,6 +140,111 @@ namespace ST4PlanIdCiz
             {
                 GprZimbalamaKolon z = byAd[k];
                 if (z.CapMm > 0 && z.AralikCm > 0) list.Add(z);
+            }
+            return list;
+        }
+
+        private static readonly Regex MantarKolonRx = new Regex(@"^\s*S(\S*?)-?(\d+)\s+KOLONU ZIMBALAMA KONTROLU", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex MantarDRx = new Regex(@"^\s*D\s*=\s*([\d.]+)\s*cm\s+d\s*=\s*([\d.]+)\s*cm", RegexOptions.Compiled);
+        private static readonly Regex LkRx = new Regex(@"^\s*Lk\s*=\s*([\d.]+)\s*cm", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        /// <summary>
+        /// ST4 yanındaki GPR'den mantar döşeme (kat) kolon zımbalama donatısı gereken kolonlar:
+        /// "KOLON ZIMBALAMA KONTROLU" bölümü (radye bölümünden ayrı). GPR yoksa veya bölüm yoksa boş liste.
+        /// </summary>
+        public static List<GprZimbalamaKolon> TryReadMantar(string st4Path, out string not)
+        {
+            not = null;
+            string gpr = Path.ChangeExtension(st4Path ?? string.Empty, ".GPR");
+            if (!File.Exists(gpr)) gpr = Path.ChangeExtension(st4Path ?? string.Empty, ".gpr");
+            if (!File.Exists(gpr))
+            {
+                not = "GPR yok";
+                return new List<GprZimbalamaKolon>();
+            }
+            try
+            {
+                WindowsAnsiEncodings.EnsureRegistered();
+                return ParseMantar(WindowsAnsiEncodings.ReadAllLines(gpr));
+            }
+            catch (Exception ex)
+            {
+                not = ex.Message;
+                return new List<GprZimbalamaKolon>();
+            }
+        }
+
+        /// <summary>
+        /// "SZ-12    KOLONU ZIMBALAMA KONTROLU" başlığı, "D= 28 cm  d= 25 cm" ve donatı gerekirse
+        /// "Zimbalama donatisi:14ø10/14=22> Asb= 1.14 cm²". "Lk=85 cm" kroki etiketi başlıktan önce yazılır.
+        /// Radye bölümü ("RADYE TEMEL KOLON ZIMBALAMA HESABI") okunmaz.
+        /// </summary>
+        public static List<GprZimbalamaKolon> ParseMantar(IList<string> lines)
+        {
+            var list = new List<GprZimbalamaKolon>();
+            if (lines == null) return list;
+            var byAd = new Dictionary<string, GprZimbalamaKolon>(StringComparer.OrdinalIgnoreCase);
+            var sira = new List<string>();
+            GprZimbalamaKolon acik = null;
+            double bekleyenLk = 0;
+            for (int i = 0; i < lines.Count; i++)
+            {
+                string line = lines[i] ?? string.Empty;
+                if (line.IndexOf("RADYE TEMEL KOLON ZIMBALAMA", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    acik = null;
+                    break;
+                }
+                Match lk = LkRx.Match(line);
+                if (lk.Success)
+                {
+                    bekleyenLk = Dbl(lk.Groups[1].Value);
+                    continue;
+                }
+                Match km = MantarKolonRx.Match(line);
+                if (km.Success)
+                {
+                    acik = new GprZimbalamaKolon
+                    {
+                        Ad = line.Trim().Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries)[0],
+                        KatKisa = km.Groups[1].Value.Trim().TrimEnd('-'),
+                        KolonNo = Int(km.Groups[2].Value),
+                        LkCm = bekleyenLk
+                    };
+                    acik.Numara = acik.KolonNo;
+                    bekleyenLk = 0;
+                    continue;
+                }
+                if (acik == null) continue;
+                Match dm = MantarDRx.Match(line);
+                if (dm.Success)
+                {
+                    acik.KalinlikCm = Dbl(dm.Groups[1].Value);
+                    acik.DCm = Dbl(dm.Groups[2].Value);
+                    continue;
+                }
+                Match zm = DonatiRx.Match(line);
+                if (zm.Success)
+                {
+                    acik.Adet = Int(zm.Groups[1].Value);
+                    acik.CapMm = Int(zm.Groups[2].Value);
+                    acik.AralikCm = Int(zm.Groups[3].Value);
+                    acik.AsbCm2 = Dbl(zm.Groups[4].Value);
+                    if (!byAd.ContainsKey(acik.Ad)) sira.Add(acik.Ad);
+                    byAd[acik.Ad] = acik;
+                    continue;
+                }
+                Match cm = CevreRx.Match(line);
+                if (cm.Success && byAd.ContainsKey(acik.Ad))
+                {
+                    acik.UpSaglanan = Dbl(cm.Groups[1].Value);
+                    acik.UpGerekli = Dbl(cm.Groups[2].Value);
+                }
+            }
+            foreach (string k in sira)
+            {
+                GprZimbalamaKolon z = byAd[k];
+                if (z.CapMm > 0 && z.AralikCm > 0 && z.KolonNo > 0) list.Add(z);
             }
             return list;
         }

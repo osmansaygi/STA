@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Globalization;
 using System.Text;
 using System.Windows.Forms;
+using Beykent.Monolit.Girdi;
 using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
 using SdFont = System.Drawing.Font;
 
@@ -195,20 +196,21 @@ namespace ST4Yardimci
     {
         private static DonatiBoyuForm _instance;
 
-        private readonly ComboBox _cmbOlcek;
+        private readonly SegmentSecim _olcek;
         private readonly CheckBox _chkYuvarla;
-        private readonly TextBox _txtFi;
-        private readonly ComboBox _cmbLFormat;
+        private readonly CapIsaretiSecim _cmbFi;
+        private readonly SegmentSecim _lFormat;
         private readonly ListBox _lstLayers;
         private readonly ListBox _lstDrawingLayers;
         private readonly CheckBox _chkOnizleme;
 
-        static readonly OlcekItem[] Olcekler =
-        {
-            new OlcekItem(1.0, "1:50 - 1:1"),
-            new OlcekItem(0.5, "1:25 - 1:2"),
-            new OlcekItem(0.25, "1:25 - 1:4")
-        };
+        /// <summary>
+        /// Ölçek çarpanı: seçilen çizgi boyu × çarpan = gerçek boy (cm). 1/50 planda çizim 1:1 (çarpan 1);
+        /// donatı detayı ×2 büyütülmüş çizilmişse çarpan 0,5, ×4 büyütülmüşse 0,25 (DonatiBoyuRunner).
+        /// Değerler eski listeyle aynı; yalnız etiketler anlamı söyleyecek şekilde düzeltildi.
+        /// </summary>
+        static readonly double[] OlcekCarpanlari = { 1.0, 0.5, 0.25 };
+        static readonly string[] LFormatlari = { "L=", "l=", "L =", "l =" };
 
         public static void ShowOrActivate()
         {
@@ -312,13 +314,8 @@ namespace ST4Yardimci
             KeyPreview = true;
 
             int y = 8;
-            Controls.Add(MkLabel("Donatı ölçeği", 10, y + 3, 100));
-            _cmbOlcek = MkCombo(114, y, 196);
-            foreach (OlcekItem oi in Olcekler)
-                _cmbOlcek.Items.Add(oi);
-            SelectOlcek(_cmbOlcek, DonatiBoyuSettings.OlcekCarpani);
-            Controls.Add(_cmbOlcek);
-            y += 28;
+            _olcek = new SegmentSecim("1:1 gerçek", "×2 büyütülmüş", "×4 büyütülmüş");
+            SelectOlcek(DonatiBoyuSettings.OlcekCarpani);
 
             _chkYuvarla = new CheckBox
             {
@@ -332,27 +329,13 @@ namespace ST4Yardimci
             Controls.Add(_chkYuvarla);
             y += 26;
 
-            Controls.Add(MkLabel("Fi işareti", 10, y + 3, 100));
-            _txtFi = new TextBox
-            {
-                Text = string.IsNullOrWhiteSpace(DonatiBoyuSettings.FiIsareti) ? "ø" : DonatiBoyuSettings.FiIsareti,
-                Location = new Point(114, y),
-                Size = new Size(48, 22),
-                MaxLength = 6,
-                TextAlign = HorizontalAlignment.Center,
-                BorderStyle = BorderStyle.FixedSingle,
-                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
-                ForeColor = Beykent.Monolit.StandardFormTheme.Text
-            };
-            Controls.Add(_txtFi);
-            y += 26;
+            // Ayar property'si ve ini anahtarı (FiIsareti) aynı; listede olmayan eski kayıt korunur.
+            _cmbFi = new CapIsaretiSecim(DonatiBoyuSettings.FiIsareti);
+            Controls.Add(_cmbFi);
 
-            _cmbLFormat = AddComboRow("L formatı", ref y, 90);
-            _cmbLFormat.Items.Add("L=");
-            _cmbLFormat.Items.Add("l=");
-            _cmbLFormat.Items.Add("L =");
-            _cmbLFormat.Items.Add("l =");
-            SelectString(_cmbLFormat, DonatiBoyuSettings.LEtiketFormati);
+            _lFormat = new SegmentSecim(LFormatlari);
+            SelectLFormat(DonatiBoyuSettings.LEtiketFormati);
+
 
             Controls.Add(MkLabel("Donatı etiketi katmanı", 10, y + 2, 280));
             y += 18;
@@ -450,12 +433,18 @@ namespace ST4Yardimci
             // Kompakt, içerik odaklı form düzeni.
             var ui = BeginCompact(340);
             ui.Tip(_chkOnizleme, _chkOnizleme.Text); _chkOnizleme.Text = "Özet yaz";
-            ui.Section("Etiket düzeni").Field("Donatı ölçeği", _cmbOlcek).Field("Çap işareti / boy etiketi", _txtFi, _cmbLFormat)
+            ui.Section("Donatı ölçeği").Control(_olcek)
+                .Hint("Seçilen çizgi boyu × çarpan = L (cm). Detay ×2 büyütülmüşse boy ÷ 2, ×4 ise ÷ 4 alınır.");
+            ui.Section("Etiket düzeni")
+                .Field("Çap işareti", _cmbFi)
+                .Field("Boy etiketi", _lFormat)
                 .Choices(_chkYuvarla, _chkOnizleme);
             ui.Tabs(132,
                 ui.Page("Etiket katmanları", p => p.Layers(_lstLayers, btnAdd, btnDel, btnRem)),
                 ui.Page("Çizim katmanları", p => p.Layers(_lstDrawingLayers, btnDrawingAdd, btnDrawingDel, btnDrawingRem)));
 
+            ui.Tip(_olcek, "1:1 gerçek = çarpan 1 (1/50 plan) · ×2 büyütülmüş = 0,5 · ×4 büyütülmüş = 0,25");
+            ui.Tip(_cmbFi, "Etikette aranan çap işareti (%%c / Ø ile de eşleşir).");
             ui.Footer(btnRun, btnClose);
             ui.Finish();
         }
@@ -467,7 +456,7 @@ namespace ST4Yardimci
                 Close();
                 return true;
             }
-            if (keyData == Keys.Enter || keyData == Keys.Return)
+            if ((keyData == Keys.Enter || keyData == Keys.Return) && !(ActiveControl is Button))
             {
                 OnRun(this, EventArgs.Empty);
                 return true;
@@ -477,10 +466,10 @@ namespace ST4Yardimci
 
         private void LoadFromSettings()
         {
-            SelectOlcek(_cmbOlcek, DonatiBoyuSettings.OlcekCarpani);
+            SelectOlcek(DonatiBoyuSettings.OlcekCarpani);
             _chkYuvarla.Checked = DonatiBoyuSettings.Yuvarlama == DonatiBoyuYuvarlama.BesCm;
-            _txtFi.Text = string.IsNullOrWhiteSpace(DonatiBoyuSettings.FiIsareti) ? "ø" : DonatiBoyuSettings.FiIsareti;
-            SelectString(_cmbLFormat, DonatiBoyuSettings.LEtiketFormati);
+            _cmbFi.Deger = DonatiBoyuSettings.FiIsareti;
+            SelectLFormat(DonatiBoyuSettings.LEtiketFormati);
             _chkOnizleme.Checked = DonatiBoyuSettings.OnizlemeMesaji;
             FillList(_lstLayers, DonatiBoyuSettings.Katmanlar);
             FillList(_lstDrawingLayers, DonatiBoyuSettings.CizimKatmanlar);
@@ -488,15 +477,12 @@ namespace ST4Yardimci
 
         private void PushSettings()
         {
-            if (_cmbOlcek.SelectedItem is OlcekItem oi)
-                DonatiBoyuSettings.OlcekCarpani = oi.Factor;
+            DonatiBoyuSettings.OlcekCarpani = OlcekCarpanlari[_olcek.Secili];
             DonatiBoyuSettings.Yuvarlama = _chkYuvarla.Checked
                 ? DonatiBoyuYuvarlama.BesCm
                 : DonatiBoyuYuvarlama.Yok;
-            string fi = (_txtFi.Text ?? "").Trim();
-            DonatiBoyuSettings.FiIsareti = fi.Length == 0 ? "ø" : fi;
-            if (_cmbLFormat.SelectedItem is string fmt)
-                DonatiBoyuSettings.LEtiketFormati = fmt;
+            DonatiBoyuSettings.FiIsareti = _cmbFi.Deger;
+            DonatiBoyuSettings.LEtiketFormati = LFormatlari[_lFormat.Secili];
             DonatiBoyuSettings.OnizlemeMesaji = _chkOnizleme.Checked;
             DonatiBoyuSettings.SetKatmanlar(CollectList(_lstLayers));
             DonatiBoyuSettings.SetCizimKatmanlar(CollectList(_lstDrawingLayers));
@@ -575,15 +561,6 @@ namespace ST4Yardimci
             PushSettings();
         }
 
-        private ComboBox AddComboRow(string label, ref int y, int w)
-        {
-            Controls.Add(MkLabel(label, 10, y + 3, 100));
-            var c = MkCombo(114, y, w);
-            Controls.Add(c);
-            y += 26;
-            return c;
-        }
-
         private static void FillList(ListBox lst, IReadOnlyList<string> layers)
         {
             lst.Items.Clear();
@@ -603,33 +580,27 @@ namespace ST4Yardimci
             return layers;
         }
 
-        private static void SelectOlcek(ComboBox cmb, double f)
+        /// <summary>Eski davranış: 2 / 4 kayıtları 0,5 / 0,25'e eşlenir; tanınmayan değer ilk seçenek (1:1).</summary>
+        private void SelectOlcek(double f)
         {
             double mapped = f;
             if (Math.Abs(f - 2.0) < 1e-6) mapped = 0.5;
             else if (Math.Abs(f - 4.0) < 1e-6) mapped = 0.25;
-            for (int i = 0; i < cmb.Items.Count; i++)
+            for (int i = 0; i < OlcekCarpanlari.Length; i++)
             {
-                if (cmb.Items[i] is OlcekItem oi && Math.Abs(oi.Factor - mapped) < 1e-9)
+                if (Math.Abs(OlcekCarpanlari[i] - mapped) < 1e-9)
                 {
-                    cmb.SelectedIndex = i;
+                    _olcek.Secili = i;
                     return;
                 }
             }
-            if (cmb.Items.Count > 0) cmb.SelectedIndex = 0;
+            _olcek.Secili = 0;
         }
 
-        private static void SelectString(ComboBox cmb, string s)
+        private void SelectLFormat(string s)
         {
-            for (int i = 0; i < cmb.Items.Count; i++)
-            {
-                if (cmb.Items[i] is string t && t == s)
-                {
-                    cmb.SelectedIndex = i;
-                    return;
-                }
-            }
-            if (cmb.Items.Count > 0) cmb.SelectedIndex = 0;
+            int i = Array.IndexOf(LFormatlari, s);
+            _lFormat.Secili = i >= 0 ? i : 0;
         }
 
         private static Label MkLabel(string text, int x, int y, int w) => new Label
@@ -660,22 +631,5 @@ namespace ST4Yardimci
             return b;
         }
 
-        private static ComboBox MkCombo(int x, int y, int w) => new ComboBox
-        {
-            Location = new Point(x, y),
-            Size = new Size(w, 22),
-            DropDownStyle = ComboBoxStyle.DropDownList,
-            BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
-            ForeColor = Beykent.Monolit.StandardFormTheme.Text,
-            FlatStyle = FlatStyle.Flat
-        };
-
-        private sealed class OlcekItem
-        {
-            public double Factor { get; }
-            public string Text { get; }
-            public OlcekItem(double f, string t) { Factor = f; Text = t; }
-            public override string ToString() => Text;
-        }
     }
 }

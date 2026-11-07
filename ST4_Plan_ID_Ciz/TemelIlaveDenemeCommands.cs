@@ -20,11 +20,13 @@ using Application = Autodesk.AutoCAD.ApplicationServices.Application;
 namespace ST4PlanIdCiz
 {
     /// <summary>TEMELILAVEDENEME: dört temel planında mesh düğümlerinden sabit donatıyı aşan ilave yerleri.</summary>
-    public sealed class TemelIlaveDenemeCommands
+    public sealed partial class TemelIlaveDenemeCommands
     {
         private const double OfsetM = 0.40;
         internal static double TemelPaspayCm = 5.0;
         internal static double DuseyHizaFarkCm = 100.0;
+        /// <summary>TEMELDONATI 1/100: lejant, zarf ve ana donatı yazıları (kalıp/temel yazıları gibi) 1,5×; diğer akışlarda 1.</summary>
+        internal static double YaziCarpani = 1.0;
         private const double KopyaYukariCm = 6000.0;
         private const short YetmezRenk = 1;
         private static readonly short[] BantRenk = { 4, 3, 2, 30, 40, 6, 5, 140, 150, 200, 8, 9 };
@@ -218,14 +220,14 @@ namespace ST4PlanIdCiz
                 "X UST : " + genel.Yazi(0),
                 "Y UST : " + genel.Yazi(2)
             };
-            double x = copy.AltYaziX - 150.0;
+            double x = copy.AltYaziX - 150.0 * YaziCarpani;
             for (int i = 0; i < satirlar.Length; i++)
             {
                 var t = new DBText
                 {
                     TextString = satirlar[i],
-                    Height = 20.0,
-                    Position = new Point3d(x, copy.AltYaziY - 20.0 - i * 40.0, 0),
+                    Height = 20.0 * YaziCarpani,
+                    Position = new Point3d(x, copy.AltYaziY - (20.0 + i * 40.0) * YaziCarpani, 0),
                     Layer = katman
                 };
                 btr.AppendEntity(t);
@@ -345,6 +347,8 @@ namespace ST4PlanIdCiz
                 if (poly.Area >= 200.0) hedef.Add(poly);
                 return;
             }
+            // Kesişim çizgi/nokta da döndürebilir; bunlarda GetGeometryN(0) kendisidir → sonsuz özyineleme (yığın taşması).
+            if (!(geom is GeometryCollection)) return;
             for (int i = 0; i < geom.NumGeometries; i++)
                 EkleCizilen(geom.GetGeometryN(i), hedef);
         }
@@ -364,6 +368,7 @@ namespace ST4PlanIdCiz
                 if (CizPoligon(tr, btr, poly, katman, renk, not)) n++;
                 return n;
             }
+            if (!(sekil is GeometryCollection)) return n;
             for (int i = 0; i < sekil.NumGeometries; i++)
                 n += CizGeometri(tr, btr, sekil.GetGeometryN(i), katman, renk, not);
             return n;
@@ -412,7 +417,7 @@ namespace ST4PlanIdCiz
                 var yazi = new DBText
                 {
                     TextString = not,
-                    Height = 22.0,
+                    Height = 22.0 * YaziCarpani,
                     Position = new Point3d(c.X, c.Y, 0),
                     Layer = katman,
                     Color = Color.FromColorIndex(ColorMethod.ByAci, renk)
@@ -431,31 +436,33 @@ namespace ST4PlanIdCiz
             List<DonatiAdim> adimlar,
             string yetmezYazi)
         {
-            double x = copy.Envelope != null ? copy.Envelope.MinX + 80.0 : copy.OffsetX + 80.0;
-            double y = copy.Envelope != null ? copy.Envelope.MinY + 80.0 : copy.OffsetY + 80.0;
+            double m = YaziCarpani, s = 56.0 * m;
+            double x = copy.Envelope != null ? copy.Envelope.MinX + 80.0 * m : copy.OffsetX + 80.0 * m;
+            double y = copy.Envelope != null ? copy.Envelope.MinY + 80.0 * m : copy.OffsetY + 80.0 * m;
             var baslik = new DBText
             {
                 TextString = "ILAVE",
-                Height = 22.0,
-                Position = new Point3d(x, y + Math.Max(1, adimlar.Count) * 56.0 + (yetmezYazi == null ? 0 : 56.0), 0),
+                Height = 22.0 * YaziCarpani,
+                Position = new Point3d(x, y + Math.Max(1, adimlar.Count) * s + (yetmezYazi == null ? 0 : s), 0),
                 Layer = katman,
                 Color = Color.FromColorIndex(ColorMethod.ByAci, 7)
             };
             btr.AppendEntity(baslik);
             tr.AddNewlyCreatedDBObject(baslik, true);
             for (int i = 0; i < adimlar.Count; i++)
-                LejantSatir(tr, btr, katman, x, y + i * 56.0, adimlar[i].Renk, adimlar[i].Yazi);
+                LejantSatir(tr, btr, katman, x, y + i * s, adimlar[i].Renk, adimlar[i].Yazi);
             if (yetmezYazi != null)
-                LejantSatir(tr, btr, katman, x, y + adimlar.Count * 56.0, YetmezRenk, yetmezYazi);
+                LejantSatir(tr, btr, katman, x, y + adimlar.Count * s, YetmezRenk, yetmezYazi);
         }
 
         private static void LejantSatir(Transaction tr, BlockTableRecord btr, string katman, double x, double y, short renk, string yazi)
         {
+            double m = YaziCarpani;
             var kutu = new Polyline();
             kutu.AddVertexAt(0, new Point2d(x, y), 0, 0, 0);
-            kutu.AddVertexAt(1, new Point2d(x + 70.0, y), 0, 0, 0);
-            kutu.AddVertexAt(2, new Point2d(x + 70.0, y + 36.0), 0, 0, 0);
-            kutu.AddVertexAt(3, new Point2d(x, y + 36.0), 0, 0, 0);
+            kutu.AddVertexAt(1, new Point2d(x + 70.0 * m, y), 0, 0, 0);
+            kutu.AddVertexAt(2, new Point2d(x + 70.0 * m, y + 36.0 * m), 0, 0, 0);
+            kutu.AddVertexAt(3, new Point2d(x, y + 36.0 * m), 0, 0, 0);
             kutu.Closed = true;
             kutu.Layer = katman;
             kutu.Color = Color.FromColorIndex(ColorMethod.ByAci, renk);
@@ -479,8 +486,8 @@ namespace ST4PlanIdCiz
             var t = new DBText
             {
                 TextString = yazi,
-                Height = 22.0,
-                Position = new Point3d(x + 86.0, y + 6.0, 0),
+                Height = 22.0 * YaziCarpani,
+                Position = new Point3d(x + 86.0 * m, y + 6.0 * m, 0),
                 Layer = katman,
                 Color = Color.FromColorIndex(ColorMethod.ByAci, renk)
             };
@@ -1414,6 +1421,7 @@ namespace ST4PlanIdCiz
                     delik.Add(p.GetInteriorRingN(i).Coordinates);
                 return;
             }
+            if (!(g is GeometryCollection)) return;
             for (int i = 0; i < g.NumGeometries; i++)
                 TemelHalkalari(g.GetGeometryN(i), govde, delik);
         }
@@ -1608,6 +1616,7 @@ namespace ST4PlanIdCiz
                     hedef.Add(new Isaret { Sekil = p, Alan = kaynak.Alan, Yatay = kaynak.Yatay, Sarkan = kaynak.Sarkan, Temel = kaynak.Temel, Kademe = kaynak.Kademe, AralikCm = kaynak.AralikCm, Yazi = kaynak.Yazi });
                 return;
             }
+            if (!(geom is GeometryCollection)) return;
             for (int i = 0; i < geom.NumGeometries; i++)
                 IsaretEkleGeom(hedef, geom.GetGeometryN(i), kaynak);
         }
@@ -1986,7 +1995,7 @@ namespace ST4PlanIdCiz
             {
                 Layer = katman,
                 Color = Color.FromColorIndex(ColorMethod.ByLayer, 256),
-                Height = 20.0,
+                Height = 20.0 * YaziCarpani,
                 WidthFactor = 0.85,
                 TextString = k.Yazi,
                 HorizontalMode = TextHorizontalMode.TextCenter,

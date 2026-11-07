@@ -1,0 +1,10 @@
+# Codex — Kiriş açılımı formunda boşluk ve paspayı
+- Ajan: Codex / bu sohbet. Tarih: 28.10.2026 Europe/Istanbul. Durum: aktif.
+- Görev: formdan yatay net boşluk (4 cm), düşey sıra net boşluğu (3 cm) ve paspayı (4 cm); yeni çizimler değerleri kullansın.
+- Ayrılan: ST4_Plan_ID_Ciz/KirisAcilimForm.cs; ST4_Plan_ID_Ciz/PlanIdDrawingManager.KirisAcilim.cs; ST4_Plan_ID_Ciz/PlanIdDrawingManager.KirisAcilim.Kesit.cs; tools/KirisAralik20261028/** (izole build/obj/test); docs/modul-durum/ST4_Plan_ID_Ciz.md; bu kayıt. Yayında NETLOAD/GUNCEL_2027/** ve NETLOAD/arsiv/**.
+- Kontrol: son iki gün kayıtları, C# kuralları, modül/kiriş referansı, menü/simge düzeni ve yükleyici kontrol edildi. Güncel Plan155906 + Yardımcı205437. Claude radye araştırması ayrı alan. Eski Cursor/Claude beklemedeki alanlarına dokunulmaz. Ortak bin/obj kullanılmaz.
+- Kapsam: mevcut KIRISACILIMLARI formu; yeni komut/simge yok. Sürekli temel ortak yardımcılarının varsayılanı korunur; kiriş ayarı temele sızmaz. Paspayı net etriye örtüsü; mevcut şematik boyuna donatı merkez farkları korunur.
+- Sonuç: üç form alanı 4/3/4 cm; kiriş çizim yöneticisine özel ayarlar. Paspayı net etriye dış örtüsü; mevcut merkez farkları korunur. Yatay/düşey net aralık ve paspayı kesit/görünüşe bağlı, büyük yatay boşlukta çok kollu etriye ankrajları yerine sığan sıra dağılımı kullanılır. Dar kesitte geçersiz örtü reddedilir.
+- Doğrulama: izole Release net10/2027 0 hata/3 mevcut uyarı. Core Console form/Çiz aktarım, 4/6 yatay, 3/5 düşey ve paspayı 4/6 PASS; varsayılan kiriş 35334 ve sürekli temel19356 eski DLL ile birebir parmak izi. Özel6/5/6 COMPLETE. Genel Verify-Project, görev öncesi mevcut PlanLisans fixture eksikliği nedeniyle StaStartup'ta durdu; YardımcıStartup PASS.
+- Yayın: Publish-CurrentNetload2027 ile Plan20261028_191914 + mevcut Yardımcı205437; iki modül/bağımlılık/SHA256 PASS. Kaynak/test araçları README'de. Çalışan AutoCAD'e yükleme yok; kullanıcı canlı AutoCAD testi yok. Modül durumu güncel. Commit yok.
+- Durum: tamamlandı; tüm dosya/çıktı ayırmaları serbest.

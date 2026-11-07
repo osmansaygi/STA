@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Globalization;
 using System.Text;
 using System.Windows.Forms;
+using Beykent.Monolit.Girdi;
 using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
 using SdFont = System.Drawing.Font;
 
@@ -136,8 +137,9 @@ namespace ST4Yardimci
     {
         private static DonatiMetrajForm _instance;
 
-        private readonly TextBox _txtFi;
-        private readonly TextBox _txtMax;
+        private readonly CapIsaretiSecim _cmbFi;
+        private readonly OlcuKutusu _txtMax;
+        private readonly GirdiDenetci Denetci = new GirdiDenetci();
         private readonly ListBox _lstLayers;
         private readonly CheckBox _chkOnizleme;
         private readonly CheckBox _chkRenkli;
@@ -242,34 +244,12 @@ namespace ST4Yardimci
             KeyPreview = true;
 
             int y = 8;
-            Controls.Add(MkLabel("Fi işareti", 10, y + 3, 100));
-            _txtFi = new TextBox
-            {
-                Text = string.IsNullOrWhiteSpace(DonatiMetrajSettings.FiIsareti) ? "ø" : DonatiMetrajSettings.FiIsareti,
-                Location = new Point(114, y),
-                Size = new Size(48, 22),
-                MaxLength = 6,
-                TextAlign = HorizontalAlignment.Center,
-                BorderStyle = BorderStyle.FixedSingle,
-                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
-                ForeColor = Beykent.Monolit.StandardFormTheme.Text
-            };
-            Controls.Add(_txtFi);
-            y += 26;
-
-            Controls.Add(MkLabel("L boyu max (cm)", 10, y + 3, 110));
-            _txtMax = new TextBox
-            {
-                Text = DonatiMetrajSettings.MaxBoyCm.ToString("0.##", CultureInfo.InvariantCulture),
-                Location = new Point(124, y),
-                Size = new Size(72, 22),
-                TextAlign = HorizontalAlignment.Center,
-                BorderStyle = BorderStyle.FixedSingle,
-                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
-                ForeColor = Beykent.Monolit.StandardFormTheme.Text
-            };
-            Controls.Add(_txtMax);
-            y += 26;
+            // Ayar property'si ve ini anahtarı (FiIsareti) aynı; listede olmayan eski kayıt korunur.
+            _cmbFi = new CapIsaretiSecim(DonatiMetrajSettings.FiIsareti);
+            Controls.Add(_cmbFi);
+            // Alt sınır eski ParseMax (≥ 1) ile aynı; üst sınır 10000 cm (100 m) makul tavan.
+            _txtMax = Denetci.Ekle(new OlcuKutusu("L boyu sınırı", "cm", 1, 10000, 1200, 2, 10));
+            _txtMax.Deger = DonatiMetrajSettings.MaxBoyCm;
 
             Controls.Add(MkLabel("Donatı etiketi katmanı", 10, y + 2, 280));
             y += 18;
@@ -357,15 +337,20 @@ namespace ST4Yardimci
             }
             catch { StartPosition = FormStartPosition.CenterScreen; }
 
-            // Kompakt, içerik odaklı form düzeni.
             var ui = BeginCompact(320);
-            ui.Section(null).Field("Ø / boy sınırı · cm", _txtFi, _txtMax);
+            ui.Section("Etiket ve sınır")
+                .Field("Çap işareti", _cmbFi)
+                .Field("L boyu sınırı", _txtMax);
             ui.Section("Etiket katmanları").Layers(_lstLayers, btnAdd, btnDel, btnRem);
             ui.Tip(_chkOnizleme, _chkOnizleme.Text); _chkOnizleme.Text = "Özet yaz";
             ui.Section(null).Choices(_chkRenkli, _chkOnizleme);
+            ui.Section(null).Control(Denetci.Serit, 44);
+            ui.Tip(_cmbFi, "Etikette aranan çap işareti (%%c / Ø ile de eşleşir).");
+            ui.Tip(_txtMax, "Bu değerin üstündeki L boyu komutta uyarılır.");
             ui.Footer(btnRun, btnClose, btnAntet, btnToplam);
             btnRun.Text = "Metraj al";
             ui.Finish();
+            Denetci.Guncelle();
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -375,7 +360,7 @@ namespace ST4Yardimci
                 Close();
                 return true;
             }
-            if (keyData == Keys.Enter || keyData == Keys.Return)
+            if ((keyData == Keys.Enter || keyData == Keys.Return) && !(ActiveControl is Button))
             {
                 OnRun(this, EventArgs.Empty);
                 return true;
@@ -385,18 +370,19 @@ namespace ST4Yardimci
 
         private void LoadFromSettings()
         {
-            _txtFi.Text = string.IsNullOrWhiteSpace(DonatiMetrajSettings.FiIsareti) ? "ø" : DonatiMetrajSettings.FiIsareti;
-            _txtMax.Text = DonatiMetrajSettings.MaxBoyCm.ToString("0.##", CultureInfo.InvariantCulture);
+            _cmbFi.Deger = DonatiMetrajSettings.FiIsareti;
+            _txtMax.Deger = DonatiMetrajSettings.MaxBoyCm;
             _chkOnizleme.Checked = DonatiMetrajSettings.OnizlemeMesaji;
             _chkRenkli.Checked = DonatiMetrajSettings.Renkli;
             FillList(_lstLayers, DonatiMetrajSettings.Katmanlar);
+            Denetci.Guncelle();
         }
 
+        /// <summary>Geçersiz sınır kutusu son geçerli değeri tutar; sessiz 1200'e dönüş yok.</summary>
         private void PushSettings()
         {
-            DonatiMetrajSettings.MaxBoyCm = ParseMax(_txtMax.Text);
-            string fi = (_txtFi.Text ?? "").Trim();
-            DonatiMetrajSettings.FiIsareti = fi.Length == 0 ? "ø" : fi;
+            DonatiMetrajSettings.MaxBoyCm = _txtMax.Deger;
+            DonatiMetrajSettings.FiIsareti = _cmbFi.Deger;
             DonatiMetrajSettings.OnizlemeMesaji = _chkOnizleme.Checked;
             DonatiMetrajSettings.Renkli = _chkRenkli.Checked;
             DonatiMetrajSettings.SetKatmanlar(CollectList(_lstLayers));
@@ -404,6 +390,7 @@ namespace ST4Yardimci
 
         private void OnAntet(object sender, EventArgs e)
         {
+            if (!Denetci.Onayla()) return;
             PushSettings();
             try
             {
@@ -417,6 +404,7 @@ namespace ST4Yardimci
 
         private void OnToplam(object sender, EventArgs e)
         {
+            if (!Denetci.Onayla()) return;
             PushSettings();
             try
             {
@@ -430,6 +418,7 @@ namespace ST4Yardimci
 
         private void OnRun(object sender, EventArgs e)
         {
+            if (!Denetci.Onayla()) return;
             PushSettings();
             try
             {
@@ -488,14 +477,6 @@ namespace ST4Yardimci
             foreach (object o in lst.Items)
                 if (o is string s) layers.Add(s);
             return layers;
-        }
-
-        private static double ParseMax(string raw)
-        {
-            if (double.TryParse((raw ?? "").Trim().Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out double v)
-                && v >= 1)
-                return v;
-            return 1200;
         }
 
         private static Label MkLabel(string text, int x, int y, int w) => new Label

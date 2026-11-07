@@ -1,0 +1,11 @@
+# Claude — ARD_B_01 LEGANT karşılaştırma ve RADYE (TEMELDONATI) çökmesi
+- Ajan: Claude Code
+- Güncelleme: 30.10.2026 18:45 (Europe/Istanbul)
+- Durum: tamamlandı — rezervasyon yok
+- Görev: ARD_B_01.st4'te RADYELEGANTKARSILASTIRMA ve TEMELDONATI'de AutoCAD 2027 çökmesi.
+- Kontrol: protokol + son 2 gün kayıtları, aktif çakışma yok. Görev başı GUNCEL_2027 = Plan 20261030_152926 + Yardımcı 20261030_172538.
+- Döküm: Application log 18:09/18:10/18:11 acad.exe 0xc00000fd (yığın taşması, donanım değil). WER LoadedModule = NETLOAD\GUNCEL_2027\ST4_Plan_ID_Ciz_2027_20261030_152926.dll + ST4_Yardimci_2027_20261030_172538.dll (güncel; eski DLL yok). dotnet-dump (CrashDumps acad.exe.*.dmp): 2× RadyeLegantKarsilastirma, 1× TemelDonati → CizBantlar → CizYuz → EkleCizilen (TemelIlaveDenemeCommands.cs:349) sonsuz.
+- Kök: EkleCizilen Polygon değilse NumGeometries döngüsüyle iniyor; TemelIci kesişimi LineString/Point dönerse GetGeometryN(0) kendisi → sonsuz özyineleme. Aynı kalıp CizGeometri, TemelHalkalari, IsaretEkleGeom'da.
+- Değişen: ST4_Plan_ID_Ciz/TemelIlaveDenemeCommands.cs (4 yerde `if (!(g is GeometryCollection)) return;`), tools/LegantRadyeCokme20261030/** (Build.ps1, Run.sh, Native/Probe.cs: RL_TEST legant, RD_TEST temeldonati + RD_INS yerleşim), docs/modul-durum/ST4_Plan_ID_Ciz.md, NETLOAD/OKU.txt.
+- Doğrulama: izole Release net10/2027 0 hata/4 bilinen uyarı (20261030_182652). Core Console ARD_B_01 (scratchpad kopyası): eski DLL RL_TEST çöktü, RD_TEST (0,0) ve (777.78,333.33) geçti, (12345.678,-9876.543) ve (-31234.57,48211.09) çöktü; yeni DLL dördü COMPLETE, (0,0) katman sayıları eskiyle aynı. Yayından sonra GUNCEL yolundan RL_TEST + RD_TEST tekrar COMPLETE.
+- Yayın: GUNCEL_2027 = Plan 20261030_182652 + Yardımcı 20261030_172538, Publish51 hash PASS, eski arsiv/GUNCEL_2027_20261030_182745_598. Canlı AutoCAD: kullanıcı doğruladı (30.10.2026, "TEMELDE ÇÖKME YOK"). Commit yok.

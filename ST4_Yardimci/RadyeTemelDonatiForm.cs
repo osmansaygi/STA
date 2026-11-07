@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
+using Beykent.Monolit.Girdi;
 using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
 using SdFont = System.Drawing.Font;
 
@@ -80,13 +81,13 @@ namespace ST4Yardimci
     {
         private static RadyeTemelDonatiForm _instance;
 
-        private readonly NumericUpDown _numYukseklik;
-        private readonly NumericUpDown _numPaspayi;
-        private readonly NumericUpDown _numAralik;
+        private readonly OlcuKutusu _numYukseklik;
+        private readonly OlcuKutusu _numPaspayi;
+        private readonly OlcuKutusu _numAralik;
         private readonly CheckBox _chkIlaveGonye;
-        private readonly NumericUpDown _numGonyeMax;
-        private readonly RadioButton _rbAlt;
-        private readonly RadioButton _rbUst;
+        private readonly OlcuKutusu _numGonyeMax;
+        private readonly SegmentSecim _ilaveKat;
+        private readonly GirdiDenetci Denetci = new GirdiDenetci();
         private readonly Button _btnRun;
         private readonly Button _btnClose;
         private bool _starting;
@@ -163,54 +164,32 @@ namespace ST4Yardimci
             Font = new SdFont("Segoe UI", 9f);
             KeyPreview = true;
 
-            int y = 14;
-            Controls.Add(MakeLabel("Radye temel yüksekliği (cm)", 14, y)); y += 20;
-            _numYukseklik = MakeNum(14, y, 160, 15, 300, 1, (decimal)RadyeTemelDonatiSettings.TemelYuksekligiCm);
-            Controls.Add(_numYukseklik); y += 34;
-
-            Controls.Add(MakeLabel("Paspayı (cm)", 14, y)); y += 20;
-            _numPaspayi = MakeNum(14, y, 160, 2, 15, 0.5m, (decimal)RadyeTemelDonatiSettings.PaspayiCm);
-            Controls.Add(_numPaspayi); y += 34;
-
-            Controls.Add(MakeLabel("Yedek aralık (cm) — kutu yazısı yoksa", 14, y)); y += 20;
-            _numAralik = MakeNum(14, y, 160, 5, 50, 1, (decimal)RadyeTemelDonatiSettings.AralikCm);
-            _numAralik.DecimalPlaces = 0;
-            Controls.Add(_numAralik); y += 34;
-
+            // Sınırlar ve ondalıklar eski NumericUpDown ile aynı.
+            _numYukseklik = Denetci.Ekle(new OlcuKutusu("Temel yüksekliği", "cm", 15, 300, 50, 1, 1));
+            _numPaspayi = Denetci.Ekle(new OlcuKutusu("Paspayı", "cm", 2, 15, 5, 1, 0.5));
+            _numAralik = Denetci.Ekle(new OlcuKutusu("Yedek aralık", "cm", 5, 50, 15));
+            _numGonyeMax = Denetci.Ekle(new OlcuKutusu("Gönye max", "cm", 5, 200, 40));
             _chkIlaveGonye = new CheckBox
             {
-                Text = "TEMEL gönye",
-                Location = new Point(14, y + 2),
+                Text = "TEMEL kenarında gönye",
                 AutoSize = true,
                 ForeColor = Color.White,
-                BackColor = Color.Transparent,
-                Checked = RadyeTemelDonatiSettings.IlaveGonye
+                BackColor = Color.Transparent
             };
             Controls.Add(_chkIlaveGonye);
-            Controls.Add(MakeLabel("max (cm)", 130, y));
-            _numGonyeMax = MakeNum(200, y - 2, 70, 5, 200, 1, (decimal)RadyeTemelDonatiSettings.GonyeBoyuMaxCm);
-            _numGonyeMax.DecimalPlaces = 0;
-            Controls.Add(_numGonyeMax);
-            y += 34;
+            _ilaveKat = new SegmentSecim("Alt ilave", "Üst ilave");
+            LoadFromSettings();
 
-            Controls.Add(MakeLabel("İlave kat", 14, y)); y += 22;
-            _rbAlt = MakeRadio("Alt ilave", 14, y);
-            _rbUst = MakeRadio("Üst ilave", 120, y);
-            if (RadyeTemelDonatiSettings.IlaveUst) _rbUst.Checked = true;
-            else _rbAlt.Checked = true;
-            Controls.Add(_rbAlt);
-            Controls.Add(_rbUst);
-            y += 36;
+            Denetci.UyariKurali(() => _chkIlaveGonye.Checked && _numYukseklik.Deger - 2 * _numPaspayi.Deger <= 0.5
+                ? "Gönye çizilmez: yükseklik − 2·paspayı ≤ 0,5 cm" : null);
 
-            _btnRun = MakeButton("Plan seç / zarfa donatı at", 14, y, 200);
+            _btnRun = MakeButton("Plan seç / zarfa donatı at");
             _btnRun.ForeColor = Beykent.Monolit.StandardFormTheme.Accent;
             _btnRun.Click += (s, e) => OnRun();
-            _btnClose = MakeButton("Kapat", 224, y, 72);
+            _btnClose = MakeButton("Kapat");
             _btnClose.Click += (s, e) => Close();
-            Controls.Add(_btnRun);
-            Controls.Add(_btnClose);
 
-            FormClosing += (s, e) => { try { PushSettings(); } catch { } };
+            FormClosing += (s, e) => { try { if (Denetci.Uygun) PushSettings(); } catch { } };
             FormClosed += (s, e) =>
             {
                 if (ReferenceEquals(_instance, this))
@@ -230,15 +209,21 @@ namespace ST4Yardimci
                 StartPosition = FormStartPosition.CenterScreen;
             }
 
-            // Kompakt, içerik odaklı form düzeni.
             var ui = BeginCompact(350);
-            _chkIlaveGonye.Text = "Gönye max · cm";
-            ui.Section("Radye kesiti").Field("Temel yüksekliği · cm", _numYukseklik).Field("Paspayı · cm", _numPaspayi)
-                .Field("Yedek aralık · cm", _numAralik);
-            ui.Section("İlave donatı").Options(_rbAlt, _rbUst).Field(_chkIlaveGonye, _numGonyeMax);
-            ui.Tip(_numGonyeMax, "Gönye için en büyük boy (cm)");
+            ui.Section("Radye kesiti")
+                .Field("Temel yüksekliği", _numYukseklik)
+                .Field("Paspayı", _numPaspayi);
+            ui.Section("İlave donatı")
+                .Control(_ilaveKat)
+                .Field("Yedek aralık", _numAralik)
+                .Options(_chkIlaveGonye)
+                .FieldWhen(() => _chkIlaveGonye.Checked, new Label { Text = "Gönye max" }, _numGonyeMax);
+            ui.Section(null).Control(Denetci.Serit, 44);
+            ui.Tip(_numAralik, "KUTU X yazısı yoksa kullanılan aralık.");
+            ui.Tip(_numGonyeMax, "Gönye için en büyük boy; gerçek gönye = yükseklik − 2×paspayı.");
             ui.Footer(_btnRun, _btnClose);
             ui.Finish();
+            Denetci.Guncelle();
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -248,7 +233,9 @@ namespace ST4Yardimci
                 Close();
                 return true;
             }
-            if (keyData == Keys.Enter || keyData == Keys.Return || keyData == Keys.Space)
+            bool yaziGirisi = ActiveControl is GirdiKutusu || ActiveControl is TextBoxBase;
+            if (((keyData == Keys.Enter || keyData == Keys.Return) && !(ActiveControl is Button))
+                || (keyData == Keys.Space && !yaziGirisi && !(ActiveControl is Button)))
             {
                 OnRun();
                 return true;
@@ -258,29 +245,29 @@ namespace ST4Yardimci
 
         private void LoadFromSettings()
         {
-            _numYukseklik.Value = Clamp(_numYukseklik, (decimal)RadyeTemelDonatiSettings.TemelYuksekligiCm);
-            _numPaspayi.Value = Clamp(_numPaspayi, (decimal)RadyeTemelDonatiSettings.PaspayiCm);
-            _numAralik.Value = Clamp(_numAralik, (decimal)RadyeTemelDonatiSettings.AralikCm);
+            _numYukseklik.Deger = Kirp(RadyeTemelDonatiSettings.TemelYuksekligiCm, 15, 300);
+            _numPaspayi.Deger = Kirp(RadyeTemelDonatiSettings.PaspayiCm, 2, 15);
+            _numAralik.Deger = Kirp(Math.Round(RadyeTemelDonatiSettings.AralikCm), 5, 50);
             _chkIlaveGonye.Checked = RadyeTemelDonatiSettings.IlaveGonye;
-            _numGonyeMax.Value = Clamp(_numGonyeMax, (decimal)RadyeTemelDonatiSettings.GonyeBoyuMaxCm);
-            _rbUst.Checked = RadyeTemelDonatiSettings.IlaveUst;
-            _rbAlt.Checked = !RadyeTemelDonatiSettings.IlaveUst;
+            _numGonyeMax.Deger = Kirp(Math.Round(RadyeTemelDonatiSettings.GonyeBoyuMaxCm), 5, 200);
+            _ilaveKat.Secili = RadyeTemelDonatiSettings.IlaveUst ? 1 : 0;
         }
 
         private void PushSettings()
         {
-            RadyeTemelDonatiSettings.TemelYuksekligiCm = (double)_numYukseklik.Value;
-            RadyeTemelDonatiSettings.PaspayiCm = (double)_numPaspayi.Value;
-            RadyeTemelDonatiSettings.AralikCm = (double)_numAralik.Value;
+            RadyeTemelDonatiSettings.TemelYuksekligiCm = _numYukseklik.Deger;
+            RadyeTemelDonatiSettings.PaspayiCm = _numPaspayi.Deger;
+            RadyeTemelDonatiSettings.AralikCm = _numAralik.Deger;
             RadyeTemelDonatiSettings.IlaveGonye = _chkIlaveGonye.Checked;
-            RadyeTemelDonatiSettings.GonyeBoyuMaxCm = (double)_numGonyeMax.Value;
-            RadyeTemelDonatiSettings.IlaveUst = _rbUst.Checked;
+            RadyeTemelDonatiSettings.GonyeBoyuMaxCm = _numGonyeMax.Deger;
+            RadyeTemelDonatiSettings.IlaveUst = _ilaveKat.Secili == 1;
             RadyeTemelDonatiSettings.Save();
         }
 
         private void OnRun()
         {
             if (_starting) return;
+            if (!Denetci.Onayla()) return;
             PushSettings();
             try
             {
@@ -296,42 +283,13 @@ namespace ST4Yardimci
             }
         }
 
-        private static decimal Clamp(NumericUpDown n, decimal v)
-        {
-            if (v < n.Minimum) return n.Minimum;
-            if (v > n.Maximum) return n.Maximum;
-            return v;
-        }
+        private static double Kirp(double v, double min, double max) => Math.Max(min, Math.Min(max, v));
 
-        private static RadioButton MakeRadio(string text, int x, int y) => new RadioButton
-        {
-            Text = text,
-            Location = new Point(x, y),
-            AutoSize = true,
-            ForeColor = Color.White,
-            BackColor = Color.Transparent,
-            Cursor = Cursors.Hand
-        };
-
-        private Label MakeLabel(string text, int x, int y)
-        {
-            return new Label
-            {
-                Text = text,
-                Location = new Point(x, y),
-                AutoSize = true,
-                ForeColor = Color.White,
-                BackColor = Color.Transparent
-            };
-        }
-
-        private Button MakeButton(string text, int x, int y, int w)
+        private Button MakeButton(string text)
         {
             var b = new Button
             {
                 Text = text,
-                Location = new Point(x, y),
-                Size = new Size(w, 28),
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Beykent.Monolit.StandardFormTheme.BgAlt,
                 ForeColor = Color.White,
@@ -340,25 +298,6 @@ namespace ST4Yardimci
             b.FlatAppearance.BorderColor = Beykent.Monolit.StandardFormTheme.InputBorder;
             b.FlatAppearance.MouseOverBackColor = Beykent.Monolit.StandardFormTheme.BgHover;
             return b;
-        }
-
-        private NumericUpDown MakeNum(int x, int y, int w, decimal min, decimal max, decimal inc, decimal val)
-        {
-            var n = new NumericUpDown
-            {
-                Location = new Point(x, y),
-                Size = new Size(w, 26),
-                Minimum = min,
-                Maximum = max,
-                Increment = inc,
-                DecimalPlaces = 1,
-                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
-                ForeColor = Color.White,
-                BorderStyle = BorderStyle.FixedSingle
-            };
-            n.Value = Clamp(n, val);
-            YardimciUi.StripUpDownButtons(n);
-            return n;
         }
     }
 }

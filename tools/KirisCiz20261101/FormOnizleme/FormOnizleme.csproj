@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="..\..\..\ST4_Plan_ID_Ciz\KirisManuelForm.cs" />
+    <Compile Include="..\..\..\ST4_Plan_ID_Ciz\KirisManuelVeri.cs" />
+    <Compile Include="..\..\..\ST4_Plan_ID_Ciz\PlanFormSettings.cs" />
+    <Compile Include="..\..\..\Ortak\Monolit\*.cs" />
+  </ItemGroup>
+</Project>

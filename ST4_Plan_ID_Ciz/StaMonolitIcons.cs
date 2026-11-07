@@ -58,6 +58,10 @@ namespace ST4PlanIdCiz
         {
             if (!Enabled || string.IsNullOrWhiteSpace(command)) return null;
             string key = command.Trim();
+            // Ölçek soran birleşik komutlar 1/50 komutunun simgesini kullanır.
+            if (key.Equals("TEMELST4", StringComparison.OrdinalIgnoreCase)) key = "TEMEL50ST4";
+            else if (key.Equals("KOLONST4", StringComparison.OrdinalIgnoreCase)) key = "KOLON50ST4";
+            else if (key.Equals("KALIPST4", StringComparison.OrdinalIgnoreCase)) key = "KALIP50ST4";
             if (key.Equals("KOLONDUSEY2", StringComparison.OrdinalIgnoreCase)
                 || key.Equals("KOLONDUSEY25", StringComparison.OrdinalIgnoreCase)) key = "KOLONDUSEY";
             lock (Icons)
@@ -104,6 +108,8 @@ namespace ST4PlanIdCiz
                         TryLoadExtra("TEMELILAVEDENEME", "ST4PlanIdCiz.Icons.temel_ilave_deneme_monolit.png");
                         TryLoadExtra("DENEME2", "ST4PlanIdCiz.Icons.kalip_deneme2_monolit.png");
                         TryLoadExtra("SERBESTKESIT", "ST4PlanIdCiz.Icons.serbest_kesit_monolit.png");
+                        TryLoadExtra("RADYELEGANTKARSILASTIRMA", "ST4PlanIdCiz.Icons.radye_legant_karsilastirma_monolit.png");
+                        TryLoadExtra("KIRISCIZ", "ST4PlanIdCiz.Icons.kiris_ciz_monolit.png");
                     }
                     catch { /* Embedded classic icons remain available as the fallback. */ }
                 }

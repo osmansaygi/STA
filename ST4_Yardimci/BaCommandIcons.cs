@@ -69,6 +69,13 @@ namespace ST4Yardimci
             // Atlas dışı: Monolit tarzında ayrı 32 px simge (kaynak tools/SehimTablosu20261026).
             new BaTool("Sehim Tablosu", "SEHIMTABLOSU", "ST4Yardimci.Icons.ba_sehimtablosu.png"),
             new BaTool("Beton / Kalıp", "BETONKALIP", "ST4Yardimci.Icons.ba_betonkalip.png"),
+            new BaTool("Mimari Kat", "MIMARIKAT", "ST4Yardimci.Icons.ba_mimarikat.png"),
+            new BaTool("Mimari Boşluk", "MIMARIBOSLUK", "ST4Yardimci.Icons.ba_mimaribosluk.png"),
+            new BaTool("Mimari Merdiven", "MIMARIMERDIVEN", "ST4Yardimci.Icons.ba_mimarimerdiven.png"),
+            // KIRISCIZ komutu Plan ID'de (KIRISACILIMLARI motoru); simge kaynağı tools/KirisCiz20261101/IkonKiris.
+            new BaTool("Kiriş Çiz", "KIRISCIZ", "ST4Yardimci.Icons.ba_kirisciz.png"),
+            // Mantar döşeme kolon üstü ilave; simge kaynağı tools/MantarIlave20261102/Ikon.
+            new BaTool("Mantar İlave Donatı", "MANTARILAVE", "ST4Yardimci.Icons.ba_mantarilave.png"),
         };
 
         public static Image Load(string cmd, string resourceName)
