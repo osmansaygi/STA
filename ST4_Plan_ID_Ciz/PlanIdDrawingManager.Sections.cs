@@ -2153,13 +2153,14 @@ namespace ST4PlanIdCiz
             double h = GrobetonUnderFoundationKesitHeightCm;
             var grobetonRects = new List<Geometry>();
             var factory = StaticGeomFactory;
+            var radyeKademe = FindRadyeKademeAraliklari(slices);
             foreach (var s in slices)
             {
                 if (s.Layer != layerTemel) continue;
                 if (s.Order != SectionOrderContinuousFoundation && s.Order != SectionOrderSingleFooting && s.Order != SectionOrderSlabFoundation)
                     continue;
-                double aLo = Math.Min(s.A0, s.A1);
-                double aHi = Math.Max(s.A0, s.A1);
+                foreach (var (aLo, aHi) in RadyeKademeGrobetonAraliklari(s, Math.Min(s.A0, s.A1), Math.Max(s.A0, s.A1), radyeKademe))
+                {
                 if (aHi - aLo < 1e-3) continue;
                 double zLo = s.Z0;
                 double xl, xr, yb, yt;
@@ -2199,7 +2200,33 @@ namespace ST4PlanIdCiz
                     new Coordinate(xl, yb)
                 });
                 grobetonRects.Add(factory.CreatePolygon(ring));
+                }
             }
+            // Kademeli radye: grobeton kademe yüzünde şevli kama ile alt radyeden üst radye altına devam eder.
+            foreach (var k in radyeKademe)
+            {
+                var pts = RadyeKademeGrobetonKama(k, h);
+                var kc = new Coordinate[pts.Count + 1];
+                for (int i = 0; i < pts.Count; i++)
+                {
+                    double a = pts[i].a, z = pts[i].z;
+                    if (horizontalAlongX)
+                        kc[i] = new Coordinate(originX + (a - amin), originY + (z - minZ));
+                    else if (mirrorElevationX)
+                        kc[i] = new Coordinate(originX + spanZ - (z - minZ), originY + (a - amin));
+                    else
+                        kc[i] = new Coordinate(originX + (z - minZ), originY + (a - amin));
+                }
+                kc[pts.Count] = kc[0];
+                try
+                {
+                    var kama = factory.CreatePolygon(factory.CreateLinearRing(kc));
+                    if (!kama.IsValid) kama = factory.CreatePolygon(factory.CreateLinearRing(kc.Reverse().ToArray()));
+                    if (kama.IsValid && kama.Area > 1e-6) grobetonRects.Add(kama);
+                }
+                catch { }
+            }
+            bool zeminCizgisiCiz = radyeKademe.Count == 0;
             if (grobetonRects.Count == 0) return;
             Geometry merged;
             try
@@ -2217,7 +2244,7 @@ namespace ST4PlanIdCiz
                             AppendClosedRectanglePolyline(tr, btr, c[0].X, c[0].Y, c[2].X, c[2].Y, LayerGrobeton, addGrobetonArConcHatch: true);
                     }
                 }
-                if (TryCombineGrobetonRectEnvelopes(grobetonRects, out double zx0, out double zx1, out double zy0, out double zy1))
+                if (zeminCizgisiCiz && TryCombineGrobetonRectEnvelopes(grobetonRects, out double zx0, out double zx1, out double zy0, out double zy1))
                     DrawZeminSingleLineAlongFoundationSection(tr, btr, zx0, zx1, zy0, zy1, horizontalAlongX, mirrorElevationX);
                 DrawGrobetonGapStripsBetweenFoundationPartsKesit(tr, btr, slices, originX, originY, amin, minZ, spanZ, horizontalAlongX, mirrorElevationX);
                 return;
@@ -2232,7 +2259,7 @@ namespace ST4PlanIdCiz
                 groTopY = merged.EnvelopeInternal.MaxY;
             }
             DrawGeometryRingsAsPolylines(tr, btr, merged, LayerGrobeton, addHatch: true, hatchAngleRad: 0, exteriorRingsOnly: false, applySmallTriangleTrim: true, hatchPatternName: GrobetonHatchPatternName, hatchPatternScale: GrobetonHatchPatternScale, hatchLayerOverride: LayerTarama);
-            DrawZeminLinesUnderGrobetonMerged(tr, btr, merged, horizontalAlongX, mirrorElevationX);
+            if (zeminCizgisiCiz) DrawZeminLinesUnderGrobetonMerged(tr, btr, merged, horizontalAlongX, mirrorElevationX);
             DrawGrobetonGapStripsBetweenFoundationPartsKesit(tr, btr, slices, originX, originY, amin, minZ, spanZ, horizontalAlongX, mirrorElevationX);
         }
 
@@ -2268,6 +2295,7 @@ namespace ST4PlanIdCiz
                     zTemelUst = Math.Max(zTemelUst, s.Z1);
                 }
                 double? zBlokajAltTemelUstu = double.IsNegativeInfinity(zTemelUst) ? (double?)null : zTemelUst;
+                bool radyeKademeli = FindRadyeKademeAraliklari(slices).Count > 0;
 
                 var rawHp = new List<(double lo, double hi, double zHat, bool isHat)>();
                 foreach (var s in slices)
@@ -2311,9 +2339,24 @@ namespace ST4PlanIdCiz
                     if (mergedHp[i].anyHat) zTop = Math.Min(zTop, mergedHp[i].minHatZ1);
                     if (mergedHp[i + 1].anyHat) zTop = Math.Min(zTop, mergedHp[i + 1].minHatZ1);
                     if (double.IsInfinity(zTop)) continue;
+                    double? zBlokAlt = zBlokajAltTemelUstu;
+                    if (radyeKademeli)
+                    {
+                        // Kademeli radye: dolgu, bu aralığın altındaki temelin üstüne kadar iner (alt kademede alt radye üstü).
+                        double zAltTemelUst = double.NegativeInfinity;
+                        foreach (var s in slices)
+                        {
+                            if (s.Layer != layerTemel) continue;
+                            if (s.Order != SectionOrderContinuousFoundation && s.Order != SectionOrderSingleFooting && s.Order != SectionOrderSlabFoundation)
+                                continue;
+                            if (Math.Max(s.A0, s.A1) <= gapLo + joinE || Math.Min(s.A0, s.A1) >= gapHi - joinE) continue;
+                            zAltTemelUst = Math.Max(zAltTemelUst, s.Z1);
+                        }
+                        if (!double.IsNegativeInfinity(zAltTemelUst)) zBlokAlt = zAltTemelUst;
+                    }
                     DrawGrobetonBlokajEarthGapStripsAt(tr, btr, gapLo, gapHi, zTop, zZeminGro, hStrip, minGap,
                         originX, originY, amin, minZ, spanZ, horizontalAlongX, mirrorElevationX,
-                        drawEarthFillBelowBlokaj: false, zBlokBottomWorldOverride: zBlokajAltTemelUstu);
+                        drawEarthFillBelowBlokaj: false, zBlokBottomWorldOverride: zBlokAlt);
                 }
                 return;
             }
@@ -3602,9 +3645,11 @@ namespace ST4PlanIdCiz
                         TryAddSliceCutLine(cutLine, hat, alongOrigin, dirN, z1, hz1, "TEMEL HATILI (BEYKENT)", 15, list);
                     }
                 }
+                // Kademeli radye: alt radye üst radyenin altına kendi kalınlığı kadar girer.
+                var radyeKademeIzleri = BuildRadyeKademeFootprints(out _);
                 foreach (var sfd in _model.SlabFoundations)
                 {
-                    var poly = SlabFoundationFootprintPoly(sfd);
+                    var poly = radyeKademeIzleri.TryGetValue(sfd, out var kademeIz) ? kademeIz : SlabFoundationFootprintPoly(sfd);
                     double z0 = (_model.BuildingBaseKotu + sfd.BottomLevelM) * 100.0;
                     // ST4 kalınlığı kullan; yoksa çizim varsayılanı (plan etiketiyle aynı mantık — Max ile 30→40 şişirme yok).
                     double hRadye = sfd.ThicknessCm > 0 ? sfd.ThicknessCm : 40.0;
@@ -3677,7 +3722,10 @@ namespace ST4PlanIdCiz
             }
 
             if (isFoundationPlan)
+            {
+                AddRadyeKademeDolguSlices(list);
                 ApplyKolonPerdeTemelHatiliFoundationPriority(list);
+            }
             else
                 ApplyKolonPerdeKirisCutPriority(list);
             return list;

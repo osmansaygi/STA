@@ -1,0 +1,12 @@
+# Claude — Temel plan/kesit: kademeli radye (farklı kotlu temeller) bindirme ve sınır
+- Ajan: Claude Code
+- Güncelleme: 09.11.2026 (Europe/Istanbul)
+- Durum: tamamlandı — rezervasyon yok
+- Görev: TEMEL50ST4/TEMEL100ST4 planında ve A-A/B-B kesitlerinde kademeli radye: alttaki temel üstteki temelin altına (alt temel kalınlığı kadar) girsin, iki temel sınırı çizilsin (BYS_T9 örneği).
+- Kontrol: protokol + son 2 gün kayıtları (aktif yok). Görev başı GUNCEL_2027 = Plan 20261109_201416 + Yardımcı 20261107_222925.
+- Ayrılan: ST4_Plan_ID_Ciz/PlanIdDrawingManager.cs (DrawSlabFoundations/BuildTemelUnion çevresi), ST4_Plan_ID_Ciz/PlanIdDrawingManager.Sections.cs (temel kesit radye dilimleri), gerekirse yeni ST4_Plan_ID_Ciz/PlanIdDrawingManager.RadyeKademe.cs, tools/RadyeKademe20261109/** (izole derleme/Core Console), docs/modul-durum/ST4_Plan_ID_Ciz.md, NETLOAD/OKU.txt; yayında NETLOAD/GUNCEL_2027/**, NETLOAD/arsiv.
+- Sonuç: yeni ST4_Plan_ID_Ciz/PlanIdDrawingManager.RadyeKademe.cs; PlanIdDrawingManager.Sections.cs (radye kesit izi, kademe dolgu dilimi, grobeton kama, kademede zemin çizgisi yok, hatıllı dolgu alt kademede alt radye üstüne); PlanIdDrawingManager.cs DrawTemelMerged → DrawRadyeKademeSinirlari.
+- Doğrulama: izole Release 0 hata; Core Console BYS_T9 A-A/plan PDF (tools/RadyeKademe20261109/out/y2_*.pdf); A_TFL, HHO_01, N_ULK_02, SANER_01 DXF birebir.
+- Yayın: GUNCEL_2027 = Plan 20261109_203712 + Yardımcı 20261107_222925, Publish51 PASS, arşiv NETLOAD/arsiv/GUNCEL_2027_20261109_204122_284. Commit yok. Canlı AutoCAD yok.
+- Ek görev (etiket): RadyeEtiketKotlari + ComputeRadyeLabelPlacements/AppendRadyeLabel (PlanIdDrawingManager.cs). BYS_T9 RD-01/RD-02 ayrı; 4 proje birebir. Yayın Plan 20261109_204503 + Yardımcı 20261107_222925. Commit yok, canlı AutoCAD yok. Durum: tamamlandı — rezervasyon yok.
+- Ek görev (bina görünüş/kesit): ayrılan/değişen PlanIdDrawingManager.BinaGorunus.cs, BinaKesit.cs, SerbestKesit.cs, RadyeKademe.cs. Yayın Plan 20261109_205238 + Yardımcı 20261107_222925. Commit yok, canlı AutoCAD yok. Durum: tamamlandı — rezervasyon yok.

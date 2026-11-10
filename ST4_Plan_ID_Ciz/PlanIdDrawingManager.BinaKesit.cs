@@ -754,7 +754,7 @@ namespace ST4PlanIdCiz
 
                     double th = slab.ThicknessCm > 0 ? slab.ThicknessCm : 15.0;
                 double zt = refTopCm + slab.OffsetFromFloorCm;
-                if (Math.Abs(zt - refTopCm) > 5.0) continue;
+                // Ofsetli subasman döşemesi (kademeli temelde alt kademe) de çizilir.
                 double zb = zt - th;
                 var poly = SlabFootprintPoly(slab);
                 TryAddSliceCutLine(cutLine, poly, alongOrig, dirN, zb, zt, LayerDoseme, 5, slices);
@@ -799,7 +799,7 @@ namespace ST4PlanIdCiz
                     if (ShouldOmitSlabFromBinaView(slab)) continue;
                     double th = slab.ThicknessCm > 0 ? slab.ThicknessCm : 15.0;
                     double zt = refTopCm + slab.OffsetFromFloorCm;
-                    if (Math.Abs(zt - refTopCm) > 5.0) continue;
+                    // Ofsetli subasman döşemesi (kademeli temelde alt kademe) de çizilir.
                     addPlan(SlabFootprintPoly(slab), zt - th, zt);
                 }
             }
@@ -855,12 +855,9 @@ namespace ST4PlanIdCiz
                 if (hat != null && cf.HatilLabelHeightCm > 0)
                     addPlan(hat, z1, z1 + cf.HatilLabelHeightCm);
             }
-            foreach (var sfd in _model.SlabFoundations)
-            {
-                double z0 = (_model.BuildingBaseKotu + sfd.BottomLevelM) * 100.0;
-                double h = sfd.ThicknessCm > 0 ? sfd.ThicknessCm : 40.0;
-                addPlan(SlabFoundationFootprintPoly(sfd), z0, z0 + h);
-            }
+            // Radyeler (kademeli radyede alt radye bindirmeli) + bindirme beton blokları.
+            foreach (var (poly, z0, z1) in BinaViewRadyeParcalari())
+                addPlan(poly, z0, z1);
             foreach (var tb in _model.TieBeams)
             {
                 double z0 = (_model.BuildingBaseKotu + tb.BottomKotM) * 100.0;

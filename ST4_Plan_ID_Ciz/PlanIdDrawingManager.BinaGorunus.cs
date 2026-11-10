@@ -618,6 +618,22 @@ namespace ST4PlanIdCiz
         private void CollectBinaGorunusFaces(BinaGorunusBakis bakis, List<BinaGorunusFace> faces)
         {
             double baseCm = _model.BuildingBaseKotu * 100.0;
+            // Subasman döşemesi (FloorNo 0 — Floors listesinde yok; ofsetliler dahil), bina kesitiyle aynı kot.
+            {
+                int step = _model.SlabFloorKeyStep > 0 ? _model.SlabFloorKeyStep : 100;
+                double refTopCm = _model.HasSubasmanStory
+                    ? (_model.BuildingBaseKotu + _model.SubasmanElevationM) * 100.0
+                    : _model.BuildingBaseKotu * 100.0;
+                foreach (var slab in _model.Slabs)
+                {
+                    if (slab == null || slab.SlabId <= 0 || slab.SlabId >= step) continue;
+                    if (GetSlabFloorNo(slab.SlabId) != 0) continue;
+                    if (ShouldOmitSlabFromBinaView(slab)) continue;
+                    double th = slab.ThicknessCm > 0 ? slab.ThicknessCm : 15.0;
+                    double zt = refTopCm + slab.OffsetFromFloorCm;
+                    AddBinaGorunusPlan(faces, bakis, SlabFootprintPoly(slab), zt - th, zt);
+                }
+            }
             foreach (var floor in _model.Floors)
             {
                 int floorNo = floor.FloorNo;
@@ -669,12 +685,9 @@ namespace ST4PlanIdCiz
                 if (hat != null && cf.HatilLabelHeightCm > 0)
                     AddBinaGorunusPlan(faces, bakis, hat, z1, z1 + cf.HatilLabelHeightCm);
             }
-            foreach (var sfd in _model.SlabFoundations)
-            {
-                double z0 = (_model.BuildingBaseKotu + sfd.BottomLevelM) * 100.0;
-                double h = sfd.ThicknessCm > 0 ? sfd.ThicknessCm : 40.0;
-                AddBinaGorunusPlan(faces, bakis, SlabFoundationFootprintPoly(sfd), z0, z0 + h);
-            }
+            // Radyeler (kademeli radyede alt radye bindirmeli) + bindirme beton blokları.
+            foreach (var (poly, z0, z1) in BinaViewRadyeParcalari())
+                AddBinaGorunusPlan(faces, bakis, poly, z0, z1);
             foreach (var tb in _model.TieBeams)
             {
                 double z0 = (_model.BuildingBaseKotu + tb.BottomKotM) * 100.0;

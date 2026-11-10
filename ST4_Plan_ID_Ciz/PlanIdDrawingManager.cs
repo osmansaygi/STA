@@ -15351,8 +15351,8 @@ namespace ST4PlanIdCiz
             {
                 var r = records[i];
                 double th = r.sf.ThicknessCm > 0 ? r.sf.ThicknessCm : 80.0;
-                double topElev = baseKotu;
-                double bottomElev = topElev - th / 100.0;
+                // Kademeli radye: farklı kotlu radyeler ayrı etiket (RD-01, RD-02 …) alır.
+                RadyeEtiketKotlari(r.sf, baseKotu, out double topElev, out double bottomElev);
                 double load = r.sf.LiveLoadKNm2;
                 var key = ((int)Math.Round(th), (int)Math.Round(topElev * 100), (int)Math.Round(bottomElev * 100), (int)Math.Round(load * 10));
                 if (!keyToIndices.TryGetValue(key, out var list)) { list = new List<int>(); keyToIndices[key] = list; }
@@ -15453,8 +15453,7 @@ namespace ST4PlanIdCiz
                 blockHeight += mainToQCm + qToUstKotCm;
             blockHeight += kotTextHeightCm + kotArasiMesafeCm + kotTextHeightCm;
 
-            double topElevM = _model.BuildingBaseKotu;
-            double bottomElevM = topElevM - thickness / 100.0;
+            RadyeEtiketKotlari(sf, _model.BuildingBaseKotu, out double topElevM, out double bottomElevM);
             string topElevStr = FormatKotElevationMeters(topElevM);
             string bottomElevStr = FormatKotElevationMeters(bottomElevM);
             blockWidth = Math.Max(blockWidth, Math.Max(EstimateTextWidthCm(topElevStr, kotTextHeightCm), EstimateTextWidthCm(bottomElevStr, kotTextHeightCm)));
@@ -17346,6 +17345,8 @@ namespace ST4PlanIdCiz
             Geometry unionResult = temelUnion ?? BuildTemelUnion(offsetX, offsetY, floor);
             if (unionResult == null || unionResult.IsEmpty) return;
             DrawGeometryRingsAsPolylines(tr, btr, unionResult, layer, applySmallTriangleTrim: true);
+            // Kademeli radye: farklı kotlu radyelerin sınırları (alt radye bindirmeli) ayrıca çizilir.
+            DrawRadyeKademeSinirlari(tr, btr, offsetX, offsetY, unionResult);
             // İç tarama: ampatmanı da hesaba kat. Tarama ampatmanın İÇ yüzünden başlar; ampatman bandı
             // (gövde ile ampatman arası, "ampatman üstü") ayrı eleman sayıldığı için taranmaz.
             Geometry hatchBase = unionResult;

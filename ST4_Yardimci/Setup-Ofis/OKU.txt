@@ -1,5 +1,5 @@
 ﻿BETONARME TOOL + ST4 PLAN ID — ofis kurulumu (yalnız BEYKENT-2)
-Sürüm 2026.11.07.1 — AutoCAD 2027
+Sürüm 2026.11.10.1 — AutoCAD 2027
 
 Bu klasörün tamamını (Kur.cmd, Kur.ps1, PackageContents.xml, payload, plan, OKU.txt)
 ofis bilgisayarına kopyalayın. Masaüstü veya İndirilenler olur; kurulum kendi

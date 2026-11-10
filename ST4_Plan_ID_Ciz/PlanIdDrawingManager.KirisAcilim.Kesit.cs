@@ -160,6 +160,10 @@ namespace ST4PlanIdCiz
         {
             public string Ad;
             public double B, H, Kot, X, Y;
+            /// <summary>Eğimli zincirde kirişin eğimi (tan α); kesit işareti eksene dik çizilir. Düz kirişte 0.</summary>
+            public double Egim;
+            /// <summary>Eğimli zincirde aynı kesitle temsil edilen diğer kirişlerin adları (tek kesit).</summary>
+            public List<string> EkAdlar = new List<string>();
             public int Etriye;
             /// <summary>Sürekli temel ampatman U donatısı çap (mm) / aralık (cm); yoksa 0.</summary>
             public int AmpCap, AmpAralik;
@@ -388,6 +392,40 @@ namespace ST4PlanIdCiz
             List<KirisAcilimSpan> chain, KirisAcilimSupport[] sup, List<KirisAcilimSaplama> gorunus, double x0, double yShift,
             bool herAciklik = false, IList<double> engelX = null)
         {
+            if (_kirisEgimliZincir && !herAciklik)
+            {
+                // Eğimli zincir: kot yalnız mahya noktalarında; mahya yoksa en yüksek uçta.
+                var noktalar = new List<double>();
+                for (int k = 0; k + 1 < chain.Count; k++)
+                    if (KirisEgimTan(chain[k]) > KirisEgimTan(chain[k + 1]) + 1e-3 && !KirisEgimliDuzMu(chain[k]) && !KirisEgimliDuzMu(chain[k + 1]))
+                        noktalar.Add(chain[k].X1);
+                // Karışık zincirin düz kolları: düz kirişteki gibi Ln·3/4.
+                for (int k0 = 0; k0 < chain.Count;)
+                {
+                    int k1 = k0;
+                    while (k1 + 1 < chain.Count && chain[k1 + 1].Beam.BeamId == chain[k0].Beam.BeamId) k1++;
+                    bool duz = true;
+                    for (int k = k0; k <= k1; k++) if (!KirisEgimliDuzMu(chain[k])) duz = false;
+                    if (duz)
+                    {
+                        KirisAcilimKolonYuzu(chain, k0, k1, sup, out double ka, out double kb);
+                        noktalar.Add(ka + (kb - ka) * 0.75);
+                    }
+                    k0 = k1 + 1;
+                }
+                if (noktalar.Count == 0)
+                    noktalar.Add(chain[0].Kot0 >= chain[chain.Count - 1].Kot1 ? chain[0].X0 : chain[chain.Count - 1].X1);
+                foreach (double st in noktalar)
+                {
+                    double topE = KirisAcilimKotAt(chain, 0, chain.Count - 1, st);
+                    DrawKesitKotClassicSymbol(tr, ms, x0 + st, yShift + topE, 0, 0.5);
+                    AppendKesitKotElevationDbText(tr, ms, db, GetOrCreateYaziBeykentTextStyle(tr, db),
+                        FormatKesitKotElevationString((_model.BuildingBaseKotu + floor.ElevationM) * 100.0 + topE),
+                        x0 + st + KesitKotTriHalfWidthCm * 0.5,
+                        yShift + topE + (KesitKotTriHeightCm + KesitKotTextAboveExtensionCm) * 0.5, 0, KesitKotTextHeightCm * 0.5);
+                }
+                return;
+            }
             // Kot kapladığı yatay aralık (2× öncesi; ölçek 0,5): uzatma solda 10, yazı sağda ~24.
             const double kotSol = 10.0, kotSag = 24.0, olcuBosluk = 7.5;
             double Bosluk(double s)
@@ -544,19 +582,57 @@ namespace ST4PlanIdCiz
             Dictionary<BeamInfo, KirisAcilimMontajBilgi> montaj, double x0, double yShift, int pad,
             Dictionary<BeamInfo, KirisAcilimUcBilgi> ucTipi)
         {
+            // Eğimli zincir: tek kesit, en uzun net açıklıklı kirişte; diğer kirişlerin adı kesit altına eklenir.
+            // Yer: zincir boyunca en az çubuğun kesildiği istasyon (kesit sade görünsün); eşitlikte uzun kol, sonra kol ortası.
+            int egimliHedef = -1;
+            double egimliS = 0;
+            var egimliAdlar = new List<string>();
+            if (_kirisEgimliZincir)
+            {
+                (int N, double Negatif, double Uzak) enIyi = (int.MaxValue, 0, 0);
+                for (int k0 = 0; k0 < chain.Count;)
+                {
+                    int k1 = k0;
+                    while (k1 + 1 < chain.Count && chain[k1 + 1].Beam.BeamId == chain[k0].Beam.BeamId) k1++;
+                    KirisAcilimKolonYuzu(chain, k0, k1, sup, out double ka, out double kb);
+                    KirisAcilimNumaraAraligi(chain, k0, k1, ka, kb, gorunus, out ka, out kb);
+                    egimliAdlar.Add(KirisAcilimEtiket(chain[k0].Beam, pad));
+                    double L = kb - ka;
+                    double ln = L * KirisEgimCarpan(chain[k0]);
+                    for (double sc = ka + 0.15 * L; L > 20.0 && sc <= kb - 0.15 * L + 1e-6; sc += 2.5)
+                    {
+                        if (_kirisUstuKolonAraliklari.Any(r => sc > r.Lo && sc < r.Hi)) continue;
+                        int js = k0;
+                        while (js < k1 && sc > chain[js].X1) js++;
+                        double topS = yShift + KirisAcilimKotAt(chain, js, js, sc);
+                        double carp = KirisEgimCarpan(chain[js]), hS = chain[js].Beam.HeightCm;
+                        int n = 0;
+                        foreach (var don in _kirisKesitDonatilari)
+                        {
+                            if (!KirisKesitYolKes(don.Yol, x0 + sc, out double yS)) continue;
+                            double der = (topS - yS) / carp;
+                            if (der >= 1.0 && der <= hS - 1.0) n++;
+                        }
+                        var aday = (n, -ln, Math.Abs(sc - 0.5 * (ka + kb)));
+                        if (aday.CompareTo(enIyi) < 0) { enIyi = aday; egimliHedef = k0; egimliS = sc; }
+                    }
+                    k0 = k1 + 1;
+                }
+            }
             for (int i0 = 0; i0 < chain.Count;)
             {
                 int i1 = i0;
                 while (i1 + 1 < chain.Count && chain[i1 + 1].Beam.BeamId == chain[i0].Beam.BeamId) i1++;
+                if (egimliHedef >= 0 && i0 != egimliHedef) { i0 = i1 + 1; continue; }
                 KirisAcilimKolonYuzu(chain, i0, i1, sup, out double a, out double b);
                 KirisAcilimNumaraAraligi(chain, i0, i1, a, b, gorunus, out a, out b);
                 KirisAcilimKonsolUclari(chain, i0, i1, ucTipi, gorunus, x0, out bool solSerbest, out bool sagSerbest, out _, out _);
-                double tercih = KirisKesitIstasyon(a, b, solSerbest || sagSerbest);
+                double tercih = KirisKesitIstasyon(a, b, solSerbest || sagSerbest || _kirisEgimliZincir);
                 // Önceki kural yalnız tanı karşılaştırması için: montaj kesişimi ≥2 ise sola kaydır.
                 double eski = KirisKesitIstasyonBindirmedenKac(a, b, tercih, local => KirisKesitMontajKesAdedi(x0 + local));
                 KirisKesitEngelAraliklari(x0, out var ilaveZ, out var bindirmeZ);
                 var kolonZ = _surekliTemelAcilim ? new List<(double Lo, double Hi)>() : _kirisUstuKolonAraliklari;
-                double s = KirisKesitIstasyonSec(a, b, tercih, ilaveZ, bindirmeZ, kolonZ);
+                double s = egimliHedef >= 0 ? egimliS : KirisKesitIstasyonSec(a, b, tercih, ilaveZ, bindirmeZ, kolonZ);
                 string Iz(double v) => (KirisKesitAraliktaMi(ilaveZ, v) ? "I" : "-") + (KirisKesitAraliktaMi(bindirmeZ, v) ? "B" : "-");
                 string Z(List<(double Lo, double Hi)> z) => string.Join(",", z.Where(r => r.Hi > a && r.Lo < b)
                     .Select(r => string.Format(CultureInfo.InvariantCulture, "{0:0.#}~{1:0.#}", Math.Max(a, r.Lo), Math.Min(b, r.Hi))));
@@ -571,6 +647,12 @@ namespace ST4PlanIdCiz
                 var info = new KirisKesitBilgi { B = span.Beam.WidthCm, H = span.Beam.HeightCm,
                     Kot = (_model.BuildingBaseKotu + floor.ElevationM) * 100.0 + top - yShift,
                     X = x0 + s, Y = top, Ad = KirisAcilimEtiket(span.Beam, pad) };
+                double egimCarpan = 1.0;
+                if (_kirisEgimliZincir)
+                {
+                    info.Egim = KirisEgimTan(span); egimCarpan = KirisEgimCarpan(span);
+                    info.EkAdlar.AddRange(egimliAdlar.Where(ad => ad != info.Ad).Distinct());
+                }
                 if (montaj != null && montaj.TryGetValue(span.Beam, out var m))
                 {
                     info.Etriye = m.EtriyeCap;
@@ -580,7 +662,8 @@ namespace ST4PlanIdCiz
                 foreach (var don in _kirisKesitDonatilari)
                 {
                     if (!KirisKesitYolKes(don.Yol, x0 + s, out double y)) continue;
-                    double derinlik = top - y;
+                    // Eğimli kirişte düşey ölçülen derinlik eksene dik derinliğe çevrilir.
+                    double derinlik = (top - y) / egimCarpan;
                     if (derinlik < 4.0 || derinlik > info.H - 4.0) continue;
                     info.Siralar.Add(new KirisKesitSira { Adet = don.Adet, Cap = don.Cap, Tur = don.Tur, Derinlik = derinlik });
                 }
@@ -689,6 +772,19 @@ namespace ST4PlanIdCiz
                 string harf = KirisKesitHarf(i);
                 foreach (var cut in groups[i])
                 {
+                    if (Math.Abs(cut.Egim) > 1e-9)
+                    {
+                        // Eğimli kiriş: kesit çizgisi eksene dik, bakış yönü eksen boyunca geriye.
+                        double sec = Math.Sqrt(1.0 + cut.Egim * cut.Egim);
+                        var nrm = new Vector2d(-cut.Egim / sec, 1.0 / sec);
+                        var geri = new Vector2d(-1.0 / sec, -cut.Egim / sec);
+                        double ustM = (10.0 + 45.0) / 2.0, altM = cut.H + 15.0;
+                        DrawKesitEtiketDxfStyle(tr, ms, db, new Point3d(cut.X + nrm.X * ustM, cut.Y + nrm.Y * ustM, 0),
+                            nrm, geri, false, harf, 0.3, fullLetter: true);
+                        DrawKesitEtiketDxfStyle(tr, ms, db, new Point3d(cut.X - nrm.X * altM, cut.Y - nrm.Y * altM, 0),
+                            nrm, geri, true, harf, 0.3, fullLetter: true);
+                        continue;
+                    }
                     // Mevcut konuma nihai +45/-55 cm ek taşıma; çizim sonunda 2× ölçeklenir.
                     // Temelde üst yüzde etriye ölçüleri ve yazısı var; üst işaret onların üstüne.
                     DrawKesitEtiketDxfStyle(tr, ms, db, new Point3d(cut.X, cut.Y + (10.0 + 45.0) / 2.0 + (cut.TemelKesit != null ? 15.0 : 0.0), 0),
@@ -714,7 +810,7 @@ namespace ST4PlanIdCiz
                     if (!double.IsNaN(temelOncekiSag)) sectionX = temelOncekiSag + TemelKesitAraCm + solPay;
                 }
                 KirisAcilimTekKesitCiz(tr, ms, db, section, sectionX - leftInset, y, harf,
-                    groups[i].Select(k => k.Ad + (string.IsNullOrEmpty(k.AdetNotu) ? "" : " (" + k.AdetNotu + ")")).Distinct().ToList());
+                    groups[i].SelectMany(k => new[] { k.Ad + (string.IsNullOrEmpty(k.AdetNotu) ? "" : " (" + k.AdetNotu + ")") }.Concat(k.EkAdlar)).Distinct().ToList());
                 foreach (var cut in groups[i]) cut.DagitmaAdet = section.DagitmaAdet;
                 if (section.TemelKesit != null) temelOncekiSag = sectionX + section.TemelKesit.EnvelopeInternal.Width + temelSagPay;
                 sectionX = KirisKesitSonrakiX(sectionX, Math.Max(section.B, section.TemelKesit?.EnvelopeInternal.Width ?? section.B));

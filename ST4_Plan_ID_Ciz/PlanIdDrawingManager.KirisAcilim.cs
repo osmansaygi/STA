@@ -209,6 +209,15 @@ namespace ST4PlanIdCiz
             public Vector2d Dir;
             public int Cross0;
             public int Cross1;
+            /// <summary>Açılımda X0 ucundaki guse boyu (cm, mesnet yüzünden); 0 = yok.</summary>
+            public double GuseL0;
+            /// <summary>Açılımda X1 ucundaki guse boyu (cm, mesnet yüzünden); 0 = yok.</summary>
+            public double GuseL1;
+            /// <summary>Guse yüksekliği Hg (cm).</summary>
+            public double GuseHg;
+            /// <summary>Eğimli zincir: X0/X1 mesnedinde kiriş altının kolon genişliği boyunca düğüm altından inişi (cm); düz kirişte 0.</summary>
+            public double AltDus0;
+            public double AltDus1;
         }
 
         private struct KirisAcilimSupport
@@ -698,7 +707,10 @@ namespace ST4PlanIdCiz
                 World1 = rev ? s.P0 : s.P1,
                 Dir = rev ? -s.Dir : s.Dir,
                 Cross0 = rev ? s.Cross1 : s.Cross0,
-                Cross1 = rev ? s.Cross0 : s.Cross1
+                Cross1 = rev ? s.Cross0 : s.Cross1,
+                GuseHg = s.Beam.GuseHgCm,
+                GuseL0 = rev ? s.Beam.GuseLbCm : s.Beam.GuseLaCm,
+                GuseL1 = rev ? s.Beam.GuseLaCm : s.Beam.GuseLbCm
             };
         }
 
@@ -710,6 +722,7 @@ namespace ST4PlanIdCiz
                 double k = s.Kot0; s.Kot0 = s.Kot1; s.Kot1 = k;
                 Point2d w = s.World0; s.World0 = s.World1; s.World1 = w;
                 int c = s.Cross0; s.Cross0 = s.Cross1; s.Cross1 = c;
+                double g = s.GuseL0; s.GuseL0 = s.GuseL1; s.GuseL1 = g;
                 s.Dir = -s.Dir;
             }
         }
@@ -792,6 +805,7 @@ namespace ST4PlanIdCiz
             Dictionary<BeamInfo, KirisAcilimMontajBilgi> montaj)
         {
             KirisAcilimTani("CHAIN floor=" + floor.FloorNo + " beam=" + chain[0].Beam.BeamId + " spans=" + chain.Count);
+            _kirisEgimliZincir = KirisEgimliZincirMi(chain);
             int m = chain.Count;
             var sup = new KirisAcilimSupport[m + 1];
             double minY = double.MaxValue;
@@ -849,6 +863,32 @@ namespace ST4PlanIdCiz
                 return;
             }
 
+            // Guseli kiriş: guse bölgeleri (mesnet yüzü → kırılma) ve guse açılım satırı için ek yer.
+            // Eğimli zincir: mesnette kiriş altı kolon genişliği boyunca iner; kolon tabanı ve kütüğü en alçak kiriş altından başlar.
+            foreach (var spD in chain) { spD.AltDus0 = 0; spD.AltDus1 = 0; }
+            if (_kirisEgimliZincir)
+            {
+                for (int i = 0; i <= m; i++)
+                {
+                    if (sup[i].X1 - sup[i].X0 <= 2.0) continue;
+                    KirisAcilimSpanAt(chain, i, out var lD, out var rD);
+                    double st = rD != null ? rD.X0 : lD.X1;
+                    double AltAt(double x)
+                    {
+                        var spA = (x < st ? lD : rD) ?? lD ?? rD;
+                        return KirisEgimliY(spA, spA.Beam.HeightCm, x);
+                    }
+                    double dugum = KirisAcilimJointSoffit(lD, rD, KirisAcilimJointTop(lD, rD));
+                    double dus = Math.Max(0.0, dugum - Math.Min(AltAt(st + sup[i].X0), AltAt(st + sup[i].X1)));
+                    if (lD != null) lD.AltDus1 = dus;
+                    if (rD != null) rD.AltDus0 = dus;
+                    double yLowD = dugum - dus - (sup[i].ExtendDown ? KirisAcilimKutupCm : 0);
+                    minY = Math.Min(minY, yLowD - 10.0 - KirisAcilimIzdusumBoyCm);
+                }
+            }
+            KirisAcilimGuseHazirla(chain, sup);
+            if (_kirisGuse.Count > 0) minY -= KirisAcilimGuseEkYerCm;
+
             long yerlesimBaslangic = 0;
             if (_kirisYerlesim != null) yerlesimBaslangic = KirisYerlesimSonrakiHandle(db);
             double ortakAlt = double.MaxValue, ortakUst = double.MinValue;
@@ -895,6 +935,8 @@ namespace ST4PlanIdCiz
             int kesitAdet = chain.Select(s => s.Beam.BeamId).Distinct().Count();
             minY = Math.Min(minY, KirisKesitYerlesimAlti(minKot,
                 chain.Max(s => s.Beam.HeightCm), slabRise, kesitAdet));
+            // Eğimli zincir: çubuk açılımları kendi biçiminde alt alta iner; yer ayır.
+            if (_kirisEgimliZincir) minY = Math.Min(minY, acilimTaban - KirisEgimliAcilimYer(chain));
             double yShift = cursorY - minY;
             double chainTop = yShift + maxY;
             _kirisAcilimKesimY = KirisAcilimKolonKesimY(chain, sup, yShift);
@@ -947,8 +989,13 @@ namespace ST4PlanIdCiz
                 run = runEnd + 1;
             }
 
-            KirisAcilimMontajBirlesik(tr, ms, db, chain, x0, yShift, sup, montaj, gorunus, ucTipi);
-            KirisAcilimMontajBindirmeOlcuCiz(tr, ms, db);
+            if (_kirisEgimliZincir)
+                KirisEgimliDonati(tr, ms, db, chain, x0, yShift, sup, montaj);
+            else
+            {
+                KirisAcilimMontajBirlesik(tr, ms, db, chain, x0, yShift, sup, montaj, gorunus, ucTipi);
+                KirisAcilimMontajBindirmeOlcuCiz(tr, ms, db);
+            }
 
             for (int i = 0; i <= m; i++)
             {
@@ -962,6 +1009,22 @@ namespace ST4PlanIdCiz
                 double yBotC = yShift + soffitC;
                 double xLc = x0 + stationC + spC.X0;
                 double xRc = x0 + stationC + spC.X1;
+                if (_kirisEgimliZincir)
+                {
+                    // Eğimli kirişte kolon betonu tabandan kiriş üst yüzüne kadar; üst kenar eğimi izler,
+                    // böylece geniş kolonda kiriş altı ile kolon üstü arasında yatay basamak kalmaz.
+                    double Ust(double x)
+                    {
+                        var spU = (x < stationC ? leftC : rightC) ?? leftC ?? rightC;
+                        return yShift + KirisEgimliY(spU, 0, x);
+                    }
+                    var cp = new List<Point2d> { new Point2d(xLc, yBotC), new Point2d(xRc, yBotC), new Point2d(xRc, Ust(stationC + spC.X1)) };
+                    if (leftC != null && rightC != null && spC.X0 < -0.5 && spC.X1 > 0.5) cp.Add(new Point2d(x0 + stationC, yShift + kotC));
+                    cp.Add(new Point2d(xLc, Ust(stationC + spC.X0)));
+                    Polygon colPolyE = KirisAcilimPolygon(gf, cp);
+                    if (colPolyE != null) concrete.Add(colPolyE);
+                    continue;
+                }
                 Polygon colPoly = KirisAcilimRect(gf, xLc, yBotC, xRc, yTopC);
                 if (colPoly != null) concrete.Add(colPoly);
             }
@@ -1290,6 +1353,7 @@ namespace ST4PlanIdCiz
             else if (asagiCm == SurekliAcilimDuzAsagiCm) tur = _surekliTemelAcilim ? "DÜZ" : "ALT";
             else if (asagiCm == KirisAcilimGovdeAcilimCm) tur = "GÖVDE";
             else if (asagiCm == KirisAcilimAltIlaveAcilimCm) tur = "ALT İLAVE";
+            else if (asagiCm == KirisAcilimGuseAcilimCm) tur = "GUSE";
             else tur = "ÜST İLAVE";
             // Ana L=: gönyesiz boy ortası, yazı kutusu alt kenarı donatının 3 cm (nihai) üstünde.
             string lbl = adet.ToString(CultureInfo.InvariantCulture) + "\u00F8" + cap.ToString(CultureInfo.InvariantCulture)
@@ -1310,7 +1374,7 @@ namespace ST4PlanIdCiz
                 KirisAcilimYaziKutusuKenar(tr, yBoy, ustKenar: true);
             }
             // Montajda izdüşüm mesnet ölçüsü yok; bindirmeler ayrıca ölçülendirilir.
-            if (asagiCm != SurekliAcilimMontajAsagiCm)
+            if (asagiCm != SurekliAcilimMontajAsagiCm && asagiCm != KirisAcilimGuseAcilimCm)
                 KirisAcilimAcilimUzantiOlcu(tr, ms, db, ac, ana, gonyeSol >= 2.0, gonyeSag >= 2.0,
                     KirisAcilimMesnetOlcuUstte(asagiCm == KirisAcilimIlaveAcilimCm || asagiCm == KirisAcilimAltIlaveAcilimCm, satir));
         }
@@ -1524,7 +1588,7 @@ namespace ST4PlanIdCiz
         {
             KirisAcilimSpan s = end == 0 ? piece[0] : piece[piece.Count - 1];
             top = end == 0 ? s.Kot0 : s.Kot1;
-            bot = top - s.Beam.HeightCm;
+            bot = top - KirisAcilimDusH(s);
         }
 
         /// <summary>
@@ -1593,11 +1657,16 @@ namespace ST4PlanIdCiz
 
         private static double KirisAcilimJointSoffit(KirisAcilimSpan left, KirisAcilimSpan right, double top)
         {
+            // Guseli uçta mesnet yüzündeki kiriş altı Hg kadar aşağıdadır.
+            double gL = left != null && left.GuseL1 > 0 ? left.GuseHg : 0.0;
+            double gR = right != null && right.GuseL0 > 0 ? right.GuseHg : 0.0;
             double soffit = top;
-            if (left != null) soffit = Math.Min(soffit, left.Kot1 - left.Beam.HeightCm);
-            if (right != null) soffit = Math.Min(soffit, right.Kot0 - right.Beam.HeightCm);
-            if (left == null && right != null) soffit = right.Kot0 - right.Beam.HeightCm;
-            if (right == null && left != null) soffit = left.Kot1 - left.Beam.HeightCm;
+            if (left != null) soffit = Math.Min(soffit, left.Kot1 - KirisAcilimDusH(left) - gL);
+            if (right != null) soffit = Math.Min(soffit, right.Kot0 - KirisAcilimDusH(right) - gR);
+            if (left == null && right != null) soffit = right.Kot0 - KirisAcilimDusH(right) - gR;
+            if (right == null && left != null) soffit = left.Kot1 - KirisAcilimDusH(left) - gL;
+            // Eğimli zincirde mesnet genişliği boyunca inen kiriş altı (düz kirişte 0).
+            soffit -= Math.Max(left?.AltDus1 ?? 0.0, right?.AltDus0 ?? 0.0);
             return soffit;
         }
 
@@ -1623,7 +1692,21 @@ namespace ST4PlanIdCiz
                 double xBas = x0 + first.X0 - back;
                 if (part == 0 && sup[0].X1 - sup[0].X0 > 2.0)
                     xBas = Math.Max(xBas, x0 + first.X0 + sup[0].X0);
-                pts.Add(new Point2d(xBas, yShift + first.Kot0 - first.Beam.HeightCm));
+                // Eğimli zincirde iç birleşimin alt köşesi, iki kolun alt yüz doğrularının kesişimidir.
+                if (_kirisEgimliZincir && part > 0)
+                {
+                    Point2d koseBas = KirisEgimliKose(chain, part - 1, first.Beam.HeightCm);
+                    pts.Add(new Point2d(x0 + koseBas.X, yShift + koseBas.Y));
+                }
+                else if (_kirisEgimliZincir)
+                {
+                    // Eğimli kiriş mesnedin dış yüzüne kadar kendi eğiminde sürer (saçak).
+                    if (sup[0].X1 - sup[0].X0 > 2.0) xBas = x0 + first.X0 + sup[0].X0;
+                    // Kolon içindeki alt yüz, kolon betonunun içinde kalır (bkz. eğimli kolon çokgeni).
+                    pts.Add(new Point2d(xBas, yShift + KirisEgimliY(first, first.Beam.HeightCm, xBas - x0)));
+                }
+                else
+                    pts.Add(new Point2d(xBas, yShift + first.Kot0 - KirisAcilimDusH(first)));
                 for (int k = part; k <= j; k++)
                 {
                     KirisAcilimSpan s = chain[k];
@@ -1632,8 +1715,20 @@ namespace ST4PlanIdCiz
                     double x = x0 + s.X1 + fwd;
                     if (k == chain.Count - 1 && sup[chain.Count].X1 - sup[chain.Count].X0 > 2.0)
                         x = Math.Min(x, x0 + s.X1 + sup[chain.Count].X1);
-                    pts.Add(new Point2d(x, yShift + s.Kot1 - s.Beam.HeightCm));
+                    if (_kirisEgimliZincir && k < chain.Count - 1)
+                    {
+                        Point2d koseSon = KirisEgimliKose(chain, k, s.Beam.HeightCm);
+                        pts.Add(new Point2d(x0 + koseSon.X, yShift + koseSon.Y));
+                    }
+                    else if (_kirisEgimliZincir)
+                    {
+                        if (sup[chain.Count].X1 - sup[chain.Count].X0 > 2.0) x = x0 + s.X1 + sup[chain.Count].X1;
+                        pts.Add(new Point2d(x, yShift + KirisEgimliY(s, s.Beam.HeightCm, x - x0)));
+                    }
+                    else
+                        pts.Add(new Point2d(x, yShift + s.Kot1 - KirisAcilimDusH(s)));
                 }
+                KirisAcilimGuseAltKenar(pts, pts.Count, x0);
                 for (int k = j; k >= part; k--)
                 {
                     KirisAcilimSpan s = chain[k];
@@ -1642,9 +1737,18 @@ namespace ST4PlanIdCiz
                     double x = x0 + s.X1 + fwd;
                     if (k == chain.Count - 1 && sup[chain.Count].X1 - sup[chain.Count].X0 > 2.0)
                         x = Math.Min(x, x0 + s.X1 + sup[chain.Count].X1);
-                    pts.Add(new Point2d(x, yShift + s.Kot1));
+                    if (_kirisEgimliZincir && k == chain.Count - 1)
+                    {
+                        if (sup[chain.Count].X1 - sup[chain.Count].X0 > 2.0) x = x0 + s.X1 + sup[chain.Count].X1;
+                        pts.Add(new Point2d(x, yShift + KirisEgimliY(s, 0, x - x0)));
+                    }
+                    else
+                        pts.Add(new Point2d(x, yShift + s.Kot1));
                 }
-                pts.Add(new Point2d(xBas, yShift + first.Kot0));
+                if (_kirisEgimliZincir && part == 0)
+                    pts.Add(new Point2d(xBas, yShift + KirisEgimliY(first, 0, xBas - x0)));
+                else
+                    pts.Add(new Point2d(xBas, yShift + first.Kot0));
                 KirisAcilimDuzNoktaSil(pts, true);
                 Polygon beamPoly = KirisAcilimPolygon(gf, pts);
                 if (beamPoly != null) concrete.Add(beamPoly);
@@ -1657,16 +1761,38 @@ namespace ST4PlanIdCiz
             // Etiket Ln'nin 1/10'undan başlar (sol-alt hizalı).
             double xEtiket = net0 + (net1 - net0) * 0.1;
             double yLine = yShift + KirisAcilimKotAt(chain, i0, i1, xEtiket);
-            DrawBeamLabel(tr, ms, db,
-                new Point3d(x0 + xEtiket, yLine, 0),
-                KirisAcilimEtiket(chain[i0].Beam, pad),
-                KirisAcilimBaslikYukseklikCm, 0.0, LayerKirisYazisi, bottomLeftAligned: true, useMiddleCenter: false);
-            KirisAcilimYaziKutusuUstune(tr, yLine + 3.0);
+            if (_kirisEgimliZincir)
+            {
+                // Başlık ve eğim yüzdesi üst yüze paralel (KirisAcilim.Egimli.cs).
+                KirisEgimliBaslik(tr, ms, db, chain, i0, i1, net0, net1, x0, yShift, KirisAcilimEtiket(chain[i0].Beam, pad));
+            }
+            else
+            {
+                DrawBeamLabel(tr, ms, db,
+                    new Point3d(x0 + xEtiket, yLine, 0),
+                    KirisAcilimEtiket(chain[i0].Beam, pad),
+                    KirisAcilimBaslikYukseklikCm, 0.0, LayerKirisYazisi, bottomLeftAligned: true, useMiddleCenter: false);
+                KirisAcilimYaziKutusuUstune(tr, yLine + 3.0);
+            }
             KirisAcilimUcNoktalari(tr, ms, db, chain, i0, i1, sup, ucTipi, x0, yShift, net0, net1);
             // Donatı, çizilen 1-2 ve 3-4 numaralarının hizasından başlar (kolon yüzü veya saplama kesitinin iç yüzü).
             KirisAcilimNumaraAraligi(chain, i0, i1, net0, net1, gorunus, out double don0, out double don1);
+            if (_kirisEgimliZincir)
+            {
+                // Eğimli zincir: etriye eksene dik; boyuna donatı zincir bütününde çizilir (KirisAcilim.Egimli.cs).
+                // Karışık zincirin düz kolunda etriye düz kirişteki gibi (ölçüleri ve saplama sıklaştırmasıyla).
+                bool duzKol = true;
+                for (int i = i0; i <= i1; i++) if (!KirisEgimliDuzMu(chain[i])) duzKol = false;
+                if (duzKol)
+                    KirisAcilimEtriyeGorunus(tr, ms, db, chain, i0, i1, x0, yShift, don0, don1, montaj, ucTipi, gorunus, etriyeSaplamalari, sup);
+                else
+                    KirisEgimliEtriye(tr, ms, db, chain, i0, i1, x0, yShift, don0, don1, montaj, sup);
+                return;
+            }
             KirisAcilimEtriyeGorunus(tr, ms, db, chain, i0, i1, x0, yShift, don0, don1, montaj, ucTipi, gorunus, etriyeSaplamalari, sup);
             KirisAcilimDuzDonatiYedek(tr, ms, db, chain, i0, i1, x0, yShift, don0, don1, montaj, sup, gorunus, ucTipi);
+            KirisAcilimGuseEtiket(tr, ms, db, chain, i0, i1, x0, yShift);
+            KirisAcilimGuseDonati(tr, ms, db, chain, i0, i1, x0, yShift, don0, don1, montaj, sup, gorunus);
             KirisAcilimGovdeDonati(tr, ms, db, chain, i0, i1, x0, yShift, don0, don1, montaj, sup, gorunus, govdeYutulan);
             if (_surekliTemelAcilim)
             {
@@ -1729,6 +1855,8 @@ namespace ST4PlanIdCiz
                 out bool solSerbest, out bool sagSerbest, out _, out _);
             // BEA konsol kodu 3/4: yalnız bu kirişte tüm boy sık aralık.
             orta = KirisAcilimEtriyeOrtaAralik(sik, orta, solSerbest, sagSerbest);
+            // Eğimli/karışık zincir: sıklaştırma kiriş boyunca (yalnız bu zincirlerde).
+            if (_kirisEgimliZincir) orta = sik;
             bool konsol = solSerbest || sagSerbest;
             bool ucIz = KirisAcilimKonsolEtriyeUcIz(gorunus, net0, net1, solSerbest, sagSerbest);
             var sapBolgeleri = new List<(double Lo, double Hi)>();
@@ -1745,20 +1873,24 @@ namespace ST4PlanIdCiz
                     if (iz.KotBot >= top || iz.KotTop <= top - yerelH) continue;
                     sapBolgeleri.Add(KirisAcilimEtriyeSaplamaBolgesi(iz0, iz1, yerelH));
                 }
+            // Guseli uçta sarılma bölgesi en az guse boyu kadardır.
             var xs = KirisAcilimEtriyeKonumlari(net0, net1, sik, orta,
-                2.0 * chain[i0].Beam.HeightCm, 2.0 * chain[i1].Beam.HeightCm,
+                Math.Max(2.0 * chain[i0].Beam.HeightCm, chain[i0].GuseHg > 0 ? chain[i0].GuseL0 : 0.0),
+                Math.Max(2.0 * chain[i1].Beam.HeightCm, chain[i1].GuseHg > 0 ? chain[i1].GuseL1 : 0.0),
                 solSerbest, sagSerbest, sapBolgeleri, out var sikBolgeleri, ucIz);
+            if (_kirisEgimliZincir) sikBolgeleri.Clear();
             var etiketBolgeleri = KirisAcilimEtriyeEtiketBolgeleri(net0 + 5.0, net1 - 5.0, sik, orta, sikBolgeleri);
             if (konsol)
                 KirisAcilimKonsolEtriyeDizilimi(net0, net1, sik, solSerbest, ucIz, out etiketBolgeleri, KirisAcilimEtriyePaspayiCm);
             double olcuAlt = double.MaxValue;
             for (int i = i0; i <= i1; i++)
                 olcuAlt = Math.Min(olcuAlt, yShift + Math.Min(chain[i].Kot0, chain[i].Kot1) - chain[i].Beam.HeightCm);
+            if (_kirisGuse.Count > 0) olcuAlt -= KirisAcilimGuseMaxHg(net0, net1);
             double AltAt(double x)
             {
                 for (int i = i0; i <= i1; i++)
                     if (x >= chain[i].X0 - 0.5 && x <= chain[i].X1 + 0.5)
-                        return yShift + KirisAcilimKotAt(chain, i, i, x) - chain[i].Beam.HeightCm;
+                        return yShift + KirisAcilimKotAt(chain, i, i, x) - chain[i].Beam.HeightCm - KirisAcilimGuseEk(x);
                 return olcuAlt;
             }
             double? solDis = null, sagDis = null;
@@ -1784,9 +1916,24 @@ namespace ST4PlanIdCiz
                     string label = KirisKesitEtriyeCarpan(etriyeKutulari.Count)
                         + string.Format(CultureInfo.InvariantCulture, "{0}\u00F8{1}/{2:0.##} L={3:0}",
                         bolge.Adet, etriyeCap, bolge.Aralik, boy);
+                    // Guse b\u00F6lgesi: etriye boyu de\u011Fi\u015Fken; boy aral\u0131\u011F\u0131 ve alt\u0131na y\u00FCkseklik gruplar\u0131n\u0131n listesi.
+                    string guseListe = KirisAcilimGuseEtriyeListesi(bolge.Lo, bolge.Hi, bolge.Aralik, bolge.Adet,
+                        etriyeKutulari[0].Hi - etriyeKutulari[0].Lo, span.Beam.HeightCm, etriyeCap, out double gBoyMin, out double gBoyMax, out double gBoyOrt);
+                    // Metraj i\u00E7in L = adet a\u011F\u0131rl\u0131kl\u0131 ortalama boy; parantezde en k\u0131sa~en uzun.
+                    if (guseListe != null)
+                        label = KirisKesitEtriyeCarpan(etriyeKutulari.Count)
+                            + string.Format(CultureInfo.InvariantCulture, "{0}\u00F8{1}/{2:0.##} L={5:0} ({3:0}~{4:0})",
+                            bolge.Adet, etriyeCap, bolge.Aralik, gBoyMin, gBoyMax, gBoyOrt);
                     DrawBeamLabel(tr, ms, db, new Point3d(x0 + mid, olcuAlt - 27.0, 0),
                         label, 5.0, 0.0, KirisAcilimDonatiYaziLayer, useMiddleCenter: true);
                     KirisAcilimYaziKutusuKenar(tr, olcuAlt - 22.0, ustKenar: true);
+                    if (guseListe != null)
+                    {
+                        // Altında yükseklik gruplarının açıklaması (kullanıcı isteği: kalsın).
+                        DrawBeamLabel(tr, ms, db, new Point3d(x0 + mid, olcuAlt - 34.0, 0),
+                            KirisKesitEtriyeCarpan(etriyeKutulari.Count) + "(" + guseListe + ")", 3.0, 0.0, KirisAcilimDonatiYaziLayer, useMiddleCenter: true);
+                        KirisAcilimYaziKutusuKenar(tr, olcuAlt - 29.0, ustKenar: true);
+                    }
                 }
             }
             foreach (double x in xs)
@@ -1797,7 +1944,7 @@ namespace ST4PlanIdCiz
                     var span = chain[i];
                     if (x < span.X0 - 0.5 || x > span.X1 + 0.5) continue;
                     double top = yShift + KirisAcilimKotAt(chain, i, i, x);
-                    double bot = top - span.Beam.HeightCm;
+                    double bot = top - span.Beam.HeightCm - KirisAcilimGuseEk(x);
                     if (top - bot > 8.0)
                         KirisAcilimCizgi(tr, ms, x0 + x, bot + KirisAcilimEtriyePaspayiCm, x0 + x, top - KirisAcilimEtriyePaspayiCm, LayerEtriye);
                     break;
@@ -2319,6 +2466,26 @@ namespace ST4PlanIdCiz
                 if (pts[i].X < xa) xa = pts[i].X;
                 if (pts[i].X > xb) xb = pts[i].X;
             }
+            // Stok boyunu (1200 cm) aşan gövde donatısı: eşit parçalı bindirmeli ek (bkz. KirisAcilim.Ek.cs).
+            if (!_surekliTemelAcilim && boy > KirisAcilimMontajMaxBoyCm + 0.49)
+            {
+                double l0 = KirisAcilimEkBoyu(m.GovdeCap);
+                var parcalar = KirisAcilimEkBol(pts, l0, true, 0, 0, 0, 0, out var ekler);
+                if (parcalar != null)
+                {
+                    foreach (var parca in parcalar)
+                    {
+                        double pBoy = KirisAcilimYuvarlaYukari(KirisAcilimDonatiPl(tr, ms, KirisAcilimRenkGovde, parca) - 0.01);
+                        if (!acil) continue;
+                        KirisAcilimKesitDonatiKaydet(parca, m.GovdeAdet, m.GovdeCap, "gov");
+                        KirisAcilimAcilimCiz(tr, ms, db, parca, KirisAcilimRenkGovde, m.GovdeAdet, m.GovdeCap, pBoy, KirisAcilimGovdeAcilimCm, ref _kirisAcilimGovdeSira);
+                    }
+                    if (acil)
+                        foreach (var ek in ekler)
+                            KirisAcilimEkNotu(tr, ms, db, ek, KirisAcilimGovdeAcilimCm, new string[0]);
+                    return;
+                }
+            }
             double oda = Math.Max(1.0, h - KirisAcilimMontajPaspayiCm - KirisAcilimDuzPaspayiCm);
             KirisAcilimMontajBesTamamla(pts, ref boy,
                 KirisAcilimPtsUcGonye(pts, true), KirisAcilimPtsUcGonye(pts, false),
@@ -2592,9 +2759,15 @@ namespace ST4PlanIdCiz
                     ruAdet = mSag.SagUstAdet; ruCap = mSag.SagUstCap;
                     raAdet = mSag.SagAltAdet; raCap = mSag.SagAltCap;
                 }
+                // Guseli uçta alt ilave guse yüzü boyunca çizilir (KirisAcilimGuseDonati); düz tekrarlanmaz.
+                if (_kirisGuse.Count > 0)
+                {
+                    if (KirisAcilimGuseUcu(i0, true)) laAdet = 0;
+                    if (KirisAcilimGuseUcu(i1, false)) raAdet = 0;
+                }
             }
 
-            double hkSol = KirisAcilimMesnetHk(chain, i0, i1, sup, gorunus, true);
+            double hkSol =KirisAcilimMesnetHk(chain, i0, i1, sup, gorunus, true);
             double hkSag = KirisAcilimMesnetHk(chain, i0, i1, sup, gorunus, false);
             // Kiriş ve temel: her taraf kendi net açıklığının ln/4'ü (temelde komşu büyük açıklık taşınmaz).
             double lnSol = lnNet, lnSag = lnNet;
@@ -4627,6 +4800,32 @@ namespace ST4PlanIdCiz
             pts.Add(new Point2d(xSol, yA));
             pts.Add(new Point2d(xSag, yB));
             KirisAcilimUcNokta(pts, chain, i0, i1, sup, gorunus, x0, yShift, false, xSag, yB, duzUst, hkSag, h, m.DuzCap, false, xSol, sagSerbest);
+            // Stok boyunu (1200 cm) aşan alt düz donatı: bindirmeli ek (bkz. KirisAcilim.Ek.cs).
+            if (!_surekliTemelAcilim)
+            {
+                double l0 = KirisAcilimEkBoyu(m.DuzCap);
+                double lnEk = xB - xA;
+                double sarSol = Math.Max(2.0 * h, chain[i0].GuseHg > 0 ? chain[i0].GuseL0 : 0.0);
+                double sarSag = Math.Max(2.0 * chain[i1].Beam.HeightCm, chain[i1].GuseHg > 0 ? chain[i1].GuseL1 : 0.0);
+                var parcalar = KirisAcilimEkBol(pts, l0, false,
+                    xA + sarSol + 5.0, xA + lnEk / 3.0, xB - lnEk / 3.0, xB - sarSag - 5.0, out var ekler);
+                if (parcalar != null)
+                {
+                    foreach (var parca in parcalar)
+                    {
+                        double pBoy = KirisAcilimYuvarlaYukari(KirisAcilimDonatiPl(tr, ms, KirisAcilimRenkDuz, parca) - 0.01);
+                        KirisAcilimKesitDonatiKaydet(parca, m.DuzAdet, m.DuzCap, "duz");
+                        KirisAcilimAcilimCiz(tr, ms, db, parca, KirisAcilimRenkDuz, m.DuzAdet, m.DuzCap, pBoy, SurekliAcilimDuzAsagiCm, ref _kirisAcilimDuzSira);
+                    }
+                    foreach (var ek in ekler)
+                    {
+                        KirisAcilimEkNotu(tr, ms, db, ek, SurekliAcilimDuzAsagiCm, KirisAcilimEkNotMetni(false, ek.Kaynak, ek.B - ek.A));
+                    }
+                    string lblEk = m.DuzAdet.ToString(CultureInfo.InvariantCulture) + "ø" + m.DuzCap.ToString(CultureInfo.InvariantCulture) + " (duz)";
+                    KirisAcilimGorunusEtiket(tr, ms, db, 0.5 * (xA + xB), 0.5 * (yA + yB), lblEk, duzUst);
+                    return;
+                }
+            }
             double boy = 0;
             for (int i = 1; i < pts.Count; i++)
                 boy += pts[i - 1].GetDistanceTo(pts[i]);
@@ -5201,7 +5400,7 @@ namespace ST4PlanIdCiz
                 KirisAcilimSpan s = chain[i];
                 if (s?.Beam == null || s.X1 < iz.X0 - 2.0 || s.X0 > iz.X1 + 2.0) continue;
                 beamTop = Math.Max(beamTop, Math.Max(s.Kot0, s.Kot1));
-                beamBot = Math.Min(beamBot, Math.Min(s.Kot0, s.Kot1) - s.Beam.HeightCm);
+                beamBot = Math.Min(beamBot, Math.Min(s.Kot0, s.Kot1) - KirisAcilimDusH(s));
                 hit = true;
             }
             return hit && beamTop - beamBot >= 0.5;

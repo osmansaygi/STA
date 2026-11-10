@@ -526,6 +526,7 @@ namespace ST4PlanIdCiz
                         var beforeKatRow = SnapshotKolon50BtrIds(btr);
                         var katIdxs = katGruplari[kg];
                         int fi = katIdxs[0];
+                        bool ilkKatSatiri = floorsOrdered.Count > 0 && katIdxs.Contains(floorsOrdered[0]);
                         var onFloor = ListKolonDuseyColumnsOnFloor(fi);
                         var groupsFi = new Dictionary<string, List<ColumnAxisInfo>>(StringComparer.Ordinal);
                         var placedNo = new HashSet<int>();
@@ -645,7 +646,8 @@ namespace ST4PlanIdCiz
                                 int nColBenzer = Math.Max(1, cols.Count);
                                 toplamAdetBySheet[sheetKey] = nKatBenzer * nColBenzer;
                                 rowSheets.Add((sheetKey, env));
-                                yAlts.Add(_kolonDuseyLastYKolonAltKot);
+                                // İlk kat: kademeli temelde de antetler temel alt çizgisine hizalanır.
+                                yAlts.Add(ilkKatSatiri ? _kolonDuseyLastYAntetAltRef : _kolonDuseyLastYKolonAltKot);
                                 antetAltY[sheetKey] = _kolonDuseyLastYAntetAltRef;
                                 xRow = env.MaxX + 80.0;
                             }
@@ -711,7 +713,9 @@ namespace ST4PlanIdCiz
                             {
                                 PerdeGorunusAntetX(o.env, out _, out _, out double oL0, out double oR0, yanPad);
                                 widths.Add(oR0 - oL0);
-                                heights.Add(o.env.MaxY + pad + g - SheetBot(o.wallNo, o.env)
+                                // Yükseklik ortak satır tabanından (frameBot) ölçülür: tabanı farklı antetler
+                                // aynı sıraya düşse de sıra yüksekliği ana antet iç yüksekliğini aşmaz.
+                                heights.Add(o.env.MaxY + pad + g - frameBot
                                     + KolonDuseyAntetIsimPayi(isimler, o.wallNo, o.env, yanPad, pad, g));
                             }
                             List<List<int>> subRows = PackKolonDuseyAntetRows(widths, heights, availH, antetAra, out _);
@@ -735,7 +739,7 @@ namespace ST4PlanIdCiz
                                 {
                                     double sb = SheetBot(ordered[i].wallNo, ordered[i].env);
                                     rb = Math.Min(rb, sb);
-                                    rt = Math.Max(rt, sb + heights[i]);
+                                    rt = Math.Max(rt, frameBot + heights[i]);
                                 }
                                 rowBot[r] = rb;
                                 rowHFill[r] = rt - rb;
@@ -2503,10 +2507,14 @@ namespace ST4PlanIdCiz
                 {
                     double vx0 = colLo - KolonDuseyKenarKesitSolCm;
                     double vx1 = colHi + KolonDuseyKenarKesitSagCm;
+                    // Yalnız kolonun ilk kat aralığına değen subasman (kademeli temelde ofsetli döşeme dahil).
+                    double zKabulAlt = temelSpans.Count > 0 ? temelSpans.Max(t => t.z1) : stories[0].zBot;
+                    double zKabulUst = stories[0].zTop;
                     try
                     {
                         CollectSubasmanDosemeSpans(
-                            firstPoly, rot, ident, 0, 0, zSubasmanRef, vx0, vx1, subasmanSpans, sectionY);
+                            firstPoly, rot, ident, 0, 0, zSubasmanRef, vx0, vx1, subasmanSpans, sectionY,
+                            zKabulAlt, zKabulUst);
                     }
                     catch { subasmanSpans.Clear(); }
                 }
@@ -2514,6 +2522,10 @@ namespace ST4PlanIdCiz
             double zSubasmanTop = subasmanSpans.Count > 0
                 ? subasmanSpans.Max(d => d.z1)
                 : double.NaN;
+            // Kolon subasman üst kotunda (±) bitiyorsa subasman temel bölgesi değildir: gövde ve
+            // etriyeler temel üstünden başlar, donatı tepede finişle biter (filiz yok).
+            bool kolonSubasmandaBiter = IsFiniteCoord(zSubasmanTop)
+                && stories.Max(st => st.zTop) <= zSubasmanTop + 2.0;
 
             double zMin = stories.Min(st => st.zBot);
             double zMax = stories.Max(st => st.zTop);
@@ -2746,7 +2758,7 @@ namespace ST4PlanIdCiz
             double zDrawBot = zShaftBot;
             if (hatilSpans.Count > 0)
                 zDrawBot = hatilSpans.Max(t => t.z1);
-            else if (IsFiniteCoord(zSubasmanTop))
+            else if (IsFiniteCoord(zSubasmanTop) && !kolonSubasmandaBiter)
                 zDrawBot = zSubasmanTop;
 
             var etriyeKiris = new List<(double x0, double x1, double zb, double zt)>(sapKirisRuns);
@@ -3033,7 +3045,7 @@ namespace ST4PlanIdCiz
                 bool needSbKot = hatilSpans.Count == 0
                     || !IsFiniteCoord(zSubasmanRef)
                     || Math.Abs(zSubasmanTop - zSubasmanRef) > 2.0;
-                if (needSbKot)
+                if (needSbKot && !kolonSubasmandaBiter)
                     kotZs.Add(zSubasmanTop);
             }
             foreach (var st in stories)
@@ -3057,7 +3069,7 @@ namespace ST4PlanIdCiz
                 : stories.Select(st => st.zTop).ToList();
             if (hatilSpans.Count > 0)
                 storyTops.Insert(0, hatilSpans.Max(t => t.z1));
-            else if (IsFiniteCoord(zSubasmanTop))
+            else if (IsFiniteCoord(zSubasmanTop) && !kolonSubasmandaBiter)
                 storyTops.Insert(0, zSubasmanTop);
             var kenarZsRight = new List<double>();
             var kenarZsLeft = new List<double>();
@@ -3453,6 +3465,13 @@ namespace ST4PlanIdCiz
                 if (x > xBarLineMax) xBarLineMax = x;
                 return x;
             }
+            // Finiş grupları: bir önceki kancanın (b) ucundan en az 30 cm sağdaki boş ek sütun.
+            double NextExtraXAfter(double xMin)
+            {
+                double x = NextExtraX();
+                for (int g = 0; g < 40 && x < xMin - 1e-6; g++) x = NextExtraX();
+                return x;
+            }
 
             for (int di = 0; di < diaOrder.Count; di++)
             {
@@ -3509,6 +3528,53 @@ namespace ST4PlanIdCiz
                     int nFilizEx = 0;
                     double zFilizEx0 = 0, zFilizEx1 = 0;
                     ResolveFinisGonyeFirkete(dia, hookIn, rBend, out bool extraFirkete, out double extraB, out double extraC);
+                    // TBDY 7.3.3.2 finiş grupları (karşıda kiriş: gönye, kapama perdesi: 12φ gönye, yoksa firkete).
+                    KdFinisCtx finisCtx = null;
+                    bool finisCtxDenendi = false;
+                    bool poliFinis = env[i] != null && (kinds[i] == 2 && (IsKolonKesitPoligonKesit(
+                        rot != null ? rot.Transform(st.poly) : st.poly, env[i])
+                        || KolonDuseyArmStory(col, st.floorIndex, polygonArmView)));
+                    List<(int n, KdFinis f)> FinisGruplari(int nAdet, double sCm, Func<Point2d, bool> filtre = null)
+                    {
+                        if (!finisCtxDenendi)
+                        {
+                            finisCtxDenendi = true;
+                            try { finisCtx = BuildKolonFinisCtx(col, st.floorIndex, st.poly, rot, st.zTop, dia, kinds[i] == 1); }
+                            catch { finisCtx = null; }
+                        }
+                        List<(int n, KdFinis f)> grp = null;
+                        if (finisCtx != null)
+                        {
+                            try
+                            {
+                                grp = KdFinisGruplari(finisCtx, dia, nAdet, zHoriz, sCm,
+                                    poliFinis ? null : allPtsDia[i], filtre, poliFinis ? th[i] : double.NaN);
+                            }
+                            catch { grp = null; }
+                        }
+                        if (grp == null || grp.Count == 0)
+                            grp = new List<(int n, KdFinis f)> { (nAdet, new KdFinis { Firkete = extraFirkete, B = extraB, C = extraC }) };
+                        return grp;
+                    }
+                    void FinisEtiket(double xG, KdFinis fg)
+                    {
+                        DrawBeamLabel(tr, btr, btr.Database, new Point3d(xG + fg.B * 0.5, Y(zHoriz) + 8.0, 0),
+                            fg.B.ToString("0", CultureInfo.InvariantCulture), txtH, 0.0, LayerDonatiYazisiPerde, useMiddleCenter: true);
+                        if (fg.Firkete)
+                            DrawBeamLabel(tr, btr, btr.Database, new Point3d(xG + fg.B + 8.0, Y(zHoriz - fg.C * 0.5), 0),
+                                fg.C.ToString("0", CultureInfo.InvariantCulture), txtH, Math.PI / 2.0, LayerDonatiYazisiPerde, useMiddleCenter: true);
+                    }
+                    // Kancası yalnız üstte olan finiş çubuğu (zFrom'dan bükülme kotuna).
+                    void FinisCubukCiz(double xG, double zFrom, int nAdet, KdFinis fg)
+                    {
+                        if (fg.Firkete)
+                            DrawKolonDonatiFirkete(tr, btr, Y, xG, zFrom, zHoriz, 1.0, k90, rBend, fg.B, fg.C);
+                        else
+                            DrawKolonDonatiGonye(tr, btr, Y, xG, zFrom, zHoriz, 1.0, k90, rBend, fg.B);
+                        Label(xG, (zFrom + zHoriz) * 0.5, nAdet, dia,
+                            CeilTo5Cm(Math.Round(zHoriz - zFrom) + fg.B + fg.C));
+                        FinisEtiket(xG, fg);
+                    }
 
                     bool nextPerde = nextExists && kinds[i + 1] == 1;
                     bool nextKolon = nextExists && (kinds[i + 1] == 0 || kinds[i + 1] == 2);
@@ -3829,41 +3895,40 @@ namespace ST4PlanIdCiz
                                 double xUse = NextX();
                                 if (last || !nextExists)
                                 {
-                                    if (extraFirkete)
+                                    double sTek = (zHoriz - zFbot) + bHook;
+                                    var grpTek = FinisGruplari(n, sTek);
+                                    double xPrevG = xUse, bPrevG = 0.0;
+                                    for (int gk = 0; gk < grpTek.Count; gk++)
                                     {
-                                        AppendDonatiPline(tr, btr, new[]
+                                        double xG = gk == 0 ? xUse : NextExtraXAfter(xPrevG + bPrevG + 30.0);
+                                        xPrevG = xG; bPrevG = grpTek[gk].f.B;
+                                        var fg = grpTek[gk].f;
+                                        var pl = new List<Point2d>
                                         {
-                                            new Point2d(xUse + bHook, Y(zFbot)),
-                                            new Point2d(xUse + rBend, Y(zFbot)),
-                                            new Point2d(xUse, Y(zFbot + rBend)),
-                                            new Point2d(xUse, Y(zHoriz - rBend)),
-                                            new Point2d(xUse + rBend, Y(zHoriz)),
-                                            new Point2d(xUse + (extraB - rBend), Y(zHoriz)),
-                                            new Point2d(xUse + extraB, Y(zHoriz - rBend)),
-                                            new Point2d(xUse + extraB, Y(zHoriz - extraC))
-                                        }, new[] { 0.0, -k90, 0.0, -k90, 0.0, -k90, 0.0, 0.0 });
-                                        Label(xUse, (zCbot + zHoriz) * 0.5, n, dia, CeilTo5Cm((zHoriz - zFbot) + bHook + extraB + extraC));
-                                        HookTxt(xUse, zFbot, bHook, true);
-                                        DrawBeamLabel(tr, btr, btr.Database, new Point3d(xUse + extraB * 0.5, Y(zHoriz) + 8.0, 0),
-                                            extraB.ToString("0", CultureInfo.InvariantCulture), txtH, 0.0, LayerDonatiYazisiPerde, useMiddleCenter: true);
-                                        DrawBeamLabel(tr, btr, btr.Database, new Point3d(xUse + extraB + 8.0, Y(zHoriz - extraC * 0.5), 0),
-                                            extraC.ToString("0", CultureInfo.InvariantCulture), txtH, Math.PI / 2.0, LayerDonatiYazisiPerde, useMiddleCenter: true);
-                                    }
-                                    else
-                                    {
-                                        AppendDonatiPline(tr, btr, new[]
+                                            new Point2d(xG + bHook, Y(zFbot)),
+                                            new Point2d(xG + rBend, Y(zFbot)),
+                                            new Point2d(xG, Y(zFbot + rBend)),
+                                            new Point2d(xG, Y(zHoriz - rBend)),
+                                            new Point2d(xG + rBend, Y(zHoriz))
+                                        };
+                                        var bl = new List<double> { 0.0, -k90, 0.0, -k90, 0.0 };
+                                        if (fg.Firkete)
                                         {
-                                            new Point2d(xUse + bHook, Y(zFbot)),
-                                            new Point2d(xUse + rBend, Y(zFbot)),
-                                            new Point2d(xUse, Y(zFbot + rBend)),
-                                            new Point2d(xUse, Y(zHoriz - rBend)),
-                                            new Point2d(xUse + rBend, Y(zHoriz)),
-                                            new Point2d(xUse + extraB, Y(zHoriz))
-                                        }, new[] { 0.0, -k90, 0.0, -k90, 0.0, 0.0 });
-                                        Label(xUse, (zCbot + zHoriz) * 0.5, n, dia, CeilTo5Cm((zHoriz - zFbot) + bHook + extraB));
-                                        HookTxt(xUse, zFbot, bHook, true);
-                                        DrawBeamLabel(tr, btr, btr.Database, new Point3d(xUse + extraB * 0.5, Y(zHoriz) + 8.0, 0),
-                                            extraB.ToString("0", CultureInfo.InvariantCulture), txtH, 0.0, LayerDonatiYazisiPerde, useMiddleCenter: true);
+                                            pl.Add(new Point2d(xG + (fg.B - rBend), Y(zHoriz)));
+                                            pl.Add(new Point2d(xG + fg.B, Y(zHoriz - rBend)));
+                                            pl.Add(new Point2d(xG + fg.B, Y(zHoriz - fg.C)));
+                                            bl.Add(-k90); bl.Add(0.0); bl.Add(0.0);
+                                        }
+                                        else
+                                        {
+                                            pl.Add(new Point2d(xG + fg.B, Y(zHoriz)));
+                                            bl.Add(0.0);
+                                        }
+                                        AppendDonatiPline(tr, btr, pl.ToArray(), bl.ToArray());
+                                        Label(xG, (zCbot + zHoriz) * 0.5, grpTek[gk].n, dia,
+                                            CeilTo5Cm(Math.Round(sTek) + fg.B + fg.C));
+                                        HookTxt(xG, zFbot, bHook, true);
+                                        FinisEtiket(xG, fg);
                                     }
                                 }
                                 else
@@ -3935,21 +4000,13 @@ namespace ST4PlanIdCiz
                             double xUse = NextX();
                             if (firketeTop)
                             {
-                                if (extraFirkete)
+                                var grpUst = FinisGruplari(nMain, zHoriz - zStart);
+                                double xPrevU = xUse, bPrevU = 0.0;
+                                for (int gk = 0; gk < grpUst.Count; gk++)
                                 {
-                                    DrawKolonDonatiFirkete(tr, btr, Y, xUse, zStart, zHoriz, 1.0, k90, rBend, extraB, extraC);
-                                    Label(xUse, (zStart + zHoriz) * 0.5, nMain, dia, CeilTo5Cm((zHoriz - zStart) + extraB + extraC));
-                                    DrawBeamLabel(tr, btr, btr.Database, new Point3d(xUse + extraB * 0.5, Y(zHoriz) + 8.0, 0),
-                                        extraB.ToString("0", CultureInfo.InvariantCulture), txtH, 0.0, LayerDonatiYazisiPerde, useMiddleCenter: true);
-                                    DrawBeamLabel(tr, btr, btr.Database, new Point3d(xUse + extraB + 8.0, Y(zHoriz - extraC * 0.5), 0),
-                                        extraC.ToString("0", CultureInfo.InvariantCulture), txtH, Math.PI / 2.0, LayerDonatiYazisiPerde, useMiddleCenter: true);
-                                }
-                                else
-                                {
-                                    DrawKolonDonatiGonye(tr, btr, Y, xUse, zStart, zHoriz, 1.0, k90, rBend, extraB);
-                                    Label(xUse, (zStart + zHoriz) * 0.5, nMain, dia, CeilTo5Cm((zHoriz - zStart) + extraB));
-                                    DrawBeamLabel(tr, btr, btr.Database, new Point3d(xUse + extraB * 0.5, Y(zHoriz) + 8.0, 0),
-                                        extraB.ToString("0", CultureInfo.InvariantCulture), txtH, 0.0, LayerDonatiYazisiPerde, useMiddleCenter: true);
+                                    double xG = gk == 0 ? xUse : NextExtraXAfter(xPrevU + bPrevU + 30.0);
+                                    FinisCubukCiz(xG, zStart, grpUst[gk].n, grpUst[gk].f);
+                                    xPrevU = xG; bPrevU = grpUst[gk].f.B;
                                 }
                             }
                             else
@@ -3974,22 +4031,17 @@ namespace ST4PlanIdCiz
 
                     if (nStop > 0 && nextExists)
                     {
-                        double xEx = NextExtraX();
-                        if (extraFirkete)
+                        // Üst kesit dışında kalan (devam etmeyen) çubuklar.
+                        var eUpS = env[i + 1];
+                        var grpStop = FinisGruplari(nStop, zHoriz - zStart,
+                            eUpS == null ? (Func<Point2d, bool>)null
+                                : p => !PointInEnvelopeMargin(eUpS, p.X, p.Y, 3.0));
+                        double xPrevS = double.NegativeInfinity, bPrevS = 0.0;
+                        for (int gk = 0; gk < grpStop.Count; gk++)
                         {
-                            DrawKolonDonatiFirkete(tr, btr, Y, xEx, zStart, zHoriz, 1.0, k90, rBend, extraB, extraC);
-                            Label(xEx, (zStart + zHoriz) * 0.5, nStop, dia, CeilTo5Cm((zHoriz - zStart) + extraB + extraC));
-                            DrawBeamLabel(tr, btr, btr.Database, new Point3d(xEx + extraB * 0.5, Y(zHoriz) + 8.0, 0),
-                                extraB.ToString("0", CultureInfo.InvariantCulture), txtH, 0.0, LayerDonatiYazisiPerde, useMiddleCenter: true);
-                            DrawBeamLabel(tr, btr, btr.Database, new Point3d(xEx + extraB + 8.0, Y(zHoriz - extraC * 0.5), 0),
-                                extraC.ToString("0", CultureInfo.InvariantCulture), txtH, Math.PI / 2.0, LayerDonatiYazisiPerde, useMiddleCenter: true);
-                        }
-                        else
-                        {
-                            DrawKolonDonatiGonye(tr, btr, Y, xEx, zStart, zHoriz, 1.0, k90, rBend, extraB);
-                            Label(xEx, (zStart + zHoriz) * 0.5, nStop, dia, CeilTo5Cm((zHoriz - zStart) + extraB));
-                            DrawBeamLabel(tr, btr, btr.Database, new Point3d(xEx + extraB * 0.5, Y(zHoriz) + 8.0, 0),
-                                extraB.ToString("0", CultureInfo.InvariantCulture), txtH, 0.0, LayerDonatiYazisiPerde, useMiddleCenter: true);
+                            double xG = NextExtraXAfter(xPrevS + bPrevS + 30.0);
+                            FinisCubukCiz(xG, zStart, grpStop[gk].n, grpStop[gk].f);
+                            xPrevS = xG; bPrevS = grpStop[gk].f.B;
                         }
                     }
 
@@ -4046,6 +4098,7 @@ namespace ST4PlanIdCiz
             var colTh = new double[stories.Count];
             var isBaslik = new bool[stories.Count];
             var yetersizKat = new bool[stories.Count];
+            var poliFinisG = new bool[stories.Count];
             // Perde katı perde görünüşünde çizilir; alttan isim değişerek gelen kolonun
             // (SC-39 ← S1-40) eşleşme/filizi için yalnız düşeyleri toplanır.
             var perdeYalnizEslesme = new bool[stories.Count];
@@ -4083,6 +4136,7 @@ namespace ST4PlanIdCiz
                     }
                     continue;
                 }
+                poliFinisG[i] = polyKesit || KolonDuseyArmStory(col, st.floorIndex, polygonArmView);
                 isBaslik[i] = polyKesit || KolonDuseyArmStory(col, st.floorIndex, polygonArmView)
                     || (shortCm > 1.0
                         && shortCm < KolonKesitPerdeBasligiMaxKenarCm - 0.01
@@ -4155,6 +4209,12 @@ namespace ST4PlanIdCiz
                 // (alt kattan başlar, üstte 1,50 ℓb bindirme ile biter).
                 if (isBaslik[i])
                     zStart = zCbot;
+                // Açılımla aynı: temel üstü kat ≤ 200 cm ise temel filizi ve kolon çubuğu tek parça
+                // (temelde kanca, bindirme yok).
+                bool tekParcaTemel = first && hasTemel && !clipFromBelow
+                    && stories[i].zTop - zCbot <= 200.0 + 1e-6;
+                if (tekParcaTemel)
+                    zStart = zTemelBot + 5.0 + rBend;
                 int n = barXs[i].Count;
                 int dia = diaMm[i];
                 double zEndCont = last ? stories[i].zTop : spliceTop[Math.Min(i + 1, stories.Count - 1)];
@@ -4279,6 +4339,8 @@ namespace ST4PlanIdCiz
                     else
                         matchUp = MatchKolonBarsTbdY16(barXs[i], barXs[i + 1], h16);
                 }
+                KdFinisCtx finisCtxG = null;
+                bool finisCtxDenendiG = false;
                 for (int b = 0; b < n; b++)
                 {
                     double bx = barXs[i][b];
@@ -4305,7 +4367,56 @@ namespace ST4PlanIdCiz
                         double zHoriz = zHorizPre;
                         if (zHoriz < zStart + 15.0) zHoriz = zStart + 20.0;
                         double hookDir = bx <= midHook ? 1.0 : -1.0;
-                        DrawKolonFinisGonyeFirkete(tr, btr, Y, x, zStart, zHoriz, hookDir, k90, rBend, dia, hookIn);
+                        // Son kat finişi: gönye/firkete yalnız uç (en sol/en sağ) donatılarda; aradakiler
+                        // görünüşte bükülme kotuna kadar düz (kancalar üst üste binip çizim dışına taşmasın).
+                        if (last && n > 2)
+                        {
+                            double bxMin = barXs[i].Min(), bxMax = barXs[i].Max();
+                            if (bx > bxMin + 0.5 && bx < bxMax - 0.5)
+                            {
+                                AppendDonatiPline(tr, btr, new[]
+                                {
+                                    new Point2d(x, Y(zStart)),
+                                    new Point2d(x, Y(zHoriz))
+                                }, null);
+                                continue;
+                            }
+                        }
+                        // TBDY 7.3.3.2 (açılımla aynı hesap): çubuk boyu açılımdaki gibi temel kancası dahil.
+                        double sGor = zHoriz - zStart;
+                        if (tekParcaTemel)
+                        {
+                            double bHookG = CeilTo5Cm(12.0 * dia / 10.0);
+                            double aG = zCbot - (zTemelBot + 5.0);
+                            double lbkG = 0.75 * Ts500KenetlenmeLbCm(dia, fck, fyk);
+                            if (aG + bHookG < lbkG) bHookG = CeilTo5Cm(Math.Max(bHookG, lbkG - Math.Max(aG, 0)));
+                            sGor = (zHoriz - (zTemelBot + 5.0)) + bHookG;
+                        }
+                        KdFinis? fGor = null;
+                        try
+                        {
+                            if (!finisCtxDenendiG)
+                            {
+                                finisCtxDenendiG = true;
+                                finisCtxG = BuildKolonFinisCtx(col, stories[i].floorIndex, stories[i].poly, rot,
+                                    stories[i].zTop, dia, false);
+                            }
+                            if (finisCtxG != null && finisCtxG.E != null)
+                            {
+                                fGor = KdFinisTekTip(finisCtxG, dia, zHoriz, sGor,
+                                    poliFinisG[i] ? colTh[i] : double.NaN);
+                            }
+                        }
+                        catch { fGor = null; }
+                        if (fGor.HasValue)
+                        {
+                            if (fGor.Value.Firkete)
+                                DrawKolonDonatiFirkete(tr, btr, Y, x, zStart, zHoriz, hookDir, k90, rBend, fGor.Value.B, fGor.Value.C);
+                            else
+                                DrawKolonDonatiGonye(tr, btr, Y, x, zStart, zHoriz, hookDir, k90, rBend, fGor.Value.B);
+                        }
+                        else
+                            DrawKolonFinisGonyeFirkete(tr, btr, Y, x, zStart, zHoriz, hookDir, k90, rBend, dia, hookIn);
                     }
                     else if (matched)
                     {
@@ -4400,7 +4511,10 @@ namespace ST4PlanIdCiz
                         double lbF = Ts500KenetlenmeLbCm(dia, fck, fyk);
                         zFilizTop = zCbot + CeilTo5Cm(Math.Max(1.50 * lbF, 30.0));
                     }
-                    if (zFilizTop - zFilizBot < 10.0) continue;
+                    // Tek parça: yalnız temel kancası; düşey kısım kolon çubuğuyla birlikte çizildi.
+                    if (tekParcaTemel)
+                        zFilizTop = zFilizBot + rBend + 1.0;
+                    else if (zFilizTop - zFilizBot < 10.0) continue;
                     for (int b = 0; b < n; b++)
                     {
                         double bx = barXs[i][b];
@@ -4565,6 +4679,8 @@ namespace ST4PlanIdCiz
                         zKolonLbUst = stories[i].zTop + lbKolonBolge;
                 }
 
+                KdFinisCtx finisCtxP = null;
+                bool finisCtxDenendiP = false;
                 for (int b = 0; b < n; b++)
                 {
                     double bx = bars[i][b].x;
@@ -4601,7 +4717,34 @@ namespace ST4PlanIdCiz
                         double zHoriz = zHorizPre;
                         if (zHoriz < zCbot + 15.0) zHoriz = zCbot + 20.0;
                         double hookDir = bx <= midHook ? 1.0 : -1.0;
-                        DrawKolonFinisGonyeFirkete(tr, btr, Y, x, zCbot, zHoriz, hookDir, k90, rBend, dia, hookIn);
+                        // TBDY 7.3.3.2: perde düşeyi kalınlık yönünde; karşıda kiriş/kapama perdesi yoksa firkete.
+                        KdFinis? fP = null;
+                        try
+                        {
+                            if (!finisCtxDenendiP)
+                            {
+                                finisCtxDenendiP = true;
+                                finisCtxP = BuildKolonFinisCtx(col, stories[i].floorIndex, stories[i].poly, rot,
+                                    stories[i].zTop, dia, true);
+                            }
+                            if (finisCtxP != null && finisCtxP.E != null)
+                            {
+                                var eP = finisCtxP.E;
+                                double yP = eP.Height <= eP.Width ? eP.MinY + pas : 0.5 * (eP.MinY + eP.MaxY);
+                                double xP = eP.Height <= eP.Width ? bx : eP.MinX + pas;
+                                fP = KdFinisCubuk(finisCtxP, dia, zHoriz, xP, yP, zHoriz - zCbot);
+                            }
+                        }
+                        catch { fP = null; }
+                        if (fP.HasValue)
+                        {
+                            if (fP.Value.Firkete)
+                                DrawKolonDonatiFirkete(tr, btr, Y, x, zCbot, zHoriz, hookDir, k90, rBend, fP.Value.B, fP.Value.C);
+                            else
+                                DrawKolonDonatiGonye(tr, btr, Y, x, zCbot, zHoriz, hookDir, k90, rBend, fP.Value.B);
+                        }
+                        else
+                            DrawKolonFinisGonyeFirkete(tr, btr, Y, x, zCbot, zHoriz, hookDir, k90, rBend, dia, hookIn);
                     }
                     else if (matched)
                     {

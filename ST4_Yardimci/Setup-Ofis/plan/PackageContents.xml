@@ -5,8 +5,8 @@
   ProductType="Application"
   Name="ST4_Plan_ID_Ciz"
   Description="ST4 PLAN ID"
-  AppVersion="2026.11.07.1"
-  FriendlyVersion="2026.11.07.1"
+  AppVersion="2026.11.10.1"
+  FriendlyVersion="2026.11.10.1"
   ProductCode="{3B8E6D21-7C4F-4A90-B2E5-9D1F6A3C7E48}"
   UpgradeCode="{C52A9F17-0E6B-4D38-A1F4-6B7D2E9C8A05}">
 
@@ -22,7 +22,7 @@
 
     <ComponentEntry
       AppName="ST4_Plan_ID_Ciz"
-      ModuleName="./Contents/Windows/ST4_Plan_ID_Ciz_2027_20261107_133752.dll"
+      ModuleName="./Contents/Windows/ST4_Plan_ID_Ciz_2027_20261110_132102.dll"
       AppDescription="ST4 PLAN ID"
       LoadOnAutoCADStartup="True"
       LoadOnCommandInvocation="False"

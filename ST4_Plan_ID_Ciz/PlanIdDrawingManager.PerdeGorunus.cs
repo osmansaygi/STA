@@ -2096,9 +2096,14 @@ namespace ST4PlanIdCiz
             double viewX0,
             double viewX1,
             List<(double x0, double x1, double z0, double z1)> dest,
-            double sectionY = double.NaN)
+            double sectionY = double.NaN,
+            double zKabulAlt = double.NaN,
+            double zKabulUst = double.NaN)
         {
             if (dest == null || planUnion == null || planUnion.IsEmpty) return;
+            // Kolon kot aralığı verildiyse (kademeli temel, subasmanda biten kolon) ofsetli
+            // subasman döşemesi de bu aralıktaysa alınır; aralık dışındaki döşeme kolona değmez.
+            bool kabulAraligi = IsFiniteCoord(zKabulAlt) && IsFiniteCoord(zKabulUst) && zKabulUst > zKabulAlt;
             if (!IsFiniteCoord(refTopZCm))
             {
                 if (_model != null && _model.HasSubasmanStory)
@@ -2146,7 +2151,11 @@ namespace ST4PlanIdCiz
                 double zt = refTopZCm + slab.OffsetFromFloorCm;
                 double zb = zt - th;
                 // Offset aşırıysa yanlış kata kaymayı engelle
-                if (Math.Abs(zt - refTopZCm) > 5.0) continue;
+                if (kabulAraligi)
+                {
+                    if (zt < zKabulAlt - 5.0 || zt > zKabulUst + 5.0) continue;
+                }
+                else if (Math.Abs(zt - refTopZCm) > 5.0) continue;
 
                 if (!TryGetSlabAxisQuadPolygon(slab, ox, oy, factory, out Polygon poly) || poly == null || poly.IsEmpty)
                     continue;

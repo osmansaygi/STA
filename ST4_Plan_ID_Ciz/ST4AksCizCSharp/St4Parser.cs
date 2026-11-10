@@ -226,11 +226,25 @@ namespace ST4AksCizCSharp
                         double point1KotCm = 0.0, point2KotCm = 0.0;
                         if (p.Count >= 12 && St4Text.TryParseDouble(p[11], out point1KotCm)) { }
                         if (p.Count >= 13 && St4Text.TryParseDouble(p[12], out point2KotCm)) { }
+                        // Guse: p[8] Hg, p[9] La (1. nokta), p[10] Lb (2. nokta); cm. Hg ile en az bir boy > 0 ise geçerli.
+                        double guseHg = 0.0, guseLa = 0.0, guseLb = 0.0;
+                        if (p.Count >= 11 && wallFlag != 1)
+                        {
+                            St4Text.TryParseDouble(p[8], out guseHg);
+                            St4Text.TryParseDouble(p[9], out guseLa);
+                            St4Text.TryParseDouble(p[10], out guseLb);
+                            if (guseHg <= 0.0 || guseHg > 500.0 || guseLa < 0.0 || guseLb < 0.0
+                                || guseLa > 3000.0 || guseLb > 3000.0 || (guseLa <= 0.0 && guseLb <= 0.0))
+                                guseHg = guseLa = guseLb = 0.0;
+                        }
                         if (width <= 0) width = 40.0;
                         if (beamId >= 100)
                         {
                             model.Beams.Add(new BeamInfo
                             {
+                                GuseHgCm = guseHg,
+                                GuseLaCm = guseLa,
+                                GuseLbCm = guseLb,
                                 BeamId = beamId,
                                 FixedAxisId = fixedAxis,
                                 StartAxisId = startAxis,
