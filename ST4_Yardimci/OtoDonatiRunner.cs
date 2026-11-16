@@ -33,8 +33,10 @@ namespace ST4Yardimci
         private const double BendRadiusCm = 3.0;
         /// <summary>Bindirme kırığı (lap crank) köşe radiusu — gönye bükümüne uygulanmaz.</summary>
         private const double CrankBendRadiusCm = 50.0;
-        private const double LabelHeightCm = 10.0;
-        private const double LabelGapCm = 3.0;
+        /// <summary>1/100 pafta: yazı, yazı payları ve bindirme ölçüsü 1,5× (OtoDonatiSettings.Olcek100).</summary>
+        private static double OlcekCarpani => OtoDonatiSettings.Olcek100 ? 1.5 : 1.0;
+        private static double LabelHeightCm => 10.0 * OlcekCarpani;
+        private static double LabelGapCm => 3.0 * OlcekCarpani;
         /// <summary>Etiket yazı kutusu ↔ diğer yazılar min boşluk (mümkünse).</summary>
         private const double LabelMinClearCm = 40.0;
         /// <summary>Etiket yazı kutusu ↔ başka yöndeki donatı min boşluk.</summary>
@@ -53,14 +55,14 @@ namespace ST4Yardimci
         /// <summary>Bindirme kırımı: dik ofset (cm).</summary>
         private const double CrankOffsetCm = 5.0;
         /// <summary>Bindirme ölçüsü: ölçülendirilen (alt/sağ) koldan ofset (cm) — radye / alt.</summary>
-        private const double LapDimOffsetCm = 17.0;
+        private static double LapDimOffsetCm => 17.0 * OlcekCarpani;
         /// <summary>Mantar üst donatı bindirme: üst/sol koldan ofset (cm).</summary>
-        private const double LapDimOffsetMantarUstCm = 10.0;
+        private static double LapDimOffsetMantarUstCm => 10.0 * OlcekCarpani;
         /// <summary>Gönye boyu yazı kutusu: gönyeye dik dış mesafe (cm).</summary>
-        private const double GonyeLabelClearCm = 4.0;
-        private const double GonyeLabelHeightCm = 8.0;
+        private static double GonyeLabelClearCm => 4.0 * OlcekCarpani;
+        private static double GonyeLabelHeightCm => 8.0 * OlcekCarpani;
         private const string TextStyleYazi = "YAZI (BEYKENT)";
-        private const string DimStylePlanOlcuDonati = "PLAN_OLCU_DONATI";
+        private const string DimStylePlanOlcuDonati = BeykentOrtak.OlcuStilAdlari.Donati50;
 
         private static string KatmanOzeti()
         {
@@ -425,7 +427,7 @@ namespace ST4Yardimci
                 ? LapDimOffsetMantarUstCm
                 : -LapDimOffsetCm;
             Point3d dimPt = RayPoint(bar.Origin, along, up, 0.5 * (a + b), bar.LapPerp + dimOff);
-            OtoOlcuDimFactory.PlaceRotated(tr, btr, x1, x2, dimPt, dimStyleId, layer);
+            OtoOlcuDimFactory.PlaceRotated(tr, btr, x1, x2, dimPt, dimStyleId, layer, OlcuOlcekle);
         }
 
         private static ObjectId PickClosedPolygon(Editor ed, string message)
@@ -2268,7 +2270,15 @@ namespace ST4Yardimci
                 dimPt = new Point3d(refC + off, 0.5 * (a + b), 0);
             }
 
-            OtoOlcuDimFactory.PlaceRotated(tr, btr, x1, x2, dimPt, dimStyleId, layer);
+            OtoOlcuDimFactory.PlaceRotated(tr, btr, x1, x2, dimPt, dimStyleId, layer, OlcuOlcekle);
+        }
+
+        /// <summary>1/100 pafta: bindirme ölçüsünün yazı, ok, ofset ve boşlukları DIMSCALE ile 1,5× (stil 1/50 kalır).</summary>
+        private static void OlcuOlcekle(Dimension dim)
+        {
+            if (dim == null || OlcekCarpani == 1.0) return;
+            double s = dim.Dimscale > 0 ? dim.Dimscale : 1.0;
+            dim.Dimscale = s * OlcekCarpani;
         }
 
         /// <summary>Bindirme ölçüleri her zaman PLAN_OLCU_DONATI; yoksa PLAN_OLCU'dan kopyalanarak oluşturulur.</summary>

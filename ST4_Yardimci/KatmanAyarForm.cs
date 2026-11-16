@@ -185,9 +185,10 @@ namespace ST4Yardimci
             _katman.CellDoubleClick += KatmanRenkSec;
             _katman.CellEndEdit += (s, e) => { if (e.RowIndex >= 0) RenkOrnek(_katman.Rows[e.RowIndex]); };
 
-            _olcu.Columns.Add(Metin("Ad", "Ölçü stili", 170, true));
+            _olcu.Columns.Add(Metin("Ad", "Ölçü stili", 220, true));
             _olcu.Columns.Add(Metin("YaziYuksekligi", "Yazı yük.", 65));
             _olcu.Columns.Add(Metin("Olcek", "Ölçek (DIMLFAC)", 70));
+            _olcu.Columns.Add(Metin("Buyutme", "Büyütme (DIMSCALE)", 75));
             _olcu.Columns.Add(Metin("OkBoyu", "Ok boyu", 60));
             _olcu.Columns.Add(Onay("Tik", "Eğik tik", 50));
             _olcu.Columns.Add(Metin("Ofset", "Uzatma ofseti", 70));
@@ -239,7 +240,7 @@ namespace ST4Yardimci
             {
                 string ys = string.IsNullOrWhiteSpace(o.YaziStili) ? BeykentStilAyar.YaziBeykent : o.YaziStili;
                 if (!stil.Items.Contains(ys)) stil.Items.Add(ys);
-                _olcu.Rows.Add(o.Ad, S(o.YaziYuksekligi), S(o.Olcek), S(o.OkBoyu), o.Tik, S(o.Ofset), S(o.Uzanti), o.SabitUzanti,
+                _olcu.Rows.Add(o.Ad, S(o.YaziYuksekligi), S(o.Olcek), S(o.Buyutme > 0 ? o.Buyutme : 1), S(o.OkBoyu), o.Tik, S(o.Ofset), S(o.Uzanti), o.SabitUzanti,
                     S(o.Bosluk), S(o.Yuvarlama), o.Ondalik.ToString(CultureInfo.InvariantCulture),
                     o.SifirBastir.ToString(CultureInfo.InvariantCulture), o.YaziUstte, o.UzatmaGizle, ys);
             }
@@ -280,6 +281,7 @@ namespace ST4Yardimci
                         Ad = ad,
                         YaziYuksekligi = Sayi(r, "YaziYuksekligi", 0.1, 1000, ad),
                         Olcek = Sayi(r, "Olcek", 0.001, 1000, ad),
+                        Buyutme = Sayi(r, "Buyutme", 0.01, 1000, ad),
                         OkBoyu = Sayi(r, "OkBoyu", 0, 1000, ad),
                         Tik = Bool(r, "Tik"),
                         Ofset = Sayi(r, "Ofset", 0, 1000, ad),

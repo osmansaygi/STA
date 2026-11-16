@@ -36,6 +36,10 @@ namespace ST4PlanIdCiz
             public Geometry Plan;
             public bool Perde;
             public double X0, X1, Alt, Ust;
+            /// <summary>Kapama perdesinin ST4 kirişi (filiz donatısı için); hatılda null.</summary>
+            public BeamInfo Beam;
+            /// <summary>Birleşik çıkıntıdaki kapama perdeleri ve görünüş aralıkları.</summary>
+            public readonly List<(BeamInfo Beam, double X0, double X1)> Perdeler = new List<(BeamInfo, double, double)>();
         }
 
         private sealed class SurekliGorunusTemel
@@ -81,6 +85,20 @@ namespace ST4PlanIdCiz
                 double x = (c.X - origin.X) * u.X + (c.Y - origin.Y) * u.Y;
                 min = Math.Min(min, x); max = Math.Max(max, x);
             }
+        }
+
+        /// <summary>Kolon plan çokgeninin temel orta çizgisi üzerindeki kesiti; kesişim yoksa kolonun kendisi.</summary>
+        private static Geometry SurekliGorunusKolonEksenKesiti(SurekliGorunusTemel t, Geometry kolon, GeometryFactory gf)
+        {
+            try
+            {
+                Point2d p0 = t.Merkez - t.Yon.MultiplyBy(1e5), p1 = t.Merkez + t.Yon.MultiplyBy(1e5);
+                var eksen = gf.CreateLineString(new[] { new Coordinate(p0.X, p0.Y), new Coordinate(p1.X, p1.Y) });
+                Geometry kesit = kolon.Intersection(eksen);
+                if (kesit != null && !kesit.IsEmpty && kesit.Length > 1.0) return kesit;
+            }
+            catch { }
+            return kolon;
         }
 
         private List<SurekliGorunusTakim> BuildSurekliGorunusTakimlari(FloorInfo floor, bool birlestir = true)
@@ -209,7 +227,10 @@ namespace ST4PlanIdCiz
                     // Ortak kolonda ana (en uzun) temelin bakışı seçilir; uç
                     // kolonunda mutlaka üzerine oturduğu parçanın kendi bakışı.
                     var owner = takim.Temeller.First(t => t.Kolonlar.Contains(no));
-                    SurekliGorunusParcaAraligi(owner, kaynak.Plan, out double lo, out double hi);
+                    // Eğik temelde dikdörtgen kolonun tam izdüşümü değil, temel eksenindeki kesiti
+                    // (CK_20827_2_02 T-7: 30/180 kolon 70,8 yerine 30,8 cm); eksen kolonu kesmiyorsa tam izdüşüm.
+                    SurekliGorunusParcaAraligi(owner, SurekliGorunusKolonEksenKesiti(owner, kaynak.Plan, gf),
+                        out double lo, out double hi);
                     // Hatıl çıkıntı olarak ayrı çizilir; kolon temel gövdesinin üstünden çıkar.
                     var govde = temas.Where(p => !p.Cikinti).ToList();
                     double oturma = govde.Count > 0 ? govde.Max(p => p.Ust) : temas.Max(p => p.Alt);
@@ -230,8 +251,12 @@ namespace ST4PlanIdCiz
                     {
                         SurekliGorunusParcaAraligi(t, c.Plan, out double lo, out double hi);
                         if (hi - lo > 2.0)
-                            takim.Cikintilar.Add(new SurekliGorunusCikinti { Plan = c.Plan, Perde = c.Perde,
-                                X0 = lo, X1 = hi, Alt = ust, Ust = ust + SurekliGorunusCikintiCm });
+                        {
+                            var yeni = new SurekliGorunusCikinti { Plan = c.Plan, Perde = c.Perde, Beam = c.Beam,
+                                X0 = lo, X1 = hi, Alt = ust, Ust = ust + SurekliGorunusCikintiCm };
+                            if (c.Beam != null) yeni.Perdeler.Add((c.Beam, lo, hi));
+                            takim.Cikintilar.Add(yeni);
+                        }
                     }
                 }
                 SurekliGorunusCikintiBirlestir(takim.Cikintilar);
@@ -307,15 +332,15 @@ namespace ST4PlanIdCiz
         // destek katının kapama perdeleri temel betonu sayılmaz; kolon gibi çıkıntıdır.
         private void SurekliGorunusCikintilariBul(List<SurekliGorunusTemel> temeller, FloorInfo floor)
         {
-            var adaylar = new List<(Geometry Plan, bool Perde, double Alt, double Ust)>();
+            var adaylar = new List<(Geometry Plan, bool Perde, double Alt, double Ust, BeamInfo Beam)>();
             foreach (var t in temeller)
-                foreach (var p in t.Parcalar.Where(p => p.Cikinti)) adaylar.Add((p.Plan, false, p.Alt, p.Ust));
+                foreach (var p in t.Parcalar.Where(p => p.Cikinti)) adaylar.Add((p.Plan, false, p.Alt, p.Ust, null));
             foreach (var tb in _model.TieBeams ?? new List<TieBeamInfo>())
             {
                 var poly = TieBeamFootprintPoly(tb);
                 if (poly == null || poly.IsEmpty) continue;
                 double z0 = (_model.BuildingBaseKotu + tb.BottomKotM) * 100.0;
-                adaylar.Add((poly, false, z0, z0 + (tb.HeightCm > 0 ? tb.HeightCm : 25.0)));
+                adaylar.Add((poly, false, z0, z0 + (tb.HeightCm > 0 ? tb.HeightCm : 25.0), null));
             }
             // Açılım sırasında GetRawBeamsOnFloor sentetik temel kirişlerini döndürür; perde ST4'ten.
             foreach (var beam in _model.Beams ?? new List<BeamInfo>())
@@ -323,7 +348,7 @@ namespace ST4PlanIdCiz
                 if (beam == null || beam.IsWallFlag != 1 || beam.WidthCm <= 1.0
                     || GetBeamFloorNo(beam.BeamId) != floor.FloorNo) continue;
                 var poly = BeamFootprintPoly(beam);
-                if (poly != null && !poly.IsEmpty) adaylar.Add((poly, true, double.NaN, double.NaN));
+                if (poly != null && !poly.IsEmpty) adaylar.Add((poly, true, double.NaN, double.NaN, beam));
             }
             foreach (var t in temeller)
             {
@@ -336,7 +361,7 @@ namespace ST4PlanIdCiz
                     if (!a.Plan.EnvelopeInternal.Intersects(body.Plan.EnvelopeInternal)) continue;
                     Geometry hit = a.Plan.Intersection(body.Plan);
                     if (hit == null || hit.IsEmpty || hit.Area < 1.0) continue;
-                    t.Cikintilar.Add(new SurekliGorunusCikinti { Plan = hit, Perde = a.Perde });
+                    t.Cikintilar.Add(new SurekliGorunusCikinti { Plan = hit, Perde = a.Perde, Beam = a.Beam });
                 }
             }
         }
@@ -352,6 +377,7 @@ namespace ST4PlanIdCiz
                 {
                     last.X1 = Math.Max(last.X1, c.X1);
                     last.Ust = Math.Max(last.Ust, c.Ust);
+                    last.Perdeler.AddRange(c.Perdeler);
                     continue;
                 }
                 result.Add(c);
@@ -727,17 +753,48 @@ namespace ST4PlanIdCiz
                 }, new[] { 0.0, dir > 0 ? -k90 : k90, 0.0, 0.0 }, KirisAcilimDonatiLayer);
             }
             SurekliGorunusTemelIciEtriye(tr, ms, fi, col, x, y, zBot);
-            _surekliFilizSahibi.TryGetValue(col.Kaynak.ColumnNo, out int sahip);
-            bool burada = takim.Temeller.Any(t => t.No == sahip);
-            string yazi = burada ? string.Join(" + ", parcalar) + " FİLİZ"
-                : string.Format(CultureInfo.InvariantCulture, "FİLİZ bkz. T-{0}", sahip);
+            // Kullanıcı tercihi: ortak kolonda da "bkz." yerine filiz her açılımda doğrudan yazılır.
+            string yazi = string.Join(" + ", parcalar) + " FİLİZ";
             DrawBeamLabel(tr, ms, db, new Point3d(x + mid, y + col.Ust + SurekliGorunusFilizYaziDy, 0), yazi, 4, 0,
                 KirisAcilimDonatiYaziLayer, useMiddleCenter: true);
             return true;
         }
 
+        /// <summary>
+        /// Kapama perde filizi: KAPAMADETAY ile aynı kaynak (GPR panel, yoksa .SWX) ve aynı biçim
+        /// "katman x adet ø çap / aralık". Aralıktaki en uzun örtüşen perde seçilir; veri yoksa null.
+        /// </summary>
+        /// <summary>Etiket aralığıyla en çok örtüşen kapama perdesi; yoksa null.</summary>
+        private static BeamInfo SurekliGorunusSeciliPerde(SurekliGorunusCikinti c, double a, double b)
+        {
+            if (c == null || c.Perdeler.Count == 0) return null;
+            var sec = c.Perdeler.OrderByDescending(p => Math.Min(b, p.X1) - Math.Max(a, p.X0)).First();
+            return Math.Min(b, sec.X1) - Math.Max(a, sec.X0) > 0.5 ? sec.Beam : null;
+        }
+
+        private string SurekliGorunusPerdeFilizYazisi(FloorInfo floor, SurekliGorunusCikinti c, double a, double b)
+        {
+            if (_gprPerdePanelDonati == null || _gprPerdePanelDonati.Count == 0) return null;
+            BeamInfo beam = SurekliGorunusSeciliPerde(c, a, b);
+            if (beam == null) return null;
+            int wallNo = GetBeamNumero(beam.BeamId);
+            if (!TryFindGprPerdePanel(floor, wallNo, out GprPerdePanelDonati don) || don == null || don.BarCount <= 0)
+                return null;
+            var poly = BeamFootprintPoly(beam);
+            double boy = poly != null && !poly.IsEmpty && beam.WidthCm > 1.0 ? poly.Area / beam.WidthCm : b - a;
+            ResolvePerdeBxBy(don, beam, boy, out double wallLen, out _);
+            int nBar = Math.Max(don.BarCount, 2);
+            double spacing = Math.Max(5.0, Math.Ceiling(wallLen / (nBar + 1.0) - 1e-9));
+            if (spacing > 20.0) spacing = 20.0;
+            int dia = don.DiaMm > 0 ? don.DiaMm : 12;
+            int layers = don.LayerCount > 0 ? don.LayerCount : 2;
+            return string.Format(CultureInfo.InvariantCulture, "{0}x{1}ø{2}/{3:0} FİLİZ", layers, nBar, dia, spacing);
+        }
+
         /// <summary>Filiz yazısı ortası kolon üstünden (4 yükseklik, 5,5–9,5 arası); kolon adı altı +12'ye kalkar.</summary>
         private const double SurekliGorunusFilizYaziDy = 7.5, SurekliGorunusFilizliKolonAdiDy = 7.0;
+        /// <summary>KAPAMA PERDE yazısının ek yükselmesi (2× öncesi; nihai 1/25 çizimde 5 cm).</summary>
+        private const double SurekliGorunusKapamaYaziEkDy = 2.5;
 
         /// <summary>
         /// KOLONDUSEY temel içi etriyesi (TBDY 2018 7.3.4.1): temel üstünden aşağı kolon kısa kenarı
@@ -863,9 +920,26 @@ namespace ST4PlanIdCiz
                 var yazilacak = bosluklar.Where(g => g.B - g.A >= minBosluk).ToList();
                 if (yazilacak.Count == 0) yazilacak.Add(bosluklar.OrderByDescending(g => g.B - g.A).First());
                 foreach (var g in yazilacak)
-                    DrawBeamLabel(tr, ms, db, new Point3d(x + (g.A + g.B) * 0.5, y + c.Ust + 6.0, 0),
-                        c.Perde ? "KAPAMA PERDE" : "TEMEL HATILI", c.Perde ? 5 : 4, 0,
+                {
+                    // Kapama perdesi: kolondaki gibi filiz yazısı çıkıntının hemen üstünde, perde adı onun üstünde.
+                    string filiz = c.Perde ? SurekliGorunusPerdeFilizYazisi(floor, c, g.A, g.B) : null;
+                    double xm = x + (g.A + g.B) * 0.5;
+                    if (filiz != null)
+                        DrawBeamLabel(tr, ms, db, new Point3d(xm, y + c.Ust + SurekliGorunusFilizYaziDy, 0), filiz, 4, 0,
+                            KirisAcilimDonatiYaziLayer, useMiddleCenter: true);
+                    // Kapama perde adı KAPAMADETAY antediyle aynı (P-07); yazı 1/25 nihai çizimde 5 cm (2× öncesi 2,5) yukarıda.
+                    string ad = "TEMEL HATILI";
+                    if (c.Perde)
+                    {
+                        BeamInfo pb = SurekliGorunusSeciliPerde(c, g.A, g.B);
+                        string no = pb != null ? FormatAntetBenzerIsimleri(new[] { GetBeamNumero(pb.BeamId) }, "P-") : "";
+                        ad = string.IsNullOrEmpty(no) ? "KAPAMA PERDE" : "KAPAMA PERDE (" + no + ")";
+                    }
+                    DrawBeamLabel(tr, ms, db, new Point3d(xm, y + c.Ust + 6.0 + (c.Perde ? SurekliGorunusKapamaYaziEkDy : 0.0)
+                        + (filiz != null ? SurekliGorunusFilizliKolonAdiDy : 0.0), 0),
+                        ad, c.Perde ? 5 : 4, 0,
                         c.Perde ? LayerPerdeYazisi : LayerTemelHatiliIsmi, useMiddleCenter: true);
+                }
             }
             foreach (var s in takim.Saplamalar)
             {
@@ -901,7 +975,7 @@ namespace ST4PlanIdCiz
             }
             var env = concrete.EnvelopeInternal;
             _surekliGorunusGenislik = Math.Max(_surekliGorunusGenislik, env.MaxX - x);
-            ObjectId style = GetOrCreatePlanOlcuDimStyle(tr, db, 10, 1, "PLAN_OLCU_25");
+            ObjectId style = GetOrCreatePlanOlcuDimStyle(tr, db, 10, 1, BeykentOrtak.OlcuStilAdlari.Acilim50_25);
             var faces = new List<double> { env.MinX, env.MaxX };
             foreach (var col in takim.Kolonlar) { faces.Add(x + col.X0); faces.Add(x + col.X1); }
             foreach (var s in takim.Saplamalar) { faces.Add(x + s.X0); faces.Add(x + s.X1); }

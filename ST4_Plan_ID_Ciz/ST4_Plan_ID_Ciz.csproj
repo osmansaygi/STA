@@ -93,6 +93,7 @@
   <ItemGroup>
     <Compile Include="..\Ortak\BeykentStil\*.cs" Link="Ortak\%(Filename)%(Extension)" />
     <Compile Include="..\Ortak\Monolit\*.cs" Link="Ortak\Monolit\%(Filename)%(Extension)" />
+    <Compile Include="..\Ortak\Sta4\*.cs" Link="Ortak\Sta4\%(Filename)%(Extension)" />
   </ItemGroup>
   <!-- SUREKLITEMELACILIMLARI antet üstü temel hatılı detayı: Yardımcı TEMELHATILI çizicisi aynen (ayar köprüsü YardimciTemelHatiliBaglanti.cs). -->
   <ItemGroup>

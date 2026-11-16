@@ -109,6 +109,7 @@ namespace ST4PlanIdCiz
                         TryLoadExtra("DENEME2", "ST4PlanIdCiz.Icons.kalip_deneme2_monolit.png");
                         TryLoadExtra("SERBESTKESIT", "ST4PlanIdCiz.Icons.serbest_kesit_monolit.png");
                         TryLoadExtra("RADYELEGANTKARSILASTIRMA", "ST4PlanIdCiz.Icons.radye_legant_karsilastirma_monolit.png");
+                        TryLoadExtra("RADYEILAVEZARF", "ST4PlanIdCiz.Icons.radye_ilave_zarf_monolit.png");
                         TryLoadExtra("KIRISCIZ", "ST4PlanIdCiz.Icons.kiris_ciz_monolit.png");
                     }
                     catch { /* Embedded classic icons remain available as the fallback. */ }

@@ -36,7 +36,7 @@ namespace ST4Yardimci
         /// <summary>BLOKAJ katmanı şeffaflık (0=opak … 90=en şeffaf) — Temel Hatılı ile aynı.</summary>
         private const int LayerBlokajTransparencyPercent = 90;
         private const string TextStyleYazi = "YAZI (BEYKENT)";
-        private const string DimStylePlanOlcu25 = "PLAN_OLCU 25";
+        private const string DimStylePlanOlcu25 = BeykentOrtak.OlcuStilAdlari.Detay50_25;
         private const double PlanOlcuDimExe = 5.0;
         /// <summary>Sağ kot tepesi, kazı dış yüzünden (çizim birimi).</summary>
         private const double KotRightGapDu = 40.0;
@@ -2608,8 +2608,36 @@ namespace ST4Yardimci
                 }
             }
 
+            /// <summary>
+            /// Perde (düşey gövdeli) çubuk: uç parçaları yatay kanca, gövdesi düşey. U çubuk (alt/üst temel): uçları düşey.
+            /// Eskiden yalnız "en uzun düşey &gt; en uzun yatay" bakılıyordu; derin çukurda (ör. derinlik 90 + alt 80,
+            /// 50ø alt kanca 175 cm) perde çubuğunun yatay kancası gövdeden uzun çıkıp U sanılıyor, şekli ALT açılıma
+            /// yapışıyordu (580 cm çukurda 40ø14/20 L=870 ALT bozuk çizim).
+            /// </summary>
             private static bool BarIsWall(Polyline pl)
             {
+                int nv = pl.NumberOfVertices;
+                if (nv >= 4)
+                {
+                    Point2d a0 = pl.GetPoint2dAt(0), a1 = pl.GetPoint2dAt(1);
+                    Point2d b0 = pl.GetPoint2dAt(nv - 2), b1 = pl.GetPoint2dAt(nv - 1);
+                    double l0 = Dist2d(a0, a1), l1 = Dist2d(b0, b1);
+                    if (l0 > 1.0 && l1 > 1.0)
+                    {
+                        bool basYatay = Math.Abs(a1.X - a0.X) > Math.Abs(a1.Y - a0.Y);
+                        bool sonYatay = Math.Abs(b1.X - b0.X) > Math.Abs(b1.Y - b0.Y);
+                        if (basYatay && sonYatay)
+                        {
+                            for (int i = 1; i < nv - 2; i++)
+                            {
+                                Point2d p = pl.GetPoint2dAt(i), q = pl.GetPoint2dAt(i + 1);
+                                if (Math.Abs(q.Y - p.Y) > Math.Abs(q.X - p.X) && Dist2d(p, q) > 80.0) return true;
+                            }
+                            return false;
+                        }
+                        if (!basYatay && !sonYatay) return false;
+                    }
+                }
                 double bestV = 0, bestH = 0;
                 int n = pl.NumberOfVertices;
                 for (int i = 0; i < n - 1; i++)
@@ -2762,7 +2790,7 @@ namespace ST4Yardimci
                             bestH = L;
                     }
                     // Çukur alt donatısının yatay gövdesi 50ø kanca değildir.
-                    if (iVert < 0 || bestV < 80.0 || bestV <= bestH) continue;
+                    if (iVert < 0 || bestV < 80.0 || !BarIsWall(pl)) continue;
                     bool ic = Math.Min(Math.Abs(vertX - iL), Math.Abs(vertX - iR))
                         <= Math.Min(Math.Abs(vertX - oL), Math.Abs(vertX - oR));
                     // İç çubuk: üst uç 50ø, alt uç gönye. Dış çubuk: alt uç 50ø, üst uç gönye.

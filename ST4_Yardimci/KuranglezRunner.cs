@@ -26,7 +26,7 @@ namespace ST4Yardimci
         const double BendR = 1.5;
         /// <summary>Kesitte görülen çubuk: dolu daire çapı 3 cm (1/25, gerçek cm).</summary>
         const double DonatiNoktaCapCm = 3.0;
-        const string DimStyle25 = "PLAN_OLCU_DONATI 25";
+        const string DimStyle25 = BeykentOrtak.OlcuStilAdlari.Donati50_25;
 
         const double KotTriH = 12.0;
         const double KotTriW = 12.0;

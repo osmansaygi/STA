@@ -24,7 +24,7 @@ namespace ST4Yardimci
         private const string LayerKotYazi = "KOT YAZI (BEYKENT)";
         private const string LayerDonati = "DONATI (BEYKENT)";
         private const string LayerDonatiIzi = "DONATI IZI (BEYKENT)";
-        private const string DimStyleName = "PLAN_OLCU_DONATI 25";
+        private const string DimStyleName = BeykentOrtak.OlcuStilAdlari.Donati50_25;
 
         private const double Scale = 2.0;
         private const double TemplateKalinlikCm = 40.0;

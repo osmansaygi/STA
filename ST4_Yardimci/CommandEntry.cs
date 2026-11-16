@@ -327,6 +327,14 @@ namespace ST4Yardimci
             OtoOlcuRunner.RunInteractive();
         }
 
+        /// <summary>Kolon aplikasyonunda akslar kaydırılınca kolon kaçıklık ölçülerini yeni akslara göre yeniden kurar.</summary>
+        [CommandMethod("KOLONOLCUDUZELT", CommandFlags.Modal)]
+        public void KolonOlcuDuzelt()
+        {
+            if (!GateIdle()) return;
+            KolonOlcuDuzeltRunner.Run();
+        }
+
         [CommandMethod("MERDIVEN", CommandFlags.Modal)]
         public void Merdiven()
         {
@@ -540,7 +548,8 @@ namespace ST4Yardimci
             if (!Gate("TEMELCEKURU")) return;
             long ilkHandle = BaPaftaOlcek.Baslangic();
             TemelCekuruRunner.RunFromPlan();
-            BaPaftaOlcek.Uygula("temelcekuru", AcApp.DocumentManager.MdiActiveDocument, ilkHandle, ustKose: true);
+            // Plandaki kesit sembolleri planda kalır; yalnız detay ×2.
+            BaPaftaOlcek.Uygula("temelcekuru", AcApp.DocumentManager.MdiActiveDocument, ilkHandle, ustKose: true, TemelCekuruRunner.PlanSembolleri);
         }
 
         /// <summary>Temel detayı — temel çukurunun tek kesiti; sol ve sağ yükseklik ayrı.</summary>
@@ -691,6 +700,22 @@ namespace ST4Yardimci
         {
             if (!GateIdle()) return;
             MimariBoslukRunner.KatKat(true, true, true);
+        }
+
+        /// <summary>Mimari DWG'yi STA4CAD V15 "DWG çiziminden yapı modeli" kurallarına hazırlar; sonuç ayrı dosyaya yazılır.</summary>
+        [CommandMethod("MIMARISTA", CommandFlags.Modal)]
+        public void MimariSta()
+        {
+            if (!GateIdle()) return;
+            MimariStaRunner.Run(false);
+        }
+
+        /// <summary>Betik sürümü: plan pencereleri köşe köşe (ya da Tumu), form yok, katman sınıfları addan önerilir.</summary>
+        [CommandMethod("-MIMARISTA", CommandFlags.Modal)]
+        public void MimariStaKomutSatiri()
+        {
+            if (!GateIdle()) return;
+            MimariStaRunner.Run(true);
         }
 
         /// <summary>Mimari kat planındaki merdiven kollarını kalıba aktarır: rıhtlar + çıkış hattı (MERDIVEN kesit girdisi).</summary>

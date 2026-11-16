@@ -174,7 +174,7 @@ namespace ST4PlanIdCiz
             List<KirisAcilimSpan> chain, int i0, int i1, double x0, double yShift)
         {
             if (_kirisGuse.Count == 0 || db == null) return;
-            ObjectId stil = GetOrCreatePlanOlcuDimStyle(tr, db, 10.0, 1.0, "PLAN_OLCU_25");
+            ObjectId stil = GetOrCreatePlanOlcuDimStyle(tr, db, 10.0, 1.0, BeykentOrtak.OlcuStilAdlari.Acilim50_25);
             foreach (var g in _kirisGuse)
             {
                 if (g.Span < i0 || g.Span > i1) continue;

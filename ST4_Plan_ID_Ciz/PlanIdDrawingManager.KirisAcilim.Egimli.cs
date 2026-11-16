@@ -22,9 +22,17 @@ namespace ST4PlanIdCiz
         private const double KirisEgimliMinTan = 0.10;
         /// <summary>Eğimli çubuk açılımları arası düşey adım (cm, 2× öncesi).</summary>
         private const double KirisEgimliAcilimAdimCm = 24.0;
-        /// <summary>İlk açılım satırının kolon kesiminden aşağı uzaklığı (cm, 2× öncesi).</summary>
-        private const double KirisEgimliAcilimIlkCm = 50.0;
+        /// <summary>Açılımın en üst çubuğu kolon kesim çizgisinin bu kadar altında (mesnet ölçüsü + çubuk etiketi payı; cm, 2× öncesi).</summary>
+        private const double KirisEgimliAcilimUstBoslukCm = 32.0;
+        /// <summary>Açılım çubuğu kolon şeridinde kolon kesim çizgisinin en az bu kadar altında (cm, 2× öncesi).</summary>
+        private const double KirisEgimliAcilimKolonPayCm = 6.0;
+        /// <summary>Kolonlar arasında açılım, kiriş alt yüzünün (etriye ölçü ve etiketi dahil) bu kadar altında (cm, 2× öncesi).</summary>
+        private const double KirisEgimliAcilimKirisPayCm = 45.0;
+        /// <summary>Çubuk üstündeki yazı için düşey pay (cm, 2× öncesi).</summary>
+        private const double KirisEgimliAcilimYaziPayCm = 11.0;
         private bool _kirisEgimliZincir;
+        /// <summary>Eğimli zincirde görünüşte çizilen en alçak kolon kesim çizgisi (açılım bunun altına yerleşir).</summary>
+        private double _kirisEgimliKesimUst = double.MaxValue;
 
         private sealed class KirisEgimliCubuk
         {
@@ -147,9 +155,22 @@ namespace ST4PlanIdCiz
                     o.Add(new Point2d(x, KirisEgimliY(s, d, x)));
                     return;
                 }
-                double y = KirisEgimliY(s, d, x);
                 bool asagi = d < h * 0.5;
-                double boy = KirisAcilimYuvarlaYukari(Math.Max(KirisAcilimKenarDuseyPhi * phiCm, lb - gomme));
+                // Kenar mesnet kancası (düz kirişteki kural): kanca kolu ≥ 12φ, 20 cm ve h/2; alt donatıda ℓb ≥ 50φ.
+                // Düz ℓb sığmıyorsa çubuk dış yüze kadar gider ve kancalanır (kanca = max(bMin, ℓb − düz boy)).
+                double lbK = asagi ? lb : Math.Max(lb, KirisAcilimUstIlavePhi * phiCm);
+                double bMin = Math.Max(KirisAcilimKenarDuseyPhi * phiCm, Math.Max(KirisAcilimGonyeMinCm, 0.5 * h));
+                // Mesnet hattından dış yüze (paspayı içeride) kadar düz boy ℓb'yi karşılıyorsa çubuk ℓb kadar düz girer, kanca yok.
+                double lbDuz = KirisAcilimYuvarlaYukari(lbK);
+                if (gomme + 0.5 >= lbDuz)
+                {
+                    double xD = ic + yon * Math.Min(lbDuz, gomme) / sec;
+                    o.Add(new Point2d(xD, KirisEgimliY(s, d, xD)));
+                    return;
+                }
+                // Kanca gerekiyorsa yatay kol kolonun dış yüzüne (paspayı içeride) kadar gider, kanca orada.
+                double y = KirisEgimliY(s, d, x);
+                double boy = KirisAcilimYuvarlaYukari(Math.Max(bMin, lbK - gomme));
                 double oda = asagi ? (sup[j].ExtendDown ? double.MaxValue : (h - d) * sec - pas) : d * sec - pas;
                 if (boy > oda) boy = oda;
                 if (boy >= 5.0) o.Add(new Point2d(x, y + (asagi ? -boy : boy)));
@@ -429,7 +450,55 @@ namespace ST4PlanIdCiz
             }
             if (!sigdi)
                 KirisEgimliEtiket(tr, ms, db, s, Math.Max(s.X0, net0) + 0.5 * (Math.Min(s.X1, net1) - Math.Max(s.X0, net0)),
-                    s.Beam.HeightCm, -17.0, egim, x0, yShift, egimH, LayerKirisYazisi);
+                    s.Beam.HeightCm, -37.0, egim, x0, yShift, egimH, LayerKirisYazisi);
+        }
+
+        /// <summary>
+        /// Eğimli zincirde kesişen (dik) kirişin kesit izi: iz kutusu bu kirişin eğimli üst/alt yüzüyle kırpılır.
+        /// Düz çizilen iz üst çizgisi geniş kolonda eğimli kirişin üstüne taşıp "kolon artığı" gibi görünüyordu.
+        /// Dışa taşan kütük yalnız iz tüm genişlikte kirişin dışına çıkıyorsa çizilir.
+        /// </summary>
+        private void KirisEgimliIzCiz(Transaction tr, BlockTableRecord ms, List<KirisAcilimSpan> chain, KirisAcilimSaplama iz, double x0, double yShift)
+        {
+            KirisAcilimSpan SpanAt(double x)
+            {
+                foreach (var s in chain) if (x <= s.X1 + 0.5) return s;
+                return chain[chain.Count - 1];
+            }
+            double Ust(double x) => KirisEgimliY(SpanAt(x), 0, x);
+            double Alt(double x) => KirisEgimliY(SpanAt(x), SpanAt(x).Beam.HeightCm, x);
+            double xa = iz.X0, xb = iz.X1;
+            if (xb - xa < 0.5) return;
+            // Örnek noktalar: iz uçları ve aradaki kırık düğümleri.
+            var xs = new List<double> { xa };
+            foreach (var s in chain) if (s.X1 > xa + 0.5 && s.X1 < xb - 0.5) xs.Add(s.X1);
+            xs.Add(xb);
+            void Cizgi(double xA, double yA, double xB, double yB) =>
+                KirisAcilimCizgi(tr, ms, x0 + xA, yShift + yA, x0 + xB, yShift + yB, LayerKesitGorunus);
+            // Kenar çizgisi: iz kotu kiriş içinde kaldığı parçalarda çizilir (kiriş yüzü ile çakışan kısım çizilmez).
+            void Kenar(double kot, bool ust)
+            {
+                for (int i = 1; i < xs.Count; i++)
+                {
+                    double a = xs[i - 1], b = xs[i];
+                    double fa = ust ? Ust(a) - kot : kot - Alt(a), fb = ust ? Ust(b) - kot : kot - Alt(b);
+                    if (fa <= 0.5 && fb <= 0.5) continue;
+                    double s0 = a, s1 = b;
+                    if (fa <= 0.5) s0 = a + (b - a) * (0.5 - fa) / (fb - fa);
+                    if (fb <= 0.5) s1 = a + (b - a) * (0.5 - fa) / (fb - fa);
+                    Cizgi(s0, kot, s1, kot);
+                }
+            }
+            Kenar(iz.KotTop, true);
+            Kenar(iz.KotBot, false);
+            foreach (double x in new[] { xa, xb })
+            {
+                double lo = Math.Max(iz.KotBot, Alt(x)), hi = Math.Min(iz.KotTop, Ust(x));
+                if (hi - lo >= 0.5) Cizgi(x, lo, x, hi);
+            }
+            double ustMax = xs.Max(Ust), altMin = xs.Min(Alt);
+            if (iz.KotTop > ustMax + 0.5) KirisAcilimDisIz(tr, ms, x0 + xa, x0 + xb, yShift + ustMax, yShift + iz.KotTop, up: true);
+            if (iz.KotBot < altMin - 0.5) KirisAcilimDisIz(tr, ms, x0 + xa, x0 + xb, yShift + altMin, yShift + iz.KotBot, up: false);
         }
 
         /// <summary>Mesnetler arası net eksen boyu (i açıklığını içeren); ilave boyu ln/4 için.</summary>
@@ -459,12 +528,11 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>Açılım satırları için kolon kesiminin altında ayrılacak yükseklik (cm).</summary>
-        private static double KirisEgimliAcilimYer(List<KirisAcilimSpan> chain)
+        private static double KirisEgimliAcilimYer(List<KirisAcilimSpan> chain, KirisAcilimSupport[] sup)
         {
-            double minK = chain.Min(s => Math.Min(s.Kot0, s.Kot1)), maxK = chain.Max(s => Math.Max(s.Kot0, s.Kot1));
-            double sec = chain.Max(s => KirisEgimCarpan(s));
-            // 5 tür satırı; çubuklar kirişin düşey yayılımı + kanca kadar yer kaplar.
-            return KirisEgimliAcilimIlkCm + 4 * KirisEgimliAcilimAdimCm + (maxK - minK) + chain[0].Beam.HeightCm * sec + 30.0;
+            // Takım kirişin altındaki boşluğa alınır; kolon kesiminin altında yalnız kolon uçlarındaki kısım kalır:
+            // kolon payı + yazı payı + 5 tür satırı + bindirme kaydırması + kanca/etiket payı.
+            return KirisEgimliAcilimKolonPayCm + KirisEgimliAcilimYaziPayCm + 4 * KirisEgimliAcilimAdimCm + 6.0 + 50.0;
         }
 
         private static int KirisEgimliAcilimSatir(string tur)
@@ -694,27 +762,70 @@ namespace ST4PlanIdCiz
                 KirisAcilimCizgi(tr, ms, x0 + u.X, yShift + u.Y, x0 + v.X, yShift + v.Y, LayerEtriye);
             }
 
-            KirisEgimliAcilimlariCiz(tr, ms, db);
+            KirisEgimliAcilimlariCiz(tr, ms, db, chain, sup, x0, yShift);
         }
 
         /// <summary>
         /// Açılım satırları: her çubuk görünüşteki X'inde ve kendi biçiminde, kolon kesiminin altına sırayla iner.
         /// En uzun kolun üstünde "nøφ L=… TÜR", her kolun altında kol boyu yazılır.
         /// </summary>
-        private void KirisEgimliAcilimlariCiz(Transaction tr, BlockTableRecord ms, Database db)
+        private void KirisEgimliAcilimlariCiz(Transaction tr, BlockTableRecord ms, Database db,
+            List<KirisAcilimSpan> chain, KirisAcilimSupport[] sup, double x0, double yShift)
         {
             if (_kirisAcilimKesimY > 1e8 || db == null) return;
             if (_kirisEgimliCubuklar.Count == 0) return;
-            double yUst = _kirisAcilimKesimY - KirisEgimliAcilimIlkCm;
             // Tür satırları (yukarıdan): üst ilave, montaj, gövde, alt, alt ilave. Her çubuk kendi derinliği kadar yukarı
             // alınıp (Ofs) üst yüz hizasına getirilir, sonra satırı kadar iner: satırlar arası sabit ve sık, sol ve sağ
             // koldaki eşler aynı satırda, aynı koldakiler paralel. Kancalar düz kirişteki gibi 30° dışa yatırılır.
-            double ustRef = _kirisEgimliCubuklar.Max(c => c.Yol.Max(p => p.Y) + c.Ofs);
-            ObjectId ekStil = GetOrCreatePlanOlcuDimStyle(tr, db, 10.0, 1.0, "PLAN_OLCU_25");
+            // Göreli kaydırmalar; sonra tüm takım, en üst noktası kolon kesim çizgisinin altındaki mesnet ölçüsüne
+            // değmeyecek kadar yukarı alınır (boşluk bırakmadan, yer az kaplar).
+            double Rel(KirisEgimliCubuk c) => -KirisEgimliAcilimSatir(c.Tur) * KirisEgimliAcilimAdimCm - c.Kay + c.Ofs;
+            // Takım, kirişin altındaki boşluğa olabildiğince yukarı alınır: kolon şeritlerinin (ve zincir dışının) hizasında
+            // kolon kesim çizgisinin altında kalır (kolon çıkıntısına değmez), kolonlar arasında kiriş altının ve etriye
+            // ölçü/etiketlerinin altında kalır. Çubuk yazıları için noktalara pay eklenir; kancalar yatırılmış haliyle denetlenir.
+            double hK = chain[0].Beam.HeightCm;
+            double kesimUst = Math.Min(_kirisAcilimKesimY, _kirisEgimliKesimUst);
+            int mK = chain.Count;
+            double zMin = chain[0].X0 + (KirisEgimliMesnet(sup, 0) ? sup[0].X0 : 0.0);
+            double zMax = chain[mK - 1].X1 + (KirisEgimliMesnet(sup, mK) ? sup[mK].X1 : 0.0);
+            double Limit(double xw)
+            {
+                double xl = xw - x0;
+                if (xl < zMin + 3.0 || xl > zMax - 3.0) return kesimUst - KirisEgimliAcilimKolonPayCm;
+                for (int j = 0; j <= mK; j++)
+                {
+                    if (!KirisEgimliMesnet(sup, j)) continue;
+                    double st = KirisEgimliIstasyon(chain, j);
+                    if (xl >= st + sup[j].X0 - 3.0 && xl <= st + sup[j].X1 + 3.0) return kesimUst - KirisEgimliAcilimKolonPayCm;
+                }
+                KirisAcilimSpan sp = chain[mK - 1];
+                foreach (var s in chain) if (xl <= s.X1 + 0.5) { sp = s; break; }
+                return yShift + KirisEgimliY(sp, hK, xl) - KirisEgimliAcilimKirisPayCm;
+            }
+            double D = double.MaxValue;
+            foreach (var c in _kirisEgimliCubuklar)
+            {
+                var a0 = c.Yol.Select(p => new Point2d(p.X, p.Y + Rel(c))).ToList();
+                int ana0 = 0;
+                for (int i = 1; i + 1 < a0.Count; i++)
+                    if (a0[i].GetDistanceTo(a0[i + 1]) > a0[ana0].GetDistanceTo(a0[ana0 + 1])) ana0 = i;
+                KirisAcilimGonyeOtuzDerece(a0, ana0);
+                for (int i = 0; i + 1 < a0.Count; i++)
+                {
+                    int n = Math.Max(1, (int)Math.Ceiling(a0[i].GetDistanceTo(a0[i + 1]) / 5.0));
+                    for (int q = 0; q <= n; q++)
+                    {
+                        var p = a0[i] + (a0[i + 1] - a0[i]) * ((double)q / n);
+                        D = Math.Min(D, Limit(p.X) - (p.Y + KirisEgimliAcilimYaziPayCm));
+                    }
+                }
+            }
+            if (D > 1e8) D = kesimUst - KirisEgimliAcilimUstBoslukCm - _kirisEgimliCubuklar.Max(c => c.Yol.Max(p => p.Y) + Rel(c));
+            ObjectId ekStil = GetOrCreatePlanOlcuDimStyle(tr, db, 10.0, 1.0, BeykentOrtak.OlcuStilAdlari.Acilim50_25);
             for (int k = 0; k < _kirisEgimliCubuklar.Count; k++)
             {
                 var c = _kirisEgimliCubuklar[k];
-                double dy = yUst - KirisEgimliAcilimSatir(c.Tur) * KirisEgimliAcilimAdimCm - c.Kay - ustRef + c.Ofs;
+                double dy = D + Rel(c);
                 var ac = c.Yol.Select(p => new Point2d(p.X, p.Y + dy)).ToList();
                 int ana = 0;
                 double enUzun = -1;
@@ -796,19 +907,26 @@ namespace ST4PlanIdCiz
             for (int i = i0; i <= i1; i++)
             {
                 var s = chain[i];
-                double a = Math.Max(net0, s.X0), b = Math.Min(net1, s.X1);
-                if (b - a <= 10.0) continue;
                 double t = KirisEgimTan(s), sec = Math.Sqrt(1.0 + t * t);
-                // Mesnetsiz kırık ucunda dik etriye açıortayı geçmesin: eksen boyu (h/2)·tan(θ/2) kısalır.
-                double Kisalt(int j)
+                // Etriye bölgesi eksen ortasında, iki yüz arasında: mesnette birleşim köşesinden, kırıkta (mahya/dere)
+                // kiriş kendi kolunda kalacak köşeden eksene dik çizilen hat. Etriye ve ölçüler bu hatlardan başlar.
+                double Yuz(bool basta)
                 {
-                    if (j <= 0 || j >= chain.Count || KirisEgimliMesnet(sup, j)) return 0.0;
-                    double teta = Math.Atan(KirisEgimTan(chain[j - 1])) - Math.Atan(KirisEgimTan(chain[j]));
-                    return 0.5 * h * Math.Abs(Math.Tan(0.5 * teta));
+                    int j = basta ? i : i + 1;
+                    double station = KirisEgimliIstasyon(chain, j);
+                    if (KirisEgimliMesnet(sup, j))
+                        return KirisEgimliYuzX(s, station + (basta ? sup[j].X1 : sup[j].X0), 0.5 * h, basta);
+                    if (j > 0 && j < chain.Count && Math.Abs(KirisEgimTan(chain[j - 1]) - KirisEgimTan(chain[j])) > 1e-3)
+                    {
+                        double xAlt = KirisEgimliKose(chain, j - 1, h).X - t / sec * (0.5 * h);
+                        double xUst = KirisEgimliKose(chain, j - 1, 0).X + t / sec * (0.5 * h);
+                        return basta ? Math.Max(xAlt, xUst) : Math.Min(xAlt, xUst);
+                    }
+                    return basta ? Math.Max(net0, s.X0) : Math.Min(net1, s.X1);
                 }
-                double offBas = a <= s.X0 + 0.5 ? Kisalt(i) : 0.0, offSon = b >= s.X1 - 0.5 ? Kisalt(i + 1) : 0.0;
-                a += offBas / sec;
-                double boyEksen = (b - a) * sec - offSon;
+                double a = Yuz(true), b = Yuz(false);
+                if (b - a <= 10.0) continue;
+                double boyEksen = (b - a) * sec;
                 if (boyEksen <= 10.0) continue;
                 var xs = KirisAcilimEtriyeKonumlari(0, boyEksen, sik, orta, 2.0 * h, 2.0 * h, false, false,
                     new List<(double Lo, double Hi)>(), out var sikBolgeleri);
@@ -822,7 +940,37 @@ namespace ST4PlanIdCiz
                         x0 + x - t / sec * yari, yShift + y + yari / sec,
                         x0 + x + t / sec * yari, yShift + y - yari / sec, LayerEtriye);
                 }
-                if (etriyeCap <= 0 || db == null) continue;
+                if (db == null) continue;
+                // Etriye ölçüleri düz kirişteki gibi, kiriş altında eğime paralel: 1. sıra çizilen komşu etriyeler ve
+                // yüzden ilk/son etriye (5 cm), 2. sıra sınırlar; ölçü uzatmaları kiriş alt yüzünden başlar.
+                {
+                    ObjectId stil = GetOrCreatePlanOlcuDimStyle(tr, db, 10.0, 1.0, BeykentOrtak.OlcuStilAdlari.Acilim50_25);
+                    // Ölçü uzatma noktası: etriyenin (eksene dik) kiriş alt yüzündeki ayağı; etriye ile aynı hizada.
+                    Point2d Alt(double u)
+                    {
+                        double xx = a + u / sec;
+                        return new Point2d(x0 + xx + t / sec * (0.5 * h), yShift + KirisEgimliY(s, 0.5 * h, xx) - 0.5 * h / sec);
+                    }
+                    var nAlt = new Vector2d(t / sec, -1.0 / sec);
+                    void Olcu(double u1, double u2, double ofs)
+                    {
+                        if (u2 - u1 < 0.5) return;
+                        Point2d p1 = Alt(u1), p2 = Alt(u2), pm = Alt(0.5 * (u1 + u2)) + nAlt * ofs;
+                        AppendEntity(tr, ms, new AlignedDimension(new Point3d(p1.X, p1.Y, 0), new Point3d(p2.X, p2.Y, 0),
+                            new Point3d(pm.X, pm.Y, 0), "", stil) { Layer = LayerOlcu, Dimexo = 0.0, Dimse1 = false, Dimse2 = false });
+                    }
+                    if (xs.Count > 0)
+                    {
+                        for (int k = 1; k < xs.Count; k++)
+                            if (xs[k] - xs[k - 1] <= sik + 0.001) Olcu(xs[k - 1], xs[k], 10.0);
+                        Olcu(0, xs[0], 10.0);
+                        Olcu(xs[xs.Count - 1], boyEksen, 10.0);
+                        var sinir = new List<double> { 0, xs[0], xs[xs.Count - 1], boyEksen };
+                        sinir.Sort();
+                        for (int k = 1; k < sinir.Count; k++) Olcu(sinir[k - 1], sinir[k], 20.0);
+                    }
+                }
+                if (etriyeCap <= 0) continue;
                 var kutular = KirisKesitEtriyeKutulari(s.Beam.WidthCm);
                 if (kutular.Count == 0) continue;
                 double boy = EtriyeAcilimKesimBoyCm(kutular[0].Hi - kutular[0].Lo, h - 8.0, Math.Max(10.0, EtriyeAcilimKancaCm(etriyeCap)));
@@ -830,7 +978,8 @@ namespace ST4PlanIdCiz
                 {
                     string label = KirisKesitEtriyeCarpan(kutular.Count)
                         + string.Format(CultureInfo.InvariantCulture, "{0}ø{1}/{2:0.##} L={3:0}", bolge.Adet, etriyeCap, bolge.Aralik, boy);
-                    KirisEgimliEtiket(tr, ms, db, s, a + 0.5 * (bolge.Lo + bolge.Hi) / sec, h, -7.0, label, x0, yShift);
+                    // Düz kirişteki gibi ölçülerin altında (kiriş altından 27 cm).
+                    KirisEgimliEtiket(tr, ms, db, s, a + 0.5 * (bolge.Lo + bolge.Hi) / sec + t / sec * (0.5 * h), h, -27.0, label, x0, yShift);
                 }
             }
         }

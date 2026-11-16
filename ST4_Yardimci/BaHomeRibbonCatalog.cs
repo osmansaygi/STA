@@ -30,10 +30,10 @@ namespace ST4Yardimci
 
         internal static readonly Group[] Groups =
         {
-            new Group("OLCU", "Ölçü", "OTOOLCU", "PLANOLCU"),
+            new Group("OLCU", "Ölçü", "OTOOLCU", "PLANOLCU", "KOLONOLCUDUZELT"),
             new Group("DETAY", "Detay", "MERDIVEN", "TEMELHATILI", "PARAPET", "TEMELCEKURU",
                 "TEMELDETAY", "KURANGLEZ", "PERDEBOSLUK", "SEHPADONATI"),
-            new Group("MIMARI", "Mimari", "MIMARIKAT", "MIMARIBOSLUK", "MIMARIMERDIVEN"),
+            new Group("MIMARI", "Mimari", "MIMARIKAT", "MIMARIBOSLUK", "MIMARIMERDIVEN", "MIMARISTA"),
             new Group("DONATI", "Donatı", "DOSEMEDONATI", "OTODONATI", "HASIRDONATI", "RADYEILAVE", "MANTARILAVE", "KIRISCIZ"),
             new Group("GENEL", "Genel Düzenleme", "DONATIBOYU", "DONATIADET", "DONATIOKU",
                 "KOTDEGISTIR", "DONATIMETRAJ", "BETONKALIP", "SEHIMTABLOSU", "KATMANYUKLE")

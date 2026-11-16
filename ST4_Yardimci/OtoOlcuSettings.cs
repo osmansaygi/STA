@@ -46,10 +46,10 @@ namespace ST4Yardimci
 
         /// <summary>Silinemez hazır şablon; aks çizgisi + balon ile çift ölçü.</summary>
         public const string AksOlcuPresetName = "AKS OLCU";
-        public const string AksOlcuDimStyleName = "AKS_OLCU";
+        public const string AksOlcuDimStyleName = BeykentOrtak.OlcuStilAdlari.Aks50;
         public const string AksOlcuDimLayerName = "AKS OLCU (BEYKENT)";
         /// <summary>Genel ölçü stili — çizimde hazır olmalı; komut oluşturmaz.</summary>
-        public const string DefaultDimStyleName = "PLAN_OLCU";
+        public const string DefaultDimStyleName = BeykentOrtak.OlcuStilAdlari.Plan50;
         /// <summary>Genel ölçü katmanı (BEYKENT tablosu).</summary>
         public const string DefaultDimLayerName = "OLCU (BEYKENT)";
         /// <summary>Balondan içeri toplam ölçü mesafesi (cm).</summary>
@@ -406,7 +406,7 @@ namespace ST4Yardimci
                     if (string.Equals(key, "Name", StringComparison.OrdinalIgnoreCase))
                         cur.Name = val;
                     else if (string.Equals(key, "DimStyle", StringComparison.OrdinalIgnoreCase))
-                        cur.DimStyleName = val;
+                        cur.DimStyleName = BeykentOrtak.OlcuStilAdlari.Yeni(val);
                     else if (string.Equals(key, "DimLayer", StringComparison.OrdinalIgnoreCase))
                         cur.DimLayerName = string.IsNullOrWhiteSpace(val) ? DefaultDimLayerName : val;
                     else if (string.Equals(key, "Sablon", StringComparison.OrdinalIgnoreCase))
@@ -445,7 +445,7 @@ namespace ST4Yardimci
                 string key = line.Substring(0, eq).Trim();
                 string val = line.Substring(eq + 1).Trim();
                 if (string.Equals(key, "DimStyle", StringComparison.OrdinalIgnoreCase))
-                    p.DimStyleName = val;
+                    p.DimStyleName = BeykentOrtak.OlcuStilAdlari.Yeni(val);
                 else if (string.Equals(key, "DimLayer", StringComparison.OrdinalIgnoreCase))
                     p.DimLayerName = string.IsNullOrWhiteSpace(val) ? DefaultDimLayerName : val;
                 else if (string.Equals(key, "Sablon", StringComparison.OrdinalIgnoreCase))

@@ -956,7 +956,7 @@ namespace ST4PlanIdCiz
             const double ortu = 5.0, maxBoy = 1200.0;
             int cap = _surekliDagitmaCap;
             double lap = Math.Max(30.0, KirisAcilimYuvarlaYukari(SurekliTemelLbCm(cap, false)));
-            ObjectId stil = GetOrCreatePlanOlcuDimStyle(tr, db, 10.0, 1.0, "PLAN_OLCU_25");
+            ObjectId stil = GetOrCreatePlanOlcuDimStyle(tr, db, 10.0, 1.0, BeykentOrtak.OlcuStilAdlari.Acilim50_25);
             double yBar = _kirisAcilimKesimY - SurekliDagitmaAcilimCm;
             foreach (var r in birlesik)
             {

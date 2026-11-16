@@ -22,6 +22,8 @@ namespace ST4Yardimci
         private static readonly int[] CapListesi = { 8, 10, 12, 14, 16, 18, 20, 22, 25, 28, 32 };
 
         private readonly SegmentSecim _tip;
+        /// <summary>Pafta ölçeği: 1/100'de yazı ve bindirme ölçüsü 1,5× (tip profiline ayrı kaydedilir).</summary>
+        private readonly SegmentSecim _olcek;
         private readonly Label _lblKalinlik;
         private readonly OlcuKutusu _txtKalinlik;
         private readonly OlcuKutusu _txtPaspayi;
@@ -122,6 +124,8 @@ namespace ST4Yardimci
             _tip.Secili = OtoDonatiSettings.Tip == OtoDonatiTip.MantarDoseme ? 1 : 0;
             _suppressTipSwitch = false;
             _tip.SeciliDegisti += OnTipChanged;
+            _olcek = new SegmentSecim("1/50 pafta", "1/100 pafta (×1,5)");
+            _olcek.Secili = OtoDonatiSettings.Olcek100 ? 1 : 0;
 
             // Sınırlar eski TryPushSettings doğrulamasıyla aynı. Üst kot cm gösterilir, UstKotM (metre) kaydedilir.
             _lblKalinlik = new Label { Text = "Temel kalınlığı", AutoSize = true };
@@ -197,6 +201,8 @@ namespace ST4Yardimci
 
             var ui = BeginCompact(360);
             ui.Section(null).Control(_tip);
+            ui.Section("Pafta ölçeği").Control(_olcek);
+            ui.Tip(_olcek, "1/100: donatı yazısı, gönye boyu yazısı ve bindirme ölçüsü 1,5× (kalıp 1/100 gibi).");
             ui.Section("Kesit")
                 .Field("Paspayı", _txtPaspayi);
             ui.Section("Donatı  (ø çap / aralık)")
@@ -326,6 +332,7 @@ namespace ST4Yardimci
                 OtoDonatiSettings.AltGonyeSol,
                 OtoDonatiSettings.AltGonyeSag);
             _chkSehpa.Checked = OtoDonatiSettings.SehpaDonatisi;
+            _olcek.Secili = OtoDonatiSettings.Olcek100 ? 1 : 0;
             _chkAltCiz.Checked = OtoDonatiSettings.AltDonatiCiz;
             _chkUstCiz.Checked = OtoDonatiSettings.UstDonatiCiz;
             Denetci.Guncelle();
@@ -357,6 +364,7 @@ namespace ST4Yardimci
             OtoDonatiSettings.AltDonatiCiz = _chkAltCiz.Checked;
             OtoDonatiSettings.UstDonatiCiz = _chkUstCiz.Checked;
             OtoDonatiSettings.SehpaDonatisi = _chkSehpa.Checked;
+            OtoDonatiSettings.Olcek100 = _olcek.Secili == 1;
             return true;
         }
 
@@ -398,6 +406,7 @@ namespace ST4Yardimci
                 p.AltDonatiCiz = _chkAltCiz.Checked;
                 p.UstDonatiCiz = _chkUstCiz.Checked;
                 p.SehpaDonatisi = _chkSehpa.Checked;
+                p.Olcek100 = _olcek.Secili == 1;
             }
             catch { }
         }

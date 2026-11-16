@@ -113,7 +113,7 @@ namespace ST4PlanIdCiz
             if (!radVar)
                 ed.WriteMessage("\n{0}: RAD agi kullanilmadi ({1}). Dugum ucgenlemesi.", komut, radHata);
             IList<int[]> ag = radVar ? elemanlar : null;
-            List<DonatiAdim> adimlar = Merdiven(st4Path);
+            List<DonatiAdim> adimlar = KademeSec(db, st4Path, genel, ed, komut, Uretici(db, copies, faces, ag, nodes));
             var isaretler = new List<Isaret>();
             ed.WriteMessage("\n{0} — {1}:", komut, baslik);
             using (var tr = db.TransactionManager.StartTransaction())
@@ -132,7 +132,7 @@ namespace ST4PlanIdCiz
             foreach (ObjectId id in ModelKimlikleri(db))
                 if (!once.Contains(id)) yeni.Add(id);
             KopyalaYukari(db, yeni, KopyaYukariCm);
-            CizYonKutulari(db, isaretler, KopyaYukariCm);
+            CizYonKutulari(db, isaretler, KopyaYukariCm, ed, komut);
 
             bool dolu = false;
             using (var tr = db.TransactionManager.StartOpenCloseTransaction())

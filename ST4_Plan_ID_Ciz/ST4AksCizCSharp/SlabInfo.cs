@@ -23,5 +23,12 @@ namespace ST4AksCizCSharp
         public int Axis3 { get; set; }
         /// <summary>Eksen 4 (X veya Y); 3 akslı döşemede 0 olabilir.</summary>
         public int Axis4 { get; set; }
+        /// <summary>Eğimli döşeme kodu, Floors Data p[14]. 0 = düz; 1..4 = alçak kenar üst/alt/sol/sağ (+Y/−Y/−X/+X);
+        /// ≥10 = alçak yön açısı (p[14]−10)/10 derece (910 → 90°). Eğimde p[15] alçak kenar, p[5] yüksek kenar kotudur.</summary>
+        public int SlopeCode { get; set; }
+        /// <summary>Eğimli döşemede yüksek kenarın kattan farkı (cm), Floors Data p[5].</summary>
+        public double SlopeHighKotCm { get; set; }
+        /// <summary>Floors Data p[24]: 1 merdiven, 3 merdiven sahanlığı.</summary>
+        public int StairKind { get; set; }
     }
 }

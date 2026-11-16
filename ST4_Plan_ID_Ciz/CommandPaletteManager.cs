@@ -260,6 +260,7 @@ namespace ST4PlanIdCiz
             ("Rd. Temel Plan\u0131", "TEMELDONATI"),
             ("\u0130lave deneme", "TEMELILAVEDENEME"),
             ("Radye legant kar\u015f\u0131la\u015ft\u0131rma", "RADYELEGANTKARSILASTIRMA"),
+            ("Radye ilave zarf", "RADYEILAVEZARF"),
         };
         private static readonly (string label, string cmd)[] Isk =
         {

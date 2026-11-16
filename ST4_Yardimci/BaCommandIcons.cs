@@ -72,6 +72,10 @@ namespace ST4Yardimci
             new BaTool("Mimari Kat", "MIMARIKAT", "ST4Yardimci.Icons.ba_mimarikat.png"),
             new BaTool("Mimari Boşluk", "MIMARIBOSLUK", "ST4Yardimci.Icons.ba_mimaribosluk.png"),
             new BaTool("Mimari Merdiven", "MIMARIMERDIVEN", "ST4Yardimci.Icons.ba_mimarimerdiven.png"),
+            // Mimari DWG → STA4CAD V15 hazırlığı; simge kaynağı tools/MimariSta20261114/Ikon.
+            new BaTool("Mimari → STA4", "MIMARISTA", "ST4Yardimci.Icons.ba_mimarista.png"),
+            // Aks kayınca kolon ölçülerini düzelt; simge kaynağı tools/KolonOlcuDuzelt20261116/Ikon.
+            new BaTool("Kolon Ölçü Düzelt", "KOLONOLCUDUZELT", "ST4Yardimci.Icons.ba_kolonolcuduzelt.png"),
             // KIRISCIZ komutu Plan ID'de (KIRISACILIMLARI motoru); simge kaynağı tools/KirisCiz20261101/IkonKiris.
             new BaTool("Kiriş Çiz", "KIRISCIZ", "ST4Yardimci.Icons.ba_kirisciz.png"),
             // Mantar döşeme kolon üstü ilave; simge kaynağı tools/MantarIlave20261102/Ikon.

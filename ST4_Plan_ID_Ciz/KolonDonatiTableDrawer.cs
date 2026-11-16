@@ -1086,11 +1086,12 @@ namespace ST4PlanIdCiz
                     }
                 if (step == 0) step = ids.Max() >= 10000 ? 1000 : 100;
                 byte[] b = File.ReadAllBytes(col);
-                if (b.Length / 900 < ids.Count) return null;
+                int rec = BeykentOrtak.Sta4KayitDuzeni.Col(b.Length, st4, ids.Count).Boy;   // V14 900, V15 1124; +0/+2 yerinde
+                if (b.Length / rec < ids.Count) return null;
                 var map = new Dictionary<(int i, int j), string>();
                 for (int r = 0; r < ids.Count; r++)
                 {
-                    int ni = BitConverter.ToInt16(b, r * 900), nj = BitConverter.ToInt16(b, r * 900 + 2);
+                    int ni = BitConverter.ToInt16(b, r * rec), nj = BitConverter.ToInt16(b, r * rec + 2);
                     if (ni <= 0 || nj <= 0) continue;
                     map[(ni, nj)] = (ids[r] % step).ToString(step == 1000 ? "000" : "00", CultureInfo.InvariantCulture);
                 }

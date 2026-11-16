@@ -459,7 +459,7 @@ namespace ST4Yardimci
                     else if (string.Equals(key, "DimStyle", StringComparison.OrdinalIgnoreCase))
                         cur.DimStyleName = string.IsNullOrWhiteSpace(val)
                             ? OtoOlcuSettings.DefaultDimStyleName
-                            : val;
+                            : BeykentOrtak.OlcuStilAdlari.Yeni(val);
                     else if (string.Equals(key, "BandWidthCm", StringComparison.OrdinalIgnoreCase))
                     {
                         double bw;

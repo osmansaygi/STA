@@ -27,7 +27,7 @@ namespace ST4Yardimci
         private const string LayerDonatiYazi = "DONATI YAZISI (BEYKENT)";
         private const string LayerDonatiOku = "DONATI OKU (BEYKENT)";
         private const string LayerDonatiHalkasi = "DONATI HALKASI (BEYKENT)";
-        private const string DimStyleDonatiOku = "DONATI OKU (BEYKENT)";
+        private const string DimStyleDonatiOku = BeykentOrtak.OlcuStilAdlari.DonatiOku50;
         private const short DonatiOkuAci = 150;
         private const short DonatiHalkasiAci = 2;
         private const double DonatiOkuCircleDiaCm = 4.0;

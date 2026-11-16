@@ -32,7 +32,7 @@ namespace ST4PlanIdCiz
         private const double ZimYaziCm = 12.0;
         private const double ZimOlcuOfsetCm = 20.0;
         private const string ZimMontajYazi = "4ø12";
-        private const string ZimOlcuStili = "ILAVE_OLCU";
+        private const string ZimOlcuStili = BeykentOrtak.OlcuStilAdlari.Ilave50;
 
         private sealed class ZimMerdiven
         {
@@ -790,6 +790,7 @@ namespace ST4PlanIdCiz
         /// <summary>Yardımcı'daki ILAVE_OLCU ile aynı: PLAN_OLCU tabanı, yazı 10, tam sayı.</summary>
         private static ObjectId ZimOlcuStil(Transaction tr, Database db)
         {
+            BeykentOrtak.OlcuStilAdlari.CizimiTasi(tr, db);
             var dst = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
             if (dst.Has(ZimOlcuStili)) return dst[ZimOlcuStili];
             ObjectId id = GetOrCreatePlanOlcuDimStyle(tr, db, 10.0, 1.0, ZimOlcuStili);

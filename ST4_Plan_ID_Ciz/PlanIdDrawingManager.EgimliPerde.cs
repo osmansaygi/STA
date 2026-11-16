@@ -74,8 +74,15 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>u0..u1 aralığında alt kenarı z0, üst kenarı zTop(u) olan dörtgen halka (zTop null ise dikdörtgen z1).</summary>
-        private static Coordinate[] EgimliUstHalka(double u0, double u1, double z0, double z1, Func<double, double> zTop)
+        private static Coordinate[] EgimliUstHalka(double u0, double u1, double z0, double z1, Func<double, double> zTop, Func<double, double> zBot = null)
         {
+            if (zBot != null && zTop != null)
+            {
+                // Eğimli kiriş görünüşü: alt ve üst kenar kendi eğimiyle.
+                double b0 = zBot(u0), b1 = zBot(u1);
+                double e0 = Math.Max(b0 + 0.5, zTop(u0)), e1 = Math.Max(b1 + 0.5, zTop(u1));
+                return new[] { new Coordinate(u0, b0), new Coordinate(u1, b1), new Coordinate(u1, e1), new Coordinate(u0, e0), new Coordinate(u0, b0) };
+            }
             double t0 = zTop != null ? Math.Max(z0, Math.Min(z1, zTop(u0))) : z1;
             double t1 = zTop != null ? Math.Max(z0, Math.Min(z1, zTop(u1))) : z1;
             return new[]

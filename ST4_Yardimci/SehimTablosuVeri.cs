@@ -55,21 +55,30 @@ namespace ST4Yardimci
         {
             private readonly byte[] _b;
             public readonly int Boy;
+            private readonly BeykentOrtak.Sta4KayitDuzeni _duzen;   // null: ofsetler olduğu gibi
             public Ikili(string yol, int boy)
             {
                 Boy = boy;
                 _b = File.Exists(yol) ? RadyeOtomatikSource.ReadShared(yol) : new byte[0];
             }
+            /// <summary>Kayıt boyu sürüme göre değişen dosya (BEA: V14 900, V15 1124); ofsetler V14 düzeniyle verilir.</summary>
+            public Ikili(string yol, Func<long, BeykentOrtak.Sta4KayitDuzeni> duzenSec)
+            {
+                _b = File.Exists(yol) ? RadyeOtomatikSource.ReadShared(yol) : new byte[0];
+                _duzen = duzenSec(_b.Length);
+                Boy = _duzen.Boy;
+            }
             public int Adet => _b.Length / Boy;
             public bool Var => _b.Length >= Boy;
+            private int O(int ofset) => _duzen == null ? ofset : _duzen.Ofset(ofset);
             public float F(int kayit, int ofset)
             {
-                int p = kayit * Boy + ofset;
+                int p = kayit * Boy + O(ofset);
                 return p >= 0 && p + 4 <= _b.Length ? BitConverter.ToSingle(_b, p) : 0f;
             }
             public short S(int kayit, int ofset)
             {
-                int p = kayit * Boy + ofset;
+                int p = kayit * Boy + O(ofset);
                 return p >= 0 && p + 2 <= _b.Length ? BitConverter.ToInt16(_b, p) : (short)0;
             }
         }
@@ -153,7 +162,7 @@ namespace ST4Yardimci
                     Kat(d.No / td).Dosemeler.Add(new SehimSatiri { Ad = Ad('D', d.No, td), No = d.No, Mm = mm });
                 }
 
-            var bea = new Ikili(taban + ".BEA", 900);
+            var bea = new Ikili(taban + ".BEA", n => BeykentOrtak.Sta4KayitDuzeni.Bea(n, st4));
             p.KirisVar = bea.Var;
             if (bea.Var)
             {

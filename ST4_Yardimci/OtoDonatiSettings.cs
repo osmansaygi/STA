@@ -37,6 +37,8 @@ namespace ST4Yardimci
         public bool AltDonatiCiz;
         public bool UstDonatiCiz;
         public bool SehpaDonatisi;
+        /// <summary>1/100 pafta: donatı yazısı, gönye boyu yazısı ve bindirme ölçüsü 1,5× (kalıp 1/100 gibi).</summary>
+        public bool Olcek100;
 
         public static OtoDonatiProfile CreateRadyeDefault() => new OtoDonatiProfile
         {
@@ -112,6 +114,7 @@ namespace ST4Yardimci
             AltDonatiCiz = src.AltDonatiCiz;
             UstDonatiCiz = src.UstDonatiCiz;
             SehpaDonatisi = src.SehpaDonatisi;
+            Olcek100 = src.Olcek100;
         }
     }
 
@@ -192,6 +195,9 @@ namespace ST4Yardimci
         /// <summary>Sehpa donatısı: OTODONATICIZ alanları temel antetinin üstüne sehpa detayı ekler.</summary>
         public static bool SehpaDonatisi { get => Active.SehpaDonatisi; set => Active.SehpaDonatisi = value; }
 
+        /// <summary>1/100 pafta: yazı ve ölçü 1,5×.</summary>
+        public static bool Olcek100 { get => Active.Olcek100; set => Active.Olcek100 = value; }
+
         private static string StorePath
         {
             get
@@ -261,6 +267,7 @@ namespace ST4Yardimci
             Write(sb, prefix + "_AltDonatiCiz", p.AltDonatiCiz);
             Write(sb, prefix + "_UstDonatiCiz", p.UstDonatiCiz);
             Write(sb, prefix + "_SehpaDonatisi", p.SehpaDonatisi);
+            Write(sb, prefix + "_Olcek100", p.Olcek100);
         }
 
         private static void Write(StringBuilder sb, string key, double v)
@@ -418,6 +425,8 @@ namespace ST4Yardimci
             { p.UstDonatiCiz = IsTrue(val); return true; }
             if (key.Equals("SehpaDonatisi", StringComparison.OrdinalIgnoreCase))
             { p.SehpaDonatisi = IsTrue(val); return true; }
+            if (key.Equals("Olcek100", StringComparison.OrdinalIgnoreCase))
+            { p.Olcek100 = IsTrue(val); return true; }
             return false;
         }
 

@@ -385,8 +385,16 @@ namespace ST4AksCizCSharp
                         if (p.Count > 2 && St4Text.TryParseDouble(p[2], out double gRaw)) deadLoadKNm2 = gRaw * 10.0;
                         if (p.Count > 3 && St4Text.TryParseDouble(p[3], out double qRaw)) liveLoadKNm2 = qRaw * 10.0;
                         if (p.Count > 15 && St4Text.TryParseDouble(p[15], out double offCm)) offsetFromFloorCm = offCm;
+                        int slopeCode = 0, stairKind = 0;
+                        double slopeHighKotCm = 0.0;
+                        if (p.Count > 14 && St4Text.TryParseDouble(p[14], out double slopeRaw)) slopeCode = (int)Math.Round(slopeRaw);
+                        if (p.Count > 5) St4Text.TryParseDouble(p[5], out slopeHighKotCm);
+                        if (p.Count > 24 && St4Text.TryParseDouble(p[24], out double stairRaw)) stairKind = (int)Math.Round(stairRaw);
                         model.Slabs.Add(new SlabInfo
                         {
+                            SlopeCode = slopeCode,
+                            SlopeHighKotCm = slopeHighKotCm,
+                            StairKind = stairKind,
                             SlabId = slabId,
                             ThicknessCm = thicknessCm,
                             DeadLoadKNm2 = deadLoadKNm2,

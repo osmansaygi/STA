@@ -59,7 +59,7 @@ namespace ST4Yardimci
                     "KESIT SINIRI (BEYKENT)", "YAZI (BEYKENT)", Title, Leader, Stirrup, Table, TableTitle })
                     BeykentKatmanYukle.Ensure(tr, db, layer);
                 _style = BaDimensionStyles.EnsureYazi(tr, db);
-                _dim = BaDimensionStyles.Ensure(tr, db, "PLAN_OLCU_DONATI 25");
+                _dim = BaDimensionStyles.Ensure(tr, db, BeykentOrtak.OlcuStilAdlari.Donati50_25);
             }
 
             Point3d P(double x, double y) => new Point3d(_origin.X + 2*x, _origin.Y + 2*y, _origin.Z);
@@ -102,7 +102,7 @@ namespace ST4Yardimci
             void Dim(double x,double y,double xx,double yy,double dx,double dy, bool vertical)
             {
                 var dim = new RotatedDimension(vertical ? Math.PI/2 : 0, P(x,y),P(xx,yy),P(dx,dy),"",_dim);
-                BaDimensionStyles.Apply(_tr,_db,dim,_dim,"PLAN_OLCU_DONATI 25");
+                BaDimensionStyles.Apply(_tr,_db,dim,_dim,BeykentOrtak.OlcuStilAdlari.Donati50_25);
                 Add(dim,Measure);
             }
             void Level(double x,double y,double kot)

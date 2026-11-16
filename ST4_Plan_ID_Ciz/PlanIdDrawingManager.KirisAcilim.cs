@@ -382,7 +382,7 @@ namespace ST4PlanIdCiz
                 long handBefore = Convert.ToInt64(db.Handseed.ToString(), 16);
                 EnsureLayers(tr, db);
                 // Önceden oluşturulmuş PLAN_OLCU_25 stilini de ofis ölçü ayarlarına getir.
-                ObjectId olcu25Id = GetOrCreatePlanOlcuDimStyle(tr, db, 10.0, 1.0, "PLAN_OLCU_25");
+                ObjectId olcu25Id = GetOrCreatePlanOlcuDimStyle(tr, db, 10.0, 1.0, BeykentOrtak.OlcuStilAdlari.Acilim50_25);
                 var olcu25 = (DimStyleTableRecord)tr.GetObject(olcu25Id, OpenMode.ForWrite);
                 ApplyAksPlanOlcuDimStyleArrowsAndSize(olcu25, 10.0, 1.0);
                 olcu25.Dimlfac = 0.5;
@@ -884,6 +884,15 @@ namespace ST4PlanIdCiz
                     if (rD != null) rD.AltDus0 = dus;
                     double yLowD = dugum - dus - (sup[i].ExtendDown ? KirisAcilimKutupCm : 0);
                     minY = Math.Min(minY, yLowD - 10.0 - KirisAcilimIzdusumBoyCm);
+                    // Kolon kütüğü: eğimli çatıda kolon kiriş eğimiyle kesilir. Kolonun tek üst kotu (çokgen kolonda kiriş
+                    // şeridi dışındaki en yüksek noktası) eğimli üst yüzü birkaç cm aşsa da yukarı kütük çizilmez; yalnız
+                    // kolon üst katta devam ediyorsa çizilir (aksi "kolon artığı" görünüyordu).
+                    if (sup[i].ExtendUp && sup[i].ColumnNo > 0)
+                    {
+                        var kolonE = _model.Columns?.Find(c => c != null && c.ColumnNo == sup[i].ColumnNo);
+                        if (kolonE != null && !KirisAcilimColumnOnAnotherFloor(floor.FloorNo, kolonE, above: true))
+                            sup[i].ExtendUp = false;
+                    }
                 }
             }
             KirisAcilimGuseHazirla(chain, sup);
@@ -936,7 +945,7 @@ namespace ST4PlanIdCiz
             minY = Math.Min(minY, KirisKesitYerlesimAlti(minKot,
                 chain.Max(s => s.Beam.HeightCm), slabRise, kesitAdet));
             // Eğimli zincir: çubuk açılımları kendi biçiminde alt alta iner; yer ayır.
-            if (_kirisEgimliZincir) minY = Math.Min(minY, acilimTaban - KirisEgimliAcilimYer(chain));
+            if (_kirisEgimliZincir) minY = Math.Min(minY, acilimTaban - KirisEgimliAcilimYer(chain, sup));
             double yShift = cursorY - minY;
             double chainTop = yShift + maxY;
             _kirisAcilimKesimY = KirisAcilimKolonKesimY(chain, sup, yShift);
@@ -990,7 +999,7 @@ namespace ST4PlanIdCiz
             }
 
             if (_kirisEgimliZincir)
-                KirisEgimliDonati(tr, ms, db, chain, x0, yShift, sup, montaj);
+                { _kirisEgimliKesimUst = ortakAlt < 1e8 ? Math.Min(_kirisAcilimKesimY, yShift + ortakAlt) : _kirisAcilimKesimY; KirisEgimliDonati(tr, ms, db, chain, x0, yShift, sup, montaj); }
             else
             {
                 KirisAcilimMontajBirlesik(tr, ms, db, chain, x0, yShift, sup, montaj, gorunus, ucTipi);
@@ -1096,7 +1105,8 @@ namespace ST4PlanIdCiz
 
             foreach (KirisAcilimSaplama spm in gorunus)
             {
-                KirisAcilimDrawIz(tr, ms, chain, spm, x0, yShift);
+                if (_kirisEgimliZincir) KirisEgimliIzCiz(tr, ms, chain, spm, x0, yShift);
+                else KirisAcilimDrawIz(tr, ms, chain, spm, x0, yShift);
                 // Ana kirişe ortadan saplanan tali kiriş kesiti: iz çizilir ama aşağı izdüşüm + numara çizilmez.
                 if (!spm.IzdusumVar) continue;
                 double yIz = izdUs;
@@ -1195,6 +1205,17 @@ namespace ST4PlanIdCiz
                 KirisAcilimKolonYaz(tr, ms, db, uk.UstKat, uk.ColumnNo, 0.5 * (xL + xR), yCut + (filiz ? SurekliGorunusFilizliKolonAdiDy : 0.0), ust: true);
             }
 
+            // Eğimli zincir: mesnetsiz kırıkta (mahya/dere) kiriş alt köşesinden aşağı izdüşüm çizgisi; açılım boyunca
+            // kolon izdüşümleriyle aynı hizada biter.
+            if (_kirisEgimliZincir)
+                for (int j = 1; j < m; j++)
+                {
+                    if (sup[j].X1 - sup[j].X0 > 2.0) continue;
+                    if (Math.Abs(KirisEgimTan(chain[j - 1]) - KirisEgimTan(chain[j])) <= 1e-3) continue;
+                    // Alt yüzün kırık köşesi (mahyada içbükey, derede dışbükey köşe).
+                    Point2d kAlt = KirisEgimliKose(chain, j - 1, chain[j].Beam.HeightCm);
+                    KirisAcilimCizgi(tr, ms, x0 + kAlt.X, yShift + kAlt.Y, x0 + kAlt.X, izdUs - KirisAcilimIzdusumBoyCm, LayerIzdusum);
+                }
             KirisAcilimMesnetLnOlcu(tr, ms, db, chain, sup, gorunus, x0,
                 ortakAlt < 1e8 ? yShift + ortakAlt : _kirisAcilimKesimY);
             KirisAcilimKesitTopla(floor, chain, sup, gorunus, montaj, x0, yShift, pad, ucTipi);
@@ -1244,7 +1265,7 @@ namespace ST4PlanIdCiz
             var unique = new List<double>();
             foreach (double face in faces)
                 if (unique.Count == 0 || face - unique[unique.Count - 1] > 0.5) unique.Add(face);
-            ObjectId style = GetOrCreatePlanOlcuDimStyle(tr, db, 10, 1, "PLAN_OLCU_25");
+            ObjectId style = GetOrCreatePlanOlcuDimStyle(tr, db, 10, 1, BeykentOrtak.OlcuStilAdlari.Acilim50_25);
             for (int i = 1; i < unique.Count; i++)
                 AppendEntity(tr, ms, new RotatedDimension(0,
                     new Point3d(x0 + unique[i - 1], cutY, 0), new Point3d(x0 + unique[i], cutY, 0),
@@ -1474,7 +1495,7 @@ namespace ST4PlanIdCiz
             double x0 = Math.Min(ac[L].X, ac[R].X);
             double x1 = Math.Max(ac[L].X, ac[R].X);
             if (x1 - x0 < 3.0) return;
-            ObjectId stil = GetOrCreatePlanOlcuDimStyle(tr, db, 10.0, 1.0, "PLAN_OLCU_25");
+            ObjectId stil = GetOrCreatePlanOlcuDimStyle(tr, db, 10.0, 1.0, BeykentOrtak.OlcuStilAdlari.Acilim50_25);
             double yDim = yBar + (ustte ? 1 : -1) * KirisAcilimAcilimOlcuUzakCm;
             void Olcu(double a, double b)
             {
@@ -2092,7 +2113,7 @@ namespace ST4PlanIdCiz
             bool solSerbest = false, bool sagSerbest = false)
         {
             if (db == null || xs.Count == 0) return;
-            ObjectId stil = GetOrCreatePlanOlcuDimStyle(tr, db, 10.0, 1.0, "PLAN_OLCU_25");
+            ObjectId stil = GetOrCreatePlanOlcuDimStyle(tr, db, 10.0, 1.0, BeykentOrtak.OlcuStilAdlari.Acilim50_25);
             void Olcu(double a, double b, double y)
             {
                 if (b - a < 0.5) return;
@@ -2877,7 +2898,7 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>Tek başına konsol: bir uç serbest, sabit uçta devam eden kiriş yok.</summary>
-        private static bool KirisAcilimKonsolTekBasina(
+        private bool KirisAcilimKonsolTekBasina(
             List<KirisAcilimSpan> chain, int i0, int i1, bool solSerbest, bool sagSerbest)
         {
             if (solSerbest == sagSerbest) return false;
@@ -3069,28 +3090,29 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>Komşu açıklık aynı zincirde ve aradaki boşluk 200 cm'den kısaysa o run'ın aralığı.</summary>
-        private static bool KirisAcilimKomsuAralik(
+        private bool KirisAcilimKomsuAralik(
             List<KirisAcilimSpan> chain, int i0, int i1, bool sola, out int j0, out int j1)
         {
             j0 = -1;
             j1 = -1;
             if (chain == null) return false;
+            // Kirişte aynı BeamId = aynı kiriş (parçalı kiriş ayrı kayıtlarda olabilir; çizim de BeamId ile gruplar).
+            // Sürekli temel bay klonları aynı BeamId'yi taşır, orada nesne referansı ayrı kalır.
+            bool AyniKiris(BeamInfo a, BeamInfo b) =>
+                a != null && b != null && (ReferenceEquals(a, b) || (!_surekliTemelAcilim && a.BeamId == b.BeamId));
             if (sola)
             {
                 if (i0 <= 0 || chain[i0 - 1]?.Beam == null) return false;
                 j1 = i0 - 1;
                 j0 = j1;
-                // Aynı BeamInfo referansı = aynı kiriş parçası. Sürekli temel bay klonları ayrı kalır.
-                while (j0 > 0 && chain[j0 - 1]?.Beam != null && chain[j0].Beam != null
-                    && ReferenceEquals(chain[j0 - 1].Beam, chain[j0].Beam))
+                while (j0 > 0 && AyniKiris(chain[j0 - 1]?.Beam, chain[j0].Beam))
                     j0--;
                 return chain[i0].X0 - chain[j1].X1 <= 200.0;
             }
             if (i1 + 1 >= chain.Count || chain[i1 + 1]?.Beam == null) return false;
             j0 = i1 + 1;
             j1 = j0;
-            while (j1 + 1 < chain.Count && chain[j1 + 1]?.Beam != null && chain[j0].Beam != null
-                && ReferenceEquals(chain[j1 + 1].Beam, chain[j0].Beam))
+            while (j1 + 1 < chain.Count && AyniKiris(chain[j1 + 1]?.Beam, chain[j0].Beam))
                 j1++;
             return chain[j0].X0 - chain[i1].X1 <= 200.0;
         }
@@ -3835,7 +3857,7 @@ namespace ST4PlanIdCiz
         {
             if (tr == null || ms == null || db == null || _kirisAcilimMontajBindirmeXs.Count == 0) return;
             if (_kirisAcilimKesimY > 1e8) return;
-            ObjectId stil = GetOrCreatePlanOlcuDimStyle(tr, db, 10.0, 1.0, "PLAN_OLCU_25");
+            ObjectId stil = GetOrCreatePlanOlcuDimStyle(tr, db, 10.0, 1.0, BeykentOrtak.OlcuStilAdlari.Acilim50_25);
             // Temelde montaj açılımı düz şeridinde; ölçü montaj çubuklarının hemen üstünde.
             double yBar = _kirisAcilimKesimY - SurekliAcilimMontajAsagiCm;
             double yDim = _surekliTemelAcilim
@@ -5685,7 +5707,8 @@ namespace ST4PlanIdCiz
             byte[] data;
             try { data = File.ReadAllBytes(beaPath); }
             catch { return map; }
-            const int rec = 900;
+            // V14 900, V15 1124 bayt; kullanılan +0/+8/+36 iki sürümde aynı yerde.
+            int rec = BeykentOrtak.Sta4KayitDuzeni.Bea(data.Length, st4Path, _model.Beams.Count).Boy;
             int n = Math.Min(_model.Beams.Count, data.Length / rec);
             for (int i = 0; i < n; i++)
             {

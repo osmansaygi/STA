@@ -88,7 +88,7 @@ namespace ST4PlanIdCiz
                     ed.WriteMessage("\nTEMELILAVEDENEME: RAD agi kullanilmadi ({0}). Dugum ucgenlemesi.", radHata);
 
                 IList<int[]> ag = radVar ? elemanlar : null;
-                List<DonatiAdim> adimlar = Merdiven(st4Path);
+                List<DonatiAdim> adimlar = KademeSec(db, st4Path, genel, ed, "TEMELILAVEDENEME", Uretici(db, copies, faces, ag, nodes));
                 var isaretler = new List<Isaret>();
                 using (var tr = db.TransactionManager.StartTransaction())
                 {
@@ -106,7 +106,7 @@ namespace ST4PlanIdCiz
                 foreach (ObjectId id in ModelKimlikleri(db))
                     if (!once.Contains(id)) yeni.Add(id);
                 KopyalaYukari(db, yeni, KopyaYukariCm);
-                CizYonKutulari(db, isaretler, KopyaYukariCm);
+                CizYonKutulari(db, isaretler, KopyaYukariCm, ed, "TEMELILAVEDENEME");
 
                 ed.WriteMessage("\nTEMELILAVEDENEME: ilave kontur +40 cm. Kopya {0:0} cm yukarida, yon kutulari orada. Merdiven:", KopyaYukariCm);
                 foreach (DonatiAdim adim in adimlar)
@@ -184,7 +184,7 @@ namespace ST4PlanIdCiz
             if (!radVar)
                 ed.WriteMessage("\nTEMELDONATI: RAD agi kullanilmadi ({0}). Dugum ucgenlemesi.", radHata);
             IList<int[]> ag = radVar ? elemanlar : null;
-            List<DonatiAdim> adimlar = Merdiven(st4Path);
+            List<DonatiAdim> adimlar = KademeSec(db, st4Path, genel, ed, "TEMELDONATI", Uretici(db, new[] { copies[2], copies[2], copies[3], copies[3] }, faces, ag, nodes));
             var isaretler = new List<Isaret>();
             using (var tr = db.TransactionManager.StartTransaction())
             {
@@ -203,7 +203,7 @@ namespace ST4PlanIdCiz
                 }
                 tr.Commit();
             }
-            CizYonKutulari(db, isaretler, 0.0);
+            CizYonKutulari(db, isaretler, 0.0, ed, "TEMELDONATI");
             ed.WriteMessage("\nTEMELDONATI: GPR ilave zarflari 3. (alt) ve 4. (ust) plana cizildi. Hiza tanilama {0}", HizaLogYolu);
         }
 
@@ -272,15 +272,15 @@ namespace ST4PlanIdCiz
             IsaretEkle(isaretler, yetmezSarkan, son.Alan, yatay, true, copy.TemelGeom, adimlar.Count, son.AralikCm, yetmezYazi);
             if (gorunen.Count == 0 && yetmez == 0)
             {
-                ed.WriteMessage("\n  {0}: ilave yok.", face.Ad);
+                ed?.WriteMessage("\n  {0}: ilave yok.", face.Ad);
                 return;
             }
             if (ciz)
                 Lejant(tr, btr, copy, face.Katman, gorunen, yetmez > 0 ? yetmezYazi : null);
-            ed.WriteMessage("\n  {0}:", face.Ad);
+            ed?.WriteMessage("\n  {0}:", face.Ad);
             foreach (DonatiAdim adim in gorunen)
-                ed.WriteMessage(" {0}", adim.Yazi);
-            if (yetmez > 0) ed.WriteMessage(" {0}", yetmezYazi);
+                ed?.WriteMessage(" {0}", adim.Yazi);
+            if (yetmez > 0) ed?.WriteMessage(" {0}", yetmezYazi);
         }
 
         private static void IsaretEkle(List<Isaret> isaretler, List<Polygon> poligonlar, double alan, bool yatay, bool sarkan, Geometry temel, int kademe, int aralikCm, string yazi)
@@ -495,12 +495,48 @@ namespace ST4PlanIdCiz
             tr.AddNewlyCreatedDBObject(t, true);
         }
 
-        private static List<DonatiAdim> Merdiven(string st4Path)
+        /// <summary>
+        /// Projede gerçekten kullanılan çaplar (12…40 mm): GPR metnindeki tüm "øN" (kolon/kiriş/döşeme/radye ilave tabloları)
+        /// ve radye ana donatısı. .BAR yalnız ST4'ün izinli çap listesidir (ör. 6…30, hepsi) — kullanılmayan ø18 kademesi
+        /// buradan geliyordu; GPR'den çap bulunamazsa yedek olarak okunur.
+        /// </summary>
+        private static SortedSet<int> ProjeCaplari(string st4Path, GprRadyeGenelDonati genel)
         {
             var caps = new SortedSet<int>();
+            string gpr = Path.ChangeExtension(st4Path, ".GPR");
+            if (!File.Exists(gpr)) gpr = Path.ChangeExtension(st4Path, ".gpr");
+            if (File.Exists(gpr))
+            {
+                try
+                {
+                    WindowsAnsiEncodings.EnsureRegistered();
+                    var rx = new System.Text.RegularExpressions.Regex(@"[øØ]\s*(\d{1,2})(?!\d)", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+                    foreach (string line in WindowsAnsiEncodings.ReadAllLines(gpr))
+                    {
+                        if (string.IsNullOrEmpty(line) || line.IndexOfAny(new[] { 'ø', 'Ø' }) < 0) continue;
+                        foreach (System.Text.RegularExpressions.Match m in rx.Matches(line))
+                            if (int.TryParse(m.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int cap)
+                                && cap >= 12 && cap <= 40)
+                                caps.Add(cap);
+                    }
+                }
+                catch (System.Exception)
+                {
+                }
+            }
+            if (genel != null)
+                foreach (int cap in new[] { genel.CapXAltMm, genel.CapXUstMm, genel.CapYAltMm, genel.CapYUstMm })
+                    if (cap >= 12 && cap <= 40) caps.Add(cap);
+            return caps;
+        }
+
+        /// <param name="kume">Akıllı zarf adayı: verilen (çap, aralık) kümesi mevcut merdiven yerine kullanılır.</param>
+        private static List<DonatiAdim> Merdiven(string st4Path, GprRadyeGenelDonati genel, List<int[]> kume = null)
+        {
+            var caps = ProjeCaplari(st4Path, genel);
             string path = Path.ChangeExtension(st4Path, ".BAR");
             if (!File.Exists(path)) path = Path.ChangeExtension(st4Path, ".bar");
-            if (File.Exists(path))
+            if (caps.Count == 0 && File.Exists(path))
             {
                 try
                 {
@@ -526,13 +562,18 @@ namespace ST4PlanIdCiz
             foreach (int cap in caps)
                 if (cap < max && cap > alt) alt = cap;
             var ham = new List<int[]>();
-            ham.Add(new[] { 12, 30 });
-            if (alt > 0 && GprRadyeAyir.AlanCm2Pm(max, 30) >= GprRadyeAyir.AlanCm2Pm(alt, 20))
-                ham.Add(new[] { max, 30 });
-            foreach (int cap in caps)
-                ham.Add(new[] { cap, 20 });
-            ham.Add(new[] { max, 15 });
-            ham.Add(new[] { max, 10 });
+            if (kume != null)
+                ham = kume.Select(p => new[] { p[0], p[1] }).ToList();
+            else
+            {
+                ham.Add(new[] { 12, 30 });
+                if (alt > 0 && GprRadyeAyir.AlanCm2Pm(max, 30) >= GprRadyeAyir.AlanCm2Pm(alt, 20))
+                    ham.Add(new[] { max, 30 });
+                foreach (int cap in caps)
+                    ham.Add(new[] { cap, 20 });
+                ham.Add(new[] { max, 15 });
+                ham.Add(new[] { max, 10 });
+            }
             ham.Sort(delegate (int[] a, int[] b)
             {
                 return GprRadyeAyir.AlanCm2Pm(a[0], a[1]).CompareTo(GprRadyeAyir.AlanCm2Pm(b[0], b[1]));
@@ -609,9 +650,24 @@ namespace ST4PlanIdCiz
             }
         }
 
-        private static void CizYonKutulari(Database db, List<Isaret> isaretler, double dy)
+        /// <summary>Zarf kutuları; ed verilirse sonunda metraj ve 12 m kesim planı yazılır.</summary>
+        private static void CizYonKutulari(Database db, List<Isaret> isaretler, double dy, Editor ed = null, string komut = null)
         {
             if (isaretler == null || isaretler.Count == 0) return;
+            MetrajBaslat();
+            try
+            {
+                CizYonKutulariIc(db, isaretler, dy);
+                MetrajRapor(ed, komut ?? "ZARF");
+            }
+            finally
+            {
+                _metraj = null;
+            }
+        }
+
+        private static void CizYonKutulariIc(Database db, List<Isaret> isaretler, double dy)
+        {
             var gf = NtsGeometryServices.Instance.CreateGeometryFactory();
             var kaynak = new List<Isaret>();
             var sekiller = new List<Polygon>();
@@ -709,6 +765,8 @@ namespace ST4PlanIdCiz
                     CizBirlestirBol(tr, btr, gf, grup, dy);
                 else
                     CizSeritler(tr, btr, gf, grup, dy);
+                // Akıllı zarf: grupta tek çap/aralık, ortak boy, bitişik aynı kutular tek kutu.
+                if (!_sadeKapali) AkilliSadelestir(_kutuBekle, grup);
                 // Grubun kutuları birlikte netleştirilip çizilir: ortak kenar, aralık katı, küçük kaçıklık yok.
                 Netlestir(_kutuBekle);
                 foreach (KutuKayit k in _kutuBekle)
@@ -1962,6 +2020,8 @@ namespace ST4PlanIdCiz
                 _kutuTopla.Add(new[] { k.X0, k.Y0, k.X1, k.Y1 });
                 return;
             }
+            MetrajEkle(k);
+            if (_kuruCalisma) return;
             HizaLog("    KUTU x {0}..{1} y {2}..{3} (istenen b {4}..{5}){6}", k.X0, k.X1, k.Y0, k.Y1, k.IstenenB0, k.IstenenB1, k.Halkalar != null ? " kirpik" : "");
             string katman = KutuKatman(k.Yatay);
             var orta = new Point3d((k.X0 + k.X1) * 0.5, (k.Y0 + k.Y1) * 0.5 + dy, 0);

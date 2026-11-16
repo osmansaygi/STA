@@ -35,7 +35,10 @@ namespace ST4Yardimci
         /// Benzer olanlar tek çift kesit ve çarpan; farklı olanlar ayrı çizilir.
         /// Kot, kalınlık ve hatıl yüksekliği plandan; paspayı, donatı, grobeton, subasman ve hatıl genişliği formdan.
         /// </summary>
-        public static void RunFromPlan()
+        public static void RunFromPlan() => RunFromPlan(null, null);
+
+        /// <summary>Test girişi: dış poligon ve yerleşim noktası verilirse istem yok (Core Console).</summary>
+        internal static void RunFromPlan(ObjectId? disPoligon, Point3d? yer)
         {
             var doc = AcApp.DocumentManager.MdiActiveDocument;
             if (doc == null)
@@ -50,7 +53,12 @@ namespace ST4Yardimci
             try
             {
                 TemelCekuruSettings.EnsureLoaded();
-                if (!TryReadPlanGroups(doc, ed, out List<PlanGroup> groups, out string note))
+                PlanSembolleri.Clear();
+                List<PlanGroup> groups; string note;
+                bool okundu = disPoligon.HasValue
+                    ? TryReadPlanGroupsAt(doc, disPoligon.Value, out groups, out note)
+                    : TryReadPlanGroups(doc, ed, out groups, out note);
+                if (!okundu)
                 {
                     ed.WriteMessage("\nTEMELCEKURU: {0}", string.IsNullOrEmpty(note) ? "plan okunamadı." : note);
                     return;
@@ -66,12 +74,18 @@ namespace ST4Yardimci
                     return;
                 }
 
-                var opt = new PromptPointOptions("\nTemel çukuru — sol üst köşe: ") { AllowNone = false };
-                PromptPointResult ppr = ed.GetPoint(opt);
-                if (ppr.Status != PromptStatus.OK)
+                Point3d yerNokta;
+                if (yer.HasValue) yerNokta = yer.Value;
+                else
                 {
-                    ed.WriteMessage("\nTEMELCEKURU: iptal.");
-                    return;
+                    var opt = new PromptPointOptions("\nTemel çukuru — sol üst köşe: ") { AllowNone = false };
+                    PromptPointResult ppr = ed.GetPoint(opt);
+                    if (ppr.Status != PromptStatus.OK)
+                    {
+                        ed.WriteMessage("\nTEMELCEKURU: iptal.");
+                        return;
+                    }
+                    yerNokta = ppr.Value;
                 }
 
                 sKot = TemelCekuruSettings.TemelUstKotuCm;
@@ -88,8 +102,8 @@ namespace ST4Yardimci
                 using (doc.LockDocument())
                 using (var tr = doc.Database.TransactionManager.StartTransaction())
                 {
-                    double x = ppr.Value.X;
-                    double y = ppr.Value.Y;
+                    double x = yerNokta.X;
+                    double y = yerNokta.Y;
                     double gap = 100.0 * DuPerCm;
                     int kesitNo = 1;
                     for (int i = 0; i < groups.Count; i++)
@@ -202,6 +216,16 @@ namespace ST4Yardimci
                 note = "iptal.";
                 return false;
             }
+            return TryReadPlanGroupsAt(doc, per.ObjectId, out groups, out note);
+        }
+
+        /// <summary>Seçili temel dış poligonundan çukur tiplerini okur (istemsiz; Core Console testi de çağırır).</summary>
+        private static bool TryReadPlanGroupsAt(
+            Autodesk.AutoCAD.ApplicationServices.Document doc, ObjectId outerId,
+            out List<PlanGroup> groups, out string note)
+        {
+            groups = new List<PlanGroup>();
+            note = null;
 
             var gf = new GeometryFactory();
             var kots = new List<PlanKot>();
@@ -213,7 +237,7 @@ namespace ST4Yardimci
             using (doc.LockDocument())
             using (var tr = doc.Database.TransactionManager.StartTransaction())
             {
-                var picked = tr.GetObject(per.ObjectId, OpenMode.ForRead) as Entity;
+                var picked = tr.GetObject(outerId, OpenMode.ForRead) as Entity;
                 if (!TryPolygon(tr, gf, picked, out outer) || outer == null)
                 {
                     note = "seçilen nesne kapalı poligon değil.";
@@ -247,7 +271,7 @@ namespace ST4Yardimci
                         continue;
                     }
 
-                    if (id == per.ObjectId) continue;
+                    if (id == outerId) continue;
                     if (!LayerIs(ent.Layer, LayerTemel)) continue;
                     if (!TryPolygon(tr, gf, ent, out Polygon poly) || poly == null) continue;
                     if (poly.Area >= outer.Area * 0.92) continue;
@@ -294,6 +318,7 @@ namespace ST4Yardimci
 
             var pairs = PairKots(kots, outer, gf);
             ScorePairs(pairs, labels, pits, gf);
+            List<PlanPair> temelPairs = MarkTemelPairs(pairs, labels);
             var hatilUse = hatils.FindAll(h => outer.Distance(gf.CreatePoint(new Coordinate(h.X, h.Y))) <= 120.0);
             bool oneHatil = hatilUse.Count > 0 && SameHatil(hatilUse);
 
@@ -312,7 +337,8 @@ namespace ST4Yardimci
                     Marks = new List<PitMark>()
                 };
                 if (pit.Mark != null) g.Marks.Add(pit.Mark);
-                PickLevels(pool, g);
+                if (temelPairs.Count > 0) PickLevelsByLabel(temelPairs, pairs, pit, g);
+                else PickLevels(pool, g);
                 if (oneHatil)
                 {
                     g.HatilKnown = true;
@@ -329,6 +355,16 @@ namespace ST4Yardimci
             groups = MergeGroups(raw);
             note = Describe(groups, pits.Count);
             return groups.Count > 0;
+        }
+
+        /// <summary>Test: plan okuma özeti (not + tip satırları), istem ve çizim yok.</summary>
+        internal static List<string> PlanOkuOzet(Autodesk.AutoCAD.ApplicationServices.Document doc, ObjectId outerId)
+        {
+            var list = new List<string>();
+            bool ok = TryReadPlanGroupsAt(doc, outerId, out List<PlanGroup> groups, out string note);
+            list.Add((ok ? "OK " : "YOK ") + note);
+            foreach (PlanGroup g in groups) list.Add(PlanPreview(g));
+            return list;
         }
 
         private static List<PlanPair> PoolForPit(List<PlanPair> pairs, PlanPoly pit, List<PlanPoly> pits, GeometryFactory gf)
@@ -359,6 +395,73 @@ namespace ST4Yardimci
                 if (pits[i].Poly.Covers(pt)) return true;
             }
             return false;
+        }
+
+        /// <summary>
+        /// Radye etiketi (DOSEME ISMI, "RD-..") altındaki kot çifti temel kotudur (kullanıcı kuralı 12.11.2026).
+        /// Her etikete altında ve 150 birim içinde en yakın çift atanır; ölçekten bağımsız (1/100'de blok 1,5×).
+        /// </summary>
+        private static List<PlanPair> MarkTemelPairs(List<PlanPair> pairs, List<PlanTag> labels)
+        {
+            var temel = new List<PlanPair>();
+            for (int k = 0; k < labels.Count; k++)
+            {
+                string tx = (labels[k].Text ?? "").Trim();
+                if (!LayerIs(labels[k].Layer, LayerDosemeIsmi) || !tx.StartsWith("RD", StringComparison.OrdinalIgnoreCase)) continue;
+                PlanPair best = null;
+                double bestD = 150.0;
+                for (int i = 0; i < pairs.Count; i++)
+                {
+                    PlanPair p = pairs[i];
+                    if (p.Temel || p.Mid.Y >= labels[k].Y) continue;
+                    double dx = p.Mid.X - labels[k].X, dy = p.Mid.Y - labels[k].Y;
+                    double d = Math.Sqrt(dx * dx + dy * dy);
+                    if (d < bestD) { bestD = d; best = p; }
+                }
+                if (best == null) continue;
+                best.Temel = true;
+                temel.Add(best);
+            }
+            return temel;
+        }
+
+        /// <summary>
+        /// Üst (temel) kot: çukura en yakın radye etiketi kot çifti. Alt (çukur) kot: çukur poligonu içindeki,
+        /// etikete ait olmayan kot çifti (birden çoksa çukur merkezine en yakını); yoksa formdan.
+        /// </summary>
+        private static void PickLevelsByLabel(List<PlanPair> temelPairs, List<PlanPair> pairs, PlanPoly pit, PlanGroup g)
+        {
+            PlanPair ust = Nearest(temelPairs, pit.Cx, pit.Cy, null);
+            if (ust == null) return;
+            g.UstKnown = true;
+            g.UstKotCm = ust.TopCm;
+            g.UstKalinlikCm = ust.ThickCm;
+            var gf = new GeometryFactory();
+            PlanPair alt = Nearest(pairs, pit.Cx, pit.Cy, p => !p.Temel && pit.Poly.Covers(gf.CreatePoint(p.Mid)));
+            if (alt == null) return;
+            if (alt.TopCm > ust.TopCm - 8.0)
+            {
+                // Çukur kotu temel üstünden aşağıda olmalı; değilse çukur derinliği eksi çıkar, detay bozulur.
+                g.AltTersCm = alt.TopCm;
+                return;
+            }
+            g.AltKnown = true;
+            g.AltKotCm = alt.TopCm;
+            g.AltKalinlikCm = alt.ThickCm;
+        }
+
+        private static PlanPair Nearest(List<PlanPair> list, double x, double y, Func<PlanPair, bool> filtre)
+        {
+            PlanPair best = null;
+            double bestD = double.MaxValue;
+            for (int i = 0; i < list.Count; i++)
+            {
+                if (filtre != null && !filtre(list[i])) continue;
+                double dx = list[i].Mid.X - x, dy = list[i].Mid.Y - y;
+                double d = dx * dx + dy * dy;
+                if (d < bestD) { bestD = d; best = list[i]; }
+            }
+            return best;
         }
 
         private static void PickLevels(List<PlanPair> pool, PlanGroup g)
@@ -562,7 +665,9 @@ namespace ST4Yardimci
                 : "üst formdan";
             string alt = g.AltKnown
                 ? string.Format(CultureInfo.InvariantCulture, "alt {0:0}/{1:0} cm", g.AltKotCm, g.AltKalinlikCm)
-                : "alt formdan";
+                : g.AltTersCm.HasValue
+                    ? string.Format(CultureInfo.InvariantCulture, "alt formdan (UYARI: çukurdaki kot {0:0} cm temel üstü {1:0} cm'den aşağıda değil, kullanılmadı)", g.AltTersCm.Value, g.UstKotCm)
+                    : "alt formdan";
             string hat = g.HatilKnown
                 ? string.Format(CultureInfo.InvariantCulture, "hatıl {0:0} cm", g.HatilCm)
                 : "hatıl formdan";
@@ -830,6 +935,15 @@ namespace ST4Yardimci
         private const double KesitSembolPay = 5.0;
 
         /// <summary>
+        /// Son TEMELCEKURUPLAN çalışmasında plana konan kesit sembolleri. 1/100 pafta ×2 büyütmesi yalnız detaya
+        /// uygulanır; bu nesneler planda kalır (önceden detayla birlikte büyüyüp çukurdan kayıyordu).
+        /// </summary>
+        internal static readonly List<ObjectId> PlanSembolleri = new List<ObjectId>();
+
+        /// <summary>1/100 pafta: plandaki kesit sembolü plan yazıları gibi 1,5× (TEMEL100 kesit etiketi 20→30).</summary>
+        private static double PlanSembolOlcek => BaPaftaOlcek.Yuz("temelcekuru") ? 1.5 : 1.0;
+
+        /// <summary>
         /// Planda, çukurun iki doğrultusuna merdiven kesit sembolü.
         /// Kısa kenar = genişlik kesiti, uzun kenar = en kesiti. Yazı: 1-1 KESİTİ.
         /// </summary>
@@ -872,7 +986,8 @@ namespace ST4Yardimci
             if (len < 1e-9 || half < 1.0) return;
             ax /= len;
             ay /= len;
-            double outD = half + 90.0 + KesitSembolYaricap;
+            double k = PlanSembolOlcek;
+            double outD = half + (90.0 + KesitSembolYaricap) * k;
             double bx = -ay, by = ax;
             string num = no.ToString(CultureInfo.InvariantCulture);
             PlacePlanKesitSembol(tr, db, src, srcIds, num,
@@ -904,7 +1019,8 @@ namespace ST4Yardimci
             double ang = Math.Atan2(inY, inX);
             double triX = -inY, triY = inX;
             bool mirrorTri = triX * bakX + triY * bakY < 0;
-            Matrix3d xf = Matrix3d.Displacement(center - origin)
+            Matrix3d olcek = Matrix3d.Scaling(PlanSembolOlcek, center);
+            Matrix3d xf = olcek * Matrix3d.Displacement(center - origin)
                 * Matrix3d.Rotation(ang, Vector3d.ZAxis, origin);
             if (mirrorTri)
                 xf = xf * Matrix3d.Mirroring(new Plane(origin, Vector3d.YAxis));
@@ -918,7 +1034,8 @@ namespace ST4Yardimci
                     txt.TextString = num;
                     txt.Rotation = 0;
                     try { txt.AdjustAlignment(db); } catch { }
-                    try { txt.TransformBy(Matrix3d.Displacement(center - origin)); } catch { }
+                    try { txt.TransformBy(olcek * Matrix3d.Displacement(center - origin)); } catch { }
+                    PlanSembolleri.Add(txt.ObjectId);
                     continue;
                 }
                 try { ent.TransformBy(xf); } catch { }
@@ -926,6 +1043,8 @@ namespace ST4Yardimci
                 {
                     try { ent.Erase(); } catch { }
                 }
+                else
+                    PlanSembolleri.Add(ent.ObjectId);
             }
         }
 
@@ -1070,6 +1189,8 @@ namespace ST4Yardimci
             public double TopCm;
             public double ThickCm;
             public int Score;
+            /// <summary>Radye etiketinin (RD-..) altındaki kot çifti = temel kotu.</summary>
+            public bool Temel;
         }
 
         private sealed class PlanPoly
@@ -1098,6 +1219,8 @@ namespace ST4Yardimci
             public double UstKotCm;
             public double UstKalinlikCm;
             public bool AltKnown;
+            /// <summary>Çukur içindeki kot temel üst kotundan aşağıda değil (kullanılmadı, alt formdan); değer bilgi için.</summary>
+            public double? AltTersCm;
             public double AltKotCm;
             public double AltKalinlikCm;
             public bool HatilKnown;

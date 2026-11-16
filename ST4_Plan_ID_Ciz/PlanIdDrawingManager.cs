@@ -816,7 +816,7 @@ namespace ST4PlanIdCiz
 
                 var firstForY = _model.Floors[0];
                 Geometry firstUnionForY = BuildFloorElementUnion(firstForY);
-                var firstExtForY = GetAksSiniriEnvelope(firstUnionForY);
+                var firstExtForY = GetAksSiniriEnvelope(firstUnionForY, firstForY);
                 double yRef0 = GetLowestHorizontalColumnAxisY(0.0, firstExtForY);
                 double offsetY = baseInsertPoint.Y - antetOutDy - yRef0 + 600.0;
                 double nextOuterLeft = baseInsertPoint.X + AntetYerlesimSheetViewOutSolPayCm;
@@ -828,9 +828,9 @@ namespace ST4PlanIdCiz
                     var idsBefore = SnapshotBlockIds(btr);
                     var firstFloor = _model.Floors[0];
                     Geometry firstFloorUnion = BuildFloorElementUnion(firstFloor);
-                    var firstFloorAxisExt = GetAksSiniriEnvelope(firstFloorUnion);
+                    var firstFloorAxisExt = GetAksSiniriEnvelope(firstFloorUnion, firstFloor);
                     double offsetX = PredictSt4PlanIdOffsetX(firstFloor, firstFloorUnion, firstFloorAxisExt, nextOuterLeft, antetOutDx);
-                    DrawAxes(tr, btr, offsetX, offsetY, firstFloorAxisExt);
+                    DrawAxes(tr, btr, offsetX, offsetY, firstFloorAxisExt, firstFloor);
                     DrawColumns(tr, btr, firstFloor, offsetX, offsetY);
                     DrawWallsForFloor(tr, btr, firstFloor, offsetX, offsetY);
                     Geometry temelUnion = BuildTemelUnion(offsetX, offsetY, firstFloor);
@@ -856,10 +856,10 @@ namespace ST4PlanIdCiz
                     var idsBefore = SnapshotBlockIds(btr);
                     var floor = _model.Floors[floorIdx];
                     Geometry elemUnion = BuildFloorElementUnion(floor);
-                    var floorAxisExt = GetAksSiniriEnvelope(elemUnion);
+                    var floorAxisExt = GetAksSiniriEnvelope(elemUnion, floor);
                     double offsetX = PredictSt4PlanIdOffsetX(floor, elemUnion, floorAxisExt, nextOuterLeft, antetOutDx);
 
-                    DrawAxes(tr, btr, offsetX, offsetY, floorAxisExt);
+                    DrawAxes(tr, btr, offsetX, offsetY, floorAxisExt, floor);
                     DrawColumns(tr, btr, floor, offsetX, offsetY);
                     DrawBeamsAndWalls(tr, btr, floor, offsetX, offsetY);
                     DrawSlabs(tr, btr, floor, offsetX, offsetY);
@@ -955,7 +955,7 @@ namespace ST4PlanIdCiz
                             Geometry axisExtGeom = (kolonPerdeUnion != null && !kolonPerdeUnion.IsEmpty)
                                 ? kolonPerdeUnion
                                 : BuildFloorElementUnion(floor);
-                            var floorAxisExt = GetAksSiniriEnvelope(axisExtGeom);
+                            var floorAxisExt = GetAksSiniriEnvelope(axisExtGeom, floor);
                             double leftVerticalAxisX = floorAxisExt.Xmin;
                             double targetAntetSheetViewLeft;
                             if (!nextAntetOuterLeftTarget.HasValue)
@@ -970,7 +970,7 @@ namespace ST4PlanIdCiz
                                 offsetX = targetAntetSheetViewLeft - (leftVerticalAxisX - Kolon50AntetLeftOfLeftVerticalAxisCm * antetSpacingMul);
                             }
 
-                            DrawAxes(tr, btr, offsetX, offsetY, floorAxisExt);
+                            DrawAxes(tr, btr, offsetX, offsetY, floorAxisExt, floor);
                             DrawColumns(tr, btr, floor, offsetX, offsetY);
                             DrawWallsForFloor(tr, btr, floor, offsetX, offsetY);
                             DrawPerdeLabelsForFloor(tr, btr, floor, offsetX, offsetY, kolonPerdeUnion);
@@ -1203,7 +1203,7 @@ namespace ST4PlanIdCiz
                     var firstGroup = groups[0];
                     var firstFloor = _model.Floors[firstGroup.Min()];
                     Geometry firstUnion = BuildFloorElementUnion(firstFloor);
-                    var firstExt = GetAksSiniriEnvelope(firstUnion);
+                    var firstExt = GetAksSiniriEnvelope(firstUnion, firstFloor);
                     double kalipAntetSpacingMul = scaleMode == KalipPlanScale.Hundred ? 2.0 : 1.0;
                     double baseDy;
                     double cursorX;
@@ -1263,7 +1263,7 @@ namespace ST4PlanIdCiz
                         var floor = _model.Floors[labelFloorIdx];
 
                         Geometry elemUnion = BuildFloorElementUnion(floor);
-                        var floorAxisExt = GetAksSiniriEnvelope(elemUnion);
+                        var floorAxisExt = GetAksSiniriEnvelope(elemUnion, floor);
                         PlanT(12);
 
                         var otherFloors = group
@@ -1299,7 +1299,7 @@ namespace ST4PlanIdCiz
                             Ilerle(false, "kolon-kiris");
 
                             if (!layoutFlags.NoAxes)
-                                DrawAxes(tr, btr, offsetX, offsetY, floorAxisExt);
+                                DrawAxes(tr, btr, offsetX, offsetY, floorAxisExt, floor);
                             PlanT(0);
                             DrawColumns(tr, btr, floor, offsetX, offsetY);
                             PlanT(1);
@@ -3655,7 +3655,7 @@ namespace ST4PlanIdCiz
 
                     var firstFloor = _model.Floors[0];
                     Geometry firstFloorUnion = BuildFloorElementUnion(firstFloor);
-                    var firstFloorAxisExt = GetAksSiniriEnvelope(firstFloorUnion);
+                    var firstFloorAxisExt = GetAksSiniriEnvelope(firstFloorUnion, firstFloor);
                     double baseOx = baseInsertPoint.X - firstFloorAxisExt.Xmin;
                     double offsetY = baseInsertPoint.Y - firstFloorAxisExt.Ymin;
                     double antetLayMinX = 0, antetLayMaxX = 0, antetLayMinY = 0, antetLayMaxY = 0, leftSectionMinX = 0;
@@ -3667,7 +3667,7 @@ namespace ST4PlanIdCiz
                     for (int copyIndex = 0; copyIndex < planCopyCount; copyIndex++)
                     {
                         double offsetX = copyIndex == 0 ? baseOx : baseOx + copyIndex * stride;
-                        DrawAxes(tr, btr, offsetX, offsetY, firstFloorAxisExt);
+                        DrawAxes(tr, btr, offsetX, offsetY, firstFloorAxisExt, firstFloor);
                         DrawColumns(tr, btr, firstFloor, offsetX, offsetY);
                         DrawWallsForFloor(tr, btr, firstFloor, offsetX, offsetY);
                         Geometry temelUnion = BuildTemelUnion(offsetX, offsetY, firstFloor);
@@ -3801,7 +3801,7 @@ namespace ST4PlanIdCiz
             {
                 var firstFloor = _model.Floors[0];
                 Geometry firstFloorUnion = BuildFloorElementUnion(firstFloor);
-                var axisExt = GetAksSiniriEnvelope(firstFloorUnion);
+                var axisExt = GetAksSiniriEnvelope(firstFloorUnion, firstFloor);
                 offsetX = baseInsertPoint.X - axisExt.Xmin;
                 offsetY = baseInsertPoint.Y - axisExt.Ymin;
                 Geometry temelUnion = BuildTemelUnion(offsetX, offsetY, firstFloor);
@@ -4014,16 +4014,16 @@ namespace ST4PlanIdCiz
         private const double BeamLabelRefWidthCm = 70.0;
         private const double BeamLabelRefHeightCm = 12.0;
         private const int BeamLabelRefCharCount = 13;
-        private const string AksOlcuDimStyleName = "AKS_OLCU";
-        private const string PlanOlcuDimStyleName = "PLAN_OLCU";
+        private const string AksOlcuDimStyleName = BeykentOrtak.OlcuStilAdlari.Aks50;
+        private const string PlanOlcuDimStyleName = BeykentOrtak.OlcuStilAdlari.Plan50;
         /// <summary>Perde görünüş donatı ölçüleri: PLAN_OLCU ile aynı ok/katman, yazı 10 cm.</summary>
-        private const string PlanOlcuDonatiDimStyleName = "PLAN_OLCU_DONATI";
+        private const string PlanOlcuDonatiDimStyleName = BeykentOrtak.OlcuStilAdlari.Donati50;
         /// <summary>Kolon düşey etriye kopya ölçüleri: 1 ondalık (ör. 13.3), 0.5 cm yuvarlama yok.</summary>
-        private const string EtriyeOlcuDimStyleName = "ETRIYE_OLCU";
-        private const string EtriyeOlcuYaziStyleName = "ETRIYE_OLCU_YAZI";
+        private const string EtriyeOlcuDimStyleName = BeykentOrtak.OlcuStilAdlari.Etriye50;
+        private const string EtriyeOlcuYaziStyleName = BeykentOrtak.OlcuStilAdlari.YaziEtriye;
         /// <summary>100 ölçekli planlarda aks/plan ölçü yazısı, ok, uzatma ve gap 1.5×; AKS_OLCU/PLAN_OLCU ile aynı çizgide kalır.</summary>
-        private const string AksOlcuDimStyleName100 = "AKS_OLCU_100";
-        private const string PlanOlcuDimStyleName100 = "PLAN_OLCU_100";
+        private const string AksOlcuDimStyleName100 = BeykentOrtak.OlcuStilAdlari.Aks100;
+        private const string PlanOlcuDimStyleName100 = BeykentOrtak.OlcuStilAdlari.Plan100;
         /// <summary>Symbols and Arrows → Arrow size = 3 (cm). <see cref="DimStyleTableRecord.Dimasz"/>; First/Second tik için <see cref="DimStyleTableRecord.Dimtsz"/>.</summary>
         private const double OlcuDimArrowTickSizeCm = 3.0;
         /// <summary>Aks ve plan ölçü yazısı: 0.5 cm adımlarına yuvarla (DIMRND). DIMDEC=1 ile 12.5 görünür; DIMZIN=12 ile tam cm’de sondaki sıfır yazılmaz.</summary>
@@ -4244,10 +4244,17 @@ namespace ST4PlanIdCiz
         }
 
         /// <summary>Eğimsiz kolon akslarının en sol/sağ/alt/üst kesişim noktalarıyla oluşan aks sınırı dikdörtgeninin zarfı (model koordinatları). Kat sınırı varsa stretch uygulanır. Aks çizgileri bu zarfın 200 cm dışında biter. Hesaplanamazsa kat sınırı zarfı veya fallback döner.</summary>
-        private (double Xmin, double Xmax, double Ymin, double Ymax) GetAksSiniriEnvelope(Geometry elementUnion)
+        private (double Xmin, double Xmax, double Ymin, double Ymax) GetAksSiniriEnvelope(Geometry elementUnion, FloorInfo floor = null)
         {
             var xKolonAks = BuildColumnAxisIds(c => c.AxisXId, _model.AxisX.Select(a => a.Id));
             var yKolonAks = BuildColumnAxisIds(c => c.AxisYId, _model.AxisY.Select(a => a.Id));
+            // Kat verilirse zarf yalnız o katta çizilen akslardan (DrawAxes ile aynı süzgeç): boşa çıkan aks balon/ölçüyü uzağa itmesin.
+            var katAks = floor != null ? BuildFloorColumnCrossingAxisIds(floor, CalculateBaseExtents()) : null;
+            if (katAks != null)
+            {
+                xKolonAks.IntersectWith(katAks);
+                yKolonAks.IntersectWith(katAks);
+            }
             int? leftXId = null, rightXId = null;
             double leftX = double.MaxValue, rightX = double.MinValue;
             foreach (var ax in _model.AxisX)
@@ -10573,7 +10580,7 @@ namespace ST4PlanIdCiz
         private const double AxisBalloonCollisionStepCm = 40.0;
 
         private void DrawAxes(Transaction tr, BlockTableRecord btr, double offsetX, double offsetY,
-            (double Xmin, double Xmax, double Ymin, double Ymax) ext)
+            (double Xmin, double Xmax, double Ymin, double Ymax) ext, FloorInfo floor = null)
         {
             Database db = btr.Database;
             double ann = TemelFoundationAnnotMul;
@@ -10592,6 +10599,13 @@ namespace ST4PlanIdCiz
 
             var xKolonAks = BuildColumnAxisIds(c => c.AxisXId, _model.AxisX.Select(a => a.Id));
             var yKolonAks = BuildColumnAxisIds(c => c.AxisYId, _model.AxisY.Select(a => a.Id));
+            // Kat küçülünce boşa çıkan akslar: bu kattaki hiçbir kolonun (perde dahil) içinden/kenarından geçmeyen aks çizilmez.
+            var katAks = BuildFloorColumnCrossingAxisIds(floor, ext);
+            if (katAks != null)
+            {
+                xKolonAks.IntersectWith(katAks);
+                yKolonAks.IntersectWith(katAks);
+            }
 
             var xAxisTopPositions = new List<Point3d>();
             var xAxisBottomPositions = new List<Point3d>();
@@ -10925,6 +10939,7 @@ namespace ST4PlanIdCiz
             if (lineGeomScale < 1e-6) lineGeomScale = 1.0;
             string styleName = Math.Abs(lineGeomScale - 1.0) > 1e-6 ? AksOlcuDimStyleName100 : AksOlcuDimStyleName;
             ObjectId yaziId = GetOrCreateYaziBeykentTextStyle(tr, db);
+            BeykentOrtak.OlcuStilAdlari.CizimiTasi(tr, db);
             var dst = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
             if (dst.Has(styleName))
             {
@@ -10972,6 +10987,7 @@ namespace ST4PlanIdCiz
                 ? styleNameOverride
                 : (Math.Abs(lineGeomScale - 1.0) > 1e-6 ? PlanOlcuDimStyleName100 : PlanOlcuDimStyleName);
             ObjectId yaziId = GetOrCreateYaziBeykentTextStyle(tr, db);
+            BeykentOrtak.OlcuStilAdlari.CizimiTasi(tr, db);
             var dst = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
             if (dst.Has(styleName))
                 return dst[styleName];
@@ -11001,6 +11017,7 @@ namespace ST4PlanIdCiz
         private static ObjectId GetOrCreateEtriyeOlcuDimStyle(Transaction tr, Database db, double dimTextHeightCm)
         {
             ObjectId yaziId = GetOrCreateEtriyeOlcuYaziTextStyle(tr, db);
+            BeykentOrtak.OlcuStilAdlari.CizimiTasi(tr, db);
             var dst = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
             if (dst.Has(EtriyeOlcuDimStyleName))
                 return dst[EtriyeOlcuDimStyleName];
@@ -11030,9 +11047,8 @@ namespace ST4PlanIdCiz
         private static string DimStyleNameWith25Suffix(string baseName)
         {
             if (string.IsNullOrWhiteSpace(baseName)) baseName = PlanOlcuDimStyleName;
-            if (baseName.EndsWith(" 25", StringComparison.Ordinal) || baseName.EndsWith("_25", StringComparison.Ordinal))
-                return baseName;
-            return baseName + " 25";
+            // "OLCU X 50 (BEYKENT)" → "OLCU X 50-25 (BEYKENT)"; şema dışı adlara eskisi gibi " 25".
+            return BeykentOrtak.OlcuStilAdlari.Detay25(baseName);
         }
 
         private static ObjectId MapDimStyleTo25(
@@ -11051,6 +11067,7 @@ namespace ST4PlanIdCiz
             }
             string dstName = DimStyleNameWith25Suffix(srcName);
             ObjectId yaziBeykent = GetOrCreateYaziBeykentTextStyle(tr, db);
+            BeykentOrtak.OlcuStilAdlari.CizimiTasi(tr, db);
             var dst = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
             ObjectId dstId;
             if (dst.Has(dstName))
@@ -11115,7 +11132,8 @@ namespace ST4PlanIdCiz
                 try { rec = tr.GetObject(id, OpenMode.ForRead, false) as DimStyleTableRecord; }
                 catch { continue; }
                 if (rec == null || string.IsNullOrEmpty(rec.Name)) continue;
-                if (rec.Name.EndsWith(" 25", StringComparison.Ordinal) || rec.Name.EndsWith("_25", StringComparison.Ordinal))
+                // Yalnız 1/50 pafta 1/25 detay stilleri (… 50-25 (BEYKENT)); 100-25 stillerinin DIMSCALE 2 / DIMLFAC 0.25'i korunur.
+                if (BeykentOrtak.OlcuStilAdlari.Pafta50Detay25(rec.Name))
                     ids.Add(id);
             }
             for (int i = 0; i < ids.Count; i++)
@@ -11196,6 +11214,79 @@ namespace ST4PlanIdCiz
                 if (set.Contains(id)) used.Add(id);
             }
             return used;
+        }
+
+        /// <summary>Aks kolon kenarından bu kadar uzaktaysa yine "kolondan geçiyor" sayılır (cm).</summary>
+        private const double AksKolonGecisToleransCm = 0.5;
+
+        /// <summary>
+        /// Bu katta en az bir kolonun (perde dahil) içinden ya da kenarından geçen aks ID'leri. Üst katta bina
+        /// küçülünce boşa çıkan akslar çizilmesin diye; aksın kolona bağlı olması gerekmez. Kat yoksa,
+        /// hesap yapılamazsa ya da bir doğrultuda hiç aks kalmıyorsa null (filtre uygulanmaz).
+        /// </summary>
+        private HashSet<int> BuildFloorColumnCrossingAxisIds(FloorInfo floor, (double Xmin, double Xmax, double Ymin, double Ymax) ext)
+        {
+            if (floor == null) return null;
+            GeometryFactory oncekiFactory = _ntsDrawFactory;
+            try
+            {
+                if (_ntsDrawFactory == null) _ntsDrawFactory = NtsGeometryServices.Instance.CreateGeometryFactory();
+                var factory = _ntsDrawFactory;
+                var dusey = new List<Geometry>(BuildColumnFootprintsForCutScore(floor));
+                foreach (var beam in MergeSameIdBeamsOnFloor(floor.FloorNo))
+                {
+                    if (beam.IsWallFlag != 1) continue;
+                    if (!_axisService.TryIntersect(beam.FixedAxisId, beam.StartAxisId, out Point2d p1) ||
+                        !_axisService.TryIntersect(beam.FixedAxisId, beam.EndAxisId, out Point2d p2))
+                        continue;
+                    var a = p1; var b = p2;
+                    NormalizeBeamDirection(beam.FixedAxisId, ref a, ref b);
+                    Vector2d dir = b - a;
+                    if (dir.Length <= 1e-9) continue;
+                    Vector2d u = dir.GetNormal();
+                    Vector2d perp = new Vector2d(-u.Y, u.X);
+                    ComputeBeamEdgeOffsets(beam.OffsetRaw, beam.WidthCm / 2.0, out double upperEdge, out double lowerEdge);
+                    Point2d q1 = a + perp.MultiplyBy(upperEdge), q2 = b + perp.MultiplyBy(upperEdge);
+                    Point2d q3 = b + perp.MultiplyBy(lowerEdge), q4 = a + perp.MultiplyBy(lowerEdge);
+                    dusey.Add(factory.CreatePolygon(factory.CreateLinearRing(new[]
+                    {
+                        new Coordinate(q1.X, q1.Y), new Coordinate(q2.X, q2.Y), new Coordinate(q3.X, q3.Y),
+                        new Coordinate(q4.X, q4.Y), new Coordinate(q1.X, q1.Y)
+                    })));
+                }
+                if (dusey.Count == 0) return null;
+
+                double pay = 100000.0;
+                double y0 = ext.Ymin - pay, y1 = ext.Ymax + pay, x0 = ext.Xmin - pay, x1 = ext.Xmax + pay;
+                var sonuc = new HashSet<int>();
+                int xSay = 0, ySay = 0;
+                foreach (var ax in _model.AxisX)
+                {
+                    var hat = factory.CreateLineString(new[]
+                    {
+                        new Coordinate(ax.ValueCm + ax.Slope * y0, y0), new Coordinate(ax.ValueCm + ax.Slope * y1, y1)
+                    });
+                    if (dusey.Any(g => g.Distance(hat) <= AksKolonGecisToleransCm)) { sonuc.Add(ax.Id); xSay++; }
+                }
+                foreach (var ay in _model.AxisY)
+                {
+                    var hat = factory.CreateLineString(new[]
+                    {
+                        new Coordinate(x0, -(ay.ValueCm + ay.Slope * x0)), new Coordinate(x1, -(ay.ValueCm + ay.Slope * x1))
+                    });
+                    if (dusey.Any(g => g.Distance(hat) <= AksKolonGecisToleransCm)) { sonuc.Add(ay.Id); ySay++; }
+                }
+                if (xSay == 0 || ySay == 0) return null;
+                return sonuc;
+            }
+            catch
+            {
+                return null;
+            }
+            finally
+            {
+                _ntsDrawFactory = oncekiFactory;
+            }
         }
 
         /// <summary>
@@ -13619,6 +13710,9 @@ namespace ST4PlanIdCiz
                     DrawKotBlockAtCenter(tr, btr, db, kotCenter.X, kotCenter.Y, topElevM, bottomElevM, axisAngleRad);
                 }
             }
+
+            // Guseli kiriş: guse bitiş çizgisi + GUSE(Hg/L) yazısı (yalnız kalıp planları).
+            DrawKalipGuseIsaretleri(tr, btr, db, beamsForDrawing, finalBeamGeometries, kolonPerdeUnion, offsetX, offsetY, plan100AnnotMul);
 
             BwT(10);
             // Kiriş uzunluk çizgileri artık çizilmiyor; segment değerleri (beamLengthSegmentByBeamId) sadece etiket yerleşimi için hafızada kullanılıyor.
@@ -17347,6 +17441,8 @@ namespace ST4PlanIdCiz
             DrawGeometryRingsAsPolylines(tr, btr, unionResult, layer, applySmallTriangleTrim: true);
             // Kademeli radye: farklı kotlu radyelerin sınırları (alt radye bindirmeli) ayrıca çizilir.
             DrawRadyeKademeSinirlari(tr, btr, offsetX, offsetY, unionResult);
+            // Zımbalama için lokal radye kalınlaştırması: düşen kısmın izi (KESIT SINIRI).
+            DrawRadyeLokalKalinlastirmaIzleri(tr, btr, offsetX, offsetY, unionResult);
             // İç tarama: ampatmanı da hesaba kat. Tarama ampatmanın İÇ yüzünden başlar; ampatman bandı
             // (gövde ile ampatman arası, "ampatman üstü") ayrı eleman sayıldığı için taranmaz.
             Geometry hatchBase = unionResult;

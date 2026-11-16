@@ -25,6 +25,11 @@ namespace ST4Yardimci
         /// <summary>Poz balonunun içi çapa göre pastel dolar. Tarama katmanı çıktıda kapalıdır.</summary>
         public static bool Renkli { get; set; } = true;
         public static List<string> Katmanlar { get; } = new List<string>();
+        /// <summary>
+        /// Benzer eleman adedi: metraj bu çarpanla alınır, tablo altına "BENZER N ADET" yazılır.
+        /// Bilerek ini'ye yazılmaz — AutoCAD her açılışta 1 başlar (unutulup sonraki metrajı şişirmesin).
+        /// </summary>
+        public static int AdetCarpan { get; set; } = 1;
 
         static bool _loaded;
 
@@ -139,6 +144,9 @@ namespace ST4Yardimci
 
         private readonly CapIsaretiSecim _cmbFi;
         private readonly OlcuKutusu _txtMax;
+        private readonly OlcuKutusu _txtAdet;
+        /// <summary>Pafta ölçeği: 1/100 seçiliyse tablo ve yazılar ×2 (pafta_olcek.ini "donatimetraj", değişince kaydedilir).</summary>
+        private readonly SegmentSecim _olcek;
         private readonly GirdiDenetci Denetci = new GirdiDenetci();
         private readonly ListBox _lstLayers;
         private readonly CheckBox _chkOnizleme;
@@ -250,6 +258,10 @@ namespace ST4Yardimci
             // Alt sınır eski ParseMax (≥ 1) ile aynı; üst sınır 10000 cm (100 m) makul tavan.
             _txtMax = Denetci.Ekle(new OlcuKutusu("L boyu sınırı", "cm", 1, 10000, 1200, 2, 10));
             _txtMax.Deger = DonatiMetrajSettings.MaxBoyCm;
+            _txtAdet = Denetci.Ekle(new OlcuKutusu("Adet (çarpan)", "adet", 1, 1000, 1, 0, 1));
+            _txtAdet.Deger = DonatiMetrajSettings.AdetCarpan;
+            _olcek = new SegmentSecim("1/50 pafta", "1/100 pafta (×2)") { Secili = BaPaftaOlcek.Yuz(DonatiMetrajRunner.OlcekAnahtar) ? 1 : 0 };
+            _olcek.SeciliDegisti += (s, e) => BaPaftaOlcek.Kaydet(DonatiMetrajRunner.OlcekAnahtar, _olcek.Secili == 1);
 
             Controls.Add(MkLabel("Donatı etiketi katmanı", 10, y + 2, 280));
             y += 18;
@@ -340,13 +352,17 @@ namespace ST4Yardimci
             var ui = BeginCompact(320);
             ui.Section("Etiket ve sınır")
                 .Field("Çap işareti", _cmbFi)
-                .Field("L boyu sınırı", _txtMax);
+                .Field("L boyu sınırı", _txtMax)
+                .Field("Adet (çarpan)", _txtAdet);
+            ui.Section("Pafta ölçeği").Control(_olcek);
             ui.Section("Etiket katmanları").Layers(_lstLayers, btnAdd, btnDel, btnRem);
             ui.Tip(_chkOnizleme, _chkOnizleme.Text); _chkOnizleme.Text = "Özet yaz";
             ui.Section(null).Choices(_chkRenkli, _chkOnizleme);
             ui.Section(null).Control(Denetci.Serit, 44);
             ui.Tip(_cmbFi, "Etikette aranan çap işareti (%%c / Ø ile de eşleşir).");
             ui.Tip(_txtMax, "Bu değerin üstündeki L boyu komutta uyarılır.");
+            ui.Tip(_olcek, "1/100: metraj tabloları ve yazıları 1/50'ye göre 2 kat; tablo köşesi tıklanan noktada kalır.");
+            ui.Tip(_txtAdet, "Benzer eleman adedi: metraj bu çarpanla alınır, tablo altına \"BENZER N ADET\" yazılır.");
             ui.Footer(btnRun, btnClose, btnAntet, btnToplam);
             btnRun.Text = "Metraj al";
             ui.Finish();
@@ -372,6 +388,7 @@ namespace ST4Yardimci
         {
             _cmbFi.Deger = DonatiMetrajSettings.FiIsareti;
             _txtMax.Deger = DonatiMetrajSettings.MaxBoyCm;
+            _txtAdet.Deger = DonatiMetrajSettings.AdetCarpan;
             _chkOnizleme.Checked = DonatiMetrajSettings.OnizlemeMesaji;
             _chkRenkli.Checked = DonatiMetrajSettings.Renkli;
             FillList(_lstLayers, DonatiMetrajSettings.Katmanlar);
@@ -382,6 +399,7 @@ namespace ST4Yardimci
         private void PushSettings()
         {
             DonatiMetrajSettings.MaxBoyCm = _txtMax.Deger;
+            DonatiMetrajSettings.AdetCarpan = Math.Max(1, (int)Math.Round(_txtAdet.Deger));
             DonatiMetrajSettings.FiIsareti = _cmbFi.Deger;
             DonatiMetrajSettings.OnizlemeMesaji = _chkOnizleme.Checked;
             DonatiMetrajSettings.Renkli = _chkRenkli.Checked;

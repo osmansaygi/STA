@@ -22,6 +22,7 @@ namespace ST4PlanIdCiz
                 new Tool("TEMELST4", "Temel\nPlanı"),
                 new Tool("SUREKLITEMELACILIMLARI", "Sürekli\nTemel"),
                 new Tool("TEMELDONATI", "Radye\nDonatı"),
+                new Tool("RADYEILAVEZARF", "Radye İlave\nZarf"),
                 new Tool("RADYELEGANTKARSILASTIRMA", "Radye Legant\nKarşılaştırma"),
                 new Tool("TEMELKIRISDUZELT", "Temel\nDüzelt")),
             new Group("KOLON", "Kolon",

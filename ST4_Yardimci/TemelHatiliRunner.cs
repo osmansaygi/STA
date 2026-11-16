@@ -113,7 +113,7 @@ namespace ST4Yardimci
         private const double HatilOlcuToplamEkCm = 10.0;
         /// <summary>Döşeme üstü → yatay hatıl genişlik ölçüsü (cm, gerçek).</summary>
         private const double HatilOlcuUstOfsetCm = 10.0;
-        private const string DimStylePlanOlcuDonati25 = "PLAN_OLCU_DONATI 25";
+        private const string DimStylePlanOlcuDonati25 = BeykentOrtak.OlcuStilAdlari.Donati50_25;
 
         private const double KesitKotTriHeightCm = 12.0;
         private const double KesitKotTriHalfWidthCm = 12.0;

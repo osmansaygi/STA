@@ -520,7 +520,7 @@ namespace ST4Yardimci
         private static ObjectId ResolveDimStyleId(Transaction tr, Database db, string name)
         {
             ObjectId id = BaDimensionStyles.Ensure(tr, db, name);
-            return id.IsNull ? BaDimensionStyles.Ensure(tr, db, "PLAN_OLCU") : id;
+            return id.IsNull ? BaDimensionStyles.Ensure(tr, db, BeykentOrtak.OlcuStilAdlari.Plan50) : id;
         }
 
         private static string EnsureLayer(Transaction tr, Database db, string name)

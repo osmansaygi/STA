@@ -36,9 +36,9 @@ namespace ST4Yardimci
             dimStyles.Clear();
             dimStyles.Add(OtoOlcuSettings.AksOlcuDimStyleName);
             dimStyles.Add(OtoOlcuSettings.DefaultDimStyleName);
-            dimStyles.Add("PLAN_OLCU_DONATI");
-            dimStyles.Add("PLAN_OLCU 25");
-            dimStyles.Add("PLAN_OLCU_DONATI 25");
+            dimStyles.Add(BeykentOrtak.OlcuStilAdlari.Donati50);
+            dimStyles.Add(BeykentOrtak.OlcuStilAdlari.Detay50_25);
+            dimStyles.Add(BeykentOrtak.OlcuStilAdlari.Donati50_25);
 
             int addedL = 0, addedD = 0;
             using (doc.LockDocument())

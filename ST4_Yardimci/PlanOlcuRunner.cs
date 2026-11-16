@@ -127,7 +127,7 @@ namespace ST4Yardimci
 
                 ObjectId dimStyleId = ResolveDimStyleId(tr, db, PlanOlcuSettings.DimStyleName);
                 if (dimStyleId.IsNull)
-                    ed.WriteMessage("\nPLANOLCU: '{0}' stili yok; PLAN_OLCU ayarları kullanılacak.", PlanOlcuSettings.DimStyleName);
+                    ed.WriteMessage("\nPLANOLCU: '{0}' stili yok; OLCU PLAN 50 (BEYKENT) ayarları kullanılacak.", PlanOlcuSettings.DimStyleName);
                 string dimLayer = EnsureOlcuLayer(tr, db);
 
                 bool ccw = SignedArea(ring) > 0;
@@ -2655,7 +2655,7 @@ namespace ST4Yardimci
         private static ObjectId ResolveDimStyleId(Transaction tr, Database db, string name)
         {
             ObjectId id = BaDimensionStyles.Ensure(tr, db, name);
-            return id.IsNull ? BaDimensionStyles.Ensure(tr, db, "PLAN_OLCU") : id;
+            return id.IsNull ? BaDimensionStyles.Ensure(tr, db, BeykentOrtak.OlcuStilAdlari.Plan50) : id;
         }
 
         private static Point3d To3(Point2d p) => new Point3d(p.X, p.Y, 0);

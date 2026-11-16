@@ -24,7 +24,12 @@ namespace ST4Yardimci
         private const string EmbeddedResourceName = "ST4Yardimci.DemirTablosu.DEMIR_TABLOSU.dwg";
         private const string HasirMetrajResourceName = "ST4Yardimci.HasirMetraj.HASIRMETRAJ.dwg";
         /// <summary>Hasır tablosu, demir tablosunun alt kenarından bu kadar aşağıda (cm).</summary>
-        private const double HasirTabloGapCm = 25.0;
+        private const double HasirTabloGapCm1 = 25.0;
+        /// <summary>Demir tablosu ile hasır tablosu arası (1/100 pafta ×2).</summary>
+        private static double HasirTabloGapCm => HasirTabloGapCm1 * OlcekCarpani;
+        /// <summary>pafta_olcek.ini anahtarı: 1/100 seçiliyse metraj tabloları ×2.</summary>
+        internal const string OlcekAnahtar = "donatimetraj";
+        private static double OlcekCarpani => BaPaftaOlcek.Yuz(OlcekAnahtar) ? 2.0 : 1.0;
         private const int PozSatir = 16;
         private const int OzetHazirSatir = 3;
         private const double Satir = 20.0;
@@ -83,7 +88,10 @@ namespace ST4Yardimci
             public int Cap;
             public int BoyCm;
             public int Adet;
+            /// <summary>Toplam çarpan = kat × benzer adet (metraj ve ADET sütunu bununla).</summary>
             public int KatCarpan;
+            /// <summary>Formdaki benzer eleman adedi (tablo notu "BENZER N ADET").</summary>
+            public int Benzer = 1;
             public double Kg;
         }
 
@@ -225,12 +233,16 @@ namespace ST4Yardimci
                 int c = a.Cap.CompareTo(b.Cap);
                 return c != 0 ? c : a.BoyCm.CompareTo(b.BoyCm);
             });
+            int benzer = BenzerCarpan();
             for (int i = 0; i < pozlar.Count; i++)
             {
                 Poz p = pozlar[i];
                 p.No = i + 1;
-                p.Kg = Math.Round(p.Adet * p.BoyCm / 100.0 * BirimKg(p.Cap), 2, MidpointRounding.AwayFromZero);
+                p.KatCarpan = benzer;
+                p.Benzer = benzer;
+                p.Kg = Math.Round(p.Adet * benzer * p.BoyCm / 100.0 * BirimKg(p.Cap), 2, MidpointRounding.AwayFromZero);
             }
+            CarpHasir(hasirPoz, benzer);
             if (pozlar.Count > 0)
                 ContinueHasirPoz(hasirPoz, pozlar.Count);
 
@@ -505,18 +517,11 @@ namespace ST4Yardimci
                 else if (frame.KalipPlani && frame.BenzerAdet > 0)
                     kat = frame.BenzerAdet + 1;
 
-                List<Poz> pozlar = frame.Hits.Count > 0 ? PozlarFromHits(frame.Hits, kat) : new List<Poz>();
+                int benzer = BenzerCarpan();
+                List<Poz> pozlar = frame.Hits.Count > 0 ? PozlarFromHits(frame.Hits, kat, benzer) : new List<Poz>();
                 bool bars = pozlar.Count > 0;
                 List<HasirPoz> hasirPoz = BuildHasirPozlar(frame.HasirHits);
-                if (kat > 1)
-                {
-                    foreach (HasirPoz hp in hasirPoz)
-                    {
-                        hp.Adet *= kat;
-                        double alan = hp.Adet * (hp.Wcm / 100.0) * (hp.Hcm / 100.0);
-                        hp.Kg = Math.Round(alan * hp.KgM2, 2, MidpointRounding.AwayFromZero);
-                    }
-                }
+                CarpHasir(hasirPoz, kat * benzer);
                 if (pozlar.Count > 0)
                     ContinueHasirPoz(hasirPoz, pozlar.Count);
                 bool mesh = hasirPoz.Count > 0 && !string.IsNullOrEmpty(hasirPath);
@@ -528,7 +533,7 @@ namespace ST4Yardimci
                     if (!mesh) continue;
                 }
 
-                var anchor = new Point3d(frame.MaxX + 25.0, frame.MaxY, 0);
+                var anchor = new Point3d(frame.MaxX + 25.0 * OlcekCarpani, frame.MaxY, 0);
                 double ince = 0, kalin = 0;
                 try
                 {
@@ -887,8 +892,25 @@ namespace ST4Yardimci
                 .Replace('Ü', 'U').Replace('Ö', 'O').Replace('Ç', 'C');
         }
 
-        private static List<Poz> PozlarFromHits(List<Hit> hits, int katCarpan = 1)
+        /// <summary>Formdaki benzer eleman adedi (≥ 1).</summary>
+        private static int BenzerCarpan() => Math.Max(1, DonatiMetrajSettings.AdetCarpan);
+
+        /// <summary>Hasır pozlarının adet ve kg'ını çarpanla büyütür.</summary>
+        private static void CarpHasir(List<HasirPoz> hasirPoz, int carpan)
         {
+            if (hasirPoz == null || carpan <= 1) return;
+            foreach (HasirPoz hp in hasirPoz)
+            {
+                hp.Adet *= carpan;
+                double alan = hp.Adet * (hp.Wcm / 100.0) * (hp.Hcm / 100.0);
+                hp.Kg = Math.Round(alan * hp.KgM2, 2, MidpointRounding.AwayFromZero);
+            }
+        }
+
+        private static List<Poz> PozlarFromHits(List<Hit> hits, int katCarpan = 1, int benzer = 1)
+        {
+            if (katCarpan < 1) katCarpan = 1;
+            if (benzer < 1) benzer = 1;
             var groups = new Dictionary<long, Poz>();
             foreach (Hit h in hits)
             {
@@ -910,8 +932,9 @@ namespace ST4Yardimci
             {
                 Poz p = pozlar[i];
                 p.No = i + 1;
-                p.KatCarpan = katCarpan;
-                int eff = p.Adet * katCarpan;
+                p.KatCarpan = katCarpan * benzer;
+                p.Benzer = benzer;
+                int eff = p.Adet * p.KatCarpan;
                 p.Kg = Math.Round(eff * p.BoyCm / 100.0 * BirimKg(p.Cap), 2, MidpointRounding.AwayFromZero);
             }
             return pozlar;
@@ -1003,7 +1026,7 @@ namespace ST4Yardimci
                 using (doc.LockDocument())
                 using (var tr = doc.Database.TransactionManager.StartTransaction())
                 {
-                    var place = new Point3d(ppr.Value.X + 25.0, ppr.Value.Y - 25.0, ppr.Value.Z);
+                    var place = new Point3d(ppr.Value.X + 25.0 * OlcekCarpani, ppr.Value.Y - 25.0 * OlcekCarpani, ppr.Value.Z);
                     InsertFilled(tr, doc.Database, path, place, null, out ince, out kalin, true, out _, byCap,
                         hasHasirToplam ? (double?)hasirToplam : null);
                     tr.Commit();
@@ -1218,6 +1241,13 @@ namespace ST4Yardimci
                 height = maxY - minY;
                 double dy = topLeft ? pick.Y - maxY : pick.Y - minY;
                 var move = Matrix3d.Displacement(new Vector3d(pick.X - minX, dy, 0));
+                // 1/100 pafta: tablo ve yazılar ×2; köşe (sol üst / sol alt) tıklanan noktada kalır.
+                double k = OlcekCarpani;
+                if (k != 1.0)
+                {
+                    move = Matrix3d.Scaling(k, pick) * move;
+                    height *= k;
+                }
                 foreach (Entity ent in cloned)
                 {
                     try { ent.TransformBy(move); } catch { }
@@ -1720,9 +1750,11 @@ namespace ST4Yardimci
             Put(tr, db, ms, texts, yaziProto, AltToplamX, KalinY + foot, F2(kalin), used);
             Put(tr, db, ms, texts, yaziProto, AltToplamX, GenelY + foot, F2(ince + kalin), used);
             WidenPozColumns(tr, ms);
-            int katNot = pozlar != null && pozlar.Count > 0 ? pozlar[0].KatCarpan : 1;
-            if (katNot > 1)
-                YazKatNotu(tr, db, ms, yaziProto, katNot, lines);
+            Poz p0 = pozlar != null && pozlar.Count > 0 ? pozlar[0] : null;
+            int benzerNot = p0 == null || p0.Benzer < 1 ? 1 : p0.Benzer;
+            int katNot = p0 == null || p0.KatCarpan < 1 ? 1 : Math.Max(1, p0.KatCarpan / benzerNot);
+            if (katNot > 1 || benzerNot > 1)
+                YazKatNotu(tr, db, ms, yaziProto, katNot, benzerNot, lines);
         }
 
         private static void FillTotals(Transaction tr, Database db, BlockTableRecord ms, List<CapOzet> byCap, out double ince, out double kalin, double? hasirToplam = null)
@@ -1880,7 +1912,7 @@ namespace ST4Yardimci
             }
 
             const double rowH = 20.0;
-            double top = bottom - HasirTabloGapCm;
+            double top = bottom - HasirTabloGapCm1; // şablon biriminde; 1/100 ×2 yerleştirmede uygulanır
             double bot = top - rowH;
             double midY = (top + bot) * 0.5;
             string lineLayer = "IC ANTET (BEYKENT)";
@@ -2239,10 +2271,14 @@ namespace ST4Yardimci
             return adet + "x" + kat.ToString(CultureInfo.InvariantCulture);
         }
 
-        /// <summary>Tablo alt çizgisinin 5 cm altına, ortaya “N kat içindir”.</summary>
-        private static void YazKatNotu(Transaction tr, Database db, BlockTableRecord ms, DBText proto, int kat, List<Line> lines)
+        /// <summary>Tablo alt çizgisinin 5 cm altına, ortaya “N kat içindir” / “BENZER M ADET”.</summary>
+        private static void YazKatNotu(Transaction tr, Database db, BlockTableRecord ms, DBText proto, int kat, int benzer, List<Line> lines)
         {
-            if (proto == null || kat < 2) return;
+            if (proto == null || (kat < 2 && benzer < 2)) return;
+            string not = "";
+            if (kat > 1) not = kat.ToString(CultureInfo.InvariantCulture) + " kat içindir";
+            if (benzer > 1)
+                not += (not.Length > 0 ? " - " : "") + "BENZER " + benzer.ToString(CultureInfo.InvariantCulture) + " ADET";
             double bottom = double.MaxValue;
             foreach (Line ln in lines)
             {
@@ -2254,7 +2290,7 @@ namespace ST4Yardimci
             if (bottom > 1e8) return;
             double cx = (SolX + SagX + PozGrow * 2.0) * 0.5;
             var t = (DBText)proto.Clone();
-            t.TextString = kat.ToString(CultureInfo.InvariantCulture) + " kat içindir";
+            t.TextString = not;
             t.HorizontalMode = TextHorizontalMode.TextCenter;
             t.VerticalMode = TextVerticalMode.TextVerticalMid;
             t.AlignmentPoint = new Point3d(cx, bottom - 20, 0);

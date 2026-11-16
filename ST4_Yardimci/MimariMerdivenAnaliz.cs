@@ -72,7 +72,7 @@ namespace ST4Yardimci
         /// <param name="kalipMerdiven">Kalıpta MERDIVEN (BEYKENT) çizgileri (mevcut rıht kontrolü).</param>
         /// <param name="kalipYapi">Kalıpta kiriş/perde/kolon/döşeme sınırı kenarları (rıht ucunu yüze uzatmak için).</param>
         internal static List<Merdiven> Bul(Kaynak mimari, Hizalama h, List<Parca> kalipMerdiven, List<Parca> kalipYapi,
-            Func<double, double, bool> icerde, bool mimariModu = false)
+            Func<double, double, bool> icerde, bool mimariModu = false, double ciftEnCok = 5)
         {
             var parcalar = new List<Parca>();
             var kenarlar = new List<Parca>(); // boy sınırı yok: döşeme kenarı uzun olabilir
@@ -87,7 +87,7 @@ namespace ST4Yardimci
 
             var kollar = new List<Kol>();
             foreach (var grup in parcalar.GroupBy(AciKovasi))
-                kollar.AddRange(KolBul(grup.ToList()));
+                kollar.AddRange(KolBul(grup.ToList(), ciftEnCok));
             kollar = kollar.Where(k => icerde(k.K.Cx, k.K.Cy)).ToList();
             foreach (var k in kollar) Numarala(k, sayilar);
             foreach (var k in kollar) k.Mevcut = KalipteVar(k, kalipMerdiven);
@@ -136,7 +136,7 @@ namespace ST4Yardimci
         private sealed class Ara { public double S, A0, A1; public string Katman; }
 
         /// <summary>Tek doğrultudaki parçalardan kol dizileri.</summary>
-        private static IEnumerable<Kol> KolBul(List<Parca> grup)
+        private static IEnumerable<Kol> KolBul(List<Parca> grup, double ciftEnCok = 5)
         {
             double ang = grup.Average(p => { double a = Math.Atan2(p.Y1 - p.Y0, p.X1 - p.X0); if (a < 0) a += Math.PI; if (a >= Math.PI - 0.005) a -= Math.PI; return a; });
             double ux = Math.Cos(ang), uy = Math.Sin(ang), nx = -uy, ny = ux;
@@ -183,13 +183,13 @@ namespace ST4Yardimci
                     if (tekil.Count == 0) { tekil.Add(j); cift.Add(0); continue; }
                     double d = birlesik[j].S - birlesik[tekil[tekil.Count - 1]].S;
                     if (d < 1.0) continue;
-                    if (d <= 5 && cift[cift.Count - 1] == 0) { cift[cift.Count - 1] = d; continue; }
+                    if (d <= ciftEnCok && cift[cift.Count - 1] == 0) { cift[cift.Count - 1] = d; continue; }
                     tekil.Add(j); cift.Add(0);
                 }
                 foreach (var dizi in EsitAralikli(tekil.Select(j => birlesik[j].S).ToList()))
                 {
                     var secilen = dizi.Select(x => tekil[x]).ToList();
-                    foreach (int j in takim.Where(j => secilen.Any(s => birlesik[j].S - birlesik[s].S > -1.0 && birlesik[j].S - birlesik[s].S < 6))) kullanildi[j] = true;
+                    foreach (int j in takim.Where(j => secilen.Any(s => birlesik[j].S - birlesik[s].S > -1.0 && birlesik[j].S - birlesik[s].S < Math.Max(6, ciftEnCok + 1)))) kullanildi[j] = true;
                     var ss = secilen.Select(j => birlesik[j].S).ToList();
                     var farklar = ss.Zip(ss.Skip(1), (p, q) => q - p).OrderBy(v => v).ToList();
                     var kol = new Kol

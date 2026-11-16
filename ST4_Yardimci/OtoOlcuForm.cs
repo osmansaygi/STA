@@ -112,7 +112,7 @@ namespace ST4Yardimci
             {
                 Text = "AKS OLCU: aks çizgilerini seçin → balon tarafını seçin.\n" +
                        "Toplam ölçü balon kenarına 35 cm, ara ölçüler +20 cm (akslara dik).\n" +
-                       "Stil: AKS_OLCU · Katman: AKS OLCU (BEYKENT)",
+                       "Stil: " + BeykentOrtak.OlcuStilAdlari.Aks50 + " · Katman: AKS OLCU (BEYKENT)",
                 Location = new Point(12, y),
                 Size = new Size(300, 70),
                 ForeColor = Color.FromArgb(180, 220, 255),

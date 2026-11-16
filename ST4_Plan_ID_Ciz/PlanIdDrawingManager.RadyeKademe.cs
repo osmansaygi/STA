@@ -89,6 +89,8 @@ namespace ST4PlanIdCiz
                 {
                     if (ReferenceEquals(high.sf, low.sf)) continue;
                     if (high.sf.BottomLevelM * 100.0 <= zLow + RadyeKademeMinKotFarkiCm) continue;
+                    // Üst kotu aynı (yalnız alt kotu derin) radye kademe değil, zımbalama için lokal kalınlaştırmadır.
+                    if (Math.Abs((zLow + t) - (high.sf.BottomLevelM * 100.0 + RadyeKalinlikCm(high.sf))) < RadyeKademeMinKotFarkiCm) continue;
                     try
                     {
                         var shared = low.poly.Boundary.Intersection(high.poly.Boundary);
@@ -197,6 +199,7 @@ namespace ST4PlanIdCiz
                 foreach (var h in slabs)
                 {
                     if (ReferenceEquals(l, h) || h.Z0 <= l.Z0 + RadyeKademeMinKotFarkiCm) continue;
+                    if (Math.Abs(h.Z1 - l.Z1) < RadyeKademeMinKotFarkiCm) continue; // lokal kalınlaştırma, kademe değil
                     double ha0 = Math.Min(h.A0, h.A1), ha1 = Math.Max(h.A0, h.A1);
                     double lo = Math.Max(la0, ha0), hi = Math.Min(la1, ha1);
                     if (hi - lo < 1.0) continue;

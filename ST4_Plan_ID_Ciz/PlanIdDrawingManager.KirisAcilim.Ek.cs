@@ -141,7 +141,7 @@ namespace ST4PlanIdCiz
             if (tr == null || ms == null || db == null || _kirisAcilimKesimY > 1e8) return;
             double yBar = _kirisAcilimKesimY - asagiCm;
             double yDim = yBar - KirisAcilimMontajSasirtmaCm - KirisAcilimAcilimOlcuUzakCm;
-            ObjectId stil = GetOrCreatePlanOlcuDimStyle(tr, db, 10.0, 1.0, "PLAN_OLCU_25");
+            ObjectId stil = GetOrCreatePlanOlcuDimStyle(tr, db, 10.0, 1.0, BeykentOrtak.OlcuStilAdlari.Acilim50_25);
             AppendEntity(tr, ms, new RotatedDimension(0.0,
                 new Point3d(ek.A, yBar, 0), new Point3d(ek.B, yBar, 0),
                 new Point3d(0.5 * (ek.A + ek.B), yDim, 0), "", stil)
@@ -179,7 +179,7 @@ namespace ST4PlanIdCiz
         private void KirisAcilimEkGorunusOlcu(Transaction tr, BlockTableRecord ms, Database db, KirisEk ek, double yBar)
         {
             if (tr == null || ms == null || db == null) return;
-            ObjectId stil = GetOrCreatePlanOlcuDimStyle(tr, db, 10.0, 1.0, "PLAN_OLCU_25");
+            ObjectId stil = GetOrCreatePlanOlcuDimStyle(tr, db, 10.0, 1.0, BeykentOrtak.OlcuStilAdlari.Acilim50_25);
             AppendEntity(tr, ms, new RotatedDimension(0.0,
                 new Point3d(ek.A, yBar, 0), new Point3d(ek.B, yBar, 0),
                 new Point3d(0.5 * (ek.A + ek.B), yBar + KirisAcilimAcilimOlcuUzakCm, 0), "", stil)

@@ -81,6 +81,24 @@ namespace BeykentOrtak
             Extents3d? kutu = null;
             using (var tr = db.TransactionManager.StartTransaction())
             {
+                // 1/100 pafta: ölçü, adı ölçeğini gösteren karşılık stile geçer (OLCU X 50-25 → OLCU X 100-25, OLCU X 50 → OLCU X 100-50).
+                // Stil tablosu entity ForWrite açılmadan doldurulur.
+                var stilMap = new Dictionary<ObjectId, ObjectId>();
+                if (Math.Abs(carpan - Yuz) < 1e-9)
+                {
+                    var dimClass = Autodesk.AutoCAD.Runtime.RXObject.GetClass(typeof(Dimension));
+                    foreach (ObjectId id in ids)
+                    {
+                        if (id.IsNull || id.IsErased || !id.ObjectClass.IsDerivedFrom(dimClass)) continue;
+                        try
+                        {
+                            ObjectId st = ((Dimension)tr.GetObject(id, OpenMode.ForRead, false)).DimensionStyle;
+                            if (st.IsNull || stilMap.ContainsKey(st)) continue;
+                            stilMap[st] = OlcuStilAdlari.Pafta100Stili(tr, db, st, carpan);
+                        }
+                        catch { }
+                    }
+                }
                 foreach (ObjectId id in ids)
                 {
                     if (id.IsNull || id.IsErased) continue;
@@ -100,6 +118,8 @@ namespace BeykentOrtak
                         ent.TransformBy(xf);
                         if (dim != null)
                         {
+                            if (stilMap.TryGetValue(dim.DimensionStyle, out ObjectId yeniStil) && !yeniStil.IsNull)
+                                dim.DimensionStyle = yeniStil;
                             // Geometri büyüdü: ölçü değeri aynı kalsın, ok/yazı/uzatma çizgileri de büyüsün.
                             dim.Dimlfac = (Math.Abs(lf) < 1e-12 ? 1.0 : lf) / carpan;
                             dim.Dimscale = (sc <= 0 ? 1.0 : sc) * carpan;

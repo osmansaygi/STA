@@ -25,6 +25,8 @@ namespace ST4Yardimci
     internal static class BetonKalipRunner
     {
         private const string IniDosya = "betonkalip.ini";
+        /// <summary>pafta_olcek.ini anahtarı: 1/100 seçiliyse tablo ×2.</summary>
+        internal const string OlcekAnahtar = "betonkalip";
         private const double SatirH = 20.0, AdW = 295.0, DegerW = 140.0, YaziH = 10.0, BaslikH = 15.0, BaslikKutuH = 25.0;
         // 295 + 2 × 140 = 575: DONATIMETRAJ toplam tablosu genişliği
         private const double KutuBosluk = 10.0;
@@ -129,9 +131,10 @@ namespace ST4Yardimci
             Database db = doc.Database;
             var ppr = ed.GetPoint("\nBETONKALIP: Yerleşim noktası (tablo sol üst köşesi 25 cm altında): ");
             if (ppr.Status != PromptStatus.OK) return;
-            Point3d p0 = ppr.Value.TransformBy(ed.CurrentUserCoordinateSystem);
-            p0 = new Point3d(p0.X, p0.Y - YerlesimUstBosluk, p0.Z);
+            Point3d tik = ppr.Value.TransformBy(ed.CurrentUserCoordinateSystem);
+            Point3d p0 = new Point3d(tik.X, tik.Y - YerlesimUstBosluk, tik.Z);
             var satirlar = Satirlar(proje, kirilimli);
+            long ilkHandle = db.Handseed.Value;
 
             using (doc.LockDocument())
             using (Transaction tr = db.TransactionManager.StartTransaction())
@@ -145,6 +148,8 @@ namespace ST4Yardimci
                 Ciz(new SehimTablosuRunner.Cizici(tr, ms, stil), proje, satirlar, p0);
                 tr.Commit();
             }
+            // 1/100 pafta: tablo ve yazılar 1/50'ye göre ×2, tıklanan nokta sabit.
+            BaPaftaOlcek.UygulaNokta(OlcekAnahtar, doc, ilkHandle, tik);
             var g = satirlar[satirlar.Count - 1].Deger;
             ed.WriteMessage("\nBETONKALIP: {0} satır çizildi. Genel toplam: beton {1} m³, kalıp {2} m².",
                 satirlar.Count, g.Beton.ToString("0.00", Inv), g.Kalip.ToString("0.00", Inv));
@@ -227,6 +232,17 @@ namespace ST4Yardimci
             _rbKat = new RadioButton { Text = "Kat başına tek satır", Location = new SdPoint(14, y), AutoSize = true, Checked = !kirilimli };
             Controls.Add(_rbKat);
             y += 32;
+
+            // Pafta ölçeği: 1/100'de tablo ve yazılar ×2 (seçim hemen kaydedilir). Ayrı panel: radyo grubu kırılımdan bağımsız.
+            Controls.Add(new Label { Text = "Pafta ölçeği", Location = new SdPoint(10, y), AutoSize = true });
+            y += 20;
+            var olcekPanel = new Panel { Location = new SdPoint(10, y), Size = new SdSize(370, 26) };
+            RadioButton[] olcek = BaPaftaOlcek.Secenekler(BetonKalipRunner.OlcekAnahtar);
+            olcek[0].Location = new SdPoint(4, 2);
+            olcek[1].Location = new SdPoint(120, 2);
+            olcekPanel.Controls.AddRange(olcek);
+            Controls.Add(olcekPanel);
+            y += 34;
 
             _lblBilgi = new Label { Location = new SdPoint(10, y), Size = new SdSize(370, 50), ForeColor = SdColor.DimGray };
             Controls.Add(_lblBilgi);

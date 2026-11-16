@@ -398,7 +398,7 @@ namespace ST4PlanIdCiz
                 var noktalar = new List<double>();
                 for (int k = 0; k + 1 < chain.Count; k++)
                     if (KirisEgimTan(chain[k]) > KirisEgimTan(chain[k + 1]) + 1e-3 && !KirisEgimliDuzMu(chain[k]) && !KirisEgimliDuzMu(chain[k + 1]))
-                        noktalar.Add(chain[k].X1);
+                        noktalar.Add(Math.Min(chain[k].X1 + 50.0, chain[k + 1].X1 - 5.0)); // Mahyanın 50 cm sağında, sağ kolun üst yüzünde.
                 // Karışık zincirin düz kolları: düz kirişteki gibi Ln·3/4.
                 for (int k0 = 0; k0 < chain.Count;)
                 {
@@ -890,7 +890,7 @@ namespace ST4PlanIdCiz
                 KirisAcilimCizgi(tr, ms, at, y + slab.Value.Alt, at, y + slab.Value.Ust, LayerKesitSiniri);
             }
             SlabEnd(k.Sol, x - 15); SlabEnd(k.Sag, x + w + 15);
-            ObjectId stil = GetOrCreatePlanOlcuDimStyle(tr, db, 10, 1, "PLAN_OLCU_25");
+            ObjectId stil = GetOrCreatePlanOlcuDimStyle(tr, db, 10, 1, BeykentOrtak.OlcuStilAdlari.Acilim50_25);
             double ampLo = k.TemelKesit?.EnvelopeInternal.MinX ?? 0, ampHi = k.TemelKesit?.EnvelopeInternal.MaxX ?? w;
             // Temel kesiti: temel planı kesitleriyle aynı 10 cm grobeton; alt ölçü ve başlık grobeton altına.
             double gro = k.TemelKesit != null ? GrobetonUnderFoundationKesitHeightCm : 0.0;

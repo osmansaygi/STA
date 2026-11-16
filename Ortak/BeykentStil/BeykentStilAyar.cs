@@ -79,6 +79,8 @@ namespace BeykentOrtak
         /// <summary>Uzatma çizgileri gizli (donatı oku).</summary>
         [DataMember(Name = "UzatmaGizle", Order = 13)] public bool UzatmaGizle;
         [DataMember(Name = "YaziStili", Order = 14)] public string YaziStili = BeykentStilAyar.YaziBeykent;
+        /// <summary>DIMSCALE: 1/100 paftaya ×2 büyütülen detay stillerinde 2, diğerlerinde 1.</summary>
+        [DataMember(Name = "Buyutme", Order = 15)] public double Buyutme = 1;
 
         public OlcuAyar Kopya() => (OlcuAyar)MemberwiseClone();
 
@@ -87,6 +89,7 @@ namespace BeykentOrtak
         {
             YaziYuksekligi = 12; Olcek = 1; OkBoyu = 3; Tik = true; Ofset = 3; Uzanti = 6; Bosluk = 2;
             Yuvarlama = 0.5; Ondalik = 1; SifirBastir = 12; YaziUstte = true; YaziStili = BeykentStilAyar.YaziBeykent;
+            Buyutme = 1;
         }
     }
 
@@ -195,10 +198,53 @@ namespace BeykentOrtak
         {
             BeykentStilDosya v = Varsayilan();
             if (okunan == null) return v;
+            EskiAdlariTasi(okunan);
             v.Katmanlar = Birlestir(v.Katmanlar, okunan.Katmanlar, k => k.Ad);
             v.OlcuStilleri = Birlestir(v.OlcuStilleri, okunan.OlcuStilleri, o => o.Ad);
+            Pafta100Turet(v.OlcuStilleri, okunan.OlcuStilleri);
             v.YaziStilleri = Birlestir(v.YaziStilleri, okunan.YaziStilleri, y => y.Ad);
             return v;
+        }
+
+        /// <summary>Eski ölçü/yazı stili adlarıyla kaydedilmiş ayarları yeni adlara çevirir (<see cref="OlcuStilAdlari"/>).</summary>
+        private static void EskiAdlariTasi(BeykentStilDosya d)
+        {
+            if (d.OlcuStilleri != null)
+                foreach (OlcuAyar o in d.OlcuStilleri)
+                {
+                    if (o == null) continue;
+                    o.Ad = OlcuStilAdlari.Yeni(o.Ad);
+                    o.YaziStili = OlcuStilAdlari.YeniYazi(o.YaziStili);
+                    if (o.Buyutme <= 0) o.Buyutme = 1;
+                }
+            if (d.YaziStilleri != null)
+                foreach (YaziAyar y in d.YaziStilleri)
+                    if (y != null) y.Ad = OlcuStilAdlari.YeniYazi(y.Ad);
+        }
+
+        /// <summary>
+        /// Dosyada kaydı olmayan 1/100 detay stilleri (… 100-25 / … 100-50) kullanıcının 1/50 kaynağından türetilir
+        /// (aynı değerler, DIMLFAC yarı, DIMSCALE 2); böylece 1/50'de değiştirilen yazı/ok 1/100'e de geçer.
+        /// </summary>
+        private static void Pafta100Turet(List<OlcuAyar> liste, List<OlcuAyar> okunan)
+        {
+            var kayitli = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (okunan != null)
+                foreach (OlcuAyar o in okunan)
+                    if (o != null && !string.IsNullOrWhiteSpace(o.Ad)) kayitli.Add(o.Ad.Trim());
+            for (int i = 0; i < liste.Count; i++)
+            {
+                OlcuAyar o = liste[i];
+                if (o == null || kayitli.Contains(o.Ad)) continue;
+                string kaynak = null;
+                if (o.Ad.EndsWith(" 100-25" + OlcuStilAdlari.Ek, StringComparison.OrdinalIgnoreCase))
+                    kaynak = o.Ad.Replace(" 100-25" + OlcuStilAdlari.Ek, " 50-25" + OlcuStilAdlari.Ek);
+                else if (o.Ad.EndsWith(" 100-50" + OlcuStilAdlari.Ek, StringComparison.OrdinalIgnoreCase))
+                    kaynak = o.Ad.Replace(" 100-50" + OlcuStilAdlari.Ek, " 50" + OlcuStilAdlari.Ek);
+                if (kaynak == null || !kayitli.Contains(kaynak)) continue;
+                OlcuAyar src = Bul(liste, kaynak, x => x.Ad);
+                if (src != null) liste[i] = P100(o.Ad, src);
+            }
         }
 
         private static List<T> Birlestir<T>(List<T> varsayilan, List<T> okunan, Func<T, string> ad) where T : class
@@ -245,9 +291,9 @@ namespace BeykentOrtak
             return null;
         }
 
-        internal static OlcuAyar Olcu(string ad) => Bul(Aktif().OlcuStilleri, ad, o => o.Ad);
-        internal static OlcuAyar OlcuVarsayilan(string ad) => Bul(Varsayilan().OlcuStilleri, ad, o => o.Ad);
-        internal static YaziAyar Yazi(string ad) => Bul(Aktif().YaziStilleri, ad, y => y.Ad);
+        internal static OlcuAyar Olcu(string ad) => Bul(Aktif().OlcuStilleri, OlcuStilAdlari.Yeni(ad), o => o.Ad);
+        internal static OlcuAyar OlcuVarsayilan(string ad) => Bul(Varsayilan().OlcuStilleri, OlcuStilAdlari.Yeni(ad), o => o.Ad);
+        internal static YaziAyar Yazi(string ad) => Bul(Aktif().YaziStilleri, OlcuStilAdlari.YeniYazi(ad), y => y.Ad);
 
         private static T Bul<T>(List<T> liste, string ad, Func<T, string> f) where T : class
         {
@@ -274,6 +320,24 @@ namespace BeykentOrtak
                 Ad = ad, YaziYuksekligi = yazi, OkBoyu = ok, Ofset = ofset, Uzanti = uzanti ?? yazi / 2, Bosluk = gap,
                 Olcek = olcek, SabitUzanti = sabit, Yuvarlama = rnd, Ondalik = dec, SifirBastir = zin, YaziStili = yaziStili
             };
+
+        /// <summary>1/100 paftaya ×2 büyütülen detayın stili: kaynakla aynı değerler, DIMLFAC yarı, DIMSCALE 2.</summary>
+        private static OlcuAyar P100(string ad, OlcuAyar kaynak)
+        {
+            OlcuAyar o = kaynak.Kopya();
+            o.Ad = ad;
+            o.Olcek = kaynak.Olcek / 2.0;
+            o.Buyutme = 2;
+            return o;
+        }
+
+        private static OlcuAyar Ad(OlcuAyar kaynak, string ad, double olcek)
+        {
+            OlcuAyar o = kaynak.Kopya();
+            o.Ad = ad;
+            o.Olcek = olcek;
+            return o;
+        }
 
         internal static BeykentStilDosya Varsayilan()
         {
@@ -380,29 +444,54 @@ namespace BeykentOrtak
                 K("ALT DUZ ALAN (BEYKENT)", 6, 20, yukle: false),
             });
 
+            OlcuAyar donati50 = O(OlcuStilAdlari.Donati50, 10);
+            OlcuAyar etriye50 = O(OlcuStilAdlari.Etriye50, 10, uzanti: 0.18, rnd: 0.1, dec: 1, zin: 8, yaziStili: OlcuStilAdlari.YaziEtriye);
+            OlcuAyar acilim25 = O(OlcuStilAdlari.Acilim50_25, 10, olcek: 0.5, uzanti: 1.25);
+            OlcuAyar detay25 = O(OlcuStilAdlari.Detay50_25, 12, olcek: 0.5, uzanti: 5, sabit: true);
+            OlcuAyar donati25 = O(OlcuStilAdlari.Donati50_25, 10, olcek: 0.5);
+            OlcuAyar etriye25 = Ad(etriye50, OlcuStilAdlari.Etriye50_25, 0.5);
             d.OlcuStilleri.AddRange(new[]
             {
-                O("PLAN_OLCU", 12),
-                O("PLAN_OLCU_100", 18, ok: 4.5, ofset: 4.5, gap: 3),
-                O("AKS_OLCU", 12),
-                O("AKS_OLCU_100", 18, ok: 4.5, ofset: 4.5, gap: 3),
-                O("ILAVE_OLCU", 10, rnd: 1, dec: 0),
-                O("PLAN_OLCU_DONATI", 10),
-                O("PLAN_OLCU 25", 12, olcek: 0.5, uzanti: 5, sabit: true),
-                O("PLAN_OLCU_DONATI 25", 10, olcek: 0.5),
-                O("PLAN_OLCU_25", 10, olcek: 0.5, uzanti: 1.25),
-                O("ETRIYE_OLCU", 10, uzanti: 0.18, rnd: 0.1, dec: 1, zin: 8, yaziStili: "ETRIYE_OLCU_YAZI"),
+                // 1/50 plan ve 1/50 detaylar (×1)
+                O(OlcuStilAdlari.Aks50, 12),
+                O(OlcuStilAdlari.Plan50, 12),
+                donati50,
+                etriye50,
+                O(OlcuStilAdlari.Ilave50, 10, rnd: 1, dec: 0),
                 new OlcuAyar
                 {
-                    Ad = "DONATI OKU (BEYKENT)", YaziYuksekligi = 10, OkBoyu = 10, Tik = false, Ofset = 5, Uzanti = 5,
+                    Ad = OlcuStilAdlari.DonatiOku50, YaziYuksekligi = 10, OkBoyu = 10, Tik = false, Ofset = 5, Uzanti = 5,
                     Bosluk = 2, Yuvarlama = 0, Ondalik = 0, YaziUstte = false, UzatmaGizle = true
                 },
+                // 1/100 plan (yazı, ok, ofset, boşluk ×1.5)
+                O(OlcuStilAdlari.Aks100, 18, ok: 4.5, ofset: 4.5, gap: 3),
+                O(OlcuStilAdlari.Plan100, 18, ok: 4.5, ofset: 4.5, gap: 3),
+                O(OlcuStilAdlari.Ilave100, 15, ok: 4.5, ofset: 4.5, gap: 3, rnd: 1, dec: 0),
+                new OlcuAyar
+                {
+                    Ad = OlcuStilAdlari.DonatiOku100, YaziYuksekligi = 15, OkBoyu = 15, Tik = false, Ofset = 7.5, Uzanti = 7.5,
+                    Bosluk = 3, Yuvarlama = 0, Ondalik = 0, YaziUstte = false, UzatmaGizle = true
+                },
+                // 1/50 pafta, 1/25 detay (×2, DIMLFAC 0.5)
+                acilim25,
+                detay25,
+                donati25,
+                etriye25,
+                // 1/100 pafta, 1/50 detay (×2, DIMLFAC 0.5, DIMSCALE 2)
+                P100(OlcuStilAdlari.Donati100_50, donati50),
+                P100(OlcuStilAdlari.Etriye100_50, etriye50),
+                // 1/100 pafta, 1/25 detay (×4, DIMLFAC 0.25, DIMSCALE 2)
+                P100(OlcuStilAdlari.Acilim100_25, acilim25),
+                P100(OlcuStilAdlari.Detay100_25, detay25),
+                P100(OlcuStilAdlari.Donati100_25, donati25),
+                P100(OlcuStilAdlari.Etriye100_25, etriye25),
+                // OLCU ISKELE 50-100 (DIMLFAC 2) ISKELEPLAN'ın kendi kurallarıyla kurulur; burada yok (davranış korunur).
             });
 
             d.YaziStilleri.AddRange(new[]
             {
                 new YaziAyar { Ad = YaziBeykent },
-                new YaziAyar { Ad = "ETRIYE_OLCU_YAZI", Genislik = 0.7 },
+                new YaziAyar { Ad = OlcuStilAdlari.YaziEtriye, Genislik = 0.7 },
             });
             return d;
         }

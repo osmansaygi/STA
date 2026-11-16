@@ -15,6 +15,8 @@ namespace ST4PlanIdCiz
         private readonly OlcuKutusu _hiza;
         private readonly SegmentSecim _olcek;
         private readonly GirdiDenetci _denetci = new GirdiDenetci();
+        /// <summary>"Akıllı zarf" düğmesiyle kapandı: hizalı kademe adayları denenir, metrajı artırmayan en sadesi çizilir.</summary>
+        private bool _akilli;
         /// <summary>TEMELDONATI: formda seçilen plan ölçeği (yalnız ölçek sorulduğunda).</summary>
         internal static bool Olcek100 { get; private set; }
 
@@ -29,6 +31,7 @@ namespace ST4PlanIdCiz
                     Olcek100 = form._olcek.Secili == 1;
                     PlanFormSettings.Load("temelilave").Set("Olcek100", Olcek100).Save();
                 }
+                TemelIlaveDenemeCommands.AkilliZarf = form._akilli;
                 TemelIlaveKutuBol.MinDilimGenislikCm = form._genislik.Deger;
                 TemelIlaveDenemeCommands.TemelPaspayCm = form._paspay.Deger;
                 TemelIlaveDenemeCommands.DuseyHizaFarkCm = form._hiza.Deger;
@@ -94,15 +97,32 @@ namespace ST4PlanIdCiz
                 FlatStyle = FlatStyle.Flat,
                 DialogResult = DialogResult.Cancel
             };
-            ciz.Click += (s, e) =>
+            var akilli = new Button
+            {
+                Text = "Akıllı zarf",
+                Size = new Size(110, 30),
+                BackColor = Beykent.Monolit.StandardFormTheme.InputBg,
+                ForeColor = Beykent.Monolit.StandardFormTheme.Text,
+                FlatStyle = FlatStyle.Flat
+            };
+            new ToolTip().SetToolTip(akilli,
+                "İlave aralığı yalnız ana aralık ve 1,5 katı (ör. ana /20 → ilave /20, /30).\n" +
+                "Her zarf grubunda en çok 2 çap/aralık; bitişik kutular ortak üst/alt hizada,\n" +
+                "aynı kutular tek kutu. Donatı alanı hiçbir yerde düşmez. Kademe adaylarını\n" +
+                "çizmeden dener, 12 m kesim planlı sipariş ağırlığı en az olanı çizer.\n" +
+                "Adaylar, mevcut zarfın metrajı ve kesim planı komut satırına yazılır.");
+            void Onayla(bool akilliZarf)
             {
                 if (!_denetci.Onayla()) return;
                 PlanFormSettings.Load("temelilave").Set("GenislikCm", (decimal)_genislik.Deger)
                     .Set("PaspayiCm", (decimal)_paspay.Deger).Set("HizaFarkiCm", (decimal)_hiza.Deger).Save();
+                _akilli = akilliZarf;
                 DialogResult = DialogResult.OK;
                 Close();
-            };
-            Controls.AddRange(new Control[] { not, ciz, iptal });
+            }
+            ciz.Click += (s, e) => Onayla(false);
+            akilli.Click += (s, e) => Onayla(true);
+            Controls.AddRange(new Control[] { not, akilli, ciz, iptal });
             AcceptButton = ciz;
             CancelButton = iptal;
 
@@ -111,7 +131,7 @@ namespace ST4PlanIdCiz
             ui.Section(null).Control(not);
             if (olcekSor) ui.Section("Ölçek").Control(_olcek);
             ui.Section(null).Control(_denetci.Serit, 44);
-            ui.Footer(ciz, iptal);
+            ui.Footer(ciz, iptal, akilli);
             ui.Finish();
             _denetci.Guncelle();
         }

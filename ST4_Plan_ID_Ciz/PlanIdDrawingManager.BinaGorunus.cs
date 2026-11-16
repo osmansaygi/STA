@@ -645,7 +645,10 @@ namespace ST4PlanIdCiz
                     if (ShouldOmitSlabFromBinaView(slab)) continue;
                     double zt = floorLevelCm + slab.OffsetFromFloorCm;
                     double th = slab.ThicknessCm > 0 ? slab.ThicknessCm : 15.0;
-                    AddBinaGorunusPlan(faces, bakis, SlabFootprintPoly(slab), zt - th, zt);
+                    if (TryEgimliDosemeGorunusZ(slab, floorLevelCm, out var dz, out double dtv, out double dz0, out double dz1))
+                        AddBinaGorunusPlan(faces, bakis, SlabFootprintPoly(slab), dz0, dz1, null, null, dz, dtv);
+                    else
+                        AddBinaGorunusPlan(faces, bakis, SlabFootprintPoly(slab), zt - th, zt);
                 }
 
                 foreach (var beam in MergeSameIdBeamsOnFloor(floorNo))
@@ -653,7 +656,10 @@ namespace ST4PlanIdCiz
                     double zu = floorLevelCm + Math.Max(beam.Point1KotCm, beam.Point2KotCm);
                     double h = beam.HeightCm > 0 ? beam.HeightCm : (beam.IsWallFlag == 1 ? 40.0 : 30.0);
                     var zTop = EgimliPerdeUstKotU(beam, floorLevelCm, (px, py) => BinaGorunusU(bakis, px, py));
-                    AddBinaGorunusPlan(faces, bakis, BeamFootprintPoly(beam), floorLevelCm + PerdeAltKotRelCm(beam, h), zu, zTop);
+                    if (TryEgimliKirisGorunusZ(beam, floorLevelCm, h, (px, py) => BinaGorunusU(bakis, px, py), out var kTop, out var kBot, out double kz0, out double kz1))
+                        AddBinaGorunusPlan(faces, bakis, BeamFootprintPoly(beam), kz0, kz1, kTop, kBot);
+                    else
+                        AddBinaGorunusPlan(faces, bakis, BeamFootprintPoly(beam), floorLevelCm + PerdeAltKotRelCm(beam, h), zu, zTop);
                 }
                 foreach (var (_, poly, zb, zt) in BinaViewMushroomBeams(floorNo, floorLevelCm))
                     AddBinaGorunusPlan(faces, bakis, poly, zb, zt);
@@ -702,7 +708,7 @@ namespace ST4PlanIdCiz
             }
         }
 
-        private void AddBinaGorunusPlan(List<BinaGorunusFace> faces, BinaGorunusBakis bakis, Geometry plan, double z0, double z1, Func<double, double> zTop = null)
+        private void AddBinaGorunusPlan(List<BinaGorunusFace> faces, BinaGorunusBakis bakis, Geometry plan, double z0, double z1, Func<double, double> zTop = null, Func<double, double> zBot = null, Func<double, double, double> dz = null, double dtv = 0.0)
         {
             if (plan == null || plan.IsEmpty) return;
             if (z1 < z0)
@@ -720,11 +726,11 @@ namespace ST4PlanIdCiz
             {
                 var part = solid.GetGeometryN(i);
                 if (!(part is Polygon)) continue;
-                AddBinaGorunusProjectedRect(faces, bakis, part, z0, z1, zTop);
+                AddBinaGorunusProjectedRect(faces, bakis, part, z0, z1, zTop, zBot, dz, dtv);
             }
         }
 
-        private void AddBinaGorunusProjectedRect(List<BinaGorunusFace> faces, BinaGorunusBakis bakis, Geometry planPoly, double z0, double z1, Func<double, double> zTop = null)
+        private void AddBinaGorunusProjectedRect(List<BinaGorunusFace> faces, BinaGorunusBakis bakis, Geometry planPoly, double z0, double z1, Func<double, double> zTop = null, Func<double, double> zBot = null, Func<double, double, double> dz = null, double dtv = 0.0)
         {
             double u0 = double.MaxValue, u1 = double.MinValue, depth = double.MaxValue;
             var coords = planPoly.Coordinates;
@@ -741,7 +747,8 @@ namespace ST4PlanIdCiz
             }
             if (u1 - u0 < 0.5 || double.IsInfinity(depth)) return;
 
-            Coordinate[] ring = EgimliUstHalka(u0, u1, z0, z1, zTop);
+            if (dz != null) { AddEgimliDosemeGorunusFace(faces, planPoly, dz, dtv, (x, y) => BinaGorunusU(bakis, x, y), depth, double.NegativeInfinity, double.PositiveInfinity); return; }
+            Coordinate[] ring = EgimliUstHalka(u0, u1, z0, z1, zTop, zBot);
             try
             {
                 var rect = _ntsDrawFactory.CreatePolygon(_ntsDrawFactory.CreateLinearRing(ring));

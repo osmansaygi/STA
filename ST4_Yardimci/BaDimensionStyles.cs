@@ -15,21 +15,17 @@ namespace ST4Yardimci
         private static readonly ConditionalWeakTable<Transaction, Dictionary<string, ObjectId>> Cache
             = new ConditionalWeakTable<Transaction, Dictionary<string, ObjectId>>();
 
-        private static string Key(string name)
-        {
-            string key = (name ?? "").Trim().ToUpperInvariant();
-            if (key == "PLAN_OLCU_25") key = "PLAN_OLCU 25";
-            if (key == "PLAN_OLCU_DONATI_25") key = "PLAN_OLCU_DONATI 25";
-            return key;
-        }
+        /// <summary>Eski adları (PLAN_OLCU, PLAN_OLCU_25 …) yeni şemaya çevirir; bkz. <see cref="OlcuStilAdlari"/>.</summary>
+        private static string Key(string name) => OlcuStilAdlari.Yeni(name).ToUpperInvariant();
 
         internal static ObjectId Ensure(Transaction tr, Database db, string name)
         {
             string key = Key(name);
-            if (key.Length == 0) key = "PLAN_OLCU";
+            if (key.Length == 0) key = OlcuStilAdlari.Plan50;
             OlcuAyar ayar = BeykentStilAyar.Olcu(key);
             var cache = Cache.GetOrCreateValue(tr);
             if (cache.TryGetValue(key, out ObjectId cached) && cached.IsValid && !cached.IsErased) return cached;
+            OlcuStilAdlari.CizimiTasi(tr, db);
             var table = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
             // Formdan seçilen özel stiller kendi ayarlarıyla kullanılır.
             if (ayar == null) return table.Has(key) ? table[key] : ObjectId.Null;
@@ -39,7 +35,7 @@ namespace ST4Yardimci
             return id;
         }
 
-        internal static void Apply(Transaction tr, Database db, Dimension dim, ObjectId styleId, string fallback = "PLAN_OLCU")
+        internal static void Apply(Transaction tr, Database db, Dimension dim, ObjectId styleId, string fallback = OlcuStilAdlari.Plan50)
         {
             if (dim == null) return;
             DimStyleTableRecord record = null;
@@ -62,9 +58,9 @@ namespace ST4Yardimci
             EnsureYazi(tr, db);
             foreach (string name in new[]
             {
-                "PLAN_OLCU", "ILAVE_OLCU", "AKS_OLCU", "PLAN_OLCU_100", "AKS_OLCU_100",
-                "PLAN_OLCU_DONATI", "PLAN_OLCU 25", "PLAN_OLCU_DONATI 25",
-                "DONATI OKU (BEYKENT)"
+                OlcuStilAdlari.Plan50, OlcuStilAdlari.Ilave50, OlcuStilAdlari.Aks50, OlcuStilAdlari.Plan100, OlcuStilAdlari.Aks100,
+                OlcuStilAdlari.Donati50, OlcuStilAdlari.Detay50_25, OlcuStilAdlari.Donati50_25,
+                OlcuStilAdlari.DonatiOku50
             })
                 Ensure(tr, db, name);
         }

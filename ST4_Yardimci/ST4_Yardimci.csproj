@@ -88,6 +88,7 @@
   <ItemGroup>
     <Compile Include="..\Ortak\BeykentStil\*.cs" Link="Ortak\%(Filename)%(Extension)" />
     <Compile Include="..\Ortak\Monolit\*.cs" Link="Ortak\Monolit\%(Filename)%(Extension)" />
+    <Compile Include="..\Ortak\Sta4\*.cs" Link="Ortak\Sta4\%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup Condition="'$(AutoCAD2027Build)' == 'true'">
     <Reference Include="System.Management">

@@ -49,3 +49,8 @@ Temel grubuna RADYELEGANTKARSILASTIRMA / "Radye Legant Karşılaştırma" düğm
 ## 02.11.2026 — 1/50 + 1/100 birleşik düğmeler (Claude)
 
 Temel/Kolon/Yapı gruplarında 1/50 ve 1/100 düğme çiftleri tek düğmeye indi: TEMELST4 "Temel Planı", KOLONST4 "Kolon Aplikasyon", KALIPST4 "Kalıp Planı" — ölçek açılışta formda sorulur. Simge `StaMonolitIcons.TryLoad` takma adıyla 1/50 atlas simgesi. STA paletinde "Ölçek 1:50 / 1:100" grupları tek "Planlar (1:50 / 1:100)" grubu. PlanRibbonCheck 23 düğme PASS. Teslim Plan 20261102_150617 + Yardımcı 180538.
+
+## 12.11.2026 — Radye İlave Zarf (Claude)
+
+Temel grubuna RADYEILAVEZARF / "Radye İlave
+Zarf" (TEMELDONATI ile RADYELEGANTKARSILASTIRMA arası); Monolit simgesi `Icons/radye_ilave_zarf_monolit.png` (üreteç `tools/RadyeIlaveZarf20261112/IkonUret`), STA paleti satırı "Radye ilave zarf". PlanRibbonCheck koşulmadı.

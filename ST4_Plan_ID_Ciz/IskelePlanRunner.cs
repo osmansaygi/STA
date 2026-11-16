@@ -32,8 +32,8 @@ namespace ST4PlanIdCiz
         private const string LayerDoseme = "DOSEME SINIRI (BEYKENT)";
         private const string LayerKesitIsmi = "KESIT ISMI (BEYKENT)";
 
-        private const string DimPlanOlcu = "PLAN_OLCU";
-        private const string DimPlanOlcuDetay = "PLAN_OLCU_DETAY";
+        private const string DimPlanOlcu = BeykentOrtak.OlcuStilAdlari.Plan50;
+        private const string DimPlanOlcuDetay = BeykentOrtak.OlcuStilAdlari.Iskele50_100;
         private const string TextStyleYazi = "YAZI (BEYKENT)";
 
         public static void Execute(Document doc)
@@ -544,6 +544,7 @@ namespace ST4PlanIdCiz
 
         private static ObjectId EnsurePlanOlcuDimStyle(Transaction tr, Database db, ObjectId yaziStyleId)
         {
+            BeykentOrtak.OlcuStilAdlari.CizimiTasi(tr, db);
             var dst = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
             if (dst.Has(DimPlanOlcu))
             {
@@ -584,6 +585,7 @@ namespace ST4PlanIdCiz
 
         private static ObjectId EnsurePlanOlcuDetayDimStyle(Transaction tr, Database db, ObjectId yaziStyleId)
         {
+            BeykentOrtak.OlcuStilAdlari.CizimiTasi(tr, db);
             var dst = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
             if (dst.Has(DimPlanOlcuDetay))
             {

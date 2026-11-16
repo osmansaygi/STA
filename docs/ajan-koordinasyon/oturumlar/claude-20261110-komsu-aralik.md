@@ -1,0 +1,11 @@
+# Claude — KIRISACILIMLARI: parçalı kirişte komşu açıklık (tg_01 KZ-03 sol alt gönye)
+- Ajan: Claude Code
+- Güncelleme: 10.11.2026 (Europe/Istanbul)
+- Durum: tamamlandı — rezervasyon yok
+- Görev: KirisAcilimKomsuAralik komşu kirişi ReferenceEquals ile grupluyor; aynı BeamId'li ayrı kayıtlı (parçalı) kirişte komşu yalnız son parça sayılıyor, alt düz donatı düz devam yerine gönyeleniyor. Kirişte BeamId ile gruplanacak (sürekli temel bay klonları ayrı kalır).
+- Kontrol: protokol + son 2 gün kayıtları (aktif yok). Görev başı GUNCEL_2027 = Plan 20261110_195718 + Yardımcı 20261107_222925.
+- Ayrılan: ST4_Plan_ID_Ciz/PlanIdDrawingManager.KirisAcilim.cs, tools/KirisGuse20261110/** (izole derleme/Core Console), docs/modul-durum/ST4_Plan_ID_Ciz.md; yayında NETLOAD/GUNCEL_2027/**, NETLOAD/arsiv.
+- Değişen: ST4_Plan_ID_Ciz/PlanIdDrawingManager.KirisAcilim.cs (KirisAcilimKomsuAralik ve KirisAcilimKonsolTekBasina instance; kirişte BeamId, temelde ReferenceEquals); docs/modul-durum/ST4_Plan_ID_Ciz.md.
+- Doğrulama: izole Release/net10 0 hata. Core Console tg_01 ok (KZ-03 sol alt düz gönyesiz, sol üst ilave 135→195); HHO_01, BYS_T9 birebir; CK, N_ULK_02, BZK_ODS_02, A_TFL yalnız parçalı komşuya taşan ilave boyları + bir montaj yazı yeri.
+- Yayın: GUNCEL_2027 = Plan 20261110_202001 + Yardımcı 20261107_222925 (Publish51 PASS), arşiv NETLOAD/arsiv/GUNCEL_2027_20261110_202244_133. Commit yok. Canlı AutoCAD yok.
+- Açık: montaj run gruplaması (KirisAcilimMontajBirlesik) hâlâ ReferenceEquals; tg_01'de sorun görülmedi, dokunulmadı.

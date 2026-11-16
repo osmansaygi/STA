@@ -16,7 +16,7 @@ namespace ST4Yardimci
     /// X: yatay çubuk (KUTU X). Y: düşey çubuk (KUTU Y). Isı konturu yalnız DrawRecorded yolunda.
     /// X/Y bant+çubuk; TEMEL çukuru banda girerse trim (paspayı) + serbest dilimlere tam boy.
     /// </summary>
-    internal static class RadyeIlaveRunner
+    internal static partial class RadyeIlaveRunner
     {
         internal sealed class RecordedJob
         {
@@ -36,6 +36,7 @@ namespace ST4Yardimci
             var obstacles = new List<(double x0, double x1, double y0, double y1)>();
             var labels = new List<PendingDonatiLabel>();
             int bands = 0;
+            long duzenSeed = DuzenBaslangic(db);
             try
             {
                 RadyeTemelDonatiSettings.TemelYuksekligiCm = 40;
@@ -53,6 +54,7 @@ namespace ST4Yardimci
                     bands += count;
                 }
                 if (labels.Count > 0) FlushPendingDonatiLabels(doc, db, labels, obstacles);
+                DuzenSonIslem(doc, db, doc.Editor, duzenSeed);
                 return bands;
             }
             finally { RadyeTemelDonatiSettings.TemelYuksekligiCm = oldHeight; RadyeTemelDonatiSettings.IlaveUst = oldUpper; }
@@ -67,22 +69,26 @@ namespace ST4Yardimci
         private const string LayerDonatiYazi = "DONATI YAZISI (BEYKENT)";
         private const string LayerDonatiOku = "DONATI OKU (BEYKENT)";
         private const string LayerDonatiHalkasi = "DONATI HALKASI (BEYKENT)";
-        private const string DimStyleDonatiOku = "DONATI OKU (BEYKENT)";
+        /// <summary>1/100 pafta (form seçeneği): yazı, halka, yazı payları ve aks ölçü ofseti 1,5×; ölçüler OLCU DONATI OKU 100 / OLCU ILAVE 100 (kalıp 1/100 gibi).</summary>
+        private static double OlcekCarpani => RadyeTemelDonatiSettings.Olcek100 ? 1.5 : 1.0;
+        private static string DimStyleDonatiOku => RadyeTemelDonatiSettings.Olcek100 ? BeykentOrtak.OlcuStilAdlari.DonatiOku100 : BeykentOrtak.OlcuStilAdlari.DonatiOku50;
         private const string LayerTemel = "TEMEL (BEYKENT)";
         private const string TextStyleYazi = "YAZI (BEYKENT)";
         private const short DonatiOkuAci = 150;
         private const short DonatiHalkasiAci = 2; // sarı
-        private const double DonatiOkuCircleDiaCm = 4.0;
-        private const double DonatiOkuCircleWidthCm = 4.0; // global width
-        private const double DonatiOkuTextClearCm = 20.0; // yazı: halkadan çizgi üzerinde 20 cm
+        /// <summary>Düzenle: halka 1,5 kat küçük (kullanıcı, 12.11.2026).</summary>
+        private static double HalkaCarpani => Duzenle ? 1.0 / 1.5 : 1.0;
+        private static double DonatiOkuCircleDiaCm => 4.0 * OlcekCarpani * HalkaCarpani;
+        private static double DonatiOkuCircleWidthCm => 4.0 * OlcekCarpani * HalkaCarpani; // global width
+        private static double DonatiOkuTextClearCm => 20.0 * OlcekCarpani * (Duzenle ? 0.8 : 1.0); // yazı: halkadan çizgi üzerinde 20 cm (1/100: 30; Düzenle ×0,8)
         private const double DonatiOkuEndClearCm = 40.0; // uçtan min uzaklık
         private const double MinDonatiOkuGapCm = 1.0;
         private const double MinBarLengthCm = 240.0;
         private const double MinHeatAreaCm2 = 3000.0; // daha küçük ısı yok sayılır
         private const double MinSegAfterTrimCm = 20.0;
         private const int MinBandGaps = 7; // min bant = 7 donatı arası
-        private const double DonatiLabelHeightCm = 10.0;
-        private const double DonatiLabelGapCm = 3.0;
+        private static double DonatiLabelHeightCm => 10.0 * OlcekCarpani;
+        private static double DonatiLabelGapCm => 3.0 * OlcekCarpani;
         /// <summary>Kolon/etiket kutusundan min uzaklık (cm) — çubuk kaydırma.</summary>
         private const double ObstacleClearCm = 12.0;
         private const double CleanShiftStepCm = 5.0;
@@ -92,6 +98,143 @@ namespace ST4Yardimci
         private const string LayerPerdeIsmi = "PERDE ISMI (BEYKENT)";
         private const string LayerKapama = "KAPAMA PERDESI (BEYKENT)";
         private const string LayerKapamaIsmi = "KAPAMA PERDESI ISMI (BEYKENT)";
+        // ── Düzenle (form seçeneği, 12.11.2026): nizami yerleşim. Kapalıyken hiçbiri devreye girmez. ──
+        private static bool Duzenle => RadyeTemelDonatiSettings.Duzenle;
+        /// <summary>Çubuğun paralel kiriş/hatıl/perde/kolon/temel kenarından istenen uzaklığı (1/100: 30 cm).</summary>
+        private static double YapiKenarPayCm => 20.0 * OlcekCarpani;
+        /// <summary>Bundan kısa aks ölçüsü çizilmez (Düzenle).</summary>
+        private const double KisaAksOlcuCm = 30.0;
+        /// <summary>Etiket önünde metraj poz balonu için boşluk (Düzenle; 1/100: 30 cm).</summary>
+        private static double PozBalonPayCm => 20.0 * OlcekCarpani;
+        /// <summary>Aks ölçüsü yazı küçültme oranı (Düzenle).</summary>
+        private const double AksOlcuYaziOrani = 0.8;
+        /// <summary>Paralel yapı kenarları: yatay mı, sabit koordinat, boyuna aralık.</summary>
+        private static readonly List<(bool h, double fix, double a0, double a1)> _yapiKenar =
+            new List<(bool h, double fix, double a0, double a1)>();
+        /// <summary>Bu çalıştırmada çizilen oku hatları (ortak hatta toplamak için).</summary>
+        private static readonly List<(bool h, double c, double lo, double hi)> _okuHatlari =
+            new List<(bool h, double c, double lo, double hi)>();
+
+        private static bool IsYapiLayer(string lyr) =>
+            LayerEquals(lyr, LayerKolon) || LayerEquals(lyr, LayerPerde) || LayerEquals(lyr, LayerKapama)
+            || LayerEquals(lyr, LayerTemel) || LayerEquals(lyr, "TEMEL HATILI (BEYKENT)") || LayerEquals(lyr, "KIRIS (BEYKENT)");
+
+        private static void AddYapiKenar(Point2d a, Point2d b)
+        {
+            if (a.GetDistanceTo(b) < 5.0) return;
+            if (Math.Abs(a.Y - b.Y) < 0.5) _yapiKenar.Add((true, 0.5 * (a.Y + b.Y), Math.Min(a.X, b.X), Math.Max(a.X, b.X)));
+            else if (Math.Abs(a.X - b.X) < 0.5) _yapiKenar.Add((false, 0.5 * (a.X + b.X), Math.Min(a.Y, b.Y), Math.Max(a.Y, b.Y)));
+        }
+
+        /// <summary>Çubuk paralel yapı kenarına YapiKenarPay'dan yakınsa ceza (örtüşen boy × yakınlık oranı).</summary>
+        private static double YapiKenarCeza(double fixedCoord, bool horizontalBar, double along0, double along1)
+        {
+            double pay = YapiKenarPayCm, sc = 0;
+            double a0 = Math.Min(along0, along1), a1 = Math.Max(along0, along1);
+            foreach (var k in _yapiKenar)
+            {
+                if (k.h != horizontalBar) continue;
+                double d = Math.Abs(fixedCoord - k.fix);
+                if (d >= pay) continue;
+                double ov = Math.Min(a1, k.a1) - Math.Max(a0, k.a0);
+                if (ov > 0) sc += ov * (pay - d) / pay;
+            }
+            return sc;
+        }
+
+        /// <summary>Açıklık ortasından her 1 cm sapmanın cezası (yazı kesişmesi cm cinsinden örtüşme). Kolon/perde isimleri Düzenle son işleminde çubuktan kaydırıldığından orta tercih güçlü.</summary>
+        private const double AciklikOrtaAgirlik = 2.0;
+
+        /// <summary>
+        /// Düzenle: çubuğun hedef hizası = bant içindeki en geniş açıklığın ortası. Açıklıklar, çubuğun boyuyla ≥ 20 cm
+        /// örtüşen paralel yapı kenarları (kolon, perde, hatıl, kiriş, temel/çukur) ile bant kenarları arasındaki boşluklardır.
+        /// Bant içinde yapı kenarı yoksa ya da en geniş açıklık 60 cm'den darsa NaN (hedef yok, eski davranış).
+        /// </summary>
+        private static double AciklikHedef(bool horizontalBar, double along0, double along1, double bantLo, double bantHi)
+        {
+            double a0 = Math.Min(along0, along1), a1 = Math.Max(along0, along1);
+            if (a1 - a0 < 1.0 || bantHi - bantLo < 1.0) return double.NaN;
+            var sinir = new List<double>();
+            foreach (var k in _yapiKenar)
+            {
+                if (k.h != horizontalBar) continue;
+                if (k.fix <= bantLo + 0.5 || k.fix >= bantHi - 0.5) continue;
+                if (Math.Min(a1, k.a1) - Math.Max(a0, k.a0) < 20.0) continue;
+                sinir.Add(k.fix);
+            }
+            if (sinir.Count == 0) return double.NaN;
+            sinir.Add(bantLo);
+            sinir.Add(bantHi);
+            sinir.Sort();
+            double enGenis = 0, hedef = double.NaN;
+            for (int i = 1; i < sinir.Count; i++)
+            {
+                double g = sinir[i] - sinir[i - 1];
+                if (g > enGenis + 1e-6) { enGenis = g; hedef = 0.5 * (sinir[i] + sinir[i - 1]); }
+            }
+            return enGenis < 60.0 ? double.NaN : hedef;
+        }
+
+        private static double AciklikOrtaCeza(double c, double hedef) =>
+            double.IsNaN(hedef) ? 0 : AciklikOrtaAgirlik * Math.Abs(c - hedef);
+
+        /// <summary>Düzenle: bant içinde engel + yapı kenarı + açıklık ortası cezası en az, eşitlikte ortaya en yakın hiza.</summary>
+        private static double PickDuzenFixedCoord(
+            double preferred, double lo, double hi,
+            bool horizontalBar, double along0, double along1,
+            List<(double x0, double x1, double y0, double y1)> obstacles)
+        {
+            if (hi < lo + 1.0) return preferred;
+            double bantLo = lo, bantHi = hi;
+            double kenarPay = Math.Min(20.0, 0.25 * (hi - lo));
+            lo += kenarPay;
+            hi -= kenarPay;
+            preferred = Math.Max(lo, Math.Min(hi, preferred));
+            double hedef = AciklikHedef(horizontalBar, along0, along1, bantLo, bantHi);
+            double Skor(double c) =>
+                ScoreLineVsObstacles(c, horizontalBar, along0, along1, obstacles)
+                + YapiKenarCeza(c, horizontalBar, along0, along1)
+                + AciklikOrtaCeza(c, hedef)
+                // Aks ölçü çizgisi (X: altta, Y: sağda) de kolon/perde/etikete binmesin
+                + 0.5 * ScoreLineVsObstacles(horizontalBar ? c - AksOlcuOfsetCm : c + AksOlcuOfsetCm, horizontalBar, along0, along1, obstacles)
+                + 0.01 * Math.Abs(c - preferred);
+            double best = preferred, bestScore = Skor(preferred);
+            int n = Math.Max(1, (int)Math.Ceiling((hi - lo) / CleanShiftStepCm));
+            for (int i = 0; i <= n; i++)
+            {
+                double c = lo + (hi - lo) * i / n;
+                double sc = Skor(c);
+                if (sc + 1e-6 < bestScore) { bestScore = sc; best = c; }
+            }
+            return best;
+        }
+
+        /// <summary>
+        /// Düzenle: oku hattı, aynı yönde ve boyuna aralığı çakışmayan önceki bir hatta ≤ 20 cm (1/100: 30)
+        /// yakınsa ve aynı sayıda çubuğu kesiyorsa o hatta çekilir. Hat her durumda kaydedilir.
+        /// </summary>
+        private static double OrtakOkuHatti(
+            List<DonatiOkuSeg> segs, double c, bool horizontalLine,
+            double extLo, double extHi, double spanLo, double spanHi, double minC)
+        {
+            if (!Duzenle || double.IsNaN(c)) return c;
+            double tol = 20.0 * OlcekCarpani;
+            int need = CountUniqueFixedSafeHits(segs, c);
+            double best = c, bestD = double.MaxValue;
+            foreach (var h in _okuHatlari)
+            {
+                if (h.h != horizontalLine) continue;
+                double d = Math.Abs(h.c - c);
+                if (d < 1e-6 || d > tol) continue;
+                if (h.c < spanLo || h.c > spanHi || h.c < minC) continue;
+                if (extHi > h.lo - OkuAyrimCm && extLo < h.hi + OkuAyrimCm) continue; // aynı boyda iki hat üst üste binmesin
+                if (CountUniqueFixedSafeHits(segs, h.c) < need) continue;
+                if (d < bestD) { bestD = d; best = h.c; }
+            }
+            _okuHatlari.Add((horizontalLine, best, extLo, extHi));
+            return best;
+        }
+
         private static readonly double[] PreferStockDivisors =
         {
             240, 300, 400, 600, 1200
@@ -195,6 +338,7 @@ namespace ST4Yardimci
 
                 int ok = 0, fail = 0, totalBars = 0;
                 var drawn = new List<ZarfJob>();
+                long duzenSeed = DuzenBaslangic(db);
                 var sharedObstacles = new List<(double x0, double x1, double y0, double y1)>();
                 var pendingLabels = new List<PendingDonatiLabel>();
 
@@ -258,6 +402,10 @@ namespace ST4Yardimci
 
                 if (drawn.Count > 0)
                     EraseZarfAfterDraw(doc, db, ed, drawn);
+
+                // Düzenle: kolon/perde ismi kaydırma + kalan çakışma işareti
+                if (drawn.Count > 0)
+                    DuzenSonIslem(doc, db, ed, duzenSeed);
 
                 ed.WriteMessage(
                     "\nRADYEILAVECIZ: {0} zarf OK ({1} çubuk dilimi), {2} atlandı.",
@@ -587,7 +735,7 @@ namespace ST4Yardimci
                     tr, btr, st.Outer, st.IsY, st.Bands, st.BarSegs, st.PitEdges,
                     kendiEtiket, okuLyr, halkaLyr, okuDimStyleId, diger);
 
-                DrawAksOlculeri(tr, db, btr, st.IsY, st.Bands, st.BarSegs, okuAlong);
+                DrawAksOlculeri(tr, db, btr, st.IsY, st.Bands, st.BarSegs, okuAlong, Duzenle ? obstacles : null);
 
                 if (!double.IsNaN(okuAlong))
                 {
@@ -598,9 +746,16 @@ namespace ST4Yardimci
                         lo = Math.Min(lo, st.IsY ? b.X0 : b.Y0);
                         hi = Math.Max(hi, st.IsY ? b.X1 : b.Y1);
                     }
-                    double d = AksOlcuOfsetCm + 12.0;
+                    double d = AksOlcuOfsetCm + 12.0 * OlcekCarpani;
                     if (st.IsY) obstacles.Add((lo, hi, okuAlong - d, okuAlong + 6.0));
                     else obstacles.Add((okuAlong - 6.0, okuAlong + d, lo, hi));
+                    if (Duzenle)
+                    {
+                        // Oku ölçü yazısı hattın iki yanına düşebilir: etiketler hattın iki yanından da uzak dursun
+                        double t = 15.0 * OlcekCarpani;
+                        if (st.IsY) obstacles.Add((lo, hi, okuAlong - t, okuAlong + t));
+                        else obstacles.Add((okuAlong - t, okuAlong + t, lo, hi));
+                    }
                 }
 
                 tr.Commit();
@@ -608,7 +763,7 @@ namespace ST4Yardimci
         }
 
         /// <summary>Donatı oku hattı ile paralel başka donatı/ölçü arasında istenen boşluk (cm).</summary>
-        private const double OkuAyrimCm = 25.0;
+        private static double OkuAyrimCm => 25.0 * OlcekCarpani;
 
         /// <summary>1. aşama: bant çubukları, gönye ve etiket kuyruğu; oku çizilmez.</summary>
         private static BandGroupState DrawBandBars(
@@ -653,7 +808,7 @@ namespace ST4Yardimci
                     int adetFull = AdetInBand(adetAxis, aralik);
                     List<Point2d> outerTemel = FindOuterTemel(temelRings, band);
                     var pits = FindPitsInBand(temelRings, band, outerTemel);
-                    CollectPitEdgesForOku(pits, band, isY, pitEdgeCoords);
+                    CollectPitEdgesForOku(pits, band, isY, pitEdgeCoords, aralik);
                     bool doGonye = RadyeTemelDonatiSettings.IlaveGonye;
                     double gonyeLen = RadyeTemelDonatiSettings.EffectiveGonyeBoyuCm;
                     bool isUst = RadyeTemelDonatiSettings.IlaveUst;
@@ -676,7 +831,7 @@ namespace ST4Yardimci
                 {
                     if (s.Hooked) continue;
                     double a0 = Math.Min(s.Along0, s.Along1), a1 = Math.Max(s.Along0, s.Along1);
-                    double d = AksOlcuOfsetCm + 12.0;
+                    double d = AksOlcuOfsetCm + 12.0 * OlcekCarpani;
                     if (isY) obstacles.Add((s.Fixed, s.Fixed + d, a0, a1));
                     else obstacles.Add((a0, a1, s.Fixed - d, s.Fixed));
                 }
@@ -690,8 +845,9 @@ namespace ST4Yardimci
 
         private const string LayerAks = "AKS CIZGISI (BEYKENT)";
         private const string LayerOlcu = "OLCU (BEYKENT)";
-        private const string DimStyleAksKacik = "ILAVE_OLCU";
-        private const double AksOlcuOfsetCm = 15.0;
+        private static string DimStyleAksKacik => RadyeTemelDonatiSettings.Olcek100 ? BeykentOrtak.OlcuStilAdlari.Ilave100 : BeykentOrtak.OlcuStilAdlari.Ilave50;
+        /// <summary>Aks ölçü çizgisinin çubuk/oku hattına uzaklığı. Düzenle: 1/50 10 cm, 1/100 15 cm (yazı çizgi ortasında, ×0,8).</summary>
+        private static double AksOlcuOfsetCm => (Duzenle ? 10.0 : 15.0) * OlcekCarpani;
         private const double AksMaxUzaklikCm = 2000.0;
 
         /// <summary>
@@ -700,7 +856,8 @@ namespace ST4Yardimci
         /// </summary>
         private static void DrawAksOlculeri(
             Transaction tr, Database db, BlockTableRecord btr, bool isY,
-            List<CoverRect> bands, List<DonatiOkuSeg> barSegs, double okuAlong)
+            List<CoverRect> bands, List<DonatiOkuSeg> barSegs, double okuAlong,
+            List<(double x0, double x1, double y0, double y1)> engeller = null)
         {
             // Düşey aks: x sabit (y aralığı); yatay aks: y sabit (x aralığı)
             var dusey = new List<(double c, double lo, double hi)>();
@@ -732,7 +889,7 @@ namespace ST4Yardimci
                     if (s.Hooked) continue;
                     List<double> pts = AksZinciri(cubukAks, s.Along0, s.Along1, s.Fixed);
                     PlaceAksZinciri(tr, db, btr, lyr, styleId, pts, !isY, s.Fixed,
-                        isY ? s.Fixed + AksOlcuOfsetCm : s.Fixed - AksOlcuOfsetCm);
+                        isY ? s.Fixed + AksOlcuOfsetCm : s.Fixed - AksOlcuOfsetCm, engeller, s.Along0, s.Along1);
                 }
             }
 
@@ -747,7 +904,7 @@ namespace ST4Yardimci
             var okuAks = isY ? dusey : yatay;
             List<double> okuPts = AksZinciri(okuAks, lo, hi, okuAlong);
             PlaceAksZinciri(tr, db, btr, lyr, styleId, okuPts, isY, okuAlong,
-                isY ? okuAlong - AksOlcuOfsetCm : okuAlong + AksOlcuOfsetCm);
+                isY ? okuAlong - AksOlcuOfsetCm : okuAlong + AksOlcuOfsetCm, engeller, lo, hi);
         }
 
         /// <summary>[a,b] uçları + aradaki akslar; arada aks yoksa en yakın aks (≤ 20 m). Aks, fixed konumunu kesmeli.</summary>
@@ -774,13 +931,19 @@ namespace ST4Yardimci
 
         private static void PlaceAksZinciri(
             Transaction tr, Database db, BlockTableRecord btr, string layer, ObjectId styleId,
-            List<double> pts, bool alongX, double originCoord, double lineCoord)
+            List<double> pts, bool alongX, double originCoord, double lineCoord,
+            List<(double x0, double x1, double y0, double y1)> engeller = null,
+            double ucA = double.NaN, double ucB = double.NaN)
         {
             if (pts == null || pts.Count < 2) return;
-            for (int i = 0; i < pts.Count - 1; i++)
+            // Yalnız baştaki ve sondaki ölçü: aradaki aks→aks ölçüleri atılmaz (kullanıcı, 11.11.2026)
+            int last = pts.Count - 2;
+            for (int i = 0; i <= last; i++)
             {
+                if (i != 0 && i != last) continue;
                 double p = pts[i], q = pts[i + 1];
                 if (q - p < MinDonatiOkuGapCm) continue;
+                if (Duzenle && q - p < KisaAksOlcuCm) continue;
                 RotatedDimension dim = alongX
                     ? new RotatedDimension(0.0, new Point3d(p, originCoord, 0), new Point3d(q, originCoord, 0),
                         new Point3d(0.5 * (p + q), lineCoord, 0), "", styleId)
@@ -790,6 +953,36 @@ namespace ST4Yardimci
                 btr.AppendEntity(dim);
                 tr.AddNewlyCreatedDBObject(dim, true);
                 BaDimensionStyles.Apply(tr, db, dim, styleId, DimStyleAksKacik);
+                if (Duzenle)
+                {
+                    double txt = dim.Dimtxt;
+                    if (txt > 0) dim.Dimtxt = txt * AksOlcuYaziOrani;
+                    // Stil (kullanıcı, 12.11.2026): iki uç dolu ok, yazı çizginin ortasında (çizgi yazıda kesilir),
+                    // aks tarafında uzatma çizgisi yok; donatı / oku ucunda kısa uzatma = çentik.
+                    try
+                    {
+                        dim.Dimtsz = 0.0;
+                        dim.Dimsah = false;
+                        dim.Dimblk = ObjectId.Null;
+                        dim.Dimasz = Math.Max(0.5, dim.Dimtxt * 0.6);
+                        dim.Dimtad = 0;
+                        dim.Dimtih = false;
+                        dim.Dimtoh = false;
+                        dim.Dimtix = true;
+                        dim.Dimexo = 0.0;
+                        bool Uc(double v) => !double.IsNaN(v) && (Math.Abs(v - ucA) < 0.5 || Math.Abs(v - ucB) < 0.5);
+                        dim.Dimse1 = !Uc(p);
+                        dim.Dimse2 = !Uc(q);
+                    }
+                    catch { }
+                    if (engeller != null)
+                    {
+                        // Ölçü çizgisi + yazısı: etiketler buna binmesin
+                        double ty = Math.Max(1.0, dim.Dimtxt * (dim.Dimscale > 0 ? dim.Dimscale : 1.0)) + 4.0 * OlcekCarpani;
+                        if (alongX) engeller.Add((p, q, lineCoord - ty, lineCoord + ty));
+                        else engeller.Add((lineCoord - ty, lineCoord + ty, p, q));
+                    }
+                }
             }
         }
 
@@ -885,31 +1078,24 @@ namespace ST4Yardimci
         /// Ölçüyü yukarı→çukur→alt diye böler.
         /// </summary>
         private static void CollectPitEdgesForOku(
-            List<List<Point2d>> pits, CoverRect band, bool isY, List<double> edgeCoords)
+            List<List<Point2d>> pits, CoverRect band, bool isY, List<double> edgeCoords, double aralik)
         {
             if (pits == null || edgeCoords == null) return;
+            // X bantta Y kenarları (yatay çubuk / düşey ölçü), Y bantta X kenarları; çubuk dizisiyle aynı ızgaraya oturur.
+            var iv = new List<(double a, double b)>();
             for (int i = 0; i < pits.Count; i++)
             {
                 if (!TryRingAabb(pits[i], out double px0, out double px1, out double py0, out double py1))
                     continue;
-                if (isY)
-                {
-                    // Düşey çubuk / yatay ölçü → çukur X kenarları
-                    double a = Math.Max(band.X0, px0);
-                    double b = Math.Min(band.X1, px1);
-                    if (b - a < 1e-3) continue;
-                    AddUniqueFixed(edgeCoords, a);
-                    AddUniqueFixed(edgeCoords, b);
-                }
-                else
-                {
-                    // Yatay çubuk / düşey ölçü → çukur Y kenarları
-                    double a = Math.Max(band.Y0, py0);
-                    double b = Math.Min(band.Y1, py1);
-                    if (b - a < 1e-3) continue;
-                    AddUniqueFixed(edgeCoords, a);
-                    AddUniqueFixed(edgeCoords, b);
-                }
+                double a = isY ? Math.Max(band.X0, px0) : Math.Max(band.Y0, py0);
+                double b = isY ? Math.Min(band.X1, px1) : Math.Min(band.Y1, py1);
+                if (b - a < 1e-3) continue;
+                iv.Add((a, b));
+            }
+            foreach (var p in SnapPitIntervals(isY ? band.X0 : band.Y0, isY ? band.X1 : band.Y1, iv, aralik))
+            {
+                AddUniqueFixed(edgeCoords, p.a);
+                AddUniqueFixed(edgeCoords, p.b);
             }
         }
 
@@ -995,16 +1181,33 @@ namespace ST4Yardimci
             List<(double x0, double x1, double y0, double y1)> boxes)
         {
             boxes.Clear();
+            _yapiKenar.Clear();
+            _okuHatlari.Clear();
             var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
             var btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForRead);
             double pad = ObstacleClearCm;
             double donatiPad = Math.Max(8.0, ObstacleClearCm * 0.75);
+            bool duzen = Duzenle;
+            // Düzenle: donatı, oku ve ölçüleri kolon/perdeden biraz daha uzak (1/100: 30 cm)
+            double kpad = duzen ? 20.0 * OlcekCarpani : pad;
 
             foreach (ObjectId id in btr)
             {
                 var ent = tr.GetObject(id, OpenMode.ForRead) as Entity;
                 if (ent == null) continue;
                 string lyr = ent.Layer ?? "";
+
+                if (duzen && IsYapiLayer(lyr))
+                {
+                    if (ent is Polyline yp && yp.NumberOfVertices >= 2)
+                    {
+                        for (int i = 0; i < yp.NumberOfVertices - 1; i++)
+                            AddYapiKenar(yp.GetPoint2dAt(i), yp.GetPoint2dAt(i + 1));
+                        if (yp.Closed) AddYapiKenar(yp.GetPoint2dAt(yp.NumberOfVertices - 1), yp.GetPoint2dAt(0));
+                    }
+                    else if (ent is Line yl)
+                        AddYapiKenar(new Point2d(yl.StartPoint.X, yl.StartPoint.Y), new Point2d(yl.EndPoint.X, yl.EndPoint.Y));
+                }
 
                 if (ent is Polyline pl && pl.NumberOfVertices >= 2)
                 {
@@ -1022,8 +1225,8 @@ namespace ST4Yardimci
                         Extents3d e;
                         try { e = pl.GeometricExtents; } catch { continue; }
                         boxes.Add((
-                            e.MinPoint.X - pad, e.MaxPoint.X + pad,
-                            e.MinPoint.Y - pad, e.MaxPoint.Y + pad));
+                            e.MinPoint.X - kpad, e.MaxPoint.X + kpad,
+                            e.MinPoint.Y - kpad, e.MaxPoint.Y + kpad));
                     }
                     continue;
                 }
@@ -1093,6 +1296,7 @@ namespace ST4Yardimci
             bool horizontalBar, double along0, double along1,
             List<(double x0, double x1, double y0, double y1)> obstacles)
         {
+            if (Duzenle) return PickDuzenFixedCoord(preferred, lo, hi, horizontalBar, along0, along1, obstacles);
             if (hi < lo + 1.0) return preferred;
             // Bant kenarı = donatı oku ucu: çubuk kenara oturmasın (mümkünse ≥20 cm içeride)
             double kenarPay = Math.Min(20.0, 0.25 * (hi - lo));
@@ -1198,7 +1402,8 @@ namespace ST4Yardimci
                     doGonye, gonyeLen, isUst, obstacles, pendingLabels, barSegs);
             }
 
-            var freeYs = ComplementIntervals(band.Y0, band.Y1, pitYs);
+            var pitSnap = SnapPitIntervals(band.Y0, band.Y1, pitYs, aralik);
+            var freeYs = ComplementIntervals(band.Y0, band.Y1, SnapAB(pitSnap));
             double minFreeH = Math.Max(5.0, aralik * 0.5);
 
             for (int i = 0; i < freeYs.Count; i++)
@@ -1216,14 +1421,14 @@ namespace ST4Yardimci
                     doGonye, gonyeLen, isUst, obstacles, pendingLabels, barSegs);
             }
 
-            for (int i = 0; i < pitYs.Count; i++)
+            for (int i = 0; i < pitSnap.Count; i++)
             {
-                double hPit = pitYs[i].b - pitYs[i].a;
+                double hPit = pitSnap[i].b - pitSnap[i].a;
                 if (hPit < 1.0) continue;
                 int adet = AdetInBand(hPit, aralik);
-                double yPref = 0.5 * (pitYs[i].a + pitYs[i].b);
+                double yPref = 0.5 * (pitSnap[i].ra + pitSnap[i].rb);
                 double y = PickCleanFixedCoord(
-                    yPref, pitYs[i].a, pitYs[i].b, horizontalBar: true,
+                    yPref, pitSnap[i].ra, pitSnap[i].rb, horizontalBar: true,
                     band.X0, band.X1, obstacles);
                 nBars += DrawClippedHorizontalBars(
                     tr, db, btr, donatiLyr, yaziLyr, yaziStyleId,
@@ -1275,7 +1480,8 @@ namespace ST4Yardimci
                     doGonye, gonyeLen, isUst, obstacles, pendingLabels, barSegs);
             }
 
-            var freeXs = ComplementIntervals(band.X0, band.X1, pitXs);
+            var pitSnap = SnapPitIntervals(band.X0, band.X1, pitXs, aralik);
+            var freeXs = ComplementIntervals(band.X0, band.X1, SnapAB(pitSnap));
             double minFreeW = Math.Max(5.0, aralik * 0.5);
 
             for (int i = 0; i < freeXs.Count; i++)
@@ -1293,14 +1499,14 @@ namespace ST4Yardimci
                     doGonye, gonyeLen, isUst, obstacles, pendingLabels, barSegs);
             }
 
-            for (int i = 0; i < pitXs.Count; i++)
+            for (int i = 0; i < pitSnap.Count; i++)
             {
-                double wPit = pitXs[i].b - pitXs[i].a;
+                double wPit = pitSnap[i].b - pitSnap[i].a;
                 if (wPit < 1.0) continue;
                 int adet = AdetInBand(wPit, aralik);
-                double xPref = 0.5 * (pitXs[i].a + pitXs[i].b);
+                double xPref = 0.5 * (pitSnap[i].ra + pitSnap[i].rb);
                 double x = PickCleanFixedCoord(
-                    xPref, pitXs[i].a, pitXs[i].b, horizontalBar: false,
+                    xPref, pitSnap[i].ra, pitSnap[i].rb, horizontalBar: false,
                     band.Y0, band.Y1, obstacles);
                 nBars += DrawClippedVerticalBars(
                     tr, db, btr, donatiLyr, yaziLyr, yaziStyleId,
@@ -1537,8 +1743,8 @@ namespace ST4Yardimci
             return next;
         }
 
-        private const double IlaveGonyeLabelClearCm = 4.0;
-        private const double IlaveGonyeLabelHeightCm = 8.0;
+        private static double IlaveGonyeLabelClearCm => 4.0 * OlcekCarpani;
+        private static double IlaveGonyeLabelHeightCm => 8.0 * OlcekCarpani;
         private const double BendRadiusCm = 3.0;
 
         /// <summary>Yazı/boy hesabı için gerçek gönye (yükseklik − 2×paspayı); çizim max gönye ile yapılır.</summary>
@@ -1654,6 +1860,45 @@ namespace ST4Yardimci
             }
             list.Add((ca, cb));
             return list;
+        }
+
+        /// <summary>
+        /// Çukur (gönyeli) aralıkları bant başından (lo) donatı aralığı ızgarasına oturtur: başlangıç aşağı, bitiş yukarı
+        /// yuvarlanır (ör. /20'de 77 → 80, 303 → 320), banda kırpılır, çakışanlar birleşir. Böylece gönyeli bölümün
+        /// genişliği aralığın katıdır, çubuklar tam aralıkla dizilir; serbest bölüm kalanı alır.
+        /// Dönen ra/rb: gerçek çukur aralığı (temsilci çubuk bunun içinden seçilir; boy/gönye doğru kalır).
+        /// </summary>
+        private static List<(double a, double b, double ra, double rb)> SnapPitIntervals(
+            double lo, double hi, List<(double a, double b)> pitIv, double aralik)
+        {
+            var sonuc = new List<(double a, double b, double ra, double rb)>();
+            double s = aralik > 0.5 ? aralik : 0;
+            foreach (var p in MergeIntervals(new List<(double a, double b)>(pitIv)))
+            {
+                double a = p.a, b = p.b;
+                if (s > 0)
+                {
+                    a = lo + Math.Floor((p.a - lo) / s + 1e-6) * s;
+                    b = lo + Math.Ceiling((p.b - lo) / s - 1e-6) * s;
+                    a = Math.Max(lo, a);
+                    b = Math.Min(hi, b);
+                }
+                if (sonuc.Count > 0 && a <= sonuc[sonuc.Count - 1].b + 1e-6)
+                {
+                    var o = sonuc[sonuc.Count - 1];
+                    sonuc[sonuc.Count - 1] = (o.a, Math.Max(o.b, b), o.ra, Math.Max(o.rb, p.b));
+                }
+                else
+                    sonuc.Add((a, b, p.a, p.b));
+            }
+            return sonuc;
+        }
+
+        private static List<(double a, double b)> SnapAB(List<(double a, double b, double ra, double rb)> snap)
+        {
+            var l = new List<(double a, double b)>(snap.Count);
+            foreach (var p in snap) l.Add((p.a, p.b));
+            return l;
         }
 
         private static List<(double a, double b)> ComplementIntervals(
@@ -1892,6 +2137,17 @@ namespace ST4Yardimci
                 }
 
                 Extents3d teAligned = t.GeometricExtents;
+                if (Duzenle)
+                {
+                    // Metraj poz balonu yazının önüne (X: solu, Y: altı) gelecek: yazı yarım balon ileri,
+                    // yerleşim kutusu balon payı kadar önden uzatılır.
+                    double bp = PozBalonPayCm;
+                    t.TransformBy(Matrix3d.Displacement(isY ? new Vector3d(0, 0.5 * bp, 0) : new Vector3d(0.5 * bp, 0, 0)));
+                    Extents3d tb = t.GeometricExtents;
+                    teAligned = isY
+                        ? new Extents3d(new Point3d(tb.MinPoint.X, tb.MinPoint.Y - bp, 0), tb.MaxPoint)
+                        : new Extents3d(new Point3d(tb.MinPoint.X - bp, tb.MinPoint.Y, 0), tb.MaxPoint);
+                }
                 double halfAlong = isY
                     ? 0.5 * (teAligned.MaxPoint.Y - teAligned.MinPoint.Y)
                     : 0.5 * (teAligned.MaxPoint.X - teAligned.MinPoint.X);
@@ -1937,11 +2193,16 @@ namespace ST4Yardimci
                 }
 
                 Applied:
+                // Etiket hep çubuğun üstünde (X: üst, Y: sol = döndürülmüş yazının üstü). Çubuğun öbür yanına
+                // (yazı çubuğun altında asılı) atmak kullanıcı isteğiyle kaldırıldı (12.11.2026); çakışma yalnız
+                // çubuk boyunca kaydırılarak çözülür.
+                double dPerp = 0;
+
                 double dAlong = bestAlong - baseAlong;
-                if (Math.Abs(dAlong) > 1e-6)
+                if (Math.Abs(dAlong) > 1e-6 || Math.Abs(dPerp) > 1e-6)
                 {
                     t.TransformBy(Matrix3d.Displacement(
-                        isY ? new Vector3d(0, dAlong, 0) : new Vector3d(dAlong, 0, 0)));
+                        isY ? new Vector3d(dPerp, dAlong, 0) : new Vector3d(dAlong, dPerp, 0)));
                 }
 
                 // Sonraki etiketler bu kutuya binmesin
@@ -1950,6 +2211,10 @@ namespace ST4Yardimci
                     try
                     {
                         Extents3d fin = t.GeometricExtents;
+                        if (Duzenle)
+                            fin = isY
+                                ? new Extents3d(new Point3d(fin.MinPoint.X, fin.MinPoint.Y - PozBalonPayCm, 0), fin.MaxPoint)
+                                : new Extents3d(new Point3d(fin.MinPoint.X - PozBalonPayCm, fin.MinPoint.Y, 0), fin.MaxPoint);
                         double pad = ObstacleClearCm * 0.5;
                         obstacles.Add((
                             fin.MinPoint.X - pad, fin.MaxPoint.X + pad,
@@ -2773,6 +3038,8 @@ namespace ST4Yardimci
                 double dimY = PickDimLineAlongAllBars(barSegs, spanLo, spanHi, preferHigh: false);
                 dimY = OkuHattiniAyir(barSegs, dimY, spanLo, spanHi, pts[0], pts[pts.Count - 1],
                     horizontalLine: true, digerEngeller, double.NegativeInfinity);
+                dimY = OrtakOkuHatti(barSegs, dimY, horizontalLine: true,
+                    pts[0], pts[pts.Count - 1], spanLo, spanHi, double.NegativeInfinity);
                 var hitFixes = CollectHitFixes(barSegs, dimY);
 
                 for (int i = 0; i < pts.Count - 1; i++)
@@ -2814,6 +3081,9 @@ namespace ST4Yardimci
                 dimX = OkuHattiniAyir(barSegs, dimX, spanLo, spanHi, pts[0], pts[pts.Count - 1],
                     horizontalLine: false, digerEngeller,
                     dimX >= labelRight - 0.5 ? labelRight : double.NegativeInfinity);
+                dimX = OrtakOkuHatti(barSegs, dimX, horizontalLine: false,
+                    pts[0], pts[pts.Count - 1], spanLo, spanHi,
+                    dimX >= labelRight - 0.5 ? labelRight : double.NegativeInfinity);
 
                 var hitFixes = CollectHitFixes(barSegs, dimX);
                 for (int i = 0; i < pts.Count - 1; i++)
@@ -2846,7 +3116,7 @@ namespace ST4Yardimci
             List<(double x0, double x1, double y0, double y1)> engeller, double minC)
         {
             if (engeller == null || engeller.Count == 0 || segs == null || segs.Count == 0) return current;
-            double olcu = AksOlcuOfsetCm + 12.0;
+            double olcu = AksOlcuOfsetCm + 12.0 * OlcekCarpani;
             double Skor(double c)
             {
                 // Yatay hat: ölçü altta → [c-olcu-ayrım, c+ayrım]; düşey hat: ölçü sağda → [c-ayrım, c+olcu+ayrım]
@@ -2987,6 +3257,11 @@ namespace ST4Yardimci
                     alongText = preferred;
                 else if (Fits(flipped))
                     alongText = flipped;
+                else if (Duzenle)
+                {
+                    // Düzenle: yazı mecbur kalmadıkça oklar arasında kalsın — sığmayan halka payı yerine ortası
+                    alongText = mid;
+                }
                 else
                 {
                     // İkisi de sıkışık: kenara daha uzak olanı

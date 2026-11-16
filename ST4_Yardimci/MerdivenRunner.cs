@@ -23,7 +23,7 @@ namespace ST4Yardimci
         private const string TextStyleYazi = "YAZI (BEYKENT)";
         private const string LayerYazi = "YAZI (BEYKENT)";
         private const string LayerOlcu = "OLCU (BEYKENT)";
-        private const string DimStylePlanOlcu25 = "PLAN_OLCU 25";
+        private const string DimStylePlanOlcu25 = BeykentOrtak.OlcuStilAdlari.Detay50_25;
 
         private const double Tol = 0.05;
         private const double HitTol = 2.0;

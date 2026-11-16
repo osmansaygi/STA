@@ -1,0 +1,11 @@
+# claude-20261114-sta4-v15-uyum
+
+- Ajan: Claude (Claude Code)
+- Görev: STA4CAD V15 sonuç dosyalarını tanıma (BEA/COL 900→1124, THE 700→892 bayt kayıt); V14 desteği korunur.
+- Güncelleme: 14.11.2026 16:36 (Europe/Istanbul)
+- Durum: tamamlandı — rezervasyon yok
+- Kontrol: protokol + son 2 gün kayıtları (aktif yok). Hedef dosyaları anan eski "aktif" kayıtlar (codex-20261018-150416-kiris-etriye, cursor-20261020-211500-radye-devam) 3-4 hafta eski; sonraki Claude oturumları aynı dosyalarda çalıştı → bayat kabul edildi. Görev başı GUNCEL_2027 = Plan 20261114_151727 + Yardımcı 20261112_222950.
+- Değişen: yeni Ortak/Sta4/Sta4KayitDuzeni.cs; ST4_Plan_ID_Ciz/ST4_Plan_ID_Ciz.csproj, ST4_Yardimci/ST4_Yardimci.csproj, StatikRaporClaude/StatikRaporClaude.csproj (Ortak\Sta4 bağlantısı); ST4_Plan_ID_Ciz/PlanIdDrawingManager.KirisAcilim.cs (BEA adımı), KolonDonatiTableDrawer.cs ve PlanIdDrawingManager.KolonDuseyHcr.cs (COL adımı), PlanIdDrawingManager.SurekliTemelAcilim.cs (iki THE okuması); ST4_Yardimci/SehimTablosuVeri.cs; StatikRaporClaude/Veri/SonucDosyalari.cs, Uretec/NoktaUret.cs, Modern/BetonarmeSonuclari.cs (V15 "ΔM" etiketi); docs/modul-durum/ST4_Plan_ID_Ciz.md, ST4_Yardimci.md, StatikRaporClaude.md; tools/Sta4V15Uyum20261114/** (Build.ps1, Run.ps1, Publish51.ps1, Native probe, DuzenTest).
+- Doğrulama: Plan + Yardımcı izole 2027 0 hata; Yardımcı net48 derleyici 0 hata (izole çıktıda Obfuscar yol adımı düşüyor). DuzenTest (CK_20827_2_02 V14/V15): kayıt boyları ST4'lü/ST4'süz doğru, THE alanları birebir, ofset çevirisi geçti. Core Console sürekli temel açılımı: V14 eski DLL = yeni DLL birebir; V15 yeni DLL donatı yazısı 2782 (eski 2670, V14 2771). StatikRaporClaude --veri: V14 eski = yeni birebir; V15 eski exe OverflowException, yeni BEA/COL GPR eşleşmesi V14 düzeyinde, kiriş betonarme 301 kiriş.
+- Yayın: GUNCEL_2027 = Plan 20261114_162729 + Yardımcı 20261114_162743 (PASS), arşiv NETLOAD/arsiv/GUNCEL_2027_20261114_163315_165. StatikRaporClaude bin/Uygulama derlendi (16:33), --ekran V15 açılıyor. Commit yok. Canlı AutoCAD denenmedi.
+- Açık iş: V15 projesi V15 varsayılan OPS/USE ile çözüldü; ayarlar eşitlenip yeniden çözülünce kalan sayısal farklar (Wk, döşeme Wk) tekrar karşılaştırılmalı. StatikRaporClaude kiriş pilyesini "(pil)" yazıyor, V15 GPR "(pilye)".

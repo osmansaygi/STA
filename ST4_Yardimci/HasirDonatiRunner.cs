@@ -26,7 +26,7 @@ namespace ST4Yardimci
         private const string LayerHasirYon = "HASIR YONU (BEYKENT)";
         private const string LayerOlcu = "OLCU (BEYKENT)";
         private const string TextStyleYazi = "YAZI (BEYKENT)";
-        private const string DimStylePlanOlcu = "PLAN_OLCU";
+        private const string DimStylePlanOlcu = BeykentOrtak.OlcuStilAdlari.Plan50;
         private const double LabelHeightCm = 10.0;
         /// <summary>Yazı kutusu alt kenarı ile diagonal arasındaki boşluk (cm).</summary>
         private const double LabelGapCm = 1.0;

@@ -160,6 +160,11 @@ namespace ST4PlanIdCiz
             var gf = _ntsDrawFactory;
             foreach (var s in slices)
             {
+                if (s.Egimli)
+                {
+                    try { cutPolys.Add(CreateEgimliSliceSchematicPolygon(gf, s, (a, z) => new Coordinate(a, z))); } catch { }
+                    continue;
+                }
                 double a0 = Math.Min(s.A0, s.A1);
                 double a1 = Math.Max(s.A0, s.A1);
                 if (a1 - a0 < 6.0)
@@ -770,7 +775,7 @@ namespace ST4PlanIdCiz
             double baseCm = _model.BuildingBaseKotu * 100.0;
             double behindMin = cutPos + BinaKesitBehindEpsCm;
 
-            void addPlan(Geometry plan, double z0, double z1, Func<double, double> zTop = null)
+            void addPlan(Geometry plan, double z0, double z1, Func<double, double> zTop = null, Func<double, double> zBot = null, Func<double, double, double> dz = null, double dtv = 0.0)
             {
                 if (plan == null || plan.IsEmpty) return;
                 if (z1 < z0) { double t = z0; z0 = z1; z1 = t; }
@@ -782,7 +787,7 @@ namespace ST4PlanIdCiz
                 for (int i = 0; i < solid.NumGeometries; i++)
                 {
                     if (!(solid.GetGeometryN(i) is Polygon part)) continue;
-                    AddBinaKesitBackgroundRect(faces, yon, cutPos, behindMin, part, z0, z1, zTop);
+                    AddBinaKesitBackgroundRect(faces, yon, cutPos, behindMin, part, z0, z1, zTop, zBot, dz, dtv);
                 }
             }
 
@@ -815,7 +820,10 @@ namespace ST4PlanIdCiz
                     if (ShouldOmitSlabFromBinaView(slab)) continue;
                     double zt = floorLevelCm + slab.OffsetFromFloorCm;
                     double th = slab.ThicknessCm > 0 ? slab.ThicknessCm : 15.0;
-                    addPlan(SlabFootprintPoly(slab), zt - th, zt);
+                    if (TryEgimliDosemeGorunusZ(slab, floorLevelCm, out var dz, out double dtv, out double dz0, out double dz1))
+                        addPlan(SlabFootprintPoly(slab), dz0, dz1, null, null, dz, dtv);
+                    else
+                        addPlan(SlabFootprintPoly(slab), zt - th, zt);
                 }
 
                 foreach (var beam in MergeSameIdBeamsOnFloor(floorNo))
@@ -823,7 +831,10 @@ namespace ST4PlanIdCiz
                     double zu = floorLevelCm + Math.Max(beam.Point1KotCm, beam.Point2KotCm);
                     double h = beam.HeightCm > 0 ? beam.HeightCm : (beam.IsWallFlag == 1 ? 40.0 : 30.0);
                     var zTop = EgimliPerdeUstKotU(beam, floorLevelCm, (px, py) => yon == BinaKesitYon.X ? px : py);
-                    addPlan(BeamFootprintPoly(beam), floorLevelCm + PerdeAltKotRelCm(beam, h), zu, zTop);
+                    if (TryEgimliKirisGorunusZ(beam, floorLevelCm, h, (px, py) => yon == BinaKesitYon.X ? px : py, out var kTop, out var kBot, out double kz0, out double kz1))
+                        addPlan(BeamFootprintPoly(beam), kz0, kz1, kTop, kBot);
+                    else
+                        addPlan(BeamFootprintPoly(beam), floorLevelCm + PerdeAltKotRelCm(beam, h), zu, zTop);
                 }
                 foreach (var (_, poly, zb, zt) in BinaViewMushroomBeams(floorNo, floorLevelCm))
                     addPlan(poly, zb, zt);
@@ -900,7 +911,8 @@ namespace ST4PlanIdCiz
             Geometry planPoly,
             double z0,
             double z1,
-            Func<double, double> zTop = null)
+            Func<double, double> zTop = null,
+            Func<double, double> zBot = null, Func<double, double, double> dz = null, double dtv = 0.0)
         {
             double u0 = double.MaxValue, u1 = double.MinValue;
             double dMin = double.MaxValue, dMax = double.MinValue;
@@ -924,7 +936,8 @@ namespace ST4PlanIdCiz
             if (dMax < behindMin) return;
 
             double depth = dMin;
-            Coordinate[] ring = EgimliUstHalka(u0, u1, z0, z1, zTop);
+            if (dz != null) { AddEgimliDosemeGorunusFace(faces, planPoly, dz, dtv, (x, y) => yon == BinaKesitYon.X ? x : y, depth, double.NegativeInfinity, double.PositiveInfinity); return; }
+            Coordinate[] ring = EgimliUstHalka(u0, u1, z0, z1, zTop, zBot);
             try
             {
                 var rect = _ntsDrawFactory.CreatePolygon(_ntsDrawFactory.CreateLinearRing(ring));

@@ -380,11 +380,13 @@ namespace ST4PlanIdCiz
                 gprMeta = SurekliTemelParseStatikSpanMeta(st4Path, tmx.Count);
             int n = Math.Max(tmx.Count, gprMeta.Count);
             byte[] analysis = null;
+            int theRec = 700;   // V14 700, V15 892 bayt; okunan +10..+44 iki sürümde aynı yerde
             string thePath = Path.ChangeExtension(st4Path, ".THE");
             if (File.Exists(thePath))
             {
                 var bytes = File.ReadAllBytes(thePath);
-                if (bytes.Length == n * 700) analysis = bytes;
+                theRec = BeykentOrtak.Sta4KayitDuzeni.The(bytes.Length, st4Path, n).Boy;
+                if (bytes.Length == n * theRec) analysis = bytes;
             }
             // Kolon adları yalnız TEMEL STATİK tablosunda: betonarme metni kullanılsa da aynı sıradan alınır.
             var adlar = SurekliTemelParseStatikSpanMeta(st4Path, n);
@@ -393,11 +395,11 @@ namespace ST4PlanIdCiz
                 var kay = new SurekliTemelSpanKayit();
                 if (analysis != null)
                 {
-                    kay.N1 = BitConverter.ToInt16(analysis, i * 700 + 10);
-                    kay.N2 = BitConverter.ToInt16(analysis, i * 700 + 12);
+                    kay.N1 = BitConverter.ToInt16(analysis, i * theRec + 10);
+                    kay.N2 = BitConverter.ToInt16(analysis, i * theRec + 12);
                     kay.UcStub = kay.N1 == 0 || kay.N2 == 0;
-                    kay.P1 = new Point2d(BitConverter.ToSingle(analysis, i * 700 + 32), BitConverter.ToSingle(analysis, i * 700 + 36));
-                    kay.P2 = new Point2d(BitConverter.ToSingle(analysis, i * 700 + 40), BitConverter.ToSingle(analysis, i * 700 + 44));
+                    kay.P1 = new Point2d(BitConverter.ToSingle(analysis, i * theRec + 32), BitConverter.ToSingle(analysis, i * theRec + 36));
+                    kay.P2 = new Point2d(BitConverter.ToSingle(analysis, i * theRec + 40), BitConverter.ToSingle(analysis, i * theRec + 44));
                     kay.Koordinatli = !double.IsNaN(kay.P1.X + kay.P1.Y + kay.P2.X + kay.P2.Y)
                         && Math.Abs(kay.P1.X) < 1e5 && Math.Abs(kay.P2.X) < 1e5 && Math.Abs(kay.P1.Y) < 1e5 && Math.Abs(kay.P2.Y) < 1e5;
                 }
@@ -447,7 +449,8 @@ namespace ST4PlanIdCiz
             WindowsAnsiEncodings.EnsureRegistered();
             string text = File.ReadAllText(gpr, Encoding.GetEncoding(857));
             byte[] data = File.ReadAllBytes(the);
-            if (count <= 0 || data.Length != count * 700) return result;
+            int rec = BeykentOrtak.Sta4KayitDuzeni.The(data.Length, st4Path, count).Boy;   // V14 700, V15 892; +32..+44 yerinde
+            if (count <= 0 || data.Length != count * rec) return result;
             int start = text.IndexOf("TEMEL STAT", StringComparison.OrdinalIgnoreCase);
             if (start < 0) return result;
             int tNo = 0;
@@ -459,7 +462,7 @@ namespace ST4PlanIdCiz
                     if (match.Success) tNo = int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
                 }
                 if (tNo <= 0 || line.IndexOf("Xac=", StringComparison.OrdinalIgnoreCase) < 0) continue;
-                int offset = result.Count * 700;
+                int offset = result.Count * rec;
                 if (offset + 48 > data.Length) return new List<SurekliTemelGprSpanMeta>();
                 double dx = BitConverter.ToSingle(data, offset + 40) - BitConverter.ToSingle(data, offset + 32);
                 double dy = BitConverter.ToSingle(data, offset + 44) - BitConverter.ToSingle(data, offset + 36);

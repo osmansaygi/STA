@@ -163,7 +163,8 @@ namespace BeykentOrtak
         internal static ObjectId YaziStili(Transaction tr, Database db, string ad, bool varsaGuncelle)
         {
             if (string.IsNullOrWhiteSpace(ad)) ad = BeykentStilAyar.YaziBeykent;
-            ad = ad.Trim();
+            ad = OlcuStilAdlari.YeniYazi(ad);
+            if (string.Equals(ad, OlcuStilAdlari.YaziEtriye, StringComparison.OrdinalIgnoreCase)) OlcuStilAdlari.CizimiTasi(tr, db);
             YaziAyar a = BeykentStilAyar.Yazi(ad) ?? new YaziAyar { Ad = ad };
             var table = (TextStyleTable)tr.GetObject(db.TextStyleTableId, OpenMode.ForRead);
             if (table.Has(ad))
@@ -186,7 +187,7 @@ namespace BeykentOrtak
         internal static void OlcuStiliYapilandir(DimStyleTableRecord record, OlcuAyar a, ObjectId textStyle, ObjectId continuous)
         {
             record.Dimtxsty = textStyle;
-            record.Dimscale = 1;
+            record.Dimscale = a.Buyutme > 0 ? a.Buyutme : 1;
             record.Dimlfac = a.Olcek;
             record.Dimtxt = a.YaziYuksekligi;
             record.Dimblk = record.Dimblk1 = record.Dimblk2 = record.Dimldrblk = ObjectId.Null;
@@ -227,6 +228,7 @@ namespace BeykentOrtak
         /// <summary>Ölçü stilini ayardan oluşturur ya da var olanın üzerine yazar.</summary>
         internal static ObjectId OlcuStiliYaz(Transaction tr, Database db, OlcuAyar a)
         {
+            OlcuStilAdlari.CizimiTasi(tr, db);
             ObjectId text = YaziStili(tr, db, a.YaziStili, false);
             var table = (DimStyleTable)tr.GetObject(db.DimStyleTableId, OpenMode.ForRead);
             DimStyleTableRecord record;
@@ -262,6 +264,7 @@ namespace BeykentOrtak
                 if (!rec.IsWriteEnabled) rec.UpgradeOpen();
                 if (Fark(a.YaziYuksekligi, v.YaziYuksekligi)) rec.Dimtxt = a.YaziYuksekligi;
                 if (Fark(a.Olcek, v.Olcek)) rec.Dimlfac = a.Olcek;
+                if (Fark(a.Buyutme, v.Buyutme) && a.Buyutme > 0) rec.Dimscale = a.Buyutme;
                 if (Fark(a.OkBoyu, v.OkBoyu) || a.Tik != v.Tik)
                 {
                     rec.Dimasz = a.OkBoyu;

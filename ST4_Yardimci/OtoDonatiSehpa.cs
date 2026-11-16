@@ -150,11 +150,22 @@ namespace ST4Yardimci
 
                     int n;
                     string etiket;
+                    long ilkHandle = db.Handseed.Value;
                     using (doc.LockDocument())
                     using (var tr = db.TransactionManager.StartTransaction())
                     {
                         n = SehpaDonatiRunner.InsertBottomLeft(tr, db, at, out etiket);
                         tr.Commit();
+                    }
+                    // OTODONATI 1/100: sehpa detayı 1/100 paftada 1/25 (SEHPADONATI 1/100 gibi ×2, ölçü 100-25);
+                    // sol alt köşe sabit, antetin üstünde yukarı büyür.
+                    if (n >= 0 && OtoDonatiSettings.Olcek100)
+                    {
+                        using (doc.LockDocument())
+                        {
+                            int b = BeykentOrtak.PaftaOlcek.BuyutYeniKose(db, ilkHandle, ust: false);
+                            if (b > 0) ed.WriteMessage("\nOTODONATICIZ sehpa: 1/100 pafta, detay 1/25 (×2, {0} nesne).", b);
+                        }
                     }
 
                     if (n < 0)

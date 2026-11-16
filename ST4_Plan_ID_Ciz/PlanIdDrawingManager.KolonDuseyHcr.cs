@@ -97,7 +97,7 @@ namespace ST4PlanIdCiz
                 ? kisa[r] > 0 && bx[r] + by[r] >= 6 * kisa[r]
                 : Math.Min(bx[r], by[r]) > 0 && Math.Max(bx[r], by[r]) >= 6 * Math.Min(bx[r], by[r]);
 
-            // COL üst/alt düğüm (+0/+2 int16, 900 bayt).
+            // COL üst/alt düğüm (+0/+2 int16; kayıt V14 900, V15 1124 bayt).
             int[] ni = null, nj = null;
             string colPath = Path.ChangeExtension(st4Path, ".COL");
             try
@@ -105,10 +105,11 @@ namespace ST4PlanIdCiz
                 if (File.Exists(colPath))
                 {
                     byte[] cb = File.ReadAllBytes(colPath);
-                    if (cb.Length / 900 >= n)
+                    int rec = BeykentOrtak.Sta4KayitDuzeni.Col(cb.Length, st4Path, n).Boy;
+                    if (cb.Length / rec >= n)
                     {
                         ni = new int[n]; nj = new int[n];
-                        for (int r = 0; r < n; r++) { ni[r] = BitConverter.ToInt16(cb, r * 900); nj[r] = BitConverter.ToInt16(cb, r * 900 + 2); }
+                        for (int r = 0; r < n; r++) { ni[r] = BitConverter.ToInt16(cb, r * rec); nj[r] = BitConverter.ToInt16(cb, r * rec + 2); }
                     }
                 }
             }

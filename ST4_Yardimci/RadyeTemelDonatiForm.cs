@@ -21,6 +21,10 @@ namespace ST4Yardimci
         public static double AralikCm { get; set; } = 15;
         /// <summary>true = üst ilave (üst); false = alt ilave (alt).</summary>
         public static bool IlaveUst { get; set; }
+        /// <summary>1/100 pafta: yazı, donatı oku ve aks ölçüsü 1,5× (OLCU DONATI OKU 100 / OLCU ILAVE 100).</summary>
+        public static bool Olcek100 { get; set; }
+        /// <summary>Düzenli yerleşim (12.11.2026): çubuk kiriş/perde kenarından uzak, sabit ölçü ofseti, ortak oku hattı, etiket ölçüye binmez. Kapalıyken eski davranış.</summary>
+        public static bool Duzenle { get; set; }
 
         static bool _loaded;
 
@@ -35,6 +39,8 @@ namespace ST4Yardimci
             GonyeBoyuMaxCm = BaIni.GetD(m, "GonyeBoyuMaxCm", GonyeBoyuMaxCm);
             AralikCm = BaIni.GetD(m, "AralikCm", AralikCm);
             IlaveUst = BaIni.GetB(m, "IlaveUst", IlaveUst);
+            Olcek100 = BaIni.GetB(m, "Olcek100", Olcek100);
+            Duzenle = BaIni.GetB(m, "Duzenle", Duzenle);
         }
 
         public static void Save()
@@ -46,7 +52,9 @@ namespace ST4Yardimci
                 "IlaveGonye=" + BaIni.B(IlaveGonye),
                 "GonyeBoyuMaxCm=" + BaIni.N(GonyeBoyuMaxCm),
                 "AralikCm=" + BaIni.N(AralikCm),
-                "IlaveUst=" + BaIni.B(IlaveUst));
+                "IlaveUst=" + BaIni.B(IlaveUst),
+                "Olcek100=" + BaIni.B(Olcek100),
+                "Duzenle=" + BaIni.B(Duzenle));
         }
 
         /// <summary>Etiket son eki: "(üst)" / "(alt)".</summary>
@@ -85,8 +93,10 @@ namespace ST4Yardimci
         private readonly OlcuKutusu _numPaspayi;
         private readonly OlcuKutusu _numAralik;
         private readonly CheckBox _chkIlaveGonye;
+        private readonly CheckBox _chkDuzenle;
         private readonly OlcuKutusu _numGonyeMax;
         private readonly SegmentSecim _ilaveKat;
+        private readonly SegmentSecim _olcek;
         private readonly GirdiDenetci Denetci = new GirdiDenetci();
         private readonly Button _btnRun;
         private readonly Button _btnClose;
@@ -158,7 +168,7 @@ namespace ST4Yardimci
             ShowInTaskbar = false;
             MinimizeBox = false;
             MaximizeBox = false;
-            ClientSize = new Size(360, 360);
+            ClientSize = new Size(360, 400);
             BackColor = Beykent.Monolit.StandardFormTheme.Bg;
             ForeColor = Color.White;
             Font = new SdFont("Segoe UI", 9f);
@@ -177,7 +187,16 @@ namespace ST4Yardimci
                 BackColor = Color.Transparent
             };
             Controls.Add(_chkIlaveGonye);
+            _chkDuzenle = new CheckBox
+            {
+                Text = "Düzenle (nizami yerleşim)",
+                AutoSize = true,
+                ForeColor = Color.White,
+                BackColor = Color.Transparent
+            };
+            Controls.Add(_chkDuzenle);
             _ilaveKat = new SegmentSecim("Alt ilave", "Üst ilave");
+            _olcek = new SegmentSecim("1/50 pafta", "1/100 pafta (×1,5)");
             LoadFromSettings();
 
             Denetci.UyariKurali(() => _chkIlaveGonye.Checked && _numYukseklik.Deger - 2 * _numPaspayi.Deger <= 0.5
@@ -218,8 +237,12 @@ namespace ST4Yardimci
                 .Field("Yedek aralık", _numAralik)
                 .Options(_chkIlaveGonye)
                 .FieldWhen(() => _chkIlaveGonye.Checked, new Label { Text = "Gönye max" }, _numGonyeMax);
+            ui.Section("Pafta ölçeği").Control(_olcek);
+            ui.Section("Yerleşim").Options(_chkDuzenle);
             ui.Section(null).Control(Denetci.Serit, 44);
             ui.Tip(_numAralik, "KUTU X yazısı yoksa kullanılan aralık.");
+            ui.Tip(_chkDuzenle, "Çubuk kiriş/perde/kolon kenarından uzak; aks ölçüsü çubuktan ve oktan sabit uzaklıkta, küçük yazılı, 30 cm altı aks ölçüsü yok; yakın ok hatları ortak hatta; etiket ölçü yazısına binmez. Kapalıyken eski çizim.");
+            ui.Tip(_olcek, "1/100: donatı yazısı, gönye yazısı, donatı oku ve aks ölçüsü 1,5× (kalıp 1/100 gibi).");
             ui.Tip(_numGonyeMax, "Gönye için en büyük boy; gerçek gönye = yükseklik − 2×paspayı.");
             ui.Footer(_btnRun, _btnClose);
             ui.Finish();
@@ -251,6 +274,8 @@ namespace ST4Yardimci
             _chkIlaveGonye.Checked = RadyeTemelDonatiSettings.IlaveGonye;
             _numGonyeMax.Deger = Kirp(Math.Round(RadyeTemelDonatiSettings.GonyeBoyuMaxCm), 5, 200);
             _ilaveKat.Secili = RadyeTemelDonatiSettings.IlaveUst ? 1 : 0;
+            _olcek.Secili = RadyeTemelDonatiSettings.Olcek100 ? 1 : 0;
+            _chkDuzenle.Checked = RadyeTemelDonatiSettings.Duzenle;
         }
 
         private void PushSettings()
@@ -261,6 +286,8 @@ namespace ST4Yardimci
             RadyeTemelDonatiSettings.IlaveGonye = _chkIlaveGonye.Checked;
             RadyeTemelDonatiSettings.GonyeBoyuMaxCm = _numGonyeMax.Deger;
             RadyeTemelDonatiSettings.IlaveUst = _ilaveKat.Secili == 1;
+            RadyeTemelDonatiSettings.Olcek100 = _olcek.Secili == 1;
+            RadyeTemelDonatiSettings.Duzenle = _chkDuzenle.Checked;
             RadyeTemelDonatiSettings.Save();
         }
 

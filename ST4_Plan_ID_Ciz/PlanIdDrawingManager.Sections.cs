@@ -161,6 +161,17 @@ namespace ST4PlanIdCiz
             /// <summary>Bu dilim sürekli temelin <b>ampatman basamağı</b> (gövdeden daha geniş alt kısım). Temel arası dolgu
             /// hesaplanırken bu dilim gövde sayılmaz; dolgu gövde sınırına kadar uzar, ampatmanın üstü taranmaz.</summary>
             public bool IsAmpatmanBase;
+            /// <summary>Eğimli döşeme/kiriş dilimi: alt/üst kot A0'da EZ0a/EZ1a, A1'de EZ0b/EZ1b (şemada dörtgen).
+            /// Z0/Z1 bu dilimde zarf (en alt / en üst) olarak kalır. false ise dikdörtgen (eski davranış).</summary>
+            public bool Egimli;
+            public double EZ0a, EZ1a, EZ0b, EZ1b;
+            /// <summary>Eğimli birleşim çokgeni: üst ve alt kenar kırık çizgileri (soldan sağa, A/Z). null ise köşe kotları
+            /// (EZ*) dörtgeni kullanılır. Miter uçlu döşeme ve eğim çizgisini izleyen kiriş üstü için.</summary>
+            public double[] UstA, UstZ, AltA, AltZ;
+            /// <summary>Eğimli döşemeden gelen dilimde plan kalınlığı (cm, üst çizgiye dik); 0 = eğimsiz döşeme.</summary>
+            public double DikKalinlik;
+            /// <summary>Kiriş dilimi: gerçek kiriş yüksekliği (cm). Eğimli (veya eğime uyarlanan) kirişte ölçü bu değeri yazar.</summary>
+            public double GercekYukseklik;
         }
 
         private List<Geometry> BuildStairAvoidZonesForFloor(FloorInfo floor)
@@ -1038,7 +1049,7 @@ namespace ST4PlanIdCiz
             // sol detayın grobeton taraması sağ-üst köşesi kesit grobetonunun sol-alt altına oturur.
             if (isFoundationPlan && !double.IsNaN(groMinXT))
             {
-                DrawTemelDetayDrawings(tr, btr, groMinXT, groBottomYT, groMaxXT, groBottomYT, rotationRad: 0,
+                DrawTemelDetayDrawings(tr, btr, groMinXT, double.IsNaN(_grobetonUc0) ? groBottomYT : _grobetonUc0, groMaxXT, double.IsNaN(_grobetonUc1) ? groBottomYT : _grobetonUc1, rotationRad: 0,
                     out double detMinX, out double detMaxX, out double detMinY, out double detMaxY);
                 if (!double.IsNaN(detMinX))
                 {
@@ -1112,7 +1123,7 @@ namespace ST4PlanIdCiz
             // Sağ detayın grobeton sol-üstü dış kenarın üst ucuna, sol detayın grobeton sağ-üstü alt uca oturur.
             if (isFoundationPlan && !double.IsNaN(groMaxXL) && !double.IsNaN(groTopYL))
             {
-                DrawTemelDetayDrawings(tr, btr, groMaxXL, groBottomYL, groMaxXL, groTopYL, rotationRad: Math.PI * 0.5,
+                DrawTemelDetayDrawings(tr, btr, double.IsNaN(_grobetonUc0) ? groMaxXL : _grobetonUc0, groBottomYL, double.IsNaN(_grobetonUc1) ? groMaxXL : _grobetonUc1, groTopYL, rotationRad: Math.PI * 0.5,
                     out double detMinX, out double detMaxX, out double detMinY, out double detMaxY);
                 if (!double.IsNaN(detMinX))
                 {
@@ -1701,6 +1712,11 @@ namespace ST4PlanIdCiz
             var slicePolys = new List<Geometry>();
             foreach (var s in groupSlices.OrderBy(x => x.Order).ThenBy(x => x.Z0))
             {
+                if (s.Egimli)
+                {
+                    slicePolys.Add(CreateEgimliSliceSchematicPolygon(gf, s, (a, z) => new Coordinate(originX + (a - amin), originY + (z - minZ))));
+                    continue;
+                }
                 double x0 = originX + (s.A0 - amin);
                 double x1 = originX + (s.A1 - amin);
                 if (x1 - x0 < 6.0) { double m = (x0 + x1) * 0.5; x0 = m - 4.0; x1 = m + 4.0; }
@@ -1830,6 +1846,11 @@ namespace ST4PlanIdCiz
                 double z1n = s.Z1;
                 if (z1n <= z0n + tol)
                     continue;
+                if (s.Egimli && zMid <= s.Z0 + tol)
+                {
+                    outList.Add(CloneEgimliSliceA(s, s.A0, s.A1));
+                    continue;
+                }
                 outList.Add(new SectionSlice
                 {
                     A0 = s.A0,
@@ -1957,7 +1978,7 @@ namespace ST4PlanIdCiz
                     {
                         var firstFloor = _model.Floors[0];
                         Geometry firstFloorUnion = BuildFloorElementUnion(firstFloor);
-                        var firstFloorAxisExt = GetAksSiniriEnvelope(firstFloorUnion);
+                        var firstFloorAxisExt = GetAksSiniriEnvelope(firstFloorUnion, firstFloor);
                         candidates.Add((firstFloor, true, 0.0, 0.0, firstFloorAxisExt, firstFloorUnion));
                     }
                     for (int floorIdx = 0; floorIdx < _model.Floors.Count; floorIdx++)
@@ -1966,7 +1987,7 @@ namespace ST4PlanIdCiz
                         double offsetX = (floorIdx + planStartIndex) * (floorWidth + floorGap);
                         double offsetY = 0.0;
                         Geometry elemUnion = BuildFloorElementUnion(floor);
-                        var floorAxisExt = GetAksSiniriEnvelope(elemUnion);
+                        var floorAxisExt = GetAksSiniriEnvelope(elemUnion, floor);
                         candidates.Add((floor, false, offsetX, offsetY, floorAxisExt, elemUnion));
                     }
                     if (candidates.Count == 0)
@@ -2148,18 +2169,20 @@ namespace ST4PlanIdCiz
             out double groMinX, out double groMaxX, out double groBottomY, out double groTopY)
         {
             groMinX = groMaxX = groBottomY = groTopY = double.NaN;
+            _grobetonUc0 = _grobetonUc1 = double.NaN;
             if (slices == null || slices.Count == 0) return;
             const string layerTemel = "TEMEL (BEYKENT)";
             double h = GrobetonUnderFoundationKesitHeightCm;
             var grobetonRects = new List<Geometry>();
             var factory = StaticGeomFactory;
             var radyeKademe = FindRadyeKademeAraliklari(slices);
+            var radyeLokal = FindRadyeLokalUclari(slices);
             foreach (var s in slices)
             {
                 if (s.Layer != layerTemel) continue;
                 if (s.Order != SectionOrderContinuousFoundation && s.Order != SectionOrderSingleFooting && s.Order != SectionOrderSlabFoundation)
                     continue;
-                foreach (var (aLo, aHi) in RadyeKademeGrobetonAraliklari(s, Math.Min(s.A0, s.A1), Math.Max(s.A0, s.A1), radyeKademe))
+                foreach (var (aLo, aHi) in RadyeLokalGrobetonAraliklari(s, RadyeKademeGrobetonAraliklari(s, Math.Min(s.A0, s.A1), Math.Max(s.A0, s.A1), radyeKademe), radyeLokal))
                 {
                 if (aHi - aLo < 1e-3) continue;
                 double zLo = s.Z0;
@@ -2226,6 +2249,30 @@ namespace ST4PlanIdCiz
                 }
                 catch { }
             }
+            // Lokal radye kalınlaştırması: şev yüzünde miterli grobeton bandı.
+            foreach (var u in radyeLokal)
+            {
+                var pts = RadyeLokalGrobetonBandi(u, h);
+                var kc = new Coordinate[pts.Count + 1];
+                for (int i = 0; i < pts.Count; i++)
+                {
+                    double a = pts[i].a, z = pts[i].z;
+                    if (horizontalAlongX)
+                        kc[i] = new Coordinate(originX + (a - amin), originY + (z - minZ));
+                    else if (mirrorElevationX)
+                        kc[i] = new Coordinate(originX + spanZ - (z - minZ), originY + (a - amin));
+                    else
+                        kc[i] = new Coordinate(originX + (z - minZ), originY + (a - amin));
+                }
+                kc[pts.Count] = kc[0];
+                try
+                {
+                    var band = factory.CreatePolygon(factory.CreateLinearRing(kc));
+                    if (!band.IsValid) band = factory.CreatePolygon(factory.CreateLinearRing(kc.Reverse().ToArray()));
+                    if (band.IsValid && band.Area > 1e-6) grobetonRects.Add(band);
+                }
+                catch { }
+            }
             bool zeminCizgisiCiz = radyeKademe.Count == 0;
             if (grobetonRects.Count == 0) return;
             Geometry merged;
@@ -2257,6 +2304,7 @@ namespace ST4PlanIdCiz
                 groMaxX = merged.EnvelopeInternal.MaxX;
                 groBottomY = merged.EnvelopeInternal.MinY;
                 groTopY = merged.EnvelopeInternal.MaxY;
+                GrobetonUcKotlari(merged, horizontalAlongX, mirrorElevationX, out _grobetonUc0, out _grobetonUc1);
             }
             DrawGeometryRingsAsPolylines(tr, btr, merged, LayerGrobeton, addHatch: true, hatchAngleRad: 0, exteriorRingsOnly: false, applySmallTriangleTrim: true, hatchPatternName: GrobetonHatchPatternName, hatchPatternScale: GrobetonHatchPatternScale, hatchLayerOverride: LayerTarama);
             if (zeminCizgisiCiz) DrawZeminLinesUnderGrobetonMerged(tr, btr, merged, horizontalAlongX, mirrorElevationX);
@@ -2633,6 +2681,8 @@ namespace ST4PlanIdCiz
         {
             if (merged == null || merged.IsEmpty) return;
             var env = merged.EnvelopeInternal;
+            // Grobeton altı tek kotta değilse (lokal kalınlaşan radye vb.) zemin çizgisi grobetonu alttan izler.
+            if (TryDrawZeminProfilUnderGrobeton(tr, btr, merged, horizontalAlongX, mirrorElevationX)) return;
             DrawZeminSingleLineAlongFoundationSection(tr, btr, env.MinX, env.MaxX, env.MinY, env.MaxY, horizontalAlongX, mirrorElevationX);
         }
 
@@ -2862,6 +2912,27 @@ namespace ST4PlanIdCiz
             ObjectId styleId = GetOrCreateYaziBeykentTextStyle(tr, db);
             const double rotAa = 0.0;
             const double rotBb = Math.PI / 2.0;
+
+            // Eğimli döşemede mahya oluşuyorsa mahya kotu: A-A'da mahyanın sağına, dik (B-B) kesitte üstüne.
+            if (!isFoundationPlan)
+            {
+                var map = SchematicSliceMap(originX, originY, amin, minZ, spanZ, horizontalAlongX, mirrorElevationX);
+                foreach (var (ma, mz) in EgimliMahyaNoktalari(slices))
+                {
+                    var r = map(ma, mz);
+                    double rot = horizontalAlongX ? rotAa : rotBb;
+                    double gapM = KesitKotTriHalfWidthCm * km * 2.0;
+                    double apexX = horizontalAlongX ? r.X + gapM : r.X;
+                    double apexY = horizontalAlongX ? r.Y : r.Y + gapM;
+                    AppendKesitKotLineEntity(tr, btr, r.X, r.Y, apexX, apexY);
+                    DrawKesitKotClassicSymbol(tr, btr, apexX, apexY, rot, km);
+                    double lxT = KesitKotTriHalfWidthCm * km;
+                    double lyT = (KesitKotTriHeightCm + KesitKotTextAboveExtensionCm) * km;
+                    double cR = Math.Cos(rot), sR = Math.Sin(rot);
+                    AppendKesitKotElevationDbText(tr, btr, db, styleId, FormatKesitKotElevationString(mz),
+                        apexX + cR * lxT - sR * lyT, apexY + sR * lxT + cR * lyT, rot, KesitKotTextHeightCm * km);
+                }
+            }
 
             if (horizontalAlongX)
             {
@@ -3251,7 +3322,7 @@ namespace ST4PlanIdCiz
         /// <summary>Kesit düzlemi = çizgi; poligon kolonda birden fazla parça ayrı dilim.</summary>
         private void TryAddSliceCutLine(Geometry cutLine, Geometry footprint, Point2d alongOrigin, Vector2d dirUnit,
             double z0, double z1, string layer, int order, List<SectionSlice> list, string etiket = null,
-            BeamInfo egimliPerde = null, double floorLevelCm = 0.0)
+            BeamInfo egimliPerde = null, double floorLevelCm = 0.0, Func<double, (double zb, double zt)> egimZ = null)
         {
             if (footprint == null || footprint.IsEmpty || cutLine == null || cutLine.IsEmpty) return;
             try
@@ -3262,6 +3333,27 @@ namespace ST4PlanIdCiz
                 var du = dirUnit.GetNormal();
                 foreach (var (a0, a1) in AlongSpansFromLinePolygonIntersect(inter, alongOrigin, du))
                 {
+                    // Eğimli döşeme/kiriş: kesim hattındaki uç kotlar; eğim hatta dikse düz ama o noktanın kotunda.
+                    if (egimZ != null)
+                    {
+                        var za = egimZ(a0);
+                        var zbb = egimZ(a1);
+                        var sl = new SectionSlice { A0 = a0, A1 = a1, Layer = layer, Order = order, Etiket = etiket };
+                        if (Math.Abs(za.zt - zbb.zt) < 0.05 && Math.Abs(za.zb - zbb.zb) < 0.05)
+                        {
+                            sl.Z0 = 0.5 * (za.zb + zbb.zb);
+                            sl.Z1 = 0.5 * (za.zt + zbb.zt);
+                        }
+                        else
+                        {
+                            sl.Egimli = true;
+                            sl.EZ0a = za.zb; sl.EZ1a = za.zt; sl.EZ0b = zbb.zb; sl.EZ1b = zbb.zt;
+                            sl.Z0 = Math.Min(za.zb, zbb.zb);
+                            sl.Z1 = Math.Max(za.zt, zbb.zt);
+                        }
+                        list.Add(sl);
+                        continue;
+                    }
                     // Eğimli kapama perdesi: kesildiği noktadaki üst kot.
                     double zTop = z1;
                     if (IsEgimliPerde(egimliPerde))
@@ -3694,7 +3786,14 @@ namespace ST4PlanIdCiz
                     // ST4 kalınlığı; Max(.,15) ince döşemeyi 15 cm gösteriyordu (plan etiketi 12 iken kesit 15).
                     double th = slab.ThicknessCm > 0 ? slab.ThicknessCm : 15.0;
                     double zb = zt - th;
-                    TryAddSliceCutLine(cutLine, poly, alongOrigin, dirN, zb, zt, LayerDoseme, 5, list);
+                    // Eğimli döşeme: kesim hattındaki kotlarla eğik; kalınlık döşemeye dik (düşeyde th/cos α).
+                    var egimZ = TryGetEgimliDosemeKot(slab, out var dosemeKot, out double cosD)
+                        ? EgimliKesitZ(dosemeKot, floorLevelCm, th / cosD, alongOrigin, dirN)
+                        : null;
+                    int n0 = list.Count;
+                    TryAddSliceCutLine(cutLine, poly, alongOrigin, dirN, zb, zt, LayerDoseme, 5, list, egimZ: egimZ);
+                    if (egimZ != null)
+                        for (int i = n0; i < list.Count; i++) list[i].DikKalinlik = th;
                 }
                 foreach (var beam in MergeSameIdBeamsOnFloor(floorNo))
                 {
@@ -3702,7 +3801,13 @@ namespace ST4PlanIdCiz
                     var poly = BeamFootprintPoly(beam);
                     double zu = floorLevelCm + Math.Max(beam.Point1KotCm, beam.Point2KotCm);
                     double h = beam.HeightCm > 0 ? beam.HeightCm : 30.0;
-                    TryAddSliceCutLine(cutLine, poly, alongOrigin, dirN, zu - h, zu, LayerKiris, 30, list, FormatSectionBeamSliceLabel(beam, floor));
+                    // Eğimli kiriş: kesildiği yerdeki üst kot (eskiden büyük uç kotunda düz); yükseklik eksene dik (h/cos α).
+                    var egimZ = TryGetEgimliKirisKot(beam, out var kirisKot, out double cosK)
+                        ? EgimliKesitZ(kirisKot, floorLevelCm, h / cosK, alongOrigin, dirN)
+                        : null;
+                    int nK = list.Count;
+                    TryAddSliceCutLine(cutLine, poly, alongOrigin, dirN, zu - h, zu, LayerKiris, 30, list, FormatSectionBeamSliceLabel(beam, floor), egimZ: egimZ);
+                    for (int i = nK; i < list.Count; i++) list[i].GercekYukseklik = h;
                 }
                 if (includeMushroomBeams)
                 {
@@ -3724,10 +3829,14 @@ namespace ST4PlanIdCiz
             if (isFoundationPlan)
             {
                 AddRadyeKademeDolguSlices(list);
+                AddRadyeLokalKamaSlices(list);
                 ApplyKolonPerdeTemelHatiliFoundationPriority(list);
             }
             else
+            {
                 ApplyKolonPerdeKirisCutPriority(list);
+                EgimliDosemeKesitBirlesim(list);
+            }
             return list;
         }
 
@@ -3777,7 +3886,7 @@ namespace ST4PlanIdCiz
             }
 
             static SectionSlice CloneA(SectionSlice s, double a0, double a1) =>
-                new SectionSlice { A0 = a0, A1 = a1, Z0 = s.Z0, Z1 = s.Z1, Layer = s.Layer, Order = s.Order, Etiket = s.Etiket };
+                s.Egimli ? CloneEgimliSliceA(s, a0, a1) : new SectionSlice { A0 = a0, A1 = a1, Z0 = s.Z0, Z1 = s.Z1, Layer = s.Layer, Order = s.Order, Etiket = s.Etiket, GercekYukseklik = s.GercekYukseklik, DikKalinlik = s.DikKalinlik };
 
             var kolonIv = MergeAlong(kolon.Select(s => { double u = Math.Min(s.A0, s.A1), v = Math.Max(s.A0, s.A1); return (u, v); }).ToList());
             var perdeIv = MergeAlong(perde.Select(s => { double u = Math.Min(s.A0, s.A1), v = Math.Max(s.A0, s.A1); return (u, v); }).ToList());
@@ -3851,7 +3960,7 @@ namespace ST4PlanIdCiz
             }
 
             static SectionSlice CloneA(SectionSlice s, double a0, double a1) =>
-                new SectionSlice { A0 = a0, A1 = a1, Z0 = s.Z0, Z1 = s.Z1, Layer = s.Layer, Order = s.Order, Etiket = s.Etiket };
+                s.Egimli ? CloneEgimliSliceA(s, a0, a1) : new SectionSlice { A0 = a0, A1 = a1, Z0 = s.Z0, Z1 = s.Z1, Layer = s.Layer, Order = s.Order, Etiket = s.Etiket, GercekYukseklik = s.GercekYukseklik, DikKalinlik = s.DikKalinlik };
 
             var kolonIv = MergeAlong(kolon.Select(s => { double u = Math.Min(s.A0, s.A1), v = Math.Max(s.A0, s.A1); return (u, v); }).ToList());
             var perdeIv = MergeAlong(perde.Select(s => { double u = Math.Min(s.A0, s.A1), v = Math.Max(s.A0, s.A1); return (u, v); }).ToList());
@@ -4064,9 +4173,22 @@ namespace ST4PlanIdCiz
             return outSegs;
         }
 
+        /// <summary>Kesit (a, z) → şema koordinatı; dikdörtgen dilim kodundaki yerleşimle aynı.</summary>
+        private static Func<double, double, Coordinate> SchematicSliceMap(double originX, double originY, double amin, double minZ, double spanZ,
+            bool horizontalAlongX, bool mirrorElevationX)
+        {
+            if (horizontalAlongX)
+                return (a, z) => new Coordinate(originX + (a - amin), originY + (z - minZ));
+            if (mirrorElevationX)
+                return (a, z) => new Coordinate(originX + spanZ - (z - minZ), originY + (a - amin));
+            return (a, z) => new Coordinate(originX + (z - minZ), originY + (a - amin));
+        }
+
         private static Polygon CreateSectionSliceSchematicPolygon(GeometryFactory gf, SectionSlice s,
             double originX, double originY, double amin, double minZ, double spanZ, bool horizontalAlongX, bool mirrorElevationX)
         {
+            if (s.Egimli)
+                return CreateEgimliSliceSchematicPolygon(gf, s, SchematicSliceMap(originX, originY, amin, minZ, spanZ, horizontalAlongX, mirrorElevationX));
             LinearRing ring;
             if (horizontalAlongX)
             {
@@ -4173,6 +4295,9 @@ namespace ST4PlanIdCiz
                     putLabel(xKirisSag, cy, s.Etiket, LayerKirisYazisi, rotDikKesit);
                 }
             }
+            if (!isFoundationPlan)
+                DrawEgimliDosemeKesitEgimYazilari(tr, btr, slices, styleId, labelH, beamUnderGap,
+                    SchematicSliceMap(originX, originY, amin, minZ, spanZ, horizontalAlongX, mirrorElevationX));
             double temelEtiketH = KesitSemasiElemanEtiketYaziYukseklikCm;
             foreach (var s in slices.Where(x => x.Layer == "TEMEL (BEYKENT)" && x.Order == SectionOrderContinuousFoundation && !string.IsNullOrEmpty(x.Etiket)))
             {
@@ -4385,6 +4510,17 @@ namespace ST4PlanIdCiz
                     LineWeight = LineWeight.LineWeight020
                 });
             }
+            void AddAlignedYazi(Point3d p1, Point3d p2, Point3d dimLinePt, string yazi)
+            {
+                AppendEntity(tr, btr, new AlignedDimension(p1, p2, dimLinePt, yazi, dimStyleId)
+                {
+                    Layer = LayerOlcu,
+                    LineWeight = LineWeight.LineWeight020
+                });
+            }
+            // Eğimli (veya eğime uyarlanmış) kiriş: döşeme ile bölünmüş zincir yerine yalnız gerçek kiriş yüksekliği.
+            static bool KirisGercekOlcu(SectionSlice k) => k.Egimli && k.GercekYukseklik > 0;
+            static string KirisGercekYazi(SectionSlice k) => k.GercekYukseklik.ToString("0.#", CultureInfo.InvariantCulture);
 
             var staggerAaRight = new Dictionary<long, int>();
             int NextStaggerAa(double aKey)
@@ -4504,7 +4640,7 @@ namespace ST4PlanIdCiz
                             ? xLbeam - aaOff - st * stag
                             : xR + aaOff + st * stag;
                         double dimOuterOfset = olcuSol ? -cift : cift;
-                        double Zb = Math.Min(s.Z0, s.Z1), Zt = Math.Max(s.Z0, s.Z1);
+                        SliceOlcuZ(s, out double Zb, out double Zt);
                         double yBot = originY + (Zb - minZ), yTop = originY + (Zt - minZ);
                         if (Math.Abs(yTop - yBot) < 2.0) { double m = (yTop + yBot) * 0.5; yBot = m - 1.0; yTop = m + 1.0; }
                         SectionSlice bestD = null;
@@ -4518,9 +4654,9 @@ namespace ST4PlanIdCiz
                             if (aLen > bestA) { bestA = aLen; bestD = d; }
                         }
                         bool stacked = false;
-                        if (bestD != null)
+                        if (bestD != null && !KirisGercekOlcu(s))
                         {
-                            double zb = Math.Min(bestD.Z0, bestD.Z1), ztop = Math.Max(bestD.Z0, bestD.Z1);
+                            SliceOlcuZ(bestD, out double zb, out double ztop);
                             double slabT = ztop - zb;
                             double d1 = Math.Min(slabT, Zt - Math.Max(Zb, zb));
                             if (d1 >= KesitOlcuKesisimMinCm - 1e-6 && Zt - d1 - Zb >= KesitOlcuKesisimMinCm - 1e-6)
@@ -4534,16 +4670,29 @@ namespace ST4PlanIdCiz
                             }
                         }
                         if (!stacked)
-                            AddAligned(new Point3d(xW, yBot, 0), new Point3d(xW, yTop, 0), new Point3d(dimInner, (yBot + yTop) * 0.5, 0));
+                        {
+                            if (KirisGercekOlcu(s))
+                                AddAlignedYazi(new Point3d(xW, yBot, 0), new Point3d(xW, yTop, 0), new Point3d(dimInner, (yBot + yTop) * 0.5, 0), KirisGercekYazi(s));
+                            else
+                                AddAligned(new Point3d(xW, yBot, 0), new Point3d(xW, yTop, 0), new Point3d(dimInner, (yBot + yTop) * 0.5, 0));
+                        }
                     }
                     foreach (var s in slices.Where(x => x.Layer == LayerDoseme))
                     {
                         double xm = originX + ((s.A0 + s.A1) * 0.5 - amin);
-                        double y0 = originY + (s.Z0 - minZ);
-                        double y1 = originY + (s.Z1 - minZ);
+                        SliceOlcuZ(s, out double szb, out double szt);
+                        double y0 = originY + (szb - minZ);
+                        double y1 = originY + (szt - minZ);
                         if (y1 - y0 < 2.0) y1 = y0 + 2.0;
                         int st = NextStaggerAa((s.A0 + s.A1) * 0.5);
                         double dimX = xm + aaOff + st * stag;
+                        // Eğimli döşeme: kalınlık üst çizgiye dik ölçülür (düşey değil).
+                        if (EgimliDikKalinlikOlcu(s, (a, z) => new Coordinate(originX + (a - amin), originY + (z - minZ)), aaOff + st * stag, 1.0, 0.0,
+                                out var pTop, out var pBot, out var pDim))
+                        {
+                            AddAligned(pTop, pBot, pDim);
+                            continue;
+                        }
                         AddAligned(new Point3d(xm, y0, 0), new Point3d(xm, y1, 0), new Point3d(dimX, (y0 + y1) * 0.5, 0));
                     }
                 }
@@ -4560,8 +4709,9 @@ namespace ST4PlanIdCiz
                 }
                 void KotXR(SectionSlice s, out double xL, out double xR)
                 {
-                    double xa = mirrorElevationX ? originX + spanZ - (s.Z1 - minZ) : originX + (s.Z0 - minZ);
-                    double xb = mirrorElevationX ? originX + spanZ - (s.Z0 - minZ) : originX + (s.Z1 - minZ);
+                    SliceOlcuZ(s, out double kz0, out double kz1);
+                    double xa = mirrorElevationX ? originX + spanZ - (kz1 - minZ) : originX + (kz0 - minZ);
+                    double xb = mirrorElevationX ? originX + spanZ - (kz0 - minZ) : originX + (kz1 - minZ);
                     xL = Math.Min(xa, xb);
                     xR = Math.Max(xa, xb);
                     if (xR - xL < 2.0) xR = xL + 2.0;
@@ -4707,7 +4857,7 @@ namespace ST4PlanIdCiz
                             if (aLen > bestA) { bestA = aLen; bestD = d; }
                         }
                         bool stacked = false;
-                        if (bestD != null)
+                        if (bestD != null && !KirisGercekOlcu(s))
                         {
                             KotXR(bestD, out double xdL, out double xdR);
                             double sxa = Math.Min(xdL, xdR), sxb = Math.Max(xdL, xdR);
@@ -4751,7 +4901,12 @@ namespace ST4PlanIdCiz
                             }
                         }
                         if (!stacked)
-                            AddAligned(new Point3d(xL, yRef, 0), new Point3d(xR, yRef, 0), new Point3d((xL + xR) * 0.5, yDimInner, 0));
+                        {
+                            if (KirisGercekOlcu(s))
+                                AddAlignedYazi(new Point3d(xL, yRef, 0), new Point3d(xR, yRef, 0), new Point3d((xL + xR) * 0.5, yDimInner, 0), KirisGercekYazi(s));
+                            else
+                                AddAligned(new Point3d(xL, yRef, 0), new Point3d(xR, yRef, 0), new Point3d((xL + xR) * 0.5, yDimInner, 0));
+                        }
                     }
                     foreach (var s in slices.Where(x => x.Layer == LayerDoseme))
                     {
@@ -4759,6 +4914,12 @@ namespace ST4PlanIdCiz
                         double yRef = originY + ((s.A0 + s.A1) * 0.5 - amin);
                         int st = NextStaggerBb(yRef);
                         double yDimLine = yRef - bbBelow - st * stag;
+                        if (EgimliDikKalinlikOlcu(s, SchematicSliceMap(originX, originY, amin, minZ, spanZ, false, mirrorElevationX), bbBelow + st * stag, 0.0, -1.0,
+                                out var pTopB, out var pBotB, out var pDimB))
+                        {
+                            AddAligned(pTopB, pBotB, pDimB);
+                            continue;
+                        }
                         AddAligned(new Point3d(xL, yRef, 0), new Point3d(xR, yRef, 0), new Point3d((xL + xR) * 0.5, yDimLine, 0));
                     }
                 }
@@ -4804,6 +4965,11 @@ namespace ST4PlanIdCiz
                 var slicePolys = new List<Geometry>();
                 foreach (var s in slices.OrderBy(x => x.Order).ThenBy(x => x.Z0))
                 {
+                    if (s.Egimli)
+                    {
+                        slicePolys.Add(CreateEgimliSliceSchematicPolygon(gf, s, SchematicSliceMap(originX, originY, amin, minZ, spanZ, true, false)));
+                        continue;
+                    }
                     double x0 = originX + (s.A0 - amin);
                     double x1 = originX + (s.A1 - amin);
                     if (x1 - x0 < 6.0) { double m = (x0 + x1) * 0.5; x0 = m - 4.0; x1 = m + 4.0; }
@@ -4835,6 +5001,11 @@ namespace ST4PlanIdCiz
                 var slicePolys2 = new List<Geometry>();
                 foreach (var s in slices.OrderBy(x => x.Order).ThenBy(x => x.Z0))
                 {
+                    if (s.Egimli)
+                    {
+                        slicePolys2.Add(CreateEgimliSliceSchematicPolygon(gf2, s, SchematicSliceMap(originX, originY, amin, minZ, spanZ, false, mirrorElevationX)));
+                        continue;
+                    }
                     double y0 = originY + (s.A0 - amin);
                     double y1 = originY + (s.A1 - amin);
                     if (y1 - y0 < 6.0) { double m = (y0 + y1) * 0.5; y0 = m - 4.0; y1 = m + 4.0; }
