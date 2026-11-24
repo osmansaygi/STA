@@ -24,7 +24,7 @@ class Program {
   Check(ComponentManager.Ribbon.Tabs.Count==2,"no new tab; Insert preserved");
   Check(home.Panels.Count==6&&home.Panels[0].Source.Id=="ORIGINAL","five panels appended; repeated install does not duplicate or replace Home panels");
   var buttons=home.Panels.Skip(1).SelectMany(p=>p.Source.Items.OfType<RibbonRowPanel>()).SelectMany(r=>r.Items.OfType<RibbonButton>()).ToArray();
-  Check(buttons.Length==27&&buttons.Select(b=>b.CommandParameter).Distinct().Count()==27,"all 27 tools exactly once");
+  int toolCount=BaHomeRibbonCatalog.Groups.Sum(g=>g.Commands.Length);Check(toolCount>=30&&buttons.Length==toolCount&&buttons.Select(b=>b.CommandParameter).Distinct().Count()==toolCount,"all catalog tools exactly once ("+toolCount+")");
   Check(buttons.Select(b=>(string)b.CommandParameter).OrderBy(s=>s).SequenceEqual(BaCommandIcons.Tools.Select(t=>t.Cmd).OrderBy(s=>s)),"ribbon matches all main palette commands");
   Check(home.Panels.Skip(1).Select(p=>p.Source.Title).SequenceEqual(new[]{"Ölçü","Detay","Mimari","Donatı","Genel Düzenleme"}),"user group order preserved");
   foreach(var button in buttons){Check(button.Size==RibbonItemSize.Standard&&button.ShowText&&button.Image is BitmapImage image&&image.PixelWidth==16&&image.IsFrozen,"16px frozen icon + label: "+button.CommandParameter);doc.Commands.Clear();button.CommandHandler.Execute(button);Check(doc.Commands.SequenceEqual(new[]{button.CommandParameter+" "}),"click routes existing command: "+button.CommandParameter);}

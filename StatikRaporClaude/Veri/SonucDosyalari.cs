@@ -10,9 +10,12 @@ namespace StatikRaporClaude.Veri
     {
         private readonly byte[] _b;
         public readonly int Bas;
-        public IkiliKayit(byte[] b, int bas) { _b = b; Bas = bas; }
-        public float F(int ofset) => Bas + ofset + 4 <= _b.Length ? BitConverter.ToSingle(_b, Bas + ofset) : 0f;
-        public short S(int ofset) => Bas + ofset + 2 <= _b.Length ? BitConverter.ToInt16(_b, Bas + ofset) : (short)0;
+        private readonly BeykentOrtak.Sta4KayitDuzeni _duzen;   // null: ofsetler olduğu gibi
+        public IkiliKayit(byte[] b, int bas, BeykentOrtak.Sta4KayitDuzeni duzen = null) { _b = b; Bas = bas; _duzen = duzen; }
+        // Ofsetler V14 düzenine göre yazılır; V15 BEA/COL'da Sta4KayitDuzeni karşılığa çevirir.
+        private int O(int ofset) => Bas + (_duzen == null ? ofset : _duzen.Ofset(ofset));
+        public float F(int ofset) { int p = O(ofset); return p + 4 <= _b.Length ? BitConverter.ToSingle(_b, p) : 0f; }
+        public short S(int ofset) { int p = O(ofset); return p + 2 <= _b.Length ? BitConverter.ToInt16(_b, p) : (short)0; }
         public float[] Dizi(int ofset, int n = 22) => Enumerable.Range(0, n).Select(i => F(ofset + 4 * i)).ToArray();
     }
 
@@ -21,6 +24,7 @@ namespace StatikRaporClaude.Veri
         public readonly string Yol;
         public readonly int KayitBoyu;
         private readonly byte[] _b;
+        private readonly BeykentOrtak.Sta4KayitDuzeni _duzen;
         public int Adet => _b.Length / KayitBoyu;
         public DateTime Tarih => File.GetLastWriteTime(Yol);
 
@@ -30,7 +34,16 @@ namespace StatikRaporClaude.Veri
             _b = File.Exists(yol) ? PaylasimliDosya.Bytes(yol) : Array.Empty<byte>();
         }
 
-        public IkiliKayit this[int i] => new IkiliKayit(_b, i * KayitBoyu);
+        /// <summary>Kayıt boyu sürüme göre değişen dosya (BEA/COL: V14 900, V15 1124).</summary>
+        public IkiliDosya(string yol, Func<long, BeykentOrtak.Sta4KayitDuzeni> duzenSec)
+        {
+            Yol = yol;
+            _b = File.Exists(yol) ? PaylasimliDosya.Bytes(yol) : Array.Empty<byte>();
+            _duzen = duzenSec(_b.Length);
+            KayitBoyu = _duzen.Boy;
+        }
+
+        public IkiliKayit this[int i] => new IkiliKayit(_b, i * KayitBoyu, _duzen);
         public bool Var => _b.Length >= KayitBoyu;
     }
 
@@ -48,8 +61,8 @@ namespace StatikRaporClaude.Veri
             var v = new StaVeri
             {
                 Model = St4Model.Oku(st4), St4Yolu = st4,
-                Bea = new IkiliDosya(taban + ".BEA", 900), Kmx = new IkiliDosya(taban + ".KMX", 300),
-                Col = new IkiliDosya(taban + ".COL", 900), Smx = new IkiliDosya(taban + ".SMX", 300),
+                Bea = new IkiliDosya(taban + ".BEA", n => BeykentOrtak.Sta4KayitDuzeni.Bea(n, st4)), Kmx = new IkiliDosya(taban + ".KMX", 300),
+                Col = new IkiliDosya(taban + ".COL", n => BeykentOrtak.Sta4KayitDuzeni.Col(n, st4)), Smx = new IkiliDosya(taban + ".SMX", 300),
                 Flo = new IkiliDosya(taban + ".FLO", 200), Dmx = new IkiliDosya(taban + ".DMX", 250),
                 Loa = new IkiliDosya(taban + ".LOA", 32),
             };

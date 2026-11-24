@@ -39,6 +39,8 @@ namespace ST4Yardimci
         public static double RihtYuksekligiCm { get; set; } = 13.636363636363637;
         /// <summary>Son plandan sayılan rıht adedi (uçlar dahil).</summary>
         public static int RihtAdet { get; set; } = 22;
+        /// <summary>Plan 1/25 rıht numaralarının başlangıç değeri (varsayılan 1).</summary>
+        public static int RihtBaslangicNo { get; set; } = 1;
 
         static bool _loaded;
 
@@ -64,6 +66,7 @@ namespace ST4Yardimci
             BasamakGenisligiCm = BaIni.GetD(m, "BasamakGenisligiCm", BasamakGenisligiCm);
             RihtYuksekligiCm = BaIni.GetD(m, "RihtYuksekligiCm", RihtYuksekligiCm);
             RihtAdet = BaIni.GetI(m, "RihtAdet", RihtAdet);
+            RihtBaslangicNo = BaIni.GetI(m, "RihtBaslangicNo", RihtBaslangicNo);
         }
 
         public static void Save()
@@ -86,7 +89,8 @@ namespace ST4Yardimci
                 "TevziDonatiCapMm=" + TevziDonatiCapMm.ToString(CultureInfo.InvariantCulture),
                 "BasamakGenisligiCm=" + BaIni.N(BasamakGenisligiCm),
                 "RihtYuksekligiCm=" + BaIni.N(RihtYuksekligiCm),
-                "RihtAdet=" + RihtAdet.ToString(CultureInfo.InvariantCulture));
+                "RihtAdet=" + RihtAdet.ToString(CultureInfo.InvariantCulture),
+                "RihtBaslangicNo=" + RihtBaslangicNo.ToString(CultureInfo.InvariantCulture));
         }
     }
 
@@ -106,6 +110,7 @@ namespace ST4Yardimci
         private readonly OlcuKutusu _numDoseme;
         private readonly OlcuKutusu _numKirisH;
         private readonly OlcuKutusu _numPaspayi;
+        private readonly OlcuKutusu _numRihtBas;
         private readonly CheckBox _chkTemel;
         private readonly OlcuKutusu _numTemelKal;
         private readonly DonatiKutusu _ana;
@@ -155,6 +160,7 @@ namespace ST4Yardimci
             _numBenzerKat = Denetci.Ekle(new OlcuKutusu("Benzer kat", "kat", 1, 40, 1));
             _numDoseme = Denetci.Ekle(new OlcuKutusu("Döşeme kalınlığı", "cm", 8, 40, 15));
             _numKirisH = Denetci.Ekle(new OlcuKutusu("Kiriş yüksekliği", "cm", 20, 150, 50) { AdimDegeri = 5 });
+            _numRihtBas = Denetci.Ekle(new OlcuKutusu("Rıht başlangıç no", "no", 1, 999, 1));
             _chkTemel = new CheckBox { Text = "Temel var", AutoSize = true, Checked = MerdivenSettings.TemelVar };
             _numTemelKal = Denetci.Ekle(new OlcuKutusu("Temel kalınlığı", "cm", 10, 200, 50) { AdimDegeri = 5 });
             // Çap listesi eskiden ø8–ø25, aralık 8–40 cm.
@@ -198,6 +204,7 @@ namespace ST4Yardimci
                 .Field("Alt kot", _numAltKot)
                 .Field("Döşeme / kiriş*", _numDoseme, _numKirisH)
                 .Field("Adet / benzer kat", _numAdet, _numBenzerKat)
+                .Field("Rıht başlangıç no", _numRihtBas)
                 .Options(_chkTemel)
                 .FieldWhen(() => _chkTemel.Checked, new Label { Text = "Temel kalınlığı" }, _numTemelKal);
             ui.Section("Donatı  (ø çap / aralık)")
@@ -240,6 +247,7 @@ namespace ST4Yardimci
             _ana.Ayarla(MerdivenSettings.AnaDonatiCapMm, MerdivenSettings.AnaDonatiAralikCm);
             _tevzi.Ayarla(MerdivenSettings.TevziDonatiCapMm, MerdivenSettings.TevziAralikCm);
             _numPaspayi.Deger = MerdivenSettings.PaspayiCm;
+            _numRihtBas.Deger = MerdivenSettings.RihtBaslangicNo;
         }
 
         private void OnPlan()
@@ -266,6 +274,7 @@ namespace ST4Yardimci
             MerdivenSettings.AnaDonatiAralikCm = _ana.AralikCm;
             MerdivenSettings.TevziAralikCm = _tevzi.AralikCm;
             MerdivenSettings.PaspayiCm = _numPaspayi.Deger;
+            MerdivenSettings.RihtBaslangicNo = Math.Max(1, (int)Math.Round(_numRihtBas.Deger));
             MerdivenSettings.Save();
         }
     }

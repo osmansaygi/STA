@@ -510,6 +510,7 @@ namespace ST4Yardimci
             ObjectId styleId = EnsureTextStyle(tr, db);
             var bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
             var ms = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
+            int rihtBas = Math.Max(1, MerdivenSettings.RihtBaslangicNo);
 
             Point2d pathCen = default;
             if (path.Count > 0)
@@ -534,7 +535,7 @@ namespace ST4Yardimci
                 Point3d w = new Point3d(p.X, p.Y, 0).TransformBy(planXf);
                 var t = new DBText
                 {
-                    TextString = (i + 1).ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    TextString = (i + rihtBas).ToString(System.Globalization.CultureInfo.InvariantCulture),
                     Height = PlanRihtNoPunto,
                     Layer = LayerYazi,
                     HorizontalMode = TextHorizontalMode.TextCenter,
@@ -1034,13 +1035,13 @@ namespace ST4Yardimci
 
                 if (isLanding)
                 {
-                    // Basamaksız: kesit gibi düşey dıştan-dışa
-                    MeasureLandingToSupportsCm(path, d0, d1, supports,
-                        out EndBoundary endNeg, out EndBoundary endPos);
+                    // Basamaksız: kesit gibi kesit hattı (çıkış hattı) doğrultusunda dıştan-dışa
                     PointAtDist(path, d0, out Point2d p0, out _);
                     PointAtDist(path, d1, out Point2d p1, out _);
+                    Vector2d landAxis = LandingAxis(cutAxis, p1 - p0);
+                    MeasureLandingToSupportsCm(path, d0, d1, supports, landAxis,
+                        out EndBoundary endNeg, out EndBoundary endPos);
                     Point2d origin = new Point2d((p0.X + p1.X) * 0.5, (p0.Y + p1.Y) * 0.5);
-                    var landAxis = new Vector2d(0, 1);
                     if (endNeg != null)
                     {
                         double gap = Math.Max(0, endNeg.GapCm);
@@ -1063,9 +1064,9 @@ namespace ST4Yardimci
                         foreach (var h in supportHits)
                         {
                             if (h.Dist < d0 - 2 || h.Dist > d1 + 2) continue;
-                            // Düşey projeksiyon: origin'den Y
-                            double ty = h.Pt.Y - origin.Y;
-                            AddSt(ty, new Point2d(origin.X, h.Pt.Y));
+                            // Kesit eksenine izdüşüm
+                            double ty = (h.Pt - origin).DotProduct(landAxis);
+                            AddSt(ty, origin + landAxis * ty);
                         }
                     }
 
@@ -1073,7 +1074,7 @@ namespace ST4Yardimci
                     stations.Sort((a, b) => a.Dist.CompareTo(b.Dist));
                     Point2d dimLineLocal = midPath + nOut * PlanOlcuOffsetCm;
                     Point3d dimLineW = new Point3d(dimLineLocal.X, dimLineLocal.Y, 0).TransformBy(planXf);
-                    double rotation = Math.PI * 0.5;
+                    double rotation = Math.Atan2(landAxis.Y, landAxis.X);
                     for (int i = 0; i < stations.Count - 1; i++)
                     {
                         Point2d a = stations[i].Pt;
@@ -1632,7 +1633,7 @@ namespace ST4Yardimci
                 {
                     // Saf sahanlık: düşey (ölçüm) ekseninde dış destekler = kesit uçları
                     double landSpan = MeasureLandingToSupportsCm(
-                        path, d0, d1, supports,
+                        path, d0, d1, supports, LandingAxis(cutAxis, pathDir),
                         out EndBoundary landNeg, out EndBoundary landPos);
                     EndBoundary landSol = landNeg ?? sol;
                     EndBoundary landSag = landPos ?? sag;
@@ -2062,8 +2063,20 @@ namespace ST4Yardimci
         /// en alt / en üst destek yakın yüzleri arası. Uç EndBoundary de döner
         /// (kolon/perde/kiriş finiş için — path teğeti yerine).
         /// </summary>
+        /// <summary>
+        /// Saf sahanlık kesit ekseni = kesit hattı (çıkış hattı) doğrultusu, hat yönüne çevrili.
+        /// Eskiden hep plan düşeyi (0,1) alınıyordu → yatay sahanlıkta B-B perde+konsol çıkıyordu.
+        /// </summary>
+        private static Vector2d LandingAxis(Vector2d cutAxis, Vector2d pathDir)
+        {
+            Vector2d a = cutAxis.Length > 1e-12 ? cutAxis.GetNormal() : new Vector2d(0, 1);
+            if (pathDir.Length > 1e-12 && a.DotProduct(pathDir) < 0) a = a.Negate();
+            return a;
+        }
+
         private static double MeasureLandingToSupportsCm(
             List<PathVert> path, double d0, double d1, List<PlanSupport> supports,
+            Vector2d axis,
             out EndBoundary endNeg, out EndBoundary endPos)
         {
             endNeg = null;
@@ -2071,7 +2084,7 @@ namespace ST4Yardimci
             PointAtDist(path, d0, out Point2d p0, out _);
             PointAtDist(path, d1, out Point2d p1, out _);
             Point2d origin = new Point2d((p0.X + p1.X) * 0.5, (p0.Y + p1.Y) * 0.5);
-            var axis = new Vector2d(0, 1);
+            axis = axis.Length > 1e-12 ? axis.GetNormal() : new Vector2d(0, 1);
 
             TryBoundaryOnAxis(origin, axis, supports, forward: false, out endNeg);
             TryBoundaryOnAxis(origin, axis, supports, forward: true, out endPos);
@@ -2081,7 +2094,7 @@ namespace ST4Yardimci
                 span = endNeg.GapCm + endPos.GapCm;
             else if (!TryLandingOuterSpan(origin, axis, supports, out span))
             {
-                double arm = Math.Abs(p1.Y - p0.Y);
+                double arm = Math.Abs((p1 - p0).DotProduct(axis));
                 if (arm < 40) arm = Math.Max(d1 - d0, 40);
                 span = arm;
             }

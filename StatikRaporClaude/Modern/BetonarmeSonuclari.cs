@@ -35,11 +35,13 @@ namespace StatikRaporClaude.Modern
             var sonuc = new List<KirisSonucu>();
             foreach (var blok in GprTablo.Bloklar(GprTablo.Satirlar(bolum)))
             {
-                if (blok.Count < 6 || !GprTablo.Hucre(blok[0], 0).Contains("Mduz")) continue;
-                var k = new KirisSonucu { Sayfa = blok[0].Sayfa.No };
+                // 1. satır etiketi V14 "Mduz.", V15 "ΔM" (Kiriş mesnet düzeltme momenti)
                 string c0 = GprTablo.Hucre(blok[0], 0);
+                string etiket = c0.Contains("Mduz") ? "Mduz" : c0.Contains("ΔM") ? "ΔM" : null;
+                if (blok.Count < 6 || etiket == null) continue;
+                var k = new KirisSonucu { Sayfa = blok[0].Sayfa.No };
                 // 3 haneli adlarda (KB-001) ad ile "Mduz." arasında boşluk kalmaz
-                k.Ad = c0.Replace("Mduz", " Mduz").Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
+                k.Ad = c0.Replace(etiket, " " + etiket).Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
                 k.Sinif = GprTablo.Hucre(blok[1], 0).Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
                 k.D = Regex.Match(GprTablo.Hucre(blok[2], 0), @"D=(\S+)").Groups[1].Value;
                 k.B = Regex.Match(GprTablo.Hucre(blok[3], 0), @"B=(\S+)").Groups[1].Value;

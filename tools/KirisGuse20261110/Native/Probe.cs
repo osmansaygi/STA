@@ -64,6 +64,37 @@ public class KesitKonumProbe
 
     [CommandMethod("KK_SUREKLI")] public static void Surekli() => Run("DrawSurekliTemelAcilimlariSecenekli");
     [CommandMethod("KK_KIRIS")] public static void Kiris() => Run("DrawKirisAcilimlariSecenekli");
+
+    // KALIP50ST4 / KALIP100ST4 (KK_OLCEK=100): DrawFormworkPlan50 yansımayla.
+    [CommandMethod("KK_KALIP")]
+    public static void Kalip()
+    {
+        try
+        {
+            var plan = AppDomain.CurrentDomain.GetAssemblies().Last(a => a.GetName().Name.StartsWith("ST4_Plan_ID_Ciz"));
+            var parserT = plan.GetType("ST4AksCizCSharp.St4Parser", true);
+            var mgrT = plan.GetType("ST4PlanIdCiz.PlanIdDrawingManager", true);
+            var scT = plan.GetType("ST4PlanIdCiz.KalipPlanScale", true);
+            plan.GetTypes().First(t => t.Name == "CommandEntry").GetMethod("ConfigureNtsNextGenOverlay", SP)?.Invoke(null, null);
+            string st4 = Environment.GetEnvironmentVariable("KK_ST4");
+            Log("Plan=" + plan.Location + " KALIP olcek=" + Environment.GetEnvironmentVariable("KK_OLCEK"));
+            var doc = AcApp.DocumentManager.MdiActiveDocument;
+            object model = parserT.GetMethod("Parse").Invoke(Activator.CreateInstance(parserT), new object[] { st4 });
+            object mgr = Activator.CreateInstance(mgrT, model);
+            object sc = Enum.Parse(scT, Environment.GetEnvironmentVariable("KK_OLCEK") == "100" ? "Hundred" : "Fifty");
+            var m = mgrT.GetMethod("DrawFormworkPlan50");
+            var ps = m.GetParameters();
+            var args = new object[ps.Length];
+            for (int i = 0; i < ps.Length; i++) args[i] = ps[i].HasDefaultValue ? ps[i].DefaultValue : (ps[i].ParameterType.IsValueType ? Activator.CreateInstance(ps[i].ParameterType) : null);
+            args[0] = doc.Database; args[1] = doc.Editor; args[2] = Point3d.Origin; args[3] = st4; args[4] = sc;
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            using (doc.LockDocument()) m.Invoke(mgr, args);
+            Log("ok ms=" + sw.ElapsedMilliseconds + " entities=" + Count(doc.Database));
+            try { PngRender.Render(doc.Database, Log); } catch (System.Exception pe) { Log("PNG FAIL " + pe.Message); }
+            Log("COMPLETE");
+        }
+        catch (System.Exception ex) { Log("FAIL " + ex); }
+    }
 }
 
 public class KolonDumpProbe
@@ -174,6 +205,26 @@ public static class PngRender
                             using (var f = new System.Drawing.Font("Arial", 11f, System.Drawing.GraphicsUnit.Pixel))
                             using (var br = new System.Drawing.SolidBrush(System.Drawing.Color.White))
                                 g.DrawString(rd.Measurement.ToString("0"), f, br, P(0.5 * (rd.XLine1Point.X + rd.XLine2Point.X), rd.DimLinePoint.Y));
+                        }
+                        else if (e is AlignedDimension ad)
+                        {
+                            // Ölçü çizgisi: uzatma noktalarının ölçü hattına izdüşümü.
+                            double ux = ad.XLine2Point.X - ad.XLine1Point.X, uy = ad.XLine2Point.Y - ad.XLine1Point.Y;
+                            double L = Math.Sqrt(ux * ux + uy * uy);
+                            if (L > 1e-6)
+                            {
+                                ux /= L; uy /= L;
+                                double ox = ad.DimLinePoint.X - ad.XLine1Point.X, oy = ad.DimLinePoint.Y - ad.XLine1Point.Y;
+                                double dd = -uy * ox + ux * oy;
+                                double ax = ad.XLine1Point.X - uy * dd, ay = ad.XLine1Point.Y + ux * dd;
+                                double bx = ad.XLine2Point.X - uy * dd, by = ad.XLine2Point.Y + ux * dd;
+                                g.DrawLine(pen, P(ax, ay), P(bx, by));
+                                g.DrawLine(pen, P(ad.XLine1Point.X, ad.XLine1Point.Y), P(ax, ay));
+                                g.DrawLine(pen, P(ad.XLine2Point.X, ad.XLine2Point.Y), P(bx, by));
+                                using (var f = new System.Drawing.Font("Arial", 11f, System.Drawing.GraphicsUnit.Pixel))
+                                using (var br = new System.Drawing.SolidBrush(System.Drawing.Color.White))
+                                    g.DrawString(ad.Measurement.ToString("0"), f, br, P(0.5 * (ax + bx), 0.5 * (ay + by)));
+                            }
                         }
                         else if (e is Autodesk.AutoCAD.DatabaseServices.DBText t)
                         {

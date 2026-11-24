@@ -1,0 +1,19 @@
+# claude-20261124-beykent-kapak
+
+- Ajan: Claude (Code). Görev: Selçuklu statik proje kapağını BEYKENT PROJE için yeniden tasarlamak (e-imza + belediye onay alanı sabit) ve Yardımcı'ya KAPAK komutu (mimari kapaktan okuyup doldurma).
+- Durum: tamamlandı (24.11.2026 17:12) — rezervasyon yok.
+- Kontrol: protokol, son 2 gün kayıtları (codex-20261124-selcuklu-kapak-473a: 10 seçenek — kullanıcı "orijinalin dışına çıkmış, reklam öğesi olmasın, ağırbaşlı" dedi; ges-kapak-okuma; betonkalip/merdiven 23.11 yayınları), Home şeridi kataloğu, Monolit simge kuralı, oto yükleyici (`ST4_GUNCEL_2027.bundle` → `NETLOAD/GUNCEL_2027`), başlangıçta GUNCEL_2027 = Yardımcı 20261123_161721 + Plan 20261117_155353. AutoCAD kapalıydı.
+- Tasarım: `output/beykent-kapak-claude/kapak-secenekleri.html` üzerinde kullanıcıyla yinelendi (2. "ölçülü antet" seçildi; kurumsal renkli logo ortada, Proje Sahibi logonun altında, sayfa altı tadilat için boş, Proje No yok, yazılar büyütüldü, aralıklar 2 mm / 6 mm). Renkli logo: `output/beykent-kapak-claude/beykent-renkli.png`.
+- Değişen: yeni `ST4_Yardimci/MimariKapakOku.cs`, `KapakRunner.cs`, `KapakForm.cs`, `KapakLogoVeri.cs` (üretilmiş), `Icons/ba_kapak.png`; `ST4_Yardimci/CommandEntry.cs` (KAPAK, -KAPAK), `BaHomeRibbonCatalog.cs` (Genel Düzenleme), `BaCommandIcons.cs`; `Ortak/BeykentStil/BeykentStilAyar.cs` (5 KAPAK katmanı, yukle:false); `tools/HomeRibbonCheck/Probe/Program.cs` (araç sayısı kataloğa bağlandı); `tools/Kapak20261124/**` (Arac, FormProbe, Run/Toplu/Png/Form.ps1); `docs/modul-durum/ST4_Yardimci.md`, `INDEX.md`.
+- Doğrulama: Yardımcı 2027 Debug + Release 0 hata/0 uyarı; net48 `-t:Compile` 0 hata. Core Console 2027: kapak çizimi + PDF (ms_a_blk, vakıflar dolu örnek), 8 mimari projede okuma, 4 kapaklı REVİZE 4'te sıra seçimi, form PNG'si. `Test-HomeRibbon.ps1` PASS. Verify-Project.ps1 çalıştırılamadı (pwsh yok). Canlı AutoCAD'de denenmedi.
+- Yayın: `NETLOAD/GUNCEL_2027` = Yardımcı `ST4_Yardimci_2027_20261124_163650.dll` (Release, hash eşit, yayın sonrası Core Console'da çizdi) + Plan `20261117_155353`; arşiv `NETLOAD/arsiv/GUNCEL_2027_20261124_163721_880`. Commit yok. Ofis paketi yenilenmedi.
+- Ek (16:55): dolgu yazdırılmaz + %75 saydam ACI 8, yazılar ACI 7, "-" değer yazılmaz; yayın Yardımcı 20261124_165404, arşiv GUNCEL_2027_20261124_165422_402.
+- Ek 2 (17:10): etiketler kalın+aynı boy ACI 7, logo blok + pürüzsüz iz, 6 başlık, tadilat konuları, yalnız müellif hatırlanır; yayın Yardımcı 20261124_170921, arşiv GUNCEL_2027_20261124_170924_627.
+- Ek 3 (17:17): renk düzeni B arduvaz mavi; yayın Yardımcı 20261124_171650, arşiv GUNCEL_2027_20261124_171652_878.
+- Ek 4 (17:20): çok kapaklı projede blok seçim penceresi; yayın Yardımcı 20261124_172009, arşiv GUNCEL_2027_20261124_172012_051.
+- Ek 5 (17:31): rapor kapakları PDF (3 ayrı A4, -KAPAKPDF); yayın Yardımcı 20261124_173108, arşiv GUNCEL_2027_20261124_173111_629.
+- Ek 6 (17:38): çizim bazında form hafızası (kırmızı gösterim), Niteliği varsayılan YENİ YAPI; yayın Yardımcı 20261124_173831, arşiv GUNCEL_2027_20261124_173834_729.
+- Ek 7 (17:42): sahip yoksa DWG dosya adından (formda yeşil); yayın Yardımcı 20261124_174232, arşiv GUNCEL_2027_20261124_174235_933.
+- Ek 8 (19:00): rapor kapakları doğrudan PDF (KapakPdf.cs, çizime dokunmaz; yedek yol eski çiz+bas); yayın Yardımcı 20261124_185943, arşiv GUNCEL_2027_20261124_185953_630; eski 174232.dll AutoCAD kilidinde, kapanınca kaldırılacak.
+- Ek 9 (19:13): PDF kapak tasarımı "A — Hafif dolgu" (kullanıcı seçimi; `output/beykent-kapak-claude/pdf-tasarim-secenekleri.html`): lacivert-gri çerçeve, açık zeminler, lacivert başlık + yeşil alt çizgi; imza/onay yer-ölçü aynı, DWG değişmedi. Yayın Yardımcı 20261124_191234, arşiv GUNCEL_2027_20261124_191236_483; 174232.dll hâlâ AutoCAD kilidinde.
+- Açık: canlı AutoCAD doğrulaması (şerit düğmesi, form, e-imzalı PDF çıktısı); fenni mesul mimari kapakta yok, elle girilir; GesRaporu ve Yardımcı'da kapak okuma mantığı iki kopya.

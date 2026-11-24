@@ -47,9 +47,10 @@ public static class NoktaUret
         for (int i = cd + 1; i < p.St4.Length && !p.St4[i].StartsWith("/"); i += 3) nos.Add((int)Proj.D(p.St4[i].Split(',')[0]));
         int taban = nos.DefaultIfEmpty(0).Max() / 100 >= Sayfa7.Katlar(p).Count ? 1000 : 100;
         var col = p.Bytes(".COL");
-        for (int r = 0; r < nos.Count && (r + 1) * 900 <= col.Length; r++)
+        int colBoy = BeykentOrtak.Sta4KayitDuzeni.Col(col?.Length ?? 0, p.FilePath(".ST4"), nos.Count).Boy;   // V14 900, V15 1124
+        for (int r = 0; col != null && r < nos.Count && (r + 1) * colBoy <= col.Length; r++)
         {
-            int top = BitConverter.ToInt16(col, r * 900);
+            int top = BitConverter.ToInt16(col, r * colBoy);
             int ps = nos[r] % taban; if (ps < 1 || ps > pos.Count) continue;
             var (x, y) = Kes(pos[ps - 1][1], pos[ps - 1][2]);
             int kat = see.TryGetValue(top, out var s) ? KatOf(s.Z) : nos[r] / taban;

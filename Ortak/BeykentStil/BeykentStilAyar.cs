@@ -442,6 +442,12 @@ namespace BeykentOrtak
                 K("DOSEME DONATI EKSEN X (BEYKENT)", 3, 25, yukle: false),
                 K("DOSEME DONATI EKSEN Y (BEYKENT)", 6, 25, yukle: false),
                 K("ALT DUZ ALAN (BEYKENT)", 6, 20, yukle: false),
+                // Yardımcı KAPAK (statik proje kapağı)
+                new KatmanAyar { Ad = "KAPAK (BEYKENT)", Aci = 7, Rgb = "127,147,171", Kalinlik = 30, CizgiTipi = "Continuous", Yukle = false },
+                K("KAPAK YAZI (BEYKENT)", 7, 20, yukle: false),
+                new KatmanAyar { Ad = "KAPAK DOLGU (BEYKENT)", Aci = 8, Rgb = "52,64,78", Kalinlik = 0, CizgiTipi = "Continuous", Saydamlik = 45, Cizdir = false, Yukle = false },
+                K("KAPAK LOGO (BEYKENT)", 7, 0, yukle: false),
+                new KatmanAyar { Ad = "KAPAK SINIR (BEYKENT)", Aci = 8, Kalinlik = 0, CizgiTipi = "Continuous", Cizdir = false, Yukle = false },
             });
 
             OlcuAyar donati50 = O(OlcuStilAdlari.Donati50, 10);

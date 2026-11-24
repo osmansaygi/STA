@@ -174,6 +174,7 @@ public class RadyeLegantProbe
                 Log("RdPlanZarflari basladi");
                 plan.GetType("ST4PlanIdCiz.TemelIlaveDenemeCommands", true).GetMethod("RdPlanZarflari", SP).Invoke(null, new object[] { db, doc.Editor, st4, copies });
                 Log("RdPlanZarflari bitti");
+                if (copies.Count >= 5) Log("Zim=" + mgrT.GetMethod("DrawZimbalamaPlan").Invoke(mgr, new object[] { db, doc.Editor, copies[4], zl }));
             }
             var say = new SortedDictionary<string, int>();
             using (var tr = db.TransactionManager.StartTransaction())
@@ -181,7 +182,7 @@ public class RadyeLegantProbe
                 foreach (ObjectId id in (BlockTableRecord)tr.GetObject(SymbolUtilityServices.GetBlockModelSpaceId(db), OpenMode.ForRead))
                 {
                     var e = (Entity)tr.GetObject(id, OpenMode.ForRead);
-                    if (!e.Layer.StartsWith("TEMEL ILAVE")) continue;
+                    if (!e.Layer.StartsWith("TEMEL ILAVE") && Environment.GetEnvironmentVariable("RD_TUM") != "1") continue;
                     say.TryGetValue(e.Layer, out int c); say[e.Layer] = c + 1;
                 }
                 tr.Commit();

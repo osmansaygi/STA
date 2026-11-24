@@ -80,6 +80,8 @@ namespace ST4Yardimci
             new BaTool("Kiriş Çiz", "KIRISCIZ", "ST4Yardimci.Icons.ba_kirisciz.png"),
             // Mantar döşeme kolon üstü ilave; simge kaynağı tools/MantarIlave20261102/Ikon.
             new BaTool("Mantar İlave Donatı", "MANTARILAVE", "ST4Yardimci.Icons.ba_mantarilave.png"),
+            // Statik proje kapağı (A4); simge kaynağı tools/Kapak20261124/Arac ikon.
+            new BaTool("Proje Kapağı", "KAPAK", "ST4Yardimci.Icons.ba_kapak.png"),
         };
 
         public static Image Load(string cmd, string resourceName)

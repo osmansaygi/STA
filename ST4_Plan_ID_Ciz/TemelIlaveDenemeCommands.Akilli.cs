@@ -432,7 +432,16 @@ namespace ST4PlanIdCiz
             if (!m.Success) return 0;
             double a = GprRadyeAyir.AlanCm2Pm(int.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture),
                 int.Parse(m.Groups[2].Value, CultureInfo.InvariantCulture));
-            return yazi.IndexOf("yetmez", StringComparison.OrdinalIgnoreCase) >= 0 ? a + 0.001 : a;
+            if (yazi.IndexOf("yetmez", StringComparison.OrdinalIgnoreCase) < 0) return a;
+            // "ø20/10 yetmez - ø20/4 yeter": gereken alan ikinci yazıdan (daha sıkı aralık daha güçlü sayılır).
+            var y = m.NextMatch();
+            if (y.Success)
+            {
+                double b = GprRadyeAyir.AlanCm2Pm(int.Parse(y.Groups[1].Value, CultureInfo.InvariantCulture),
+                    int.Parse(y.Groups[2].Value, CultureInfo.InvariantCulture));
+                if (b > a) return b;
+            }
+            return a + 0.001;
         }
 
         private static List<int[]> KumeOku(string metin)

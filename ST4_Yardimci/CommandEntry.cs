@@ -750,6 +750,30 @@ namespace ST4Yardimci
             SehimTablosuRunner.RunKomutSatiri();
         }
 
+        /// <summary>BEYKENT PROJE statik proje kapağı (A4); bilgiler mimari projenin kapağından okunur.</summary>
+        [CommandMethod("KAPAK", CommandFlags.Modal)]
+        public void Kapak()
+        {
+            if (!GateIdle()) return;
+            KapakRunner.Run();
+        }
+
+        /// <summary>Diyalogsuz sürüm (betik): mimari DWG yolu, kapak sırası, başlık, köşe noktası.</summary>
+        [CommandMethod("-KAPAK", CommandFlags.Modal)]
+        public void KapakKomutSatiri()
+        {
+            if (!GateIdle()) return;
+            KapakRunner.RunKomutSatiri();
+        }
+
+        /// <summary>Diyalogsuz rapor kapakları (betik): mimari DWG, kapak sırası, PDF klasörü.</summary>
+        [CommandMethod("-KAPAKPDF", CommandFlags.Modal)]
+        public void KapakPdfKomutSatiri()
+        {
+            if (!GateIdle()) return;
+            KapakRunner.RunPdfKomutSatiri();
+        }
+
         [CommandMethod("DONATIMETRAJ")]
         public void DonatiMetraj()
         {

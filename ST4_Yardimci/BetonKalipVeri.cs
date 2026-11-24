@@ -42,6 +42,8 @@ namespace ST4Yardimci
         internal static List<string> Iz { get; set; }
 
         public string St4Yolu;
+        /// <summary>Beton sınıfı ("C25"): ST4 /Materials/ sonraki satır 1. alan fck (kg/cm²) / 10; okunamazsa boş.</summary>
+        public string BetonSinifi = "";
         public readonly List<BetonKalipKat> Katlar = new List<BetonKalipKat>();
         /// <summary>Subasman (S) katı döşemeleri: STA4 kat özetine girmez; SUBASMAN satırına eklenir.</summary>
         public readonly BetonKalip SubasmanDoseme = new BetonKalip();
@@ -464,6 +466,12 @@ namespace ST4Yardimci
         {
             string[] l = RadyeOtomatikSource.ReadRadText(st4).Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
             var p = new BetonKalipProjesi { St4Yolu = st4 };
+            int km = Array.FindIndex(l, x => x.StartsWith("/Materials/", StringComparison.Ordinal));
+            if (km >= 0 && km + 1 < l.Length)
+            {
+                double fck = D(F(l[km + 1])[0]);
+                if (fck >= 100) p.BetonSinifi = "C" + Math.Round(fck / 10).ToString("0", Inv);
+            }
             var g = Oku(l);
             if (g == null) return p;
 

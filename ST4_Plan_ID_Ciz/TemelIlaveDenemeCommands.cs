@@ -263,13 +263,27 @@ namespace ST4PlanIdCiz
             }
 
             DonatiAdim son = adimlar[adimlar.Count - 1];
-            string yetmezYazi = son.Yazi + " yetmez";
             List<Polygon> asan = RadyeEsikPoligon.Hesapla(nodes, ag, face.As, face.Sinir + son.Alan);
-            var yetmezCizilen = new List<Polygon>();
-            var yetmezSarkan = new List<Polygon>();
-            int yetmez = CizYuz(tr, btr, copy, asan, face.Katman, YetmezRenk, yetmezYazi, yetmezCizilen, yetmezSarkan, ciz);
-            IsaretEkle(isaretler, yetmezCizilen, son.Alan, yatay, false, copy.TemelGeom, adimlar.Count, son.AralikCm, yetmezYazi);
-            IsaretEkle(isaretler, yetmezSarkan, son.Alan, yatay, true, copy.TemelGeom, adimlar.Count, son.AralikCm, yetmezYazi);
+            // Her aşan bölge kendi en büyük ihtiyacıyla "yetmez - øD/x yeter" yazılır; lejantta en sıkı aralık.
+            int yetmez = 0;
+            double enBuyukIlave = double.NaN;
+            if (asan != null)
+            {
+                foreach (Polygon p in asan)
+                {
+                    double pAs = PoligonEnBuyukAs(p, nodes, face.As, face.Sinir + son.Alan);
+                    double ilave = double.IsNaN(pAs) ? double.NaN : pAs - face.Sinir;
+                    string pYazi = YetmezYazisi(son, ilave);
+                    var pCizilen = new List<Polygon>();
+                    var pSarkan = new List<Polygon>();
+                    int pn = CizYuz(tr, btr, copy, new List<Polygon> { p }, face.Katman, YetmezRenk, pYazi, pCizilen, pSarkan, ciz);
+                    yetmez += pn;
+                    IsaretEkle(isaretler, pCizilen, son.Alan, yatay, false, copy.TemelGeom, adimlar.Count, son.AralikCm, pYazi);
+                    IsaretEkle(isaretler, pSarkan, son.Alan, yatay, true, copy.TemelGeom, adimlar.Count, son.AralikCm, pYazi);
+                    if (pn > 0 && !double.IsNaN(ilave) && (double.IsNaN(enBuyukIlave) || ilave > enBuyukIlave)) enBuyukIlave = ilave;
+                }
+            }
+            string yetmezYazi = YetmezYazisi(son, enBuyukIlave);
             if (gorunen.Count == 0 && yetmez == 0)
             {
                 ed?.WriteMessage("\n  {0}: ilave yok.", face.Ad);
@@ -563,7 +577,13 @@ namespace ST4PlanIdCiz
                 if (cap < max && cap > alt) alt = cap;
             var ham = new List<int[]>();
             if (kume != null)
+            {
                 ham = kume.Select(p => new[] { p[0], p[1] }).ToList();
+                // Kullanıcı kuralı (17.11.2026): en büyük çap /20 yetmezse /15, o da yetmezse /10 (akıllı zarfta da).
+                int kumeMax = ham.Count > 0 ? ham.Max(p => p[0]) : max;
+                ham.Add(new[] { kumeMax, 15 });
+                ham.Add(new[] { kumeMax, 10 });
+            }
             else
             {
                 ham.Add(new[] { 12, 30 });
@@ -587,6 +607,7 @@ namespace ST4PlanIdCiz
                 {
                     Alan = alan,
                     AralikCm = p[1],
+                    CapMm = p[0],
                     Renk = BantRenk[Math.Min(liste.Count, BantRenk.Length - 1)],
                     Yazi = "ø" + p[0] + "/" + p[1]
                 });
@@ -598,8 +619,53 @@ namespace ST4PlanIdCiz
         {
             public double Alan;
             public int AralikCm;
+            public int CapMm;
             public short Renk;
             public string Yazi;
+        }
+
+        /// <summary>
+        /// Son kademe de yetmezse: "ø20/10 yetmez - ø20/4 yeter". Gereken aralık, bölgedeki en büyük ilave ihtiyacına
+        /// (düğüm As − genel donatı) son kademenin çapıyla, aşağı yuvarlanarak (tam cm) bulunur.
+        /// </summary>
+        private static string YetmezYazisi(DonatiAdim son, double gerekenIlave)
+        {
+            string yazi = son.Yazi + " yetmez";
+            if (son.CapMm <= 0 || !(gerekenIlave > son.Alan)) return yazi;
+            double cubuk = GprRadyeAyir.AlanCm2Pm(son.CapMm, 100);
+            int aralik = (int)Math.Floor(cubuk * 100.0 / gerekenIlave + 1e-9);
+            if (aralik >= son.AralikCm) aralik = son.AralikCm - 1;
+            if (aralik < 1) return yazi;
+            return yazi + " - ø" + son.CapMm + "/" + aralik + " yeter";
+        }
+
+        /// <summary>
+        /// Poligon içindeki düğümlerin en büyük As değeri; düğüm yoksa NaN. Kullanıcı kararı (17.11.2026): tek noktadaki
+        /// tepe (en büyük düğüm ve aynı koordinattaki ikizleri) yok sayılır; o noktadan sonraki en büyük düğüm de eşiği
+        /// (son kademe) aşıyorsa o kullanılır, aşmıyorsa bölge yalnız tepeden oluştuğu için tepe değeri kalır.
+        /// </summary>
+        private static double PoligonEnBuyukAs(Polygon p, List<GprRadyeDugumAs> nodes, Func<GprRadyeDugumAs, double> deger, double esik)
+        {
+            if (p == null || nodes == null) return double.NaN;
+            Envelope e = p.EnvelopeInternal;
+            var prep = NetTopologySuite.Geometries.Prepared.PreparedGeometryFactory.Prepare(p);
+            var icerde = new List<GprRadyeDugumAs>();
+            foreach (GprRadyeDugumAs n in nodes)
+            {
+                if (n.X < e.MinX || n.X > e.MaxX || n.Y < e.MinY || n.Y > e.MaxY) continue;
+                if (prep.Covers(new NetTopologySuite.Geometries.Point(n.X, n.Y))) icerde.Add(n);
+            }
+            if (icerde.Count == 0) return double.NaN;
+            GprRadyeDugumAs tepe = icerde.OrderByDescending(deger).First();
+            const double ayniNoktaM = 0.02;
+            double ikinci = double.NaN;
+            foreach (GprRadyeDugumAs n in icerde)
+            {
+                if (Math.Abs(n.X - tepe.X) <= ayniNoktaM && Math.Abs(n.Y - tepe.Y) <= ayniNoktaM) continue;
+                double v = deger(n);
+                if (double.IsNaN(ikinci) || v > ikinci) ikinci = v;
+            }
+            return !double.IsNaN(ikinci) && ikinci > esik ? ikinci : deger(tepe);
         }
 
         private sealed class Isaret

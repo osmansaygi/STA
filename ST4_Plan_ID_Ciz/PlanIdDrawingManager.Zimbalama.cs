@@ -374,6 +374,27 @@ namespace ST4PlanIdCiz
                 Ekle(uy, ux, hh, hw, 0, 0);
             }
 
+            // Uç merdiveni kolon ucu radye kenarına dayalıysa etriye köşeleri paspaya sığmaz (montaj uçtan paspay içeride,
+            // etriye 1 cm taşar). İki kolu da sığmıyorsa merdiven kolon ortasına doğru 1 cm adımla (en çok 30 cm) kaydırılır.
+            foreach (ZimMerdiven m in list)
+            {
+                if (m.Kenar == 0 || icTemel == null || icTemel.IsEmpty) continue;
+                double kolDene = Math.Max(kolMin, 2.0 * m.Paspay + 10.0);
+                if (ZimKolSigdir(m, -1, kolDene, icTemel, gf) > 0 || ZimKolSigdir(m, +1, kolDene, icTemel, gf) > 0) continue;
+                Point2d orta0 = m.Orta;
+                double vMin0 = m.VMin, vMax0 = m.VMax;
+                bool sigdi = false;
+                for (double d = 1.0; d <= 30.0 && !sigdi; d += 1.0)
+                {
+                    // Kenar +1 merdiveni +V yönünde kaymış: içeri = −V.
+                    m.Orta = orta0 - m.V * (m.Kenar * d);
+                    m.VMin = vMin0 + m.Kenar * d;
+                    m.VMax = vMax0 + m.Kenar * d;
+                    sigdi = ZimKolSigdir(m, -1, kolDene, icTemel, gf) > 0 || ZimKolSigdir(m, +1, kolDene, icTemel, gf) > 0;
+                }
+                if (!sigdi) { m.Orta = orta0; m.VMin = vMin0; m.VMax = vMax0; }
+            }
+
             // Kol boyu: en az 100 cm; toplam etriye alanı Asb'yi karşılayana dek 5 cm adımla uzar, radye paspayında kesilir.
             double tekAlan = 2.0 * Math.PI * z.CapMm * z.CapMm / 400.0;
             int gerekli = z.AsbCm2 > 0 ? (int)Math.Ceiling(z.AsbCm2 / tekAlan - 1e-6) : 0;

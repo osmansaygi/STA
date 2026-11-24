@@ -22,6 +22,11 @@
     <PackageReference Include="PDFsharp" Version="6.2.0" />
   </ItemGroup>
 
+  <!-- STA4CAD V14/V15 ikili sonuç kayıt düzeni (Plan ID ve Yardımcı ile ortak). -->
+  <ItemGroup>
+    <Compile Include="..\Ortak\Sta4\*.cs" Link="Ortak\Sta4\%(Filename)%(Extension)" />
+  </ItemGroup>
+
   <!-- Masaüstü kısayolu bin\Uygulama\StatikRaporClaude.exe'yi açar: her Release derlemesi oraya da kopyalanır.
        Uygulama açıksa kopya atlanır (uyarı), derleme başarısız olmaz. -->
   <Target Name="KisayolKlasorunuGuncelle" AfterTargets="Build"

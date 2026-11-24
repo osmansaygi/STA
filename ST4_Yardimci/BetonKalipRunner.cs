@@ -159,9 +159,8 @@ namespace ST4Yardimci
         {
             double x0 = p0.X, y = p0.Y, z = p0.Z, x1 = x0 + AdW + 2 * DegerW;
             var orta = TextVerticalMode.TextVerticalMid;
-            string ad = Path.GetFileNameWithoutExtension(proje.St4Yolu).ToUpper(Tr);
             c.Kutu(x0, y - BaslikKutuH, x1, y, z);
-            c.Yazi((x0 + x1) / 2, y - BaslikKutuH / 2, z, ad + " BETON / KALIP METRAJI", BaslikH, TextHorizontalMode.TextCenter, orta, SehimTablosuRunner.LayerBaslik);
+            c.Yazi((x0 + x1) / 2, y - BaslikKutuH / 2, z, "BETON / KALIP METRAJI", BaslikH, TextHorizontalMode.TextCenter, orta, SehimTablosuRunner.LayerBaslik);
             y -= BaslikKutuH + KutuBosluk;
 
             // sütun başlığı kutusu
@@ -170,7 +169,7 @@ namespace ST4Yardimci
             c.Cizgi(x0 + AdW, hAlt, x0 + AdW, y, z, SehimTablosuRunner.LayerCizgi);
             c.Cizgi(x0 + AdW + DegerW, hAlt, x0 + AdW + DegerW, y, z, SehimTablosuRunner.LayerCizgi);
             c.Yazi(x0 + AdW / 2, y - SatirH / 2, z, "KAT / ELEMAN", YaziH, TextHorizontalMode.TextCenter, orta, SehimTablosuRunner.LayerBaslik);
-            c.Yazi(x0 + AdW + DegerW / 2, y - SatirH / 2, z, "BETON (m³)", YaziH, TextHorizontalMode.TextCenter, orta, SehimTablosuRunner.LayerBaslik);
+            c.Yazi(x0 + AdW + DegerW / 2, y - SatirH / 2, z, (string.IsNullOrEmpty(proje.BetonSinifi) ? "BETON" : "BETON-" + proje.BetonSinifi) + " (m³)", YaziH, TextHorizontalMode.TextCenter, orta, SehimTablosuRunner.LayerBaslik);
             c.Yazi(x0 + AdW + 1.5 * DegerW, y - SatirH / 2, z, "KALIP (m²)", YaziH, TextHorizontalMode.TextCenter, orta, SehimTablosuRunner.LayerBaslik);
 
             // veri ızgarası

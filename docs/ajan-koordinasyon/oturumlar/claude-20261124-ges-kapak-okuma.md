@@ -1,0 +1,10 @@
+# claude-20261124-ges-kapak-okuma
+
+- Ajan: Claude (Code). Görev: GesRaporu DWG kapak okumasını 9 örnek mimari projeye göre iyileştirmek (farklı kapak düzenleri).
+- Durum: tamamlandı (24.11.2026 13:20) — rezervasyon yok.
+- Kontrol: protokol + son 2 gün kayıtları (ges-rapor, ges-detay, gunes-paneli, trapez-sac, betonkalip, merdiven: tamamlandı; aktif yok). AutoCAD DLL/NETLOAD'a dokunulmadı (bağımsız exe).
+- Değişen: yeni `GesRaporu/DwgKapak.cs`; `GesRaporu/DwgBilgi.cs` (yazı geometrisi/grup/öznitelik, il-ilçe belirleme, eski kapak kodu kaldırıldı), `GesRaporu/AnaFormBlok.cs`, `GesRaporu/Program.cs` (--kapak modu, PAFTA/ADA/PARSEL anahtarları), `GesRaporu/GesRaporu.csproj` (sürüm 1.6.0), `docs/modul-durum/GesRaporu.md`.
+- Doğrulama: Release 0 hata/0 uyarı → `GesRaporu/bin/Uygulama/GesRaporu.exe` (masaüstü kısayolu). `--kapak` 11 DWG: tüm alanlar elle kontrol edilen kapak değerleriyle uyumlu. `--test` ms_a_blk, REVİZE 4, vakıflar, pulluk: rakım/plan/blok satırları eski exe ile aynı (çatı planı çıkarımı bozulmadı); atahan ve aslım PDF üretildi. `--formtest` atahan: sahip/mahalle DWG'den. PDF sayfaları görsel olarak açılmadı (yerleşim değişmedi, yalnız alan değerleri).
+- Ek (kullanıcı onayıyla): bina yüksekliği düzeltildi — düz yazı kotları, KESİT blokları hariç, aykırı üst kot eleme, KAT ADEDİ sağlaması (`DwgBilgi.BinaYuksekligi`); AnaFormBlok ve --test buna geçti. Sahip etiketine PROJE SAHİPLERİ vb. varyantlar eklendi. Release 0 hata, son exe ile 11 DWG --test H değerleri kontrol edildi (kesit kotları son çare, alt sınır %75), atahan --formtest H=14,00.
+- Ek 2 (kullanıcı onayıyla): çatı planı başlık seçimi (ölçekli öncelik), pafta bloğu sınırı penceresi, pafta içi başlıklarla daraltma (DwgBilgi.VarsayilanCatiBasligi/PlanCiz, Program GES_SVG PNG). 43704-1 A ve D, selman kon, aslım PNG ile görsel kontrol; diğer 8 çizim plan/H aynı. Release 0 hata.
+- Açık: rakım çoğu çizimde bulunamıyor (yalnız mutlak+bağıl kot çifti olanlarda); 43704-1 gibi büyük çizimlerde çatı planı çıkarımı birkaç dakika sürüyor.

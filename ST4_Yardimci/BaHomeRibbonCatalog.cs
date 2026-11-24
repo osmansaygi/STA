@@ -36,7 +36,7 @@ namespace ST4Yardimci
             new Group("MIMARI", "Mimari", "MIMARIKAT", "MIMARIBOSLUK", "MIMARIMERDIVEN", "MIMARISTA"),
             new Group("DONATI", "Donatı", "DOSEMEDONATI", "OTODONATI", "HASIRDONATI", "RADYEILAVE", "MANTARILAVE", "KIRISCIZ"),
             new Group("GENEL", "Genel Düzenleme", "DONATIBOYU", "DONATIADET", "DONATIOKU",
-                "KOTDEGISTIR", "DONATIMETRAJ", "BETONKALIP", "SEHIMTABLOSU", "KATMANYUKLE")
+                "KOTDEGISTIR", "DONATIMETRAJ", "BETONKALIP", "SEHIMTABLOSU", "KAPAK", "KATMANYUKLE")
         };
     }
 }
